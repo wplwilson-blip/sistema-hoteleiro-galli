@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -133,7 +133,7 @@ async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.request_lookup_failed", error);
-    throw new Error("Nao foi possivel localizar a solicitacao.");
+    throw new Error("Não foi possível localizar a solicitação.");
   }
 
   return data as PurchaseRequestRow;
@@ -149,7 +149,7 @@ async function fetchRequestItems(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.request_items_lookup_failed", error);
-    throw new Error("Nao foi possivel carregar os itens da solicitacao.");
+    throw new Error("Não foi possível carregar os itens da solicitação.");
   }
 
   return (data ?? []) as PurchaseRequestItemRow[];
@@ -168,7 +168,7 @@ async function fetchQuoteById(supabase: SupabaseAdmin, requestId: string, quoteI
 
   if (error) {
     logBaseCadastroError("purchase_quotes.quote_lookup_failed", error);
-    throw new Error("Nao foi possivel localizar a cotacao.");
+    throw new Error("Não foi possível localizar a cotação.");
   }
 
   return data as PurchaseQuoteRow;
@@ -184,7 +184,7 @@ async function fetchQuoteItems(supabase: SupabaseAdmin, quoteId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.quote_items_lookup_failed", error);
-    throw new Error("Nao foi possivel carregar os itens da cotacao.");
+    throw new Error("Não foi possível carregar os itens da cotação.");
   }
 
   return (data ?? []) as PurchaseQuoteItemRow[];
@@ -202,7 +202,7 @@ async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.existing_quotes_lookup_failed", error);
-    throw new Error("Nao foi possivel carregar as cotacoes da solicitacao.");
+    throw new Error("Não foi possível carregar as cotações da solicitação.");
   }
 
   return (data ?? []) as PurchaseQuoteRow[];
@@ -234,7 +234,7 @@ async function insertPurchaseRequestEvent(
 
   if (error) {
     logBaseCadastroError("purchase_quotes.event_create_failed", error);
-    throw new Error("Nao foi possivel registrar o evento da cotacao.");
+    throw new Error("Não foi possível registrar o evento da cotação.");
   }
 }
 
@@ -299,18 +299,18 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const requestRow = await fetchRequestById(supabase, params.id);
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
-      return apiError("Voce nao tem acesso a esta solicitacao.", 403);
+      return apiError("Você não tem acesso a esta solicitação.", 403);
     }
 
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
 
     if (payload.action === "select") {
       if (requestRow.status !== "quotation") {
-        return apiError("A cotacao so pode ser selecionada em uma solicitacao em cotacao.", 409);
+        return apiError("A cotação so pode ser selecionada em uma solicitação em cotação.", 409);
       }
 
       if (quoteRow.status !== "received" && quoteRow.status !== "selected") {
-        return apiError("A cotacao selecionada deve estar recebida ou selecionada.", 409);
+        return apiError("A cotação selecionada deve estar recebida ou selecionada.", 409);
       }
 
       const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
@@ -327,7 +327,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       if (unselectError) {
         logBaseCadastroError("purchase_quotes.select_clear_failed", unselectError);
         await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
-        return apiError("Nao foi possivel atualizar as cotacoes da solicitacao.", 500);
+        return apiError("Não foi possível atualizar as cotações da solicitação.", 500);
       }
 
       const { error: selectError } = await supabase
@@ -340,7 +340,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       if (selectError) {
         logBaseCadastroError("purchase_quotes.select_update_failed", selectError);
         await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
-        return apiError("Nao foi possivel selecionar a cotacao.", 500);
+        return apiError("Não foi possível selecionar a cotação.", 500);
       }
 
       const { error: requestUpdateError } = await supabase
@@ -358,7 +358,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       if (requestUpdateError) {
         logBaseCadastroError("purchase_quotes.select_request_update_failed", requestUpdateError);
         await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
-        return apiError("Nao foi possivel atualizar a solicitacao com a cotacao selecionada.", 500);
+        return apiError("Não foi possível atualizar a solicitação com a cotação selecionada.", 500);
       }
 
       try {
@@ -374,7 +374,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         });
       } catch (eventError) {
         await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
-        return apiError(eventError instanceof Error ? eventError.message : "Nao foi possivel registrar a selecao da cotacao.", 500);
+        return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar a selecao da cotação.", 500);
       }
 
       return NextResponse.json({ ok: true });
@@ -382,7 +382,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     const editableStatuses: PurchaseQuoteRow["status"][] = ["received", "selected"];
     if (!editableStatuses.includes(quoteRow.status)) {
-      return apiError("A cotacao nao pode ser editada neste status.", 409);
+      return apiError("A cotação nao pode ser editada neste status.", 409);
     }
 
     const requestItems = await fetchRequestItems(supabase, requestRow.id);
@@ -398,7 +398,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
       if (startError) {
         logBaseCadastroError("purchase_quotes.auto_start_failed", startError);
-        return apiError("Nao foi possivel iniciar a cotacao.", 500);
+        return apiError("Não foi possível iniciar a cotação.", 500);
       }
 
       await insertPurchaseRequestEvent(supabase, {
@@ -412,22 +412,22 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         createdBy: session.user.id
       });
     } else if (requestRow.status !== "quotation") {
-      return apiError("A cotacao so pode ser editada em uma solicitacao em analise ou em cotacao.", 409);
+      return apiError("A cotação so pode ser editada em uma solicitação em análise ou em cotação.", 409);
     }
 
     const parsed = purchaseQuotePatchSchema.parse(payload);
     if (parsed.action !== "save") {
-      return apiError("Acao invalida para edicao de cotacao.", 409);
+      return apiError("Ação invalida para edicao de cotação.", 409);
     }
 
     const quoteNumber = parsed.quoteNumber?.trim() || quoteRow.quote_number;
     const quoteItems: PurchaseQuoteItemUpdateRow[] = parsed.items.map((item: PurchaseQuotePayloadItem) => {
       if (!requestItemMap.has(item.purchaseRequestItemId)) {
-        throw new Error("Item da cotacao nao pertence a solicitacao.");
+        throw new Error("Item da cotação nao pertence a solicitação.");
       }
 
       if (seenRequestItemIds.has(item.purchaseRequestItemId)) {
-        throw new Error("Cada item da solicitacao deve aparecer apenas uma vez na cotacao.");
+        throw new Error("Cada item da solicitação deve aparecer apenas uma vez na cotação.");
       }
 
       seenRequestItemIds.add(item.purchaseRequestItemId);
@@ -445,7 +445,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     });
 
     if (seenRequestItemIds.size !== requestItems.length) {
-      throw new Error("Informe um item cotado para cada item da solicitacao.");
+      throw new Error("Informe um item cotado para cada item da solicitação.");
     }
 
     const totalAmount = sumPurchaseQuoteItems(quoteItems.map((item: PurchaseQuoteItemUpdateRow) => ({ quantity: item.quantity, unitPrice: item.unit_price })));
@@ -470,7 +470,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     if (updateError) {
       logBaseCadastroError("purchase_quotes.update_failed", updateError);
-      return apiError(updateError.message || "Nao foi possivel atualizar a cotacao.", 500);
+      return apiError(updateError.message || "Não foi possível atualizar a cotação.", 500);
     }
 
     const { error: deleteItemsError } = await supabase.from("purchase_quote_items").delete().eq("purchase_quote_id", quoteRow.id);
@@ -493,7 +493,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         status: quoteRow.status,
         updated_by: session.user.id
       }).eq("id", quoteRow.id);
-      return apiError("Nao foi possivel atualizar os itens da cotacao.", 500);
+      return apiError("Não foi possível atualizar os itens da cotação.", 500);
     }
 
     const { error: insertItemsError } = await supabase.from("purchase_quote_items").insert(
@@ -531,7 +531,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         updated_by: session.user.id
       }).eq("id", quoteRow.id);
       await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, session.user.id));
-      return apiError("Nao foi possivel atualizar os itens da cotacao.", 500);
+      return apiError("Não foi possível atualizar os itens da cotação.", 500);
     }
 
     const requestFlags = calculatePurchaseRequestFlags(totalAmount);
@@ -568,7 +568,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           status: quoteRow.status,
           updated_by: session.user.id
         }).eq("id", quoteRow.id);
-        return apiError("Nao foi possivel atualizar a solicitacao com o total da cotacao.", 500);
+        return apiError("Não foi possível atualizar a solicitação com o total da cotação.", 500);
       }
     }
 
@@ -589,7 +589,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     }
 
-    return apiError(error instanceof Error ? error.message : "Nao foi possivel atualizar a cotacao.", 500);
+    return apiError(error instanceof Error ? error.message : "Não foi possível atualizar a cotação.", 500);
   }
 }
 
@@ -605,7 +605,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     const requestRow = await fetchRequestById(supabase, params.id);
 
     if (!session.units.some((unit) => unit.id === requestRow.unit_id)) {
-      return apiError("Voce nao tem acesso a esta solicitacao.", 403);
+      return apiError("Você não tem acesso a esta solicitação.", 403);
     }
 
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
@@ -626,7 +626,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
 
     if (quoteUpdateError) {
       logBaseCadastroError("purchase_quotes.delete_failed", quoteUpdateError);
-      return apiError("Nao foi possivel cancelar a cotacao.", 500);
+      return apiError("Não foi possível cancelar a cotação.", 500);
     }
 
     const { error: itemsUpdateError } = await supabase
@@ -641,7 +641,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     if (itemsUpdateError) {
       logBaseCadastroError("purchase_quotes.delete_items_failed", itemsUpdateError);
       await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: session.user.id }).eq("id", quoteRow.id);
-      return apiError("Nao foi possivel cancelar os itens da cotacao.", 500);
+      return apiError("Não foi possível cancelar os itens da cotação.", 500);
     }
 
     if (wasSelected) {
@@ -661,7 +661,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
         logBaseCadastroError("purchase_quotes.delete_request_failed", requestUpdateError);
         await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: session.user.id }).eq("id", quoteRow.id);
         await supabase.from("purchase_quote_items").update({ deleted_at: null, deleted_by: null, updated_by: session.user.id }).eq("purchase_quote_id", quoteRow.id);
-        return apiError("Nao foi possivel atualizar a solicitacao apos o cancelamento da cotacao.", 500);
+        return apiError("Não foi possível atualizar a solicitação apos o cancelamento da cotação.", 500);
       }
     }
 
@@ -682,6 +682,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       cancelledItems: quoteItems.length
     });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Nao foi possivel cancelar a cotacao.", 500);
+    return apiError(error instanceof Error ? error.message : "Não foi possível cancelar a cotação.", 500);
   }
 }
+

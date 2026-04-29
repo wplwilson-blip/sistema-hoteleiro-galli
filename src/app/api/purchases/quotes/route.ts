@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { apiError, getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseQuoteStatusLabel, getPurchaseQuoteStatusTone } from "@/lib/purchases/quote-schemas";
@@ -150,7 +150,7 @@ async function loadSuppliers(supabase: SupabaseAdmin, organizationId: string, ac
 
   if (error) {
     logBaseCadastroError("purchase_quotes.suppliers_list_failed", error);
-    throw new Error("Nao foi possivel carregar os fornecedores.");
+    throw new Error("Não foi possível carregar os fornecedores.");
   }
 
   const suppliers = ((data ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
@@ -193,7 +193,7 @@ async function loadEligibleRequests(supabase: SupabaseAdmin, accessibleUnitIds: 
 
   if (error) {
     logBaseCadastroError("purchase_quotes.request_list_failed", error);
-    throw new Error("Nao foi possivel carregar as solicitacoes para cotacao.");
+    throw new Error("Não foi possível carregar as solicitacoes para cotação.");
   }
 
   const requestRows = (data ?? []) as PurchaseRequestRow[];
@@ -230,7 +230,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   if (requestError) {
     logBaseCadastroError("purchase_quotes.request_detail_failed", requestError);
-    throw new Error("Nao foi possivel localizar a solicitacao.");
+    throw new Error("Não foi possível localizar a solicitação.");
   }
 
   const { data: requestItems, error: itemsError } = await supabase
@@ -242,7 +242,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   if (itemsError) {
     logBaseCadastroError("purchase_quotes.request_items_detail_failed", itemsError);
-    throw new Error("Nao foi possivel carregar os itens da solicitacao.");
+    throw new Error("Não foi possível carregar os itens da solicitação.");
   }
 
   const { data: quoteRows, error: quotesError } = await supabase
@@ -254,7 +254,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   if (quotesError) {
     logBaseCadastroError("purchase_quotes.detail_list_failed", quotesError);
-    throw new Error("Nao foi possivel carregar as cotacoes.");
+    throw new Error("Não foi possível carregar as cotações.");
   }
 
   const quoteIds = (quoteRows ?? []).map((quote) => quote.id);
@@ -269,7 +269,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   if (quoteItemsError) {
     logBaseCadastroError("purchase_quotes.detail_quote_items_failed", quoteItemsError);
-    throw new Error("Nao foi possivel carregar os itens das cotacoes.");
+    throw new Error("Não foi possível carregar os itens das cotações.");
   }
 
   const { data: suppliers, error: suppliersError } = await supabase
@@ -282,7 +282,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   if (suppliersError) {
     logBaseCadastroError("purchase_quotes.detail_suppliers_failed", suppliersError);
-    throw new Error("Nao foi possivel carregar os fornecedores.");
+    throw new Error("Não foi possível carregar os fornecedores.");
   }
 
   const accessibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
@@ -348,7 +348,7 @@ export async function GET(request: Request) {
       const detail = await loadRequestDetail(supabase, requestId, accessibleUnitIds);
 
       if (!accessibleUnitIds.includes(detail.request.unitId)) {
-        return apiError("Voce nao tem acesso a esta solicitacao.", 403);
+        return apiError("Você não tem acesso a esta solicitação.", 403);
       }
 
       const suppliers = await loadSuppliers(supabase, organizationId, accessibleUnitIds);
@@ -370,6 +370,7 @@ export async function GET(request: Request) {
       suppliers
     });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Nao foi possivel carregar as cotacoes.", 500);
+    return apiError(error instanceof Error ? error.message : "Não foi possível carregar as cotações.", 500);
   }
 }
+

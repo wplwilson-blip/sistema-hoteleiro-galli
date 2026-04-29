@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -87,7 +87,7 @@ async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.request_lookup_failed", error);
-    throw new Error("Nao foi possivel localizar a solicitacao.");
+    throw new Error("Não foi possível localizar a solicitação.");
   }
 
   return data as PurchaseRequestRow;
@@ -103,7 +103,7 @@ async function fetchRequestItems(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.request_items_lookup_failed", error);
-    throw new Error("Nao foi possivel carregar os itens da solicitacao.");
+    throw new Error("Não foi possível carregar os itens da solicitação.");
   }
 
   return (data ?? []) as PurchaseRequestItemRow[];
@@ -119,7 +119,7 @@ async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quotes.existing_quotes_lookup_failed", error);
-    throw new Error("Nao foi possivel carregar as cotacoes da solicitacao.");
+    throw new Error("Não foi possível carregar as cotações da solicitação.");
   }
 
   return (data ?? []) as PurchaseQuoteRow[];
@@ -137,7 +137,7 @@ async function fetchSupplier(supabase: SupabaseAdmin, supplierId: string, organi
 
   if (error) {
     logBaseCadastroError("purchase_quotes.supplier_lookup_failed", error);
-    throw new Error("Nao foi possivel validar o fornecedor selecionado.");
+    throw new Error("Não foi possível validar o fornecedor selecionado.");
   }
 
   const supplier = data?.[0] as SupplierRow | undefined;
@@ -147,7 +147,7 @@ async function fetchSupplier(supabase: SupabaseAdmin, supplierId: string, organi
   }
 
   if (supplier.unit_id && !accessibleUnitIds.includes(supplier.unit_id)) {
-    throw new Error("Voce nao tem acesso a este fornecedor.");
+    throw new Error("Você não tem acesso a este fornecedor.");
   }
 
   return supplier;
@@ -179,7 +179,7 @@ async function insertPurchaseRequestEvent(
 
   if (error) {
     logBaseCadastroError("purchase_quotes.event_create_failed", error);
-    throw new Error("Nao foi possivel registrar o evento da cotacao.");
+    throw new Error("Não foi possível registrar o evento da cotação.");
   }
 }
 
@@ -201,7 +201,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const requestRow = await fetchRequestById(supabase, params.id);
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
-      return apiError("Voce nao tem acesso a esta solicitacao.", 403);
+      return apiError("Você não tem acesso a esta solicitação.", 403);
     }
 
     const requestItems = await fetchRequestItems(supabase, requestRow.id);
@@ -212,7 +212,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
 
       if (requestRow.status !== "submitted" && requestRow.status !== "under_review") {
-        return apiError("A cotacao so pode ser iniciada em uma solicitacao enviada.", 409);
+        return apiError("A cotação so pode ser iniciada em uma solicitação enviada.", 409);
       }
 
       const { error: updateError } = await supabase
@@ -222,7 +222,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
       if (updateError) {
         logBaseCadastroError("purchase_quotes.start_failed", updateError);
-        return apiError(updateError.message || "Nao foi possivel iniciar a cotacao.", 500);
+        return apiError(updateError.message || "Não foi possível iniciar a cotação.", 500);
       }
 
       await insertPurchaseRequestEvent(supabase, {
@@ -243,7 +243,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         request: {
           id: updatedRequest.id,
           status: updatedRequest.status,
-          statusLabel: "Em cotacao"
+          statusLabel: "Em cotação"
         }
       });
     }
@@ -256,7 +256,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
       if (updateError) {
         logBaseCadastroError("purchase_quotes.auto_start_failed", updateError);
-        return apiError(updateError.message || "Nao foi possivel iniciar a cotacao.", 500);
+        return apiError(updateError.message || "Não foi possível iniciar a cotação.", 500);
       }
 
       await insertPurchaseRequestEvent(supabase, {
@@ -270,11 +270,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
         createdBy: session.user.id
       });
     } else if (requestRow.status !== "quotation") {
-      return apiError("A cotacao so pode ser registrada para solicitacoes em analise ou em cotacao.", 409);
+      return apiError("A cotação so pode ser registrada para solicitacoes em análise ou em cotação.", 409);
     }
 
     if (requestItems.length === 0) {
-      return apiError("Nao ha itens cadastrados nesta solicitacao.", 409);
+      return apiError("Não há itens cadastrados nesta solicitação.", 409);
     }
 
     const supplier = await fetchSupplier(supabase, payload.supplierId, requestRow.organization_id, accessibleUnitIds);
@@ -283,16 +283,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const seenRequestItemIds = new Set<string>();
 
     if (payload.items.length !== requestItems.length) {
-      throw new Error("Informe um item cotado para cada item da solicitacao.");
+      throw new Error("Informe um item cotado para cada item da solicitação.");
     }
 
     const quoteItems: PurchaseQuoteItemInput[] = payload.items.map((item: PurchaseQuoteItemInput) => {
       if (!requestItemMap.has(item.purchaseRequestItemId)) {
-        throw new Error("Item da cotacao nao pertence a solicitacao.");
+        throw new Error("Item da cotação nao pertence a solicitação.");
       }
 
       if (seenRequestItemIds.has(item.purchaseRequestItemId)) {
-        throw new Error("Cada item da solicitacao deve aparecer apenas uma vez na cotacao.");
+        throw new Error("Cada item da solicitação deve aparecer apenas uma vez na cotação.");
       }
 
       seenRequestItemIds.add(item.purchaseRequestItemId);
@@ -307,7 +307,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
 
     if (seenRequestItemIds.size !== requestItems.length) {
-      throw new Error("Informe um item cotado para cada item da solicitacao.");
+      throw new Error("Informe um item cotado para cada item da solicitação.");
     }
 
     const totalAmount = sumPurchaseQuoteItems(quoteItems.map((item) => ({ quantity: item.quantity, unitPrice: item.unitPrice })));
@@ -340,7 +340,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (quoteError) {
       logBaseCadastroError("purchase_quotes.create_failed", quoteError);
-      return apiError(quoteError.message || "Nao foi possivel salvar a cotacao.", 500);
+      return apiError(quoteError.message || "Não foi possível salvar a cotação.", 500);
     }
 
     const quoteId = quoteInsert.id;
@@ -366,7 +366,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (quoteItemsError) {
       logBaseCadastroError("purchase_quotes.items_create_failed", quoteItemsError);
       await supabase.from("purchase_quotes").delete().eq("id", quoteId);
-      return apiError(quoteItemsError.message || "Nao foi possivel salvar os itens da cotacao.", 500);
+      return apiError(quoteItemsError.message || "Não foi possível salvar os itens da cotação.", 500);
     }
 
     await insertPurchaseRequestEvent(supabase, {
@@ -386,6 +386,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     }
 
-    return apiError(error instanceof Error ? error.message : "Nao foi possivel salvar a cotacao.", 500);
+    return apiError(error instanceof Error ? error.message : "Não foi possível salvar a cotação.", 500);
   }
 }
+

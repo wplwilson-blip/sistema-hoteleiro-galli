@@ -213,7 +213,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.message ?? "NÃ£o foi possÃ­vel concluir a operaÃ§Ã£o.");
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload;
@@ -376,7 +376,7 @@ export function PurchaseQuotesClient() {
   const saveMutation = useMutation({
     mutationFn: async (payload: PurchaseQuoteFormValues) => {
       if (!selectedRequestId) {
-        throw new Error("Selecione uma solicitacao.");
+        throw new Error("Selecione uma solicitação.");
       }
 
       const url = editingQuoteId
@@ -400,7 +400,7 @@ export function PurchaseQuotesClient() {
         selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
       ]);
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "NÃ£o foi possÃ­vel salvar a cotaÃ§Ã£o.")
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível salvar a cotação.")
   });
 
   const startMutation = useMutation({
@@ -414,7 +414,7 @@ export function PurchaseQuotesClient() {
         queryClient.refetchQueries({ queryKey: ["purchases", "quotes", requestId], type: "active" })
       ]);
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "NÃ£o foi possÃ­vel iniciar a cotaÃ§Ã£o.")
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível iniciar a cotação.")
   });
 
   const selectMutation = useMutation({
@@ -427,7 +427,7 @@ export function PurchaseQuotesClient() {
         queryClient.refetchQueries({ queryKey: ["purchases", "quotes", variables.requestId], type: "active" })
       ]);
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "NÃ£o foi possÃ­vel selecionar a cotaÃ§Ã£o.")
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível selecionar a cotação.")
   });
 
   const deleteMutation = useMutation({
@@ -440,7 +440,7 @@ export function PurchaseQuotesClient() {
         queryClient.refetchQueries({ queryKey: ["purchases", "quotes", variables.requestId], type: "active" })
       ]);
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "NÃ£o foi possÃ­vel cancelar a cotaÃ§Ã£o.")
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível cancelar a cotação.")
   });
 
   const filteredRequests = useMemo(() => {
@@ -472,12 +472,12 @@ export function PurchaseQuotesClient() {
     <div className="space-y-6">
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label>Buscar solicitacao</Label>
+          <Label>Buscar solicitação</Label>
           <div className="relative max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="NÃºmero, tÃ­tulo, justificativa, status ou prioridade"
+              placeholder="Número, título, justificativa, status ou prioridade"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -489,18 +489,18 @@ export function PurchaseQuotesClient() {
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">SolicitaÃ§Ãµes elegÃ­veis</h2>
-              <p className="text-sm text-muted-foreground">Somente solicitaÃ§Ãµes enviadas, em anÃ¡lise ou em cotaÃ§Ã£o.</p>
+              <h2 className="text-lg font-semibold">Solicitações elegíveis</h2>
+              <p className="text-sm text-muted-foreground">Somente solicitações enviadas, em análise ou em cotação.</p>
             </div>
           </div>
 
-          {listQuery.isLoading ? <LoadingTable label="Carregando solicitaÃ§Ãµes..." /> : null}
+          {listQuery.isLoading ? <LoadingTable label="Carregando solicitações..." /> : null}
           {listQuery.error ? (
-            <ErrorMessage message={listQuery.error instanceof Error ? listQuery.error.message : "Erro ao carregar solicitaÃ§Ãµes."} />
+            <ErrorMessage message={listQuery.error instanceof Error ? listQuery.error.message : "Erro ao carregar solicitações."} />
           ) : null}
 
           {!listQuery.isLoading && !filteredRequests.length ? (
-            <EmptyState title="Nenhuma solicitaÃ§Ã£o elegÃ­vel" description="SolicitaÃ§Ãµes enviadas ou em anÃ¡lise aparecerÃ£o aqui para cotaÃ§Ã£o." />
+            <EmptyState title="Nenhuma solicitação elegível" description="Solicitações enviadas ou em análise aparecerão aqui para cotação." />
           ) : null}
 
           {filteredRequests.length ? (
@@ -508,13 +508,13 @@ export function PurchaseQuotesClient() {
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                   <tr>
-                          <th className="px-4 py-3 font-semibold">NÃºmero</th>
-                    <th className="px-4 py-3 font-semibold">Titulo</th>
+                          <th className="px-4 py-3 font-semibold">Número</th>
+                    <th className="px-4 py-3 font-semibold">Título</th>
                     <th className="px-4 py-3 font-semibold">Prioridade</th>
                     <th className="px-4 py-3 font-semibold">Tipo</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Total</th>
-                    <th className="px-4 py-3 text-right font-semibold">Acoes</th>
+                    <th className="px-4 py-3 text-right font-semibold">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -534,7 +534,7 @@ export function PurchaseQuotesClient() {
                           <StatusBadge status={getPurchaseRequestStatusTone(request.status)} label={request.statusLabel} />
                         </td>
                         <td className="px-4 py-3 font-medium">
-                          {request.totalApprovedAmount > 0 ? formatCurrency(request.totalApprovedAmount) : "Valor serÃ¡ definido na cotaÃ§Ã£o"}
+                          {request.totalApprovedAmount > 0 ? formatCurrency(request.totalApprovedAmount) : "Valor será definido na cotação"}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end gap-2">
@@ -550,18 +550,18 @@ export function PurchaseQuotesClient() {
                                 disabled={startMutation.isPending}
                               >
                                 <Truck className="h-4 w-4" />
-                                Iniciar cotaÃ§Ã£o
+                                Iniciar cotação
                               </Button>
                             ) : null}
                             {request.status === "quotation" ? (
                               <Button type="button" size="sm" variant="outline" onClick={() => openRequest(request.id)}>
                                 <RotateCcw className="h-4 w-4" />
-                                Abrir cotaÃ§Ã£o
+                                Abrir cotação
                               </Button>
                             ) : null}
                             <Button type="button" size="sm" onClick={() => openRequest(request.id)}>
                               <Search className="h-4 w-4" />
-                              Ver cotacoes
+                              Ver cotações
                             </Button>
                           </div>
                         </td>
@@ -576,7 +576,7 @@ export function PurchaseQuotesClient() {
 
         <section className="space-y-4">
           {!selectedRequest ? (
-            <EmptyState title="Selecione uma solicitacao" description="Escolha uma solicitacao da lista para iniciar, cadastrar ou comparar cotacoes." />
+            <EmptyState title="Selecione uma solicitação" description="Escolha uma solicitação da lista para iniciar, cadastrar ou comparar cotações." />
           ) : (
             <>
               <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
@@ -591,20 +591,14 @@ export function PurchaseQuotesClient() {
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span>Prioridade: {selectedRequest.priorityLabel}</span>
                       <span>Tipo: {selectedRequest.requestTypeLabel}</span>
-                      <span>CriaÃ§Ã£o: {formatDate(selectedRequest.createdAt)}</span>
+                      <span>Criação: {formatDate(selectedRequest.createdAt)}</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {canStart ? (
                       <Button type="button" variant="outline" onClick={() => startMutation.mutate(selectedRequest.id)} disabled={startMutation.isPending}>
                         <Truck className="h-4 w-4" />
-                        Iniciar cotaÃ§Ã£o
-                      </Button>
-                    ) : null}
-                    {canOpenQuote ? (
-                      <Button type="button" onClick={openNewQuote} disabled={!suppliers.length}>
-                        <Plus className="h-4 w-4" />
-                        Nova cotaÃ§Ã£o
+                        Iniciar cotação
                       </Button>
                     ) : null}
                   </div>
@@ -615,17 +609,17 @@ export function PurchaseQuotesClient() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold">Itens solicitados</h3>
-                    <p className="text-xs text-muted-foreground">Base para preenchimento das cotaÃ§Ãµes.</p>
+                    <p className="text-xs text-muted-foreground">Base para preenchimento das cotações.</p>
                   </div>
                   <div className="text-sm font-semibold">
-                    {selectedRequest.totalApprovedAmount > 0 ? formatCurrency(selectedRequest.totalApprovedAmount) : "Valor serÃ¡ definido na cotaÃ§Ã£o."}
+                    {selectedRequest.totalApprovedAmount > 0 ? formatCurrency(selectedRequest.totalApprovedAmount) : "Valor será definido na cotação."}
                   </div>
                 </div>
                 <div className="mt-4 overflow-hidden rounded-md border bg-background">
                   <table className="w-full text-left text-sm">
                     <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-3 py-2 font-semibold">DescriÃ§Ã£o</th>
+                        <th className="px-3 py-2 font-semibold">Descrição</th>
                         <th className="px-3 py-2 font-semibold">Qtd</th>
                         <th className="px-3 py-2 font-semibold">Unidade</th>
                         <th className="px-3 py-2 font-semibold">Obs.</th>
@@ -647,20 +641,20 @@ export function PurchaseQuotesClient() {
 
               {showQuoteWarning ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Esta compra exige 3 cotacoes antes da aprovacao.
+                  Esta compra exige 3 cotações antes da aprovação.
                 </div>
               ) : null}
 
               <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold">CotaÃ§Ãµes cadastradas</h3>
-                    <p className="text-xs text-muted-foreground">Compare fornecedor, prazo, condiÃ§Ã£o e validade.</p>
+                    <h3 className="text-sm font-semibold">Cotações cadastradas</h3>
+                    <p className="text-xs text-muted-foreground">Compare fornecedor, prazo, condição e validade.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button type="button" variant="outline" onClick={openNewQuote} disabled={!selectedRequest || !canCreateQuote}>
                       <Plus className="h-4 w-4" />
-                      Nova cotaÃ§Ã£o
+                      Nova cotação
                     </Button>
                   </div>
                 </div>
@@ -677,14 +671,14 @@ export function PurchaseQuotesClient() {
                       <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-semibold">Fornecedor</th>
-                          <th className="px-3 py-2 font-semibold">NÃºmero</th>
+                          <th className="px-3 py-2 font-semibold">Número</th>
                           <th className="px-3 py-2 font-semibold">Total</th>
                           <th className="px-3 py-2 font-semibold">Prazo</th>
                           <th className="px-3 py-2 font-semibold">Pagamento</th>
                           <th className="px-3 py-2 font-semibold">Validade</th>
                           <th className="px-3 py-2 font-semibold">Status</th>
                           <th className="px-3 py-2 font-semibold">Selecionada</th>
-                          <th className="px-3 py-2 text-right font-semibold">Acoes</th>
+                          <th className="px-3 py-2 text-right font-semibold">Ações</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -712,7 +706,7 @@ export function PurchaseQuotesClient() {
                                   Sim
                                 </span>
                               ) : (
-                                <span className="text-muted-foreground">NÃ£o</span>
+                                <span className="text-muted-foreground">Não</span>
                               )}
                             </td>
                             <td className="px-3 py-2">
@@ -748,19 +742,19 @@ export function PurchaseQuotesClient() {
                     </table>
                   </div>
                 ) : (
-                  <EmptyState title="Nenhuma cotaÃ§Ã£o cadastrada" description="Use Nova cotaÃ§Ã£o para registrar propostas de fornecedores." />
+                  <EmptyState title="Nenhuma cotação cadastrada" description="Use Nova cotação para registrar propostas de fornecedores." />
                 )}
               </div>
 
               {quoteFormOpen ? (
                 <FormCard
-                  title={editingQuoteId ? "Editar cotaÃ§Ã£o" : "Nova cotaÃ§Ã£o"}
+                  title={editingQuoteId ? "Editar cotação" : "Nova cotação"}
                   onCancel={closeQuoteForm}
                 >
                   <form className="space-y-5" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
                     {!suppliers.length ? (
                       <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        Nenhum fornecedor ativo disponÃ­vel. Cadastre um fornecedor antes de registrar cotaÃ§Ãµes.
+                        Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.
                       </div>
                     ) : null}
 
@@ -791,10 +785,10 @@ export function PurchaseQuotesClient() {
                         />
                         <FieldError message={quoteForm.formState.errors.supplierId?.message} />
                       </Field>
-                      <Field label="NÃºmero da cotaÃ§Ã£o">
+                      <Field label="Número da cotação">
                         <TextInput placeholder="CQ-..." {...quoteForm.register("quoteNumber")} />
                       </Field>
-                      <Field label="Data da cotaÃ§Ã£o">
+                      <Field label="Data da cotação">
                         <Controller
                           control={quoteForm.control}
                           name="quoteDate"
@@ -812,7 +806,7 @@ export function PurchaseQuotesClient() {
                         />
                         <FieldError message={quoteForm.formState.errors.quoteDate?.message} />
                       </Field>
-                      <Field label="Validade da cotaÃ§Ã£o">
+                      <Field label="Validade da cotação">
                         <Controller
                           control={quoteForm.control}
                           name="validUntil"
@@ -849,10 +843,10 @@ export function PurchaseQuotesClient() {
                         />
                         <FieldError message={quoteForm.formState.errors.deliveryDays?.message} />
                       </Field>
-                      <Field label="Condicao de pagamento">
+                      <Field label="Condição de pagamento">
                         <TextInput placeholder="Ex.: 30 dias" {...quoteForm.register("paymentTerms")} />
                       </Field>
-                      <Field label="Observacoes" className="lg:col-span-2">
+                      <Field label="Observações" className="lg:col-span-2">
                         <TextArea rows={3} {...quoteForm.register("notes")} />
                       </Field>
                       <Field label="Fornecedor recorrente" className="flex items-center gap-2 lg:col-span-1">
@@ -868,9 +862,9 @@ export function PurchaseQuotesClient() {
                             />
                           )}
                         />
-                        <span className="text-sm text-muted-foreground">Cotacao de fornecedor recorrente/homologado</span>
+                        <span className="text-sm text-muted-foreground">Cotação de fornecedor recorrente/homologado</span>
                       </Field>
-                      <Field label="Excecao de validade" className="flex items-center gap-2 lg:col-span-1">
+                      <Field label="Exceção de validade" className="flex items-center gap-2 lg:col-span-1">
                         <Controller
                           control={quoteForm.control}
                           name="quoteValidityException"
@@ -883,10 +877,10 @@ export function PurchaseQuotesClient() {
                             />
                           )}
                         />
-                        <span className="text-sm text-muted-foreground">Permitir validade acima do padrao com justificativa</span>
+                        <span className="text-sm text-muted-foreground">Permitir validade acima do padrão com justificativa</span>
                       </Field>
                       {quoteValidityException ? (
-                        <Field label="Justificativa da excecao" className="lg:col-span-2">
+                        <Field label="Justificativa da exceção" className="lg:col-span-2">
                           <Controller
                             control={quoteForm.control}
                             name="quoteValidityExceptionReason"
@@ -911,7 +905,7 @@ export function PurchaseQuotesClient() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h4 className="text-sm font-semibold">Itens cotados</h4>
-                          <p className="text-xs text-muted-foreground">Informe o valor unitÃ¡rio para cada item solicitado.</p>
+                          <p className="text-xs text-muted-foreground">Informe o valor unitário para cada item solicitado.</p>
                         </div>
                       </div>
 
@@ -919,7 +913,7 @@ export function PurchaseQuotesClient() {
                         {fields.map((field, index) => (
                           <div key={field.id} className="rounded-md border bg-background p-3">
                             <div className="grid gap-3 lg:grid-cols-12">
-                              <Field label="Item da solicitacao" className="lg:col-span-3">
+                      <Field label="Item da solicitação" className="lg:col-span-3">
                                 <Controller
                                   control={quoteForm.control}
                                   name={`items.${index}.purchaseRequestItemId`}
@@ -929,7 +923,7 @@ export function PurchaseQuotesClient() {
                                   {selectedRequest.items[index]?.description || "-"}
                                 </div>
                               </Field>
-                              <Field label="DescriÃ§Ã£o do item" className="lg:col-span-3">
+                              <Field label="Descrição do item" className="lg:col-span-3">
                                 <Controller
                                   control={quoteForm.control}
                                   name={`items.${index}.itemDescription`}
@@ -966,7 +960,7 @@ export function PurchaseQuotesClient() {
                                 />
                                 <FieldError message={quoteForm.formState.errors.items?.[index]?.quantity?.message} />
                               </Field>
-                              <Field label="Valor unitÃ¡rio" className="lg:col-span-2">
+                              <Field label="Valor unitário" className="lg:col-span-2">
                                 <Controller
                                   control={quoteForm.control}
                                   name={`items.${index}.unitPrice`}
@@ -990,7 +984,7 @@ export function PurchaseQuotesClient() {
                                   {formatCurrency(parseLocalizedNumber(quoteItemsWatch?.[index]?.quantity) * parseLocalizedNumber(quoteItemsWatch?.[index]?.unitPrice))}
                                 </div>
                               </Field>
-                              <Field label="Observacoes de entrega" className="lg:col-span-1">
+                              <Field label="Observações de entrega" className="lg:col-span-1">
                                 <Controller
                                   control={quoteForm.control}
                                   name={`items.${index}.deliveryNotes`}
@@ -1010,7 +1004,7 @@ export function PurchaseQuotesClient() {
                       </div>
 
                       <div className="mt-4 flex flex-col gap-2 border-t pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-muted-foreground">Valor serÃ¡ definido na cotaÃ§Ã£o pelo setor de Compras.</p>
+                        <p className="text-muted-foreground">Valor será definido na cotação pelo setor de Compras.</p>
                         <p className="font-semibold text-foreground">Total: {formatCurrency(quoteTotalPreview)}</p>
                       </div>
                     </div>
@@ -1019,12 +1013,12 @@ export function PurchaseQuotesClient() {
 
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-xs text-muted-foreground">
-                        {quoteForm.formState.errors.items?.message ?? "Compare fornecedores, prazo, condiÃ§Ã£o de pagamento e validade antes de selecionar a melhor proposta."}
+                        {quoteForm.formState.errors.items?.message ?? "Compare fornecedores, prazo, condição de pagamento e validade antes de selecionar a melhor proposta."}
                       </p>
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <Button type="submit" disabled={saveMutation.isPending || !suppliers.length}>
                           <Pencil className="h-4 w-4" />
-                          {editingQuoteId ? "Salvar cotaÃ§Ã£o" : "Salvar cotaÃ§Ã£o"}
+                          {editingQuoteId ? "Salvar cotação" : "Salvar cotação"}
                         </Button>
                         <Button type="button" variant="ghost" onClick={closeQuoteForm}>
                           Fechar
