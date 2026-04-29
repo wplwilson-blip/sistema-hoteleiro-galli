@@ -45,10 +45,11 @@ const modules = [
     enabled: true
   },
   {
-    title: "Usuarios",
-    description: "Gestao de acessos entra em sprint propria.",
+    title: "Usuários internos",
+    description: "Controle de acessos dos colaboradores ao sistema, com vinculo a perfil e unidades permitidas.",
+    href: "/cadastros/usuarios",
     icon: Users,
-    enabled: false
+    enabled: true
   },
   {
     title: "Perfis e permissoes",

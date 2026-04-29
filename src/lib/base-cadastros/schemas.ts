@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usernameSchema } from "@/lib/auth/schemas";
 
 export const recordStatusSchema = z.enum(["active", "inactive", "archived"]);
 
@@ -55,4 +56,22 @@ export const employeePayloadSchema = z.object({
   hireDate: z.string().trim().optional(),
   terminationDate: z.string().trim().optional(),
   status: recordStatusSchema.default("active")
+});
+
+const userUnitsSchema = z.array(z.string().uuid("Selecione uma unidade valida.")).min(1, "Selecione ao menos uma unidade.");
+
+export const internalUserCreatePayloadSchema = z.object({
+  employeeId: z.string().uuid("Selecione um colaborador."),
+  username: usernameSchema,
+  password: z.string().min(8, "A senha inicial deve ter pelo menos 8 caracteres."),
+  accessProfileId: z.string().uuid("Selecione um perfil de acesso."),
+  unitIds: userUnitsSchema,
+  status: z.enum(["active", "inactive", "blocked", "pending"]).default("active")
+});
+
+export const internalUserUpdatePayloadSchema = z.object({
+  employeeId: z.string().uuid("Selecione um colaborador."),
+  accessProfileId: z.string().uuid("Selecione um perfil de acesso."),
+  unitIds: userUnitsSchema,
+  status: z.enum(["active", "inactive", "blocked", "pending"]).default("active")
 });

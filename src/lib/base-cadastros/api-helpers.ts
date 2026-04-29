@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentSessionContext } from "@/lib/auth/session";
+import { getCurrentSessionContext, SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -24,6 +24,20 @@ export async function requireAuthenticatedRequest() {
   }
 
   // TODO Sprint 4C: aplicar matriz granular de permissoes por modulo, unidade e acao.
+  return { session, response: null };
+}
+
+export async function requireSuperAdminRequest() {
+  const { session, response } = await requireAuthenticatedRequest();
+
+  if (response || !session) {
+    return { session, response };
+  }
+
+  if (session.profile.code !== SUPER_ADMIN_PROFILE_CODE) {
+    return { session, response: apiError("Você não tem permissão para gerenciar usuários internos.", 403) };
+  }
+
   return { session, response: null };
 }
 
