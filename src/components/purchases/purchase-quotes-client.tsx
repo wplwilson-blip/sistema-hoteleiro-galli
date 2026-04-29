@@ -7,7 +7,6 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Ban, Check, Pencil, Plus, RotateCcw, Search, Truck } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorMessage, Field, FormCard, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
-import { PageTitle } from "@/components/common/page-title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,8 +147,23 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
-function formatDate(value: string) {
-  return value ? new Date(`${value}T00:00:00`).toLocaleDateString("pt-BR") : "-";
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "Não informado";
+  }
+
+  const normalized = value.length === 10 ? `${value}T00:00:00` : value;
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Não informado";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(date);
 }
 
 function addDays(base: Date, days: number) {
@@ -382,7 +396,7 @@ export function PurchaseQuotesClient() {
       quoteForm.reset(buildDefaultQuoteForm(selectedRequest));
       replace(buildDefaultQuoteForm(selectedRequest).items);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", "requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         selectedRequestId ? queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", selectedRequestId] }) : Promise.resolve()
       ]);
     },
@@ -396,7 +410,7 @@ export function PurchaseQuotesClient() {
       setError("");
       setSelectedRequestId(requestId);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", "requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", requestId] })
       ]);
     },
@@ -409,7 +423,7 @@ export function PurchaseQuotesClient() {
     onSuccess: async (_data, variables) => {
       setError("");
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", "requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", variables.requestId] })
       ]);
     },
@@ -422,7 +436,7 @@ export function PurchaseQuotesClient() {
     onSuccess: async (_data, variables) => {
       setError("");
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", "requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes", variables.requestId] })
       ]);
     },
@@ -455,8 +469,6 @@ export function PurchaseQuotesClient() {
 
   return (
     <div className="space-y-6">
-      <PageTitle title="Cotações" description="Gerencie as cotações das solicitações de compra." />
-
       <div className="space-y-4">
         <div className="space-y-2">
           <Label>Buscar solicitacao</Label>
