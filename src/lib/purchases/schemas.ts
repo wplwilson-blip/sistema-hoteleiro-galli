@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-export const purchaseRequestTypeSchema = z.enum(["normal", "emergency"]);
-export const purchasePrioritySchema = z.enum(["low", "normal", "high", "critical"]);
+export const purchaseRequestTypeSchema = z.enum(["normal", "emergency"], {
+  required_error: "Campo obrigatorio.",
+  invalid_type_error: "Campo obrigatorio."
+});
+
+export const purchasePrioritySchema = z.enum(["low", "normal", "high", "critical"], {
+  required_error: "Campo obrigatorio.",
+  invalid_type_error: "Campo obrigatorio."
+});
+
 export const purchaseRequestStatusSchema = z.enum([
   "draft",
   "submitted",
@@ -19,21 +27,74 @@ export const purchaseRequestStatusSchema = z.enum([
   "cancelled"
 ]);
 
+export const purchaseUnitOfMeasureSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.enum(["UN", "KG", "G", "CX", "PCT", "FD", "LT", "ML", "M", "M2", "PAR", "JG", "ROLO", "SACO", "SERV", "OUTRO"], {
+    required_error: "Selecione uma unidade de medida.",
+    invalid_type_error: "Selecione uma unidade de medida."
+  })
+);
+
+export type PurchaseUnitOfMeasure = z.infer<typeof purchaseUnitOfMeasureSchema>;
+
+export const purchaseUnitOfMeasureOptions: ReadonlyArray<{ code: PurchaseUnitOfMeasure; label: string }> = [
+  { code: "UN", label: "UN - Unidade" },
+  { code: "KG", label: "KG - Quilograma" },
+  { code: "G", label: "G - Grama" },
+  { code: "CX", label: "CX - Caixa" },
+  { code: "PCT", label: "PCT - Pacote" },
+  { code: "FD", label: "FD - Fardo" },
+  { code: "LT", label: "LT - Litro" },
+  { code: "ML", label: "ML - Mililitro" },
+  { code: "M", label: "M - Metro" },
+  { code: "M2", label: "M² - Metro quadrado" },
+  { code: "PAR", label: "PAR - Par" },
+  { code: "JG", label: "JG - Jogo" },
+  { code: "ROLO", label: "ROLO - Rolo" },
+  { code: "SACO", label: "SACO - Saco" },
+  { code: "SERV", label: "SERV - Servico" },
+  { code: "OUTRO", label: "OUTRO - Outro" }
+];
+
 const optionalUuidSchema = z.string().uuid("Selecione uma opcao valida.").optional().or(z.literal("").transform(() => undefined));
 const optionalTextSchema = z.string().trim().optional().or(z.literal("").transform(() => undefined));
 const optionalDateSchema = z.string().trim().optional().or(z.literal("").transform(() => undefined));
 
+function parseLocalizedDecimal(value: unknown) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = trimmed.includes(",") ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed;
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : value;
+}
+
+const purchaseQuantitySchema = z.preprocess(
+  parseLocalizedDecimal,
+  z.number({
+    required_error: "Informe uma quantidade valida.",
+    invalid_type_error: "Informe uma quantidade valida."
+  }).positive("Informe uma quantidade valida.")
+);
+
 export const purchaseRequestItemSchema = z.object({
   description: z.string().trim().min(2, "Informe a descricao do item."),
-  quantity: z.coerce.number().positive("A quantidade deve ser maior que zero."),
-  unitOfMeasure: z.string().trim().min(1, "Informe a unidade de medida."),
-  estimatedUnitPrice: z.coerce.number().min(0, "O valor unitario estimado nao pode ser negativo."),
+  quantity: purchaseQuantitySchema,
+  unitOfMeasure: purchaseUnitOfMeasureSchema,
   notes: optionalTextSchema
 });
 
 const purchaseRequestBaseSchema = z.object({
-  unitId: z.string().uuid("Selecione uma unidade."),
-  departmentId: z.string().uuid("Selecione um departamento."),
+  unitId: z.string({ required_error: "Selecione uma unidade.", invalid_type_error: "Selecione uma unidade." }).uuid("Selecione uma unidade."),
+  departmentId: z.string({ required_error: "Selecione um departamento.", invalid_type_error: "Selecione um departamento." }).uuid("Selecione um departamento."),
   costCenterId: optionalUuidSchema,
   title: z.string().trim().min(3, "Informe o titulo da solicitacao."),
   description: optionalTextSchema,
@@ -41,7 +102,7 @@ const purchaseRequestBaseSchema = z.object({
   requestType: purchaseRequestTypeSchema,
   priority: purchasePrioritySchema,
   desiredDate: optionalDateSchema,
-  items: z.array(purchaseRequestItemSchema).min(1, "Inclua pelo menos um item."),
+  items: z.array(purchaseRequestItemSchema).min(1, "Informe pelo menos um item.")
 });
 
 export const purchaseRequestWriteSchema = purchaseRequestBaseSchema.extend({
@@ -116,3 +177,6 @@ export function getPurchasePriorityLabel(priority: z.infer<typeof purchasePriori
   return purchasePriorityLabelMap[priority];
 }
 
+export function getPurchaseUnitOfMeasureLabel(code: PurchaseUnitOfMeasure) {
+  return purchaseUnitOfMeasureOptions.find((option) => option.code === code)?.label ?? code;
+}

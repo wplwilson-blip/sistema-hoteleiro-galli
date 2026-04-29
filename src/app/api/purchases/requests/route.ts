@@ -4,14 +4,15 @@ import { getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedReques
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseRequestNumber,
-  calculatePurchaseRequestFlags,
-  roundMoney,
-  sumPurchaseRequestItems
+  buildPurchaseRequestInitialFlags,
+  roundMoney
 } from "@/lib/purchases/api";
 import {
   getPurchasePriorityLabel,
   getPurchaseRequestStatusLabel,
   getPurchaseRequestTypeLabel,
+  getPurchaseUnitOfMeasureLabel,
+  type PurchaseUnitOfMeasure,
   purchaseRequestWriteSchema,
 } from "@/lib/purchases/schemas";
 
@@ -118,6 +119,7 @@ function mapItemRow(item: PurchaseRequestItemRow) {
     description: item.item_description,
     quantity: toNumber(item.quantity),
     unitOfMeasure: item.unit_of_measure,
+    unitOfMeasureLabel: getPurchaseUnitOfMeasureLabel(item.unit_of_measure as PurchaseUnitOfMeasure),
     estimatedUnitPrice: toNumber(item.estimated_unit_price),
     estimatedTotalPrice: toNumber(item.estimated_total_price),
     approvedUnitPrice: item.approved_unit_price === null ? null : toNumber(item.approved_unit_price),
@@ -524,8 +526,8 @@ export async function POST(request: Request) {
     }
 
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
-    const totalEstimatedAmount = sumPurchaseRequestItems(payload.items);
-    const flags = calculatePurchaseRequestFlags(totalEstimatedAmount);
+    const totalEstimatedAmount = 0;
+    const flags = buildPurchaseRequestInitialFlags();
     const status = payload.action === "submit" ? "submitted" : "draft";
     const options = await loadPurchaseOptions(supabase, accessibleUnitIds);
     let requestId = "";
@@ -592,8 +594,8 @@ export async function POST(request: Request) {
       item_description: item.description,
       quantity: item.quantity,
       unit_of_measure: item.unitOfMeasure,
-      estimated_unit_price: roundMoney(item.estimatedUnitPrice),
-      estimated_total_price: roundMoney(item.quantity * item.estimatedUnitPrice),
+      estimated_unit_price: 0,
+      estimated_total_price: 0,
       approved_unit_price: null,
       approved_total_price: null,
       notes: item.notes ?? null,

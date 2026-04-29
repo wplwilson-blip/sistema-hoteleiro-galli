@@ -6,7 +6,7 @@ import { Plus, Search, Trash2, Eye, Pencil, Send, Ban, CirclePlus } from "lucide
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { EmptyState } from "@/components/common/empty-state";
-import { ErrorMessage, Field, FormActions, FormCard, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
+import { ErrorMessage, Field, FormCard, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,11 +16,12 @@ import {
   getPurchaseRequestStatusLabel,
   getPurchaseRequestStatusTone,
   getPurchaseRequestTypeLabel,
+  purchaseUnitOfMeasureOptions,
   purchasePrioritySchema,
+  purchaseUnitOfMeasureSchema,
   purchaseRequestTypeSchema,
   purchaseRequestWriteSchema
 } from "@/lib/purchases/schemas";
-import { cn } from "@/lib/utils";
 import { z } from "zod";
 
 const purchaseRequestFormSchema = purchaseRequestWriteSchema.omit({ action: true });
@@ -47,11 +48,8 @@ type PurchaseRequestItem = {
   id: string;
   description: string;
   quantity: number;
-  unitOfMeasure: string;
-  estimatedUnitPrice: number;
-  estimatedTotalPrice: number;
-  approvedUnitPrice: number | null;
-  approvedTotalPrice: number | null;
+  unitOfMeasure: z.infer<typeof purchaseUnitOfMeasureSchema>;
+  unitOfMeasureLabel: string;
   notes: string;
 };
 
@@ -108,8 +106,7 @@ type PurchaseRequestsResponse = {
 const emptyItem = {
   description: "",
   quantity: 1,
-  unitOfMeasure: "",
-  estimatedUnitPrice: 0,
+  unitOfMeasure: "" as PurchaseRequestFormValues["items"][number]["unitOfMeasure"],
   notes: ""
 };
 
@@ -180,13 +177,11 @@ export function PurchaseRequestsClient() {
   });
 
   const selectedUnitId = useWatch({ control: form.control, name: "unitId" });
-  const watchedItems = useWatch({ control: form.control, name: "items" });
 
   const units = useMemo(() => purchasesQuery.data?.units ?? [], [purchasesQuery.data?.units]);
   const departments = useMemo(() => purchasesQuery.data?.departments ?? [], [purchasesQuery.data?.departments]);
   const costCenters = useMemo(() => purchasesQuery.data?.costCenters ?? [], [purchasesQuery.data?.costCenters]);
   const requests = useMemo(() => purchasesQuery.data?.requests ?? [], [purchasesQuery.data?.requests]);
-  const watchedItemsList = useMemo(() => watchedItems ?? [], [watchedItems]);
 
   const activeDepartments = useMemo(
     () => departments.filter((department) => !selectedUnitId || department.unit_id === selectedUnitId),
@@ -214,11 +209,6 @@ export function PurchaseRequestsClient() {
       return matchesSearch && matchesStatus && matchesPriority && matchesType;
     });
   }, [requests, search, statusFilter, priorityFilter, typeFilter]);
-
-  const estimatedTotal = useMemo(
-    () => watchedItemsList.reduce((accumulator, item) => accumulator + Number(item?.quantity ?? 0) * Number(item?.estimatedUnitPrice ?? 0), 0),
-    [watchedItemsList]
-  );
 
   useEffect(() => {
     if (!selectedUnitId) {
@@ -295,7 +285,6 @@ export function PurchaseRequestsClient() {
             description: item.description,
             quantity: item.quantity,
             unitOfMeasure: item.unitOfMeasure,
-            estimatedUnitPrice: item.estimatedUnitPrice,
             notes: item.notes
           }))
         : [emptyItem]
@@ -306,7 +295,6 @@ export function PurchaseRequestsClient() {
             description: item.description,
             quantity: item.quantity,
             unitOfMeasure: item.unitOfMeasure,
-            estimatedUnitPrice: item.estimatedUnitPrice,
             notes: item.notes
           }))
         : [emptyItem]
@@ -459,7 +447,7 @@ export function PurchaseRequestsClient() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-sm font-semibold">Itens da solicitacao</h3>
-                  <p className="text-xs text-muted-foreground">Inclua um ou mais itens com quantidade e valor estimado.</p>
+                  <p className="text-xs text-muted-foreground">Inclua um ou mais itens com quantidade e unidade de medida.</p>
                 </div>
                 <Button type="button" variant="outline" onClick={addItem}>
                   <CirclePlus className="h-4 w-4" />
@@ -476,18 +464,21 @@ export function PurchaseRequestsClient() {
                         <FieldError message={form.formState.errors.items?.[index]?.description?.message} />
                       </Field>
                       <Field label="Quantidade" className="lg:col-span-2">
-                        <TextInput type="number" step="0.01" min="0.01" {...form.register(`items.${index}.quantity`, { valueAsNumber: true })} />
+                        <TextInput type="text" inputMode="decimal" {...form.register(`items.${index}.quantity`)} />
                         <FieldError message={form.formState.errors.items?.[index]?.quantity?.message} />
                       </Field>
-                      <Field label="Unidade" className="lg:col-span-2">
-                        <TextInput {...form.register(`items.${index}.unitOfMeasure`)} />
+                      <Field label="Unidade de medida" className="lg:col-span-3">
+                        <SelectField {...form.register(`items.${index}.unitOfMeasure`)}>
+                          <option value="">Selecione</option>
+                          {purchaseUnitOfMeasureOptions.map((option) => (
+                            <option key={option.code} value={option.code}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </SelectField>
                         <FieldError message={form.formState.errors.items?.[index]?.unitOfMeasure?.message} />
                       </Field>
-                      <Field label="Valor unitario" className="lg:col-span-2">
-                        <TextInput type="number" step="0.01" min="0" {...form.register(`items.${index}.estimatedUnitPrice`, { valueAsNumber: true })} />
-                        <FieldError message={form.formState.errors.items?.[index]?.estimatedUnitPrice?.message} />
-                      </Field>
-                      <Field label="Observacoes" className="lg:col-span-12">
+                      <Field label="Observacoes" className="lg:col-span-3">
                         <TextArea rows={2} {...form.register(`items.${index}.notes`)} />
                         <FieldError message={form.formState.errors.items?.[index]?.notes?.message} />
                       </Field>
@@ -502,8 +493,8 @@ export function PurchaseRequestsClient() {
                 ))}
               </div>
               <div className="mt-4 flex flex-col gap-2 border-t pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-muted-foreground">Total estimado calculado no cliente e recalculado no servidor.</p>
-                <p className="font-semibold text-foreground">{formatCurrency(estimatedTotal)}</p>
+                <p className="text-muted-foreground">Valor sera definido na cotacao pelo setor de Compras.</p>
+                <p className="font-semibold text-foreground">Valor sera definido na cotacao.</p>
               </div>
             </div>
 
@@ -516,9 +507,7 @@ export function PurchaseRequestsClient() {
             <ErrorMessage message={error} />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-muted-foreground">
-                A regra de alçada de R$ 200,00 é aplicada no servidor. Se o total ultrapassar esse valor, a solicitacao já sai com flags de aprovacao e cotacao.
-              </p>
+              <p className="text-xs text-muted-foreground">O valor sera definido posteriormente pelo setor de Compras durante a cotacao.</p>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending}>
                   <Pencil className="h-4 w-4" />
@@ -584,7 +573,9 @@ export function PurchaseRequestsClient() {
                     <td className="px-4 py-3 text-muted-foreground">{request.departmentCode ? `${request.departmentCode} - ${request.departmentName}` : request.departmentName}</td>
                     <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
                     <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
-                    <td className="px-4 py-3 font-medium">{formatCurrency(request.totalEstimatedAmount)}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {request.totalEstimatedAmount > 0 ? formatCurrency(request.totalEstimatedAmount) : "Valor sera definido na cotacao"}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={getPurchaseRequestStatusTone(request.status)} label={request.statusLabel} />
                     </td>
@@ -620,7 +611,7 @@ export function PurchaseRequestsClient() {
                               <p className="text-sm font-semibold">Itens da solicitacao</p>
                               <p className="text-xs text-muted-foreground">Detalhe dos itens cadastrados para esta solicitacao.</p>
                             </div>
-                            <div className="text-sm font-semibold">{formatCurrency(request.totalEstimatedAmount)}</div>
+                            <div className="text-sm font-semibold">Valor sera definido na cotacao.</div>
                           </div>
                           <div className="overflow-hidden rounded-md border bg-background">
                             <table className="w-full text-left text-sm">
@@ -628,9 +619,7 @@ export function PurchaseRequestsClient() {
                                 <tr>
                                   <th className="px-3 py-2 font-semibold">Descricao</th>
                                   <th className="px-3 py-2 font-semibold">Qtd</th>
-                                  <th className="px-3 py-2 font-semibold">Unidade</th>
-                                  <th className="px-3 py-2 font-semibold">Valor unitario</th>
-                                  <th className="px-3 py-2 font-semibold">Total</th>
+                                  <th className="px-3 py-2 font-semibold">Unidade de medida</th>
                                   <th className="px-3 py-2 font-semibold">Obs.</th>
                                 </tr>
                               </thead>
@@ -639,9 +628,7 @@ export function PurchaseRequestsClient() {
                                   <tr key={item.id}>
                                     <td className="px-3 py-2">{item.description}</td>
                                     <td className="px-3 py-2 text-muted-foreground">{item.quantity}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{item.unitOfMeasure}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{formatCurrency(item.estimatedUnitPrice)}</td>
-                                    <td className="px-3 py-2 font-medium">{formatCurrency(item.estimatedTotalPrice)}</td>
+                                    <td className="px-3 py-2 text-muted-foreground">{item.unitOfMeasureLabel}</td>
                                     <td className="px-3 py-2 text-muted-foreground">{item.notes || "-"}</td>
                                   </tr>
                                 ))}

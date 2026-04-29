@@ -3,14 +3,15 @@ import { z } from "zod";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
-  calculatePurchaseRequestFlags,
+  buildPurchaseRequestInitialFlags,
   roundMoney,
-  sumPurchaseRequestItems
 } from "@/lib/purchases/api";
 import {
   getPurchasePriorityLabel,
   getPurchaseRequestStatusLabel,
   getPurchaseRequestTypeLabel,
+  getPurchaseUnitOfMeasureLabel,
+  type PurchaseUnitOfMeasure,
   purchaseRequestPatchSchema,
   purchaseRequestWriteSchema
 } from "@/lib/purchases/schemas";
@@ -118,6 +119,7 @@ function mapItemRow(item: PurchaseRequestItemRow) {
     description: item.item_description,
     quantity: toNumber(item.quantity),
     unitOfMeasure: item.unit_of_measure,
+    unitOfMeasureLabel: getPurchaseUnitOfMeasureLabel(item.unit_of_measure as PurchaseUnitOfMeasure),
     estimatedUnitPrice: toNumber(item.estimated_unit_price),
     estimatedTotalPrice: toNumber(item.estimated_total_price),
     approvedUnitPrice: item.approved_unit_price === null ? null : toNumber(item.approved_unit_price),
@@ -347,10 +349,9 @@ function buildRequestUpdateBody(
     desiredDate?: string;
     action: "save" | "submit";
   },
-  totalEstimatedAmount: number,
   currentStatus: PurchaseRequestStatus
 ) {
-  const flags = calculatePurchaseRequestFlags(totalEstimatedAmount);
+  const flags = buildPurchaseRequestInitialFlags();
 
   return {
     unit_id: input.unitId,
@@ -362,7 +363,7 @@ function buildRequestUpdateBody(
     request_type: input.requestType,
     priority: input.priority,
     desired_date: input.desiredDate ?? null,
-    total_estimated_amount: totalEstimatedAmount,
+    total_estimated_amount: 0,
     total_approved_amount: 0,
     quotation_required: flags.quotationRequired,
     required_quote_count: flags.requiredQuoteCount,
@@ -531,8 +532,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       await validateCostCenterForUnit(supabase, payloadResult.costCenterId, payloadResult.unitId);
     }
 
-    const totalEstimatedAmount = sumPurchaseRequestItems(payloadResult.items);
-    const updateBody = buildRequestUpdateBody(payloadResult, totalEstimatedAmount, requestRow.status);
+    const updateBody = buildRequestUpdateBody(payloadResult, requestRow.status);
     const oldRequestBody = {
       unit_id: requestRow.unit_id,
       department_id: requestRow.department_id,
@@ -575,8 +575,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       item_description: item.description,
       quantity: item.quantity,
       unit_of_measure: item.unitOfMeasure,
-      estimated_unit_price: roundMoney(item.estimatedUnitPrice),
-      estimated_total_price: roundMoney(item.quantity * item.estimatedUnitPrice),
+      estimated_unit_price: 0,
+      estimated_total_price: 0,
       approved_unit_price: null,
       approved_total_price: null,
       notes: item.notes ?? null,

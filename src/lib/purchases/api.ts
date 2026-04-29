@@ -6,6 +6,15 @@ export function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+export function buildPurchaseRequestInitialFlags() {
+  return {
+    quotationRequired: false,
+    requiredQuoteCount: 0,
+    approvalRequired: false,
+    directorApprovalRequired: false
+  };
+}
+
 export function calculatePurchaseRequestFlags(totalEstimatedAmount: number) {
   if (totalEstimatedAmount > 200) {
     return {
@@ -49,4 +58,3 @@ export async function buildNextPurchaseRequestNumber(supabase: SupabaseAdmin, or
 
   return `${prefix}${String(nextSequence).padStart(6, "0")}`;
 }
-

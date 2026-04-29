@@ -1,8 +1,8 @@
-# Sprint 5B - Compras: Solicitação de compra
+# Sprint 5B - Compras: Solicitacoes
 
 ## 1. Objetivo
 
-Entregar a primeira tela funcional do módulo de Compras para abrir, listar, editar, cancelar e enviar solicitações de compra.
+Entregar a primeira tela funcional do modulo de Compras para abrir, listar, editar, cancelar e enviar solicitacoes de compra.
 
 ## 2. Rotas criadas
 
@@ -26,59 +26,59 @@ Entregar a primeira tela funcional do módulo de Compras para abrir, listar, edi
 - `cost_centers`
 - `app_users`
 
-## 5. Regra de R$ 200,00
+## 5. Regra de valor
 
-A regra foi aplicada no servidor:
+Na solicitacao inicial o usuario nao informa valor.
 
-- até `R$ 200,00`:
-  - `quotation_required = false`
-  - `required_quote_count = 0`
-  - `approval_required = false`
-  - `director_approval_required = false`
-- acima de `R$ 200,00`:
-  - `quotation_required = true`
-  - `required_quote_count = 3`
-  - `approval_required = true`
-  - `director_approval_required = true`
+O valor sera definido depois pelo setor de Compras na etapa de cotacao.
 
-## 6. Gravação dos itens
+## 6. Itens da solicitacao
 
-Os itens são enviados no payload da solicitação e gravados em `purchase_request_items` com:
+Cada item registra:
 
-- descrição
+- descricao
 - quantidade
 - unidade de medida
-- valor unitário estimado
-- valor total estimado
-- observações
+- observacoes
 
-## 7. Cálculo do total
+## 7. Lista padronizada de unidade de medida
 
-O total estimado é calculado server-side pela soma dos itens:
+- UN - Unidade
+- KG - Quilograma
+- G - Grama
+- CX - Caixa
+- PCT - Pacote
+- FD - Fardo
+- LT - Litro
+- ML - Mililitro
+- M - Metro
+- M2 - Metro quadrado
+- PAR - Par
+- JG - Jogo
+- ROLO - Rolo
+- SACO - Saco
+- SERV - Servico
+- OUTRO - Outro
 
-- `quantity * estimated_unit_price`
+## 8. Calculo do total
 
-A API recalcula o total antes de gravar a solicitação.
+Nesta etapa o total nao e informado pelo solicitante.
 
-## 8. Registro de eventos
+O valor sera definido na cotacao.
 
-Ao criar a solicitação, a API grava um evento em `purchase_request_events`.
+## 9. Eventos operacionais
 
-Ao alterar status para envio ou cancelamento, a API registra novo evento operacional com:
+A criacao registra evento em `purchase_request_events`.
 
-- `event_type`
-- `from_status`
-- `to_status`
-- `description`
-- `created_by`
+A mudanca de status para envio ou cancelamento registra novo evento operacional.
 
-## 9. Proteção da API
+## 10. Protecao da API
 
-A API exige autenticação server-side via helper de sessão do sistema.
+A API exige autenticacao server-side via helper de sessao do sistema.
 
-O client não acessa o banco direto. Toda operação passa pelas rotas `/api/purchases/requests`.
+O client nao acessa o banco direto. Toda operacao passa pelas rotas `/api/purchases/requests`.
 
-## 10. Arquivos criados e alterados
+## 11. Arquivos criados e alterados
 
 - `src/app/(app)/compras/page.tsx`
 - `src/app/(app)/compras/solicitacoes/page.tsx`
@@ -87,9 +87,10 @@ O client não acessa o banco direto. Toda operação passa pelas rotas `/api/pur
 - `src/components/purchases/purchase-requests-client.tsx`
 - `src/lib/purchases/api.ts`
 - `src/lib/purchases/schemas.ts`
+- `src/components/layout/app-sidebar.tsx`
 - `docs/sprint-5b-compras-solicitacoes.md`
 
-## 11. O que nao foi criado
+## 12. O que nao foi criado
 
 - Migration nova.
 - Login.
@@ -103,7 +104,7 @@ O client não acessa o banco direto. Toda operação passa pelas rotas `/api/pur
 - Contas a Pagar.
 - Financeiro completo.
 
-## 12. Proxima sprint sugerida
+## 13. Proxima sprint sugerida
 
 Sprint 5C:
 
@@ -112,4 +113,3 @@ Sprint 5C:
 - escolha de fornecedor
 - status operacionais adicionais
 - integracao inicial com anexos
-
