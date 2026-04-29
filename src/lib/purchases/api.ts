@@ -6,6 +6,24 @@ export function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+export function normalizeOptionalDate(value: string | null | undefined) {
+  if (value == null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function normalizeOptionalUuid(value: string | null | undefined) {
+  if (value == null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function buildPurchaseRequestInitialFlags() {
   return {
     quotationRequired: false,

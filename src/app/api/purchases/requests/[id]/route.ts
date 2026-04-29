@@ -4,6 +4,8 @@ import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/l
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildPurchaseRequestInitialFlags,
+  normalizeOptionalDate,
+  normalizeOptionalUuid,
   roundMoney,
 } from "@/lib/purchases/api";
 import {
@@ -348,6 +350,7 @@ function buildRequestUpdateBody(
     priority: PurchasePriority;
     desiredDate?: string;
     action: "save" | "submit";
+    updatedBy: string;
   },
   currentStatus: PurchaseRequestStatus
 ) {
@@ -356,19 +359,20 @@ function buildRequestUpdateBody(
   return {
     unit_id: input.unitId,
     department_id: input.departmentId,
-    cost_center_id: input.costCenterId ?? null,
+    cost_center_id: normalizeOptionalUuid(input.costCenterId),
     title: input.title,
     description: input.description ?? null,
     justification: input.justification,
     request_type: input.requestType,
     priority: input.priority,
-    desired_date: input.desiredDate ?? null,
+    desired_date: normalizeOptionalDate(input.desiredDate),
     total_estimated_amount: 0,
     total_approved_amount: 0,
     quotation_required: flags.quotationRequired,
     required_quote_count: flags.requiredQuoteCount,
     approval_required: flags.approvalRequired,
     director_approval_required: flags.directorApprovalRequired,
+    updated_by: input.updatedBy,
     status: input.action === "submit" ? "submitted" : currentStatus
   };
 }
@@ -532,7 +536,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       await validateCostCenterForUnit(supabase, payloadResult.costCenterId, payloadResult.unitId);
     }
 
-    const updateBody = buildRequestUpdateBody(payloadResult, requestRow.status);
+    const updateBody = buildRequestUpdateBody({ ...payloadResult, updatedBy: session.user.id }, requestRow.status);
     const oldRequestBody = {
       unit_id: requestRow.unit_id,
       department_id: requestRow.department_id,
@@ -557,7 +561,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     if (updateError) {
       logBaseCadastroError("purchase_requests.update_failed", updateError);
-      return apiError("Nao foi possivel atualizar a solicitacao.", 500);
+      return apiError(updateError.message || "Nao foi possivel atualizar a solicitacao.", 500);
     }
 
     const { error: deleteItemsError } = await supabase.from("purchase_request_items").delete().eq("purchase_request_id", requestRow.id);

@@ -5,6 +5,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseRequestNumber,
   buildPurchaseRequestInitialFlags,
+  normalizeOptionalDate,
+  normalizeOptionalUuid,
   roundMoney
 } from "@/lib/purchases/api";
 import {
@@ -542,7 +544,7 @@ export async function POST(request: Request) {
           organization_id: organizationId,
           unit_id: payload.unitId,
           department_id: payload.departmentId,
-          cost_center_id: payload.costCenterId ?? null,
+          cost_center_id: normalizeOptionalUuid(payload.costCenterId),
           requested_by: session.user.id,
           request_number: requestNumber,
           title: payload.title,
@@ -550,7 +552,7 @@ export async function POST(request: Request) {
           justification: payload.justification,
           request_type: payload.requestType,
           priority: payload.priority,
-          desired_date: payload.desiredDate ?? null,
+          desired_date: normalizeOptionalDate(payload.desiredDate),
           total_estimated_amount: totalEstimatedAmount,
           total_approved_amount: 0,
           quotation_required: flags.quotationRequired,
