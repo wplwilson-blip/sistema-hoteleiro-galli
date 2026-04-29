@@ -1,12 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+import { getPublicSupabaseEnv } from "@/lib/supabase/env";
 
 export function createSupabaseBrowserClient() {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return null;
-  }
+  const { url, anonKey } = getPublicSupabaseEnv();
 
-  return createClient(supabaseUrl, supabaseAnonKey);
+  return createClient(url, anonKey);
 }

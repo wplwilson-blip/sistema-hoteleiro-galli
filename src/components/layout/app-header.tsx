@@ -1,12 +1,20 @@
 "use client";
 
 import { ChevronDown, LogOut, MapPin } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/common/notification-bell";
 import { useAppStore } from "@/store/app-store";
 
 export function AppHeader() {
   const { user, profile, units, activeUnit, setActiveUnit } = useAppStore();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border/80 bg-card/95 px-5 shadow-sm shadow-primary/5 backdrop-blur lg:px-8">
@@ -39,11 +47,9 @@ export function AppHeader() {
           <p className="text-sm font-medium leading-5">{user.name}</p>
           <p className="text-xs text-muted-foreground">@{user.username}</p>
         </div>
-        <Button variant="outline" size="sm" className="border-border/90 bg-background hover:bg-muted" asChild>
-          <a href="/login">
-            <LogOut className="h-4 w-4" />
-            Sair
-          </a>
+        <Button variant="outline" size="sm" className="border-border/90 bg-background hover:bg-muted" onClick={handleLogout}>
+          <LogOut className="h-4 w-4" />
+          Sair
         </Button>
       </div>
     </header>

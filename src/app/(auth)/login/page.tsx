@@ -2,26 +2,24 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
-import { Lock, ShieldCheck, User } from "lucide-react";
+import { Loader2, Lock, ShieldCheck, User } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { loginSchema } from "@/lib/auth/schemas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const loginSchema = z.object({
-  username: z.string().min(3, "Informe um usuário com pelo menos 3 caracteres."),
-  password: z.string().min(6, "Informe uma senha com pelo menos 6 caracteres.")
-});
-
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
+  const [formError, setFormError] = useState("");
   const {
     register,
     handleSubmit,
-    formState: { errors }
+    formState: { errors, isSubmitting }
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -30,7 +28,21 @@ export default function LoginPage() {
     }
   });
 
-  function onSubmit() {
+  async function onSubmit(values: LoginForm) {
+    setFormError("");
+
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values)
+    });
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
+      setFormError(result.message ?? "Nao foi possivel entrar.");
+      return;
+    }
+
     window.location.href = "/dashboard";
   }
 
@@ -55,20 +67,20 @@ export default function LoginPage() {
             </div>
             <div>
               <p className="text-lg font-semibold">Hotel Galli</p>
-              <p className="text-xs uppercase tracking-[0.18em] text-primary-foreground/70">Gestão multiunidade</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-primary-foreground/70">Gestao multiunidade</p>
             </div>
           </div>
 
           <div className="relative max-w-2xl pb-8">
             <div className="mb-6 inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm text-primary-foreground/85 backdrop-blur">
               <ShieldCheck className="h-4 w-4 text-accent" />
-              Administração, aprovações e evidências
+              Administracao, aprovacoes e evidencias
             </div>
             <h1 className="text-4xl font-semibold leading-tight">
-              Operação, aprovações, evidências e indicadores em um único ambiente.
+              Operacao, aprovacoes, evidencias e indicadores em um unico ambiente.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-primary-foreground/78">
-              Controle visual da rotina administrativa com foco em padronização, auditoria e gestão da rede.
+              Controle visual da rotina administrativa com foco em padronizacao, auditoria e gestao da rede.
             </p>
           </div>
         </section>
@@ -88,13 +100,13 @@ export default function LoginPage() {
               </div>
               <div>
                 <CardTitle className="text-2xl">Acessar sistema</CardTitle>
-                <CardDescription className="mt-2">Entre com seu usuário e senha corporativos.</CardDescription>
+                <CardDescription className="mt-2">Entre com seu usuario e senha corporativos.</CardDescription>
               </div>
             </CardHeader>
             <CardContent>
               <form className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
                 <div className="space-y-2">
-                  <Label htmlFor="username">Usuário</Label>
+                  <Label htmlFor="username">Usuario</Label>
                   <div className="relative">
                     <User className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -123,7 +135,14 @@ export default function LoginPage() {
                   {errors.password ? <p className="text-sm text-destructive">{errors.password.message}</p> : null}
                 </div>
 
-                <Button className="h-11 w-full shadow-sm" type="submit">
+                {formError ? (
+                  <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {formError}
+                  </p>
+                ) : null}
+
+                <Button className="h-11 w-full shadow-sm" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Entrar
                 </Button>
               </form>

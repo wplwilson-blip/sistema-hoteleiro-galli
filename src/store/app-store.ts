@@ -1,10 +1,12 @@
 "use client";
 
 import { create } from "zustand";
+import type { SessionContext } from "@/lib/auth/types";
 
 type Unit = {
   id: string;
   name: string;
+  code?: string;
 };
 
 type AppState = {
@@ -19,6 +21,7 @@ type AppState = {
   };
   units: Unit[];
   activeUnit: Unit;
+  setSessionContext: (context: SessionContext) => void;
   setActiveUnit: (unitId: string) => void;
 };
 
@@ -40,6 +43,13 @@ export const useAppStore = create<AppState>((set) => ({
   },
   units,
   activeUnit: units[0],
+  setSessionContext: (context) =>
+    set({
+      user: context.user,
+      profile: context.profile,
+      units: context.units,
+      activeUnit: context.activeUnit
+    }),
   setActiveUnit: (unitId) =>
     set((state) => ({
       activeUnit: state.units.find((unit) => unit.id === unitId) ?? state.activeUnit
