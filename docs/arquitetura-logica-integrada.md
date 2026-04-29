@@ -25,6 +25,14 @@ Os modulos nao devem funcionar como ilhas. Recepcao, manutencao, governanca, com
 | Auditoria | Registrar alteracoes criticas e eventos tecnicos. | `audit_trail`, `system_logs`, historico de status, IP, user agent | Todos | Nao conseguir provar quem aprovou, alterou, anexou, exportou ou liberou uma UH. |
 | Dashboards | Transformar dados operacionais em indicadores por perfil. | Indicadores de SLA, aprovacoes, pendencias, compras, pagamentos, UHs, RH, auditoria | Diretoria, gerencias, supervisao, auditoria | Dashboards inconsistentes se status, unidade e eventos forem fragmentados. |
 
+### Observacao Sprint 2.6 - Orcamento Integrado as Compras
+
+A Sprint 2.6 adiciona a base orcamentaria gerencial para impedir ou controlar compras sem saldo disponivel. O orcamento e mensal por unidade, mas deve permitir visao acumulada por periodo, gestor, departamento, centro de custo e categoria operacional.
+
+Compras normais devem consultar `budget_line_balances.available_amount` antes de seguir. Sem saldo, a compra deve ser bloqueada ou gerar solicitacao de ajuste orcamentario. Compras emergenciais podem seguir como excecao controlada, exigindo justificativa, evidencia, marcacao fora do orcamento, auditoria e ciencia/aprovacao posterior do Diretor.
+
+As tabelas `budget_periods`, `budget_lines`, `budget_movements`, `budget_reservations` e `budget_change_requests` conectam centros de custo, gestores, aprovacoes e perfis sem transformar o sistema em financeiro completo.
+
 ## 3. Entidades Compartilhadas por Todos os Modulos
 
 | Entidade | Para que serve | Modulos que usam | Tipo | Observacoes importantes |

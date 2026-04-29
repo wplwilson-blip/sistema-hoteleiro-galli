@@ -15,6 +15,7 @@ Este diretório contém a estrutura inicial do banco do Módulo Base do Sistema 
 9. `009_rls_policies_base.sql`: habilita RLS e cria helpers para policies futuras.
 10. `010_seed_base_data.sql`: cria seeds genéricos de perfis, departamentos, permissões BASE, status, categorias, tipos de anexo e regras de notificação.
 11. `011_shared_foundation_tables.sql`: cria fornecedores, anexos, comentários e histórico operacional de status das UHs.
+12. `012_budget_control_base.sql`: cria a base gerencial de orcamento integrada a compras, com periodos, linhas, movimentos, reservas, solicitacoes de ajuste e view de saldos.
 
 ## Principais Tabelas
 
@@ -93,5 +94,19 @@ Quando houver projeto Supabase remoto, estas migrations devem ser aplicadas na o
 - Integrar Supabase Auth sem expor `auth_email`.
 - Criar fluxo de autenticação na aplicação.
 - Mapear `auth.users.id` para `app_users.auth_user_id`.
-- Criar policies RLS finais por perfil, unidade e permissão.
-- Validar criação inicial de usuários e vínculos com colaboradores.
+- Criar policies RLS finais por perfil, unidade e permissao.
+- Validar criacao inicial de usuarios e vinculos com colaboradores.
+
+## Migration 012 - Orcamento Integrado a Compras
+
+`012_budget_control_base.sql` cria a base gerencial de orcamento integrada a compras. Ela adiciona enums, periodos mensais por unidade, linhas por centro de custo/departamento/gestor, movimentos, reservas, solicitacoes de ajuste e a view `budget_line_balances`.
+
+O objetivo e permitir que o futuro modulo de Compras consulte saldo disponivel antes de seguir, bloqueie compras normais sem orcamento ou encaminhe ajuste aprovado, e registre compras emergenciais como excecoes auditaveis.
+
+O orcamento nao e financeiro completo. Ele apoia compras, solicitacoes de pagamento, manutencao, A&B, governanca, administrativo e dashboards por meio de saldo gerencial:
+
+```text
+original_amount + approved_adjustments_amount - reserved_amount - committed_amount - realized_amount
+```
+
+RLS foi habilitado nas novas tabelas. As policies finais serao criadas em sprint futura com `unit_id`, `user_unit_links`, `access_profiles`, `permissions`, perfil do usuario e centros de custo permitidos.

@@ -8,6 +8,14 @@ Entretanto, comparando com `docs/arquitetura-logica-integrada.md`, o banco ainda
 
 Recomendacao final apos Sprint 2C: o banco ficou mais alinhado com a arquitetura logica. Ainda ha pontos para validacao futura, mas a principal lacuna transversal foi enderecada.
 
+## Observacao Sprint 2.6
+
+A Sprint 2.6 adicionou a base de orcamento integrada as compras por meio da migration `012_budget_control_base.sql`.
+
+Foram incluidos periodos orcamentarios mensais, linhas por centro de custo/gestor/departamento, livro razao de movimentos, reservas de orcamento, solicitacoes de alteracao orcamentaria e a view `budget_line_balances`.
+
+Essa base fecha a lacuna necessaria antes do modulo de Compras: compras normais poderao consultar saldo disponivel, compras sem saldo deverao ser bloqueadas ou encaminhadas para ajuste, e compras emergenciais terao rastreabilidade, evidencia, auditoria e ciencia/aprovacao posterior.
+
 ## Observacao Sprint 2C
 
 A Sprint 2C adicionou:
