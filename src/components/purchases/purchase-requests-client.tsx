@@ -168,7 +168,9 @@ export function PurchaseRequestsClient() {
 
   const form = useForm<PurchaseRequestFormValues>({
     resolver: zodResolver(purchaseRequestFormSchema),
-    defaultValues: emptyForm
+    defaultValues: emptyForm,
+    mode: "onTouched",
+    reValidateMode: "onChange"
   });
 
   const { fields, append, remove, replace } = useFieldArray({
@@ -219,11 +221,13 @@ export function PurchaseRequestsClient() {
     const costCenterIsValid = activeCostCenters.some((costCenter) => costCenter.id === form.getValues("costCenterId"));
 
     if (!departmentIsValid) {
-      form.setValue("departmentId", "");
+      form.setValue("departmentId", "", { shouldDirty: true, shouldValidate: false });
+      form.clearErrors("departmentId");
     }
 
     if (!costCenterIsValid) {
-      form.setValue("costCenterId", "");
+      form.setValue("costCenterId", "", { shouldDirty: true, shouldValidate: false });
+      form.clearErrors("costCenterId");
     }
   }, [activeCostCenters, activeDepartments, form, selectedUnitId]);
 
@@ -258,6 +262,7 @@ export function PurchaseRequestsClient() {
     setEditingId(null);
     setExpandedRequestId(null);
     setError("");
+    form.clearErrors();
     form.reset({
       ...emptyForm,
       unitId: firstUnit
@@ -270,6 +275,7 @@ export function PurchaseRequestsClient() {
     setEditingId(request.id);
     setExpandedRequestId(request.id);
     setError("");
+    form.clearErrors();
     form.reset({
       unitId: request.unitId,
       departmentId: request.departmentId,
@@ -372,12 +378,20 @@ export function PurchaseRequestsClient() {
             setFormOpen(false);
             setEditingId(null);
             setError("");
+            form.clearErrors();
           }}
         >
           <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
             <div className="grid gap-4 lg:grid-cols-2">
               <Field label="Unidade">
-                <SelectField {...form.register("unitId")}>
+                <SelectField
+                  {...form.register("unitId")}
+                  value={form.watch("unitId")}
+                  onChange={(event) => {
+                    form.setValue("unitId", event.target.value, { shouldDirty: true, shouldValidate: true });
+                    form.clearErrors("unitId");
+                  }}
+                >
                   <option value="">Selecione</option>
                   {units.map((unit) => (
                     <option key={unit.id} value={unit.id}>
@@ -388,7 +402,14 @@ export function PurchaseRequestsClient() {
                 <FieldError message={form.formState.errors.unitId?.message} />
               </Field>
               <Field label="Departamento">
-                <SelectField {...form.register("departmentId")}>
+                <SelectField
+                  {...form.register("departmentId")}
+                  value={form.watch("departmentId")}
+                  onChange={(event) => {
+                    form.setValue("departmentId", event.target.value, { shouldDirty: true, shouldValidate: true });
+                    form.clearErrors("departmentId");
+                  }}
+                >
                   <option value="">Selecione</option>
                   {activeDepartments.map((department) => (
                     <option key={department.id} value={department.id}>
@@ -399,7 +420,14 @@ export function PurchaseRequestsClient() {
                 <FieldError message={form.formState.errors.departmentId?.message} />
               </Field>
               <Field label="Centro de custo">
-                <SelectField {...form.register("costCenterId")}>
+                <SelectField
+                  {...form.register("costCenterId")}
+                  value={form.watch("costCenterId")}
+                  onChange={(event) => {
+                    form.setValue("costCenterId", event.target.value, { shouldDirty: true, shouldValidate: true });
+                    form.clearErrors("costCenterId");
+                  }}
+                >
                   <option value="">Sem centro de custo</option>
                   {activeCostCenters.map((costCenter) => (
                     <option key={costCenter.id} value={costCenter.id}>
@@ -414,14 +442,28 @@ export function PurchaseRequestsClient() {
                 <FieldError message={form.formState.errors.title?.message} />
               </Field>
               <Field label="Tipo">
-                <SelectField {...form.register("requestType")}>
+                <SelectField
+                  {...form.register("requestType")}
+                  value={form.watch("requestType")}
+                  onChange={(event) => {
+                    form.setValue("requestType", event.target.value as PurchaseRequestFormValues["requestType"], { shouldDirty: true, shouldValidate: true });
+                    form.clearErrors("requestType");
+                  }}
+                >
                   <option value="normal">Normal</option>
                   <option value="emergency">Emergencial</option>
                 </SelectField>
                 <FieldError message={form.formState.errors.requestType?.message} />
               </Field>
               <Field label="Prioridade">
-                <SelectField {...form.register("priority")}>
+                <SelectField
+                  {...form.register("priority")}
+                  value={form.watch("priority")}
+                  onChange={(event) => {
+                    form.setValue("priority", event.target.value as PurchaseRequestFormValues["priority"], { shouldDirty: true, shouldValidate: true });
+                    form.clearErrors("priority");
+                  }}
+                >
                   <option value="low">Baixa</option>
                   <option value="normal">Normal</option>
                   <option value="high">Alta</option>
@@ -468,7 +510,17 @@ export function PurchaseRequestsClient() {
                         <FieldError message={form.formState.errors.items?.[index]?.quantity?.message} />
                       </Field>
                       <Field label="Unidade de medida" className="lg:col-span-3">
-                        <SelectField {...form.register(`items.${index}.unitOfMeasure`)}>
+                        <SelectField
+                          {...form.register(`items.${index}.unitOfMeasure`)}
+                          value={form.watch(`items.${index}.unitOfMeasure`)}
+                          onChange={(event) => {
+                            form.setValue(`items.${index}.unitOfMeasure`, event.target.value as PurchaseRequestFormValues["items"][number]["unitOfMeasure"], {
+                              shouldDirty: true,
+                              shouldValidate: true
+                            });
+                            form.clearErrors(`items.${index}.unitOfMeasure`);
+                          }}
+                        >
                           <option value="">Selecione</option>
                           {purchaseUnitOfMeasureOptions.map((option) => (
                             <option key={option.code} value={option.code}>
