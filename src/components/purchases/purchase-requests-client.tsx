@@ -159,6 +159,7 @@ export function PurchaseRequestsClient() {
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [editingStatus, setEditingStatus] = useState<PurchaseRequestStatus | null>(null);
   const [submitAction, setSubmitAction] = useState<"save" | "submit">("save");
 
   const purchasesQuery = useQuery({
@@ -242,6 +243,7 @@ export function PurchaseRequestsClient() {
       setError("");
       setFormOpen(false);
       setEditingId(null);
+      setEditingStatus(null);
       form.reset(emptyForm);
       replace([emptyItem]);
       await queryClient.invalidateQueries({ queryKey: ["purchases", "requests"] });
@@ -252,6 +254,11 @@ export function PurchaseRequestsClient() {
   const cancelMutation = useMutation({
     mutationFn: async (requestId: string) => requestJson(`/api/purchases/requests/${requestId}`, { method: "PATCH", body: JSON.stringify({ action: "cancel" }) }),
     onSuccess: async () => {
+      setFormOpen(false);
+      setEditingId(null);
+      setEditingStatus(null);
+      setError("");
+      form.clearErrors();
       await queryClient.invalidateQueries({ queryKey: ["purchases", "requests"] });
     }
   });
@@ -260,6 +267,7 @@ export function PurchaseRequestsClient() {
     const firstUnit = units[0]?.id ?? "";
 
     setEditingId(null);
+    setEditingStatus("draft");
     setExpandedRequestId(null);
     setError("");
     form.clearErrors();
@@ -273,6 +281,7 @@ export function PurchaseRequestsClient() {
 
   function openEdit(request: PurchaseRequestRecord) {
     setEditingId(request.id);
+    setEditingStatus(request.status);
     setExpandedRequestId(request.id);
     setError("");
     form.clearErrors();
@@ -309,9 +318,15 @@ export function PurchaseRequestsClient() {
   }
 
   function submitForm(action: "save" | "submit") {
+    if (action === "submit" && editingStatus === "submitted") {
+      return;
+    }
+
     setSubmitAction(action);
     void form.handleSubmit((values) => saveMutation.mutate({ ...values, action }))();
   }
+
+  const isSubmittedEdit = editingId !== null && editingStatus === "submitted";
 
   function canEdit(request: PurchaseRequestRecord) {
     return request.status === "draft" || request.status === "submitted";
@@ -377,6 +392,7 @@ export function PurchaseRequestsClient() {
           onCancel={() => {
             setFormOpen(false);
             setEditingId(null);
+            setEditingStatus(null);
             setError("");
             form.clearErrors();
           }}
@@ -666,23 +682,36 @@ export function PurchaseRequestsClient() {
 
             <ErrorMessage message={error} />
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-muted-foreground">O valor sera definido posteriormente pelo setor de Compras durante a cotacao.</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending}>
-                  <Pencil className="h-4 w-4" />
-                  Salvar rascunho
-                </Button>
-                <Button type="button" onClick={() => submitForm("submit")} disabled={saveMutation.isPending}>
-                  {submitAction === "submit" ? <Send className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                  Enviar para analise
-                </Button>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">O valor sera definido posteriormente pelo setor de Compras durante a cotacao.</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending}>
+                    <Pencil className="h-4 w-4" />
+                    {isSubmittedEdit ? "Salvar alterações" : "Salvar rascunho"}
+                  </Button>
+                  {!isSubmittedEdit ? (
+                    <Button type="button" onClick={() => submitForm("submit")} disabled={saveMutation.isPending}>
+                      {submitAction === "submit" ? <Send className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                      Enviar para analise
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => editingId ? cancelMutation.mutate(editingId) : undefined}
+                      disabled={cancelMutation.isPending}
+                    >
+                      <Ban className="h-4 w-4" />
+                      Cancelar solicitação
+                    </Button>
+                  )}
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={() => {
                     setFormOpen(false);
                     setEditingId(null);
+                    setEditingStatus(null);
                   }}
                 >
                   Fechar
