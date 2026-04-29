@@ -36,7 +36,8 @@ const menuItems = [
   { label: "Minha Operacao", href: "/minha-operacao", icon: BedDouble },
   { label: "Aprovacoes", href: "#", icon: ClipboardCheck },
   { label: "Compras", href: "/compras", icon: ShoppingCart },
-  { label: "Solicitacoes", href: "/compras/solicitacoes", icon: ClipboardList },
+  { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList },
+  { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck },
   { label: "RH", href: "#", icon: Users },
   { label: "Contas a Pagar", href: "#", icon: Landmark },
   { label: "Manutencao", href: "#", icon: Wrench },
@@ -86,4 +87,3 @@ export function AppSidebar() {
     </aside>
   );
 }
-

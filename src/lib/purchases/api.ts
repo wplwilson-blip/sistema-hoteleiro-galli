@@ -55,6 +55,15 @@ export function sumPurchaseRequestItems(items: Array<{ quantity: number; estimat
   return roundMoney(items.reduce((accumulator, item) => accumulator + item.quantity * item.estimatedUnitPrice, 0));
 }
 
+export function sumPurchaseQuoteItems(items: Array<{ quantity: number; unitPrice: number }>) {
+  return roundMoney(items.reduce((accumulator, item) => accumulator + item.quantity * item.unitPrice, 0));
+}
+
+export function buildNextPurchaseQuoteNumber(requestNumber: string, existingCount: number) {
+  const nextSequence = existingCount + 1;
+  return `CQ-${requestNumber}-${String(nextSequence).padStart(2, "0")}`;
+}
+
 export async function buildNextPurchaseRequestNumber(supabase: SupabaseAdmin, organizationId: string) {
   const year = new Date().getFullYear();
   const prefix = `SC-${year}-`;

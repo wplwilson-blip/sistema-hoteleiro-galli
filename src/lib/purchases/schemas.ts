@@ -133,22 +133,22 @@ export const purchasePriorityLabelMap: Record<z.infer<typeof purchasePrioritySch
   low: "Baixa",
   normal: "Normal",
   high: "Alta",
-  critical: "Critica"
+  critical: "Crítica"
 };
 
 export const purchaseRequestStatusLabelMap: Record<z.infer<typeof purchaseRequestStatusSchema>, string> = {
   draft: "Rascunho",
   submitted: "Enviada",
-  under_review: "Em analise",
-  quotation: "Em cotacao",
-  pending_approval: "Aguardando aprovacao",
+  under_review: "Em análise",
+  quotation: "Em cotação",
+  pending_approval: "Aguardando aprovação",
   approved: "Aprovada",
   rejected: "Rejeitada",
   awaiting_purchase: "Aguardando compra",
   purchase_ordered: "Pedido realizado",
   partially_received: "Recebida parcial",
   received_total: "Recebida total",
-  received_with_divergence: "Recebida com divergencia",
+  received_with_divergence: "Recebida com divergência",
   closed: "Encerrada",
   cancelled: "Cancelada"
 };

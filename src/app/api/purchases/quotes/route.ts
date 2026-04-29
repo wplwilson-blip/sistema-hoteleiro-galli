@@ -1,0 +1,375 @@
+import { NextResponse } from "next/server";
+import { apiError, getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getPurchaseQuoteStatusLabel, getPurchaseQuoteStatusTone } from "@/lib/purchases/quote-schemas";
+import { getPurchasePriorityLabel, getPurchaseRequestStatusLabel, getPurchaseRequestTypeLabel, getPurchaseUnitOfMeasureLabel, type PurchaseUnitOfMeasure } from "@/lib/purchases/schemas";
+
+type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
+
+type PurchaseRequestRow = {
+  id: string;
+  organization_id: string;
+  unit_id: string;
+  department_id: string | null;
+  requested_by: string | null;
+  request_number: string;
+  title: string;
+  justification: string;
+  request_type: "normal" | "emergency";
+  priority: "low" | "normal" | "high" | "critical";
+  status: "submitted" | "under_review" | "quotation";
+  total_estimated_amount: string | number;
+  total_approved_amount: string | number;
+  quotation_required: boolean;
+  required_quote_count: number;
+  approval_required: boolean;
+  director_approval_required: boolean;
+  created_at: string;
+};
+
+type PurchaseRequestItemRow = {
+  id: string;
+  purchase_request_id: string;
+  item_description: string;
+  quantity: string | number;
+  unit_of_measure: string;
+  notes: string | null;
+};
+
+type SupplierRow = {
+  id: string;
+  name: string;
+  trade_name: string | null;
+  document_number: string | null;
+  unit_id: string | null;
+  status: "active" | "inactive" | "archived";
+};
+
+type QuoteRow = {
+  id: string;
+  purchase_request_id: string;
+  supplier_id: string;
+  quote_number: string;
+  quote_date: string;
+  valid_until: string;
+  total_amount: string | number;
+  delivery_days: number | null;
+  payment_terms: string | null;
+  is_selected: boolean;
+  is_recurring_supplier_quote: boolean;
+  quote_validity_exception: boolean;
+  quote_validity_exception_reason: string | null;
+  notes: string | null;
+  status: "received" | "selected" | "rejected" | "expired" | "cancelled";
+  created_at: string;
+  updated_at: string;
+};
+
+type QuoteItemRow = {
+  id: string;
+  purchase_quote_id: string;
+  purchase_request_item_id: string;
+  item_description: string;
+  quantity: string | number;
+  unit_price: string | number;
+  total_price: string | number;
+  delivery_notes: string | null;
+};
+
+function toNumber(value: string | number | null | undefined) {
+  return Number(value ?? 0);
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function mapSupplier(row: SupplierRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    tradeName: row.trade_name ?? "",
+    documentNumber: row.document_number ?? "",
+    unitId: row.unit_id ?? "",
+    status: row.status
+  };
+}
+
+function mapQuoteItem(item: QuoteItemRow) {
+  return {
+    id: item.id,
+    purchaseRequestItemId: item.purchase_request_item_id,
+    description: item.item_description,
+    quantity: toNumber(item.quantity),
+    unitPrice: toNumber(item.unit_price),
+    totalPrice: toNumber(item.total_price),
+    deliveryNotes: item.delivery_notes ?? ""
+  };
+}
+
+function mapQuote(row: QuoteRow, supplier?: SupplierRow, items: QuoteItemRow[] = []) {
+  const total = toNumber(row.total_amount);
+
+  return {
+    id: row.id,
+    purchaseRequestId: row.purchase_request_id,
+    supplierId: row.supplier_id,
+    supplierName: supplier?.name ?? "",
+    supplierTradeName: supplier?.trade_name ?? "",
+    supplierDocumentNumber: supplier?.document_number ?? "",
+    quoteNumber: row.quote_number,
+    quoteDate: row.quote_date,
+    validUntil: row.valid_until,
+    totalAmount: total,
+    totalAmountLabel: formatMoney(total),
+    deliveryDays: row.delivery_days ?? "",
+    paymentTerms: row.payment_terms ?? "",
+    isSelected: row.is_selected,
+    isRecurringSupplierQuote: row.is_recurring_supplier_quote,
+    quoteValidityException: row.quote_validity_exception,
+    quoteValidityExceptionReason: row.quote_validity_exception_reason ?? "",
+    notes: row.notes ?? "",
+    status: row.status,
+    statusLabel: getPurchaseQuoteStatusLabel(row.status),
+    statusTone: getPurchaseQuoteStatusTone(row.status),
+    isExpired: row.valid_until < new Date().toISOString().slice(0, 10),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    items: items.map(mapQuoteItem)
+  };
+}
+
+async function loadSuppliers(supabase: SupabaseAdmin, organizationId: string, accessibleUnitIds: string[]) {
+  const { data, error } = await supabase
+    .from("suppliers")
+    .select("id, organization_id, unit_id, name, trade_name, document_number, status")
+    .eq("organization_id", organizationId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("name", { ascending: true });
+
+  if (error) {
+    logBaseCadastroError("purchase_quotes.suppliers_list_failed", error);
+    throw new Error("Nao foi possivel carregar os fornecedores.");
+  }
+
+  const suppliers = ((data ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
+
+  return suppliers.map(mapSupplier);
+}
+
+async function loadEligibleRequests(supabase: SupabaseAdmin, accessibleUnitIds: string[]) {
+  if (!accessibleUnitIds.length) {
+    return [] as Array<{
+      id: string;
+      requestNumber: string;
+      title: string;
+      justification: string;
+      requestType: "normal" | "emergency";
+      requestTypeLabel: string;
+      priority: "low" | "normal" | "high" | "critical";
+      priorityLabel: string;
+      status: "submitted" | "under_review" | "quotation";
+      statusLabel: string;
+      unitId: string;
+      departmentId: string;
+      totalEstimatedAmount: number;
+      totalApprovedAmount: number;
+      quotationRequired: boolean;
+      requiredQuoteCount: number;
+      approvalRequired: boolean;
+      directorApprovalRequired: boolean;
+      createdAt: string;
+    }>;
+  }
+
+  const { data, error } = await supabase
+    .from("purchase_requests")
+    .select("id, organization_id, unit_id, department_id, requested_by, request_number, title, justification, request_type, priority, status, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, created_at")
+    .in("unit_id", accessibleUnitIds)
+    .in("status", ["submitted", "under_review", "quotation"])
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    logBaseCadastroError("purchase_quotes.request_list_failed", error);
+    throw new Error("Nao foi possivel carregar as solicitacoes para cotacao.");
+  }
+
+  const requestRows = (data ?? []) as PurchaseRequestRow[];
+  return requestRows.map((request) => ({
+    id: request.id,
+    requestNumber: request.request_number,
+    title: request.title,
+    justification: request.justification,
+    requestType: request.request_type,
+    requestTypeLabel: getPurchaseRequestTypeLabel(request.request_type),
+    priority: request.priority,
+    priorityLabel: getPurchasePriorityLabel(request.priority),
+    status: request.status,
+    statusLabel: getPurchaseRequestStatusLabel(request.status),
+    unitId: request.unit_id,
+    departmentId: request.department_id ?? "",
+    totalEstimatedAmount: toNumber(request.total_estimated_amount),
+    totalApprovedAmount: toNumber(request.total_approved_amount),
+    quotationRequired: request.quotation_required,
+    requiredQuoteCount: request.required_quote_count,
+    approvalRequired: request.approval_required,
+    directorApprovalRequired: request.director_approval_required,
+    createdAt: request.created_at
+  }));
+}
+
+async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, accessibleUnitIds: string[]) {
+  const { data: request, error: requestError } = await supabase
+    .from("purchase_requests")
+    .select("id, organization_id, unit_id, department_id, requested_by, request_number, title, justification, request_type, priority, status, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, created_at")
+    .eq("id", requestId)
+    .is("deleted_at", null)
+    .single();
+
+  if (requestError) {
+    logBaseCadastroError("purchase_quotes.request_detail_failed", requestError);
+    throw new Error("Nao foi possivel localizar a solicitacao.");
+  }
+
+  const { data: requestItems, error: itemsError } = await supabase
+    .from("purchase_request_items")
+    .select("id, purchase_request_id, item_description, quantity, unit_of_measure, notes")
+    .eq("purchase_request_id", requestId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+
+  if (itemsError) {
+    logBaseCadastroError("purchase_quotes.request_items_detail_failed", itemsError);
+    throw new Error("Nao foi possivel carregar os itens da solicitacao.");
+  }
+
+  const { data: quoteRows, error: quotesError } = await supabase
+    .from("purchase_quotes")
+    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, created_at, updated_at")
+    .eq("purchase_request_id", requestId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+
+  if (quotesError) {
+    logBaseCadastroError("purchase_quotes.detail_list_failed", quotesError);
+    throw new Error("Nao foi possivel carregar as cotacoes.");
+  }
+
+  const quoteIds = (quoteRows ?? []).map((quote) => quote.id);
+  const { data: quoteItems, error: quoteItemsError } = quoteIds.length
+    ? await supabase
+        .from("purchase_quote_items")
+        .select("id, purchase_quote_id, purchase_request_item_id, item_description, quantity, unit_price, total_price, delivery_notes")
+        .in("purchase_quote_id", quoteIds)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+    : { data: [], error: null };
+
+  if (quoteItemsError) {
+    logBaseCadastroError("purchase_quotes.detail_quote_items_failed", quoteItemsError);
+    throw new Error("Nao foi possivel carregar os itens das cotacoes.");
+  }
+
+  const { data: suppliers, error: suppliersError } = await supabase
+    .from("suppliers")
+    .select("id, name, trade_name, document_number, unit_id, status")
+    .eq("organization_id", request.organization_id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("name", { ascending: true });
+
+  if (suppliersError) {
+    logBaseCadastroError("purchase_quotes.detail_suppliers_failed", suppliersError);
+    throw new Error("Nao foi possivel carregar os fornecedores.");
+  }
+
+  const accessibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
+  const supplierMap = new Map(accessibleSuppliers.map((supplier) => [supplier.id, supplier]));
+  const quoteItemsByQuoteId = new Map<string, QuoteItemRow[]>();
+  for (const item of (quoteItems ?? []) as QuoteItemRow[]) {
+    quoteItemsByQuoteId.set(item.purchase_quote_id, [...(quoteItemsByQuoteId.get(item.purchase_quote_id) ?? []), item]);
+  }
+
+  return {
+    request: {
+      id: request.id,
+      requestNumber: request.request_number,
+      title: request.title,
+      justification: request.justification,
+      unitId: request.unit_id,
+      requestType: request.request_type,
+      requestTypeLabel: getPurchaseRequestTypeLabel(request.request_type),
+      priority: request.priority,
+      priorityLabel: getPurchasePriorityLabel(request.priority),
+      status: request.status,
+      statusLabel: getPurchaseRequestStatusLabel(request.status),
+      totalApprovedAmount: toNumber(request.total_approved_amount),
+      quotationRequired: request.quotation_required,
+      requiredQuoteCount: request.required_quote_count,
+      approvalRequired: request.approval_required,
+      directorApprovalRequired: request.director_approval_required,
+      createdAt: request.created_at,
+      items: (requestItems ?? []).map((item) => ({
+        id: item.id,
+        description: item.item_description,
+        quantity: toNumber(item.quantity),
+        unitOfMeasure: item.unit_of_measure,
+        unitOfMeasureLabel: getPurchaseUnitOfMeasureLabel(item.unit_of_measure as PurchaseUnitOfMeasure),
+        notes: item.notes ?? ""
+      }))
+    },
+    quotes: (quoteRows ?? []).map((quote) => mapQuote(quote as QuoteRow, supplierMap.get(quote.supplier_id), quoteItemsByQuoteId.get(quote.id) ?? [])),
+    suppliers: accessibleSuppliers.map(mapSupplier)
+  };
+}
+
+export async function GET(request: Request) {
+  const { session, response } = await requireAuthenticatedRequest();
+
+  if (response || !session) {
+    return response;
+  }
+
+  try {
+    const url = new URL(request.url);
+    const requestId = url.searchParams.get("requestId")?.trim() ?? "";
+    const supabase = createSupabaseAdminClient();
+    const accessibleUnitIds = session.units.map((unit) => unit.id);
+
+    if (!accessibleUnitIds.length) {
+      return NextResponse.json({ ok: true, requests: [], suppliers: [], quotes: [] });
+    }
+
+    const organizationId = await getUnitOrganizationId(supabase, accessibleUnitIds[0]);
+
+    if (requestId) {
+      const detail = await loadRequestDetail(supabase, requestId, accessibleUnitIds);
+
+      if (!accessibleUnitIds.includes(detail.request.unitId)) {
+        return apiError("Voce nao tem acesso a esta solicitacao.", 403);
+      }
+
+      const suppliers = await loadSuppliers(supabase, organizationId, accessibleUnitIds);
+
+      return NextResponse.json({
+        ok: true,
+        request: detail.request,
+        quotes: detail.quotes,
+        suppliers
+      });
+    }
+
+    const requests = await loadEligibleRequests(supabase, accessibleUnitIds);
+    const suppliers = await loadSuppliers(supabase, organizationId, accessibleUnitIds);
+
+    return NextResponse.json({
+      ok: true,
+      requests,
+      suppliers
+    });
+  } catch (error) {
+    return apiError(error instanceof Error ? error.message : "Nao foi possivel carregar as cotacoes.", 500);
+  }
+}

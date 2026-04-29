@@ -6,17 +6,18 @@ import { StatusBadge } from "@/components/common/status-badge";
 
 const cards = [
   {
-    title: "Solicitacoes de compra",
-    description: "Abrir e acompanhar solicitacoes de compra internas por unidade e departamento.",
+    title: "Solicitações de compra",
+    description: "Abrir e acompanhar solicitações de compra internas por unidade e departamento.",
     href: "/compras/solicitacoes",
     icon: ClipboardList,
     label: "Disponivel"
   },
   {
-    title: "Cotacoes",
-    description: "Fluxo de cotacao sera detalhado em sprint futura.",
+    title: "Cotações",
+    description: "Gerencie cotações e comparação de fornecedores por solicitação.",
+    href: "/compras/cotacoes",
     icon: ShoppingCart,
-    label: "Em breve"
+    label: "Disponivel"
   },
   {
     title: "Recebimentos",
@@ -35,7 +36,7 @@ const cards = [
 export default function ComprasPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Compras" description="Gestao de solicitacoes, cotacoes, aprovacoes e recebimentos de compras internas." />
+      <PageTitle title="Compras" description="Gestão de solicitações, cotações, aprovações e recebimentos de compras internas." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => {
@@ -70,4 +71,3 @@ export default function ComprasPage() {
     </div>
   );
 }
-
