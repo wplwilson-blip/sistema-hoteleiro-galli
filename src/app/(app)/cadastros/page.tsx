@@ -7,6 +7,7 @@ import {
   IdCard,
   ShieldCheck,
   Tags,
+  UserRound,
   Users
 } from "lucide-react";
 import { PageTitle } from "@/components/common/page-title";
@@ -34,6 +35,13 @@ const modules = [
     description: "Cargos e posicoes por departamento.",
     href: "/cadastros/cargos",
     icon: BriefcaseBusiness,
+    enabled: true
+  },
+  {
+    title: "Colaboradores",
+    description: "Cadastro estrutural dos colaboradores vinculados as unidades, departamentos e cargos.",
+    href: "/cadastros/colaboradores",
+    icon: UserRound,
     enabled: true
   },
   {
@@ -108,4 +116,3 @@ export default function CadastrosPage() {
     </div>
   );
 }
-

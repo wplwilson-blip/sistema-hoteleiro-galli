@@ -9,6 +9,29 @@ import {
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+async function hasJobPositionCodeInOrganization(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  code: string,
+  currentJobPositionId: string
+) {
+  const { data, error } = await supabase
+    .from("job_positions")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("code", code)
+    .neq("id", currentJobPositionId)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logBaseCadastroError("job_position.code_lookup_failed", error);
+    throw new Error("Nao foi possivel validar o codigo do cargo.");
+  }
+
+  return Boolean(data?.[0]);
+}
+
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   const { session, response } = await requireAuthenticatedRequest();
 
@@ -20,6 +43,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const payload = jobPositionPayloadSchema.parse(await request.json());
     const supabase = createSupabaseAdminClient();
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
+
+    if (await hasJobPositionCodeInOrganization(supabase, organizationId, payload.code, params.id)) {
+      return apiError("Ja existe um cargo com este codigo nesta organizacao.", 409);
+    }
 
     const { error } = await supabase
       .from("job_positions")
@@ -51,4 +78,3 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     return apiError(error instanceof Error ? error.message : "Nao foi possivel atualizar o cargo.", 500);
   }
 }
-

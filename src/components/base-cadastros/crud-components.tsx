@@ -125,11 +125,13 @@ export function NewRecordButton({ label, onClick }: { label: string; onClick: ()
 export function RowActions({
   onEdit,
   onInactivate,
-  disableInactivate
+  disableInactivate,
+  inactivateLabel = "Inativar"
 }: {
   onEdit: () => void;
   onInactivate: () => void;
   disableInactivate?: boolean;
+  inactivateLabel?: string;
 }) {
   return (
     <div className="flex justify-end gap-2">
@@ -139,7 +141,7 @@ export function RowActions({
       </Button>
       <Button type="button" variant="outline" size="sm" onClick={onInactivate} disabled={disableInactivate}>
         <PowerOff className="h-4 w-4" />
-        Inativar
+        {inactivateLabel}
       </Button>
     </div>
   );
@@ -148,4 +150,3 @@ export function RowActions({
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <Input {...props} />;
 }
-

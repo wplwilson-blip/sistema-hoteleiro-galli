@@ -18,6 +18,7 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Tags,
+  UserRound,
   Users,
   Utensils,
   Wrench
@@ -30,6 +31,7 @@ const menuItems = [
   { label: "Unidades", href: "/cadastros/unidades", icon: Building2 },
   { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags },
   { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness },
+  { label: "Colaboradores", href: "/cadastros/colaboradores", icon: UserRound },
   { label: "Minha Operação", href: "/minha-operacao", icon: BedDouble },
   { label: "Aprovações", href: "#", icon: ClipboardCheck },
   { label: "Solicitações", href: "#", icon: ClipboardList },

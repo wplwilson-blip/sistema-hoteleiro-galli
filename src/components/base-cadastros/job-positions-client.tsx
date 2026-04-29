@@ -68,6 +68,24 @@ const emptyForm: JobPositionForm = {
   status: "active"
 };
 
+const jobPositionCodeSuggestions = [
+  { code: "DIR-GER", name: "Gerente Geral" },
+  { code: "ADM-AUX", name: "Auxiliar Administrativo" },
+  { code: "RH-ANL", name: "Analista de RH" },
+  { code: "COM-CMP", name: "Comprador" },
+  { code: "CAP-ANL", name: "Analista de Contas a Pagar" },
+  { code: "REC-REC", name: "Recepcionista" },
+  { code: "REC-SUP", name: "Supervisor de Recepcao" },
+  { code: "GOV-CAM", name: "Camareira" },
+  { code: "GOV-SUP", name: "Supervisor de Governanca" },
+  { code: "MAN-AUX", name: "Auxiliar de Manutencao" },
+  { code: "MAN-TEC", name: "Tecnico de Manutencao" },
+  { code: "AB-GAR", name: "Garcom" },
+  { code: "AB-COZ", name: "Cozinheiro" },
+  { code: "AB-AUX", name: "Auxiliar de Cozinha" },
+  { code: "AB-SUP", name: "Supervisor de A&B" }
+];
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -167,6 +185,10 @@ export function JobPositionsClient() {
     });
   }
 
+  function normalizeJobPositionCode(value: string) {
+    return value.trim().toUpperCase();
+  }
+
   const positions = positionsQuery.data?.positions ?? [];
   const isLoading = unitsQuery.isLoading || departmentsQuery.isLoading || positionsQuery.isLoading;
 
@@ -210,7 +232,14 @@ export function JobPositionsClient() {
                 </SelectField>
               </Field>
               <Field label="Codigo">
-                <TextInput value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} />
+                <TextInput
+                  value={form.code}
+                  required
+                  placeholder="GOV-CAM"
+                  onBlur={(event) => setForm({ ...form, code: normalizeJobPositionCode(event.target.value) })}
+                  onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })}
+                />
+                <p className="text-xs text-muted-foreground">Use um codigo padrao, em maiusculo e sem espacos. Hifen e permitido.</p>
               </Field>
               <Field label="Nome do cargo">
                 <TextInput value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
@@ -234,6 +263,22 @@ export function JobPositionsClient() {
               <Field label="Descricao" className="md:col-span-2">
                 <TextArea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
               </Field>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Sugestoes de codigos</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {jobPositionCodeSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.code}
+                    type="button"
+                    className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-primary/40 hover:bg-card"
+                    onClick={() => setForm({ ...form, code: suggestion.code, name: form.name || suggestion.name })}
+                  >
+                    <span className="font-semibold text-primary">{suggestion.code}</span>
+                    <span className="truncate text-muted-foreground">{suggestion.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
             <ErrorMessage message={error} />
             <FormActions isSaving={saveMutation.isPending} onCancel={() => setFormOpen(false)} />

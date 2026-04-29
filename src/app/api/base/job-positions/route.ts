@@ -9,6 +9,27 @@ import {
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+async function hasJobPositionCodeInOrganization(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  code: string
+) {
+  const { data, error } = await supabase
+    .from("job_positions")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("code", code)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logBaseCadastroError("job_position.code_lookup_failed", error);
+    throw new Error("Nao foi possivel validar o codigo do cargo.");
+  }
+
+  return Boolean(data?.[0]);
+}
+
 export async function GET() {
   const { response } = await requireAuthenticatedRequest();
 
@@ -93,6 +114,10 @@ export async function POST(request: Request) {
     const payload = jobPositionPayloadSchema.parse(await request.json());
     const supabase = createSupabaseAdminClient();
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
+
+    if (await hasJobPositionCodeInOrganization(supabase, organizationId, payload.code)) {
+      return apiError("Ja existe um cargo com este codigo nesta organizacao.", 409);
+    }
 
     const { error } = await supabase.from("job_positions").insert({
       organization_id: organizationId,
