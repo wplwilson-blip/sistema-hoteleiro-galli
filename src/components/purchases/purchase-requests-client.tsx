@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Search, Trash2, Eye, Pencil, Send, Ban, CirclePlus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorMessage, Field, FormCard, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
@@ -384,57 +384,78 @@ export function PurchaseRequestsClient() {
           <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
             <div className="grid gap-4 lg:grid-cols-2">
               <Field label="Unidade">
-                <SelectField
-                  {...form.register("unitId")}
-                  value={form.watch("unitId")}
-                  onChange={(event) => {
-                    form.setValue("unitId", event.target.value, { shouldDirty: true, shouldValidate: true });
-                    form.clearErrors("unitId");
-                  }}
-                >
-                  <option value="">Selecione</option>
-                  {units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.code} - {unit.name}
-                    </option>
-                  ))}
-                </SelectField>
+                <Controller
+                  control={form.control}
+                  name="unitId"
+                  render={({ field }) => (
+                    <SelectField
+                      name={field.name}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("unitId");
+                      }}
+                    >
+                      <option value="">Selecione</option>
+                      {units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.code} - {unit.name}
+                        </option>
+                      ))}
+                    </SelectField>
+                  )}
+                />
                 <FieldError message={form.formState.errors.unitId?.message} />
               </Field>
               <Field label="Departamento">
-                <SelectField
-                  {...form.register("departmentId")}
-                  value={form.watch("departmentId")}
-                  onChange={(event) => {
-                    form.setValue("departmentId", event.target.value, { shouldDirty: true, shouldValidate: true });
-                    form.clearErrors("departmentId");
-                  }}
-                >
-                  <option value="">Selecione</option>
-                  {activeDepartments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.code} - {department.name}
-                    </option>
-                  ))}
-                </SelectField>
+                <Controller
+                  control={form.control}
+                  name="departmentId"
+                  render={({ field }) => (
+                    <SelectField
+                      name={field.name}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("departmentId");
+                      }}
+                    >
+                      <option value="">Selecione</option>
+                      {activeDepartments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.code} - {department.name}
+                        </option>
+                      ))}
+                    </SelectField>
+                  )}
+                />
                 <FieldError message={form.formState.errors.departmentId?.message} />
               </Field>
               <Field label="Centro de custo">
-                <SelectField
-                  {...form.register("costCenterId")}
-                  value={form.watch("costCenterId")}
-                  onChange={(event) => {
-                    form.setValue("costCenterId", event.target.value, { shouldDirty: true, shouldValidate: true });
-                    form.clearErrors("costCenterId");
-                  }}
-                >
-                  <option value="">Sem centro de custo</option>
-                  {activeCostCenters.map((costCenter) => (
-                    <option key={costCenter.id} value={costCenter.id}>
-                      {costCenter.code} - {costCenter.name}
-                    </option>
-                  ))}
-                </SelectField>
+                <Controller
+                  control={form.control}
+                  name="costCenterId"
+                  render={({ field }) => (
+                    <SelectField
+                      name={field.name}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("costCenterId");
+                      }}
+                    >
+                      <option value="">Sem centro de custo</option>
+                      {activeCostCenters.map((costCenter) => (
+                        <option key={costCenter.id} value={costCenter.id}>
+                          {costCenter.code} - {costCenter.name}
+                        </option>
+                      ))}
+                    </SelectField>
+                  )}
+                />
                 <FieldError message={form.formState.errors.costCenterId?.message} />
               </Field>
               <Field label="Titulo">
@@ -442,33 +463,47 @@ export function PurchaseRequestsClient() {
                 <FieldError message={form.formState.errors.title?.message} />
               </Field>
               <Field label="Tipo">
-                <SelectField
-                  {...form.register("requestType")}
-                  value={form.watch("requestType")}
-                  onChange={(event) => {
-                    form.setValue("requestType", event.target.value as PurchaseRequestFormValues["requestType"], { shouldDirty: true, shouldValidate: true });
-                    form.clearErrors("requestType");
-                  }}
-                >
-                  <option value="normal">Normal</option>
-                  <option value="emergency">Emergencial</option>
-                </SelectField>
+                <Controller
+                  control={form.control}
+                  name="requestType"
+                  render={({ field }) => (
+                    <SelectField
+                      name={field.name}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("requestType");
+                      }}
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="emergency">Emergencial</option>
+                    </SelectField>
+                  )}
+                />
                 <FieldError message={form.formState.errors.requestType?.message} />
               </Field>
               <Field label="Prioridade">
-                <SelectField
-                  {...form.register("priority")}
-                  value={form.watch("priority")}
-                  onChange={(event) => {
-                    form.setValue("priority", event.target.value as PurchaseRequestFormValues["priority"], { shouldDirty: true, shouldValidate: true });
-                    form.clearErrors("priority");
-                  }}
-                >
-                  <option value="low">Baixa</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">Alta</option>
-                  <option value="critical">Critica</option>
-                </SelectField>
+                <Controller
+                  control={form.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <SelectField
+                      name={field.name}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("priority");
+                      }}
+                    >
+                      <option value="low">Baixa</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">Alta</option>
+                      <option value="critical">Critica</option>
+                    </SelectField>
+                  )}
+                />
                 <FieldError message={form.formState.errors.priority?.message} />
               </Field>
               <Field label="Data desejada">
@@ -506,28 +541,47 @@ export function PurchaseRequestsClient() {
                         <FieldError message={form.formState.errors.items?.[index]?.description?.message} />
                       </Field>
                       <Field label="Quantidade" className="lg:col-span-2">
-                        <TextInput type="text" inputMode="decimal" {...form.register(`items.${index}.quantity`)} />
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.quantity`}
+                          render={({ field }) => (
+                            <TextInput
+                              type="text"
+                              inputMode="decimal"
+                              value={field.value ?? ""}
+                              onBlur={field.onBlur}
+                              onChange={(event) => {
+                                field.onChange(event.target.value);
+                                form.clearErrors(`items.${index}.quantity`);
+                              }}
+                            />
+                          )}
+                        />
                         <FieldError message={form.formState.errors.items?.[index]?.quantity?.message} />
                       </Field>
                       <Field label="Unidade de medida" className="lg:col-span-3">
-                        <SelectField
-                          {...form.register(`items.${index}.unitOfMeasure`)}
-                          value={form.watch(`items.${index}.unitOfMeasure`)}
-                          onChange={(event) => {
-                            form.setValue(`items.${index}.unitOfMeasure`, event.target.value as PurchaseRequestFormValues["items"][number]["unitOfMeasure"], {
-                              shouldDirty: true,
-                              shouldValidate: true
-                            });
-                            form.clearErrors(`items.${index}.unitOfMeasure`);
-                          }}
-                        >
-                          <option value="">Selecione</option>
-                          {purchaseUnitOfMeasureOptions.map((option) => (
-                            <option key={option.code} value={option.code}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </SelectField>
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.unitOfMeasure`}
+                          render={({ field }) => (
+                            <SelectField
+                              name={field.name}
+                              value={field.value ?? ""}
+                              onBlur={field.onBlur}
+                              onChange={(event) => {
+                                field.onChange(event.target.value);
+                                form.clearErrors(`items.${index}.unitOfMeasure`);
+                              }}
+                            >
+                              <option value="">Selecione</option>
+                              {purchaseUnitOfMeasureOptions.map((option) => (
+                                <option key={option.code} value={option.code}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </SelectField>
+                          )}
+                        />
                         <FieldError message={form.formState.errors.items?.[index]?.unitOfMeasure?.message} />
                       </Field>
                       <Field label="Observacoes" className="lg:col-span-3">
