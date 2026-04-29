@@ -31,21 +31,21 @@ const menuItems = [
   { label: "Unidades", href: "/cadastros/unidades", icon: Building2 },
   { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags },
   { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness },
-  { label: "Usuários internos", href: "/cadastros/usuarios", icon: Users },
+  { label: "Usuarios internos", href: "/cadastros/usuarios", icon: Users },
   { label: "Colaboradores", href: "/cadastros/colaboradores", icon: UserRound },
-  { label: "Minha Operação", href: "/minha-operacao", icon: BedDouble },
-  { label: "Aprovações", href: "#", icon: ClipboardCheck },
-  { label: "Solicitações", href: "#", icon: ClipboardList },
+  { label: "Minha Operacao", href: "/minha-operacao", icon: BedDouble },
+  { label: "Aprovacoes", href: "#", icon: ClipboardCheck },
+  { label: "Compras", href: "/compras", icon: ShoppingCart },
+  { label: "Solicitacoes", href: "/compras/solicitacoes", icon: ClipboardList },
   { label: "RH", href: "#", icon: Users },
   { label: "Contas a Pagar", href: "#", icon: Landmark },
-  { label: "Compras", href: "#", icon: ShoppingCart },
-  { label: "Manutenção", href: "#", icon: Wrench },
-  { label: "Governança", href: "#", icon: ShieldCheck },
+  { label: "Manutencao", href: "#", icon: Wrench },
+  { label: "Governanca", href: "#", icon: ShieldCheck },
   { label: "A&B", href: "#", icon: Utensils },
   { label: "Administrativo", href: "#", icon: BriefcaseBusiness },
-  { label: "Relatórios", href: "#", icon: FileText },
+  { label: "Relatorios", href: "#", icon: FileText },
   { label: "Auditoria", href: "#", icon: BarChart3 },
-  { label: "Configurações", href: "#", icon: Settings }
+  { label: "Configuracoes", href: "#", icon: Settings }
 ];
 
 export function AppSidebar() {
@@ -65,7 +65,7 @@ export function AppSidebar() {
       <nav className="space-y-1 px-3 py-4">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.href !== "#" && pathname === item.href;
+          const isActive = item.href !== "#" && (pathname === item.href || pathname.startsWith(`${item.href}/`));
 
           return (
             <Link
@@ -86,3 +86,4 @@ export function AppSidebar() {
     </aside>
   );
 }
+
