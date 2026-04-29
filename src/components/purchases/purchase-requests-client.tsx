@@ -459,7 +459,20 @@ export function PurchaseRequestsClient() {
                 <FieldError message={form.formState.errors.costCenterId?.message} />
               </Field>
               <Field label="Titulo">
-                <TextInput {...form.register("title")} />
+                <Controller
+                  control={form.control}
+                  name="title"
+                  render={({ field }) => (
+                    <TextInput
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("title");
+                      }}
+                    />
+                  )}
+                />
                 <FieldError message={form.formState.errors.title?.message} />
               </Field>
               <Field label="Tipo">
@@ -511,11 +524,39 @@ export function PurchaseRequestsClient() {
                 <FieldError message={form.formState.errors.desiredDate?.message} />
               </Field>
               <Field label="Descricao / necessidade" className="lg:col-span-2">
-                <TextArea rows={4} {...form.register("description")} />
+                <Controller
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <TextArea
+                      rows={4}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("description");
+                      }}
+                    />
+                  )}
+                />
                 <FieldError message={form.formState.errors.description?.message} />
               </Field>
               <Field label="Justificativa" className="lg:col-span-2">
-                <TextArea rows={4} {...form.register("justification")} />
+                <Controller
+                  control={form.control}
+                  name="justification"
+                  render={({ field }) => (
+                    <TextArea
+                      rows={4}
+                      value={field.value ?? ""}
+                      onBlur={field.onBlur}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        form.clearErrors("justification");
+                      }}
+                    />
+                  )}
+                />
                 <FieldError message={form.formState.errors.justification?.message} />
               </Field>
             </div>
@@ -537,7 +578,20 @@ export function PurchaseRequestsClient() {
                   <div key={field.id} className="rounded-md border bg-background p-3">
                     <div className="grid gap-3 lg:grid-cols-12">
                       <Field label="Descricao" className="lg:col-span-4">
-                        <TextInput {...form.register(`items.${index}.description`)} />
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.description`}
+                          render={({ field }) => (
+                            <TextInput
+                              value={field.value ?? ""}
+                              onBlur={field.onBlur}
+                              onChange={(event) => {
+                                field.onChange(event.target.value);
+                                form.clearErrors(`items.${index}.description`);
+                              }}
+                            />
+                          )}
+                        />
                         <FieldError message={form.formState.errors.items?.[index]?.description?.message} />
                       </Field>
                       <Field label="Quantidade" className="lg:col-span-2">

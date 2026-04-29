@@ -47,7 +47,7 @@ export const purchaseUnitOfMeasureOptions: ReadonlyArray<{ code: PurchaseUnitOfM
   { code: "LT", label: "LT - Litro" },
   { code: "ML", label: "ML - Mililitro" },
   { code: "M", label: "M - Metro" },
-  { code: "M2", label: "M² - Metro quadrado" },
+  { code: "M2", label: "M2 - Metro quadrado" },
   { code: "PAR", label: "PAR - Par" },
   { code: "JG", label: "JG - Jogo" },
   { code: "ROLO", label: "ROLO - Rolo" },
@@ -80,13 +80,16 @@ function parseLocalizedDecimal(value: unknown) {
 const purchaseQuantitySchema = z.preprocess(
   parseLocalizedDecimal,
   z.number({
-    required_error: "Informe uma quantidade valida.",
-    invalid_type_error: "Informe uma quantidade valida."
-  }).positive("Informe uma quantidade valida.")
+    required_error: "Informe uma quantidade válida.",
+    invalid_type_error: "Informe uma quantidade válida."
+  }).positive("Informe uma quantidade válida.")
 );
 
 export const purchaseRequestItemSchema = z.object({
-  description: z.string().trim().min(2, "Informe a descricao do item."),
+  description: z
+    .string({ required_error: "Informe a descrição do item.", invalid_type_error: "Informe a descrição do item." })
+    .trim()
+    .min(2, "Informe a descrição do item."),
   quantity: purchaseQuantitySchema,
   unitOfMeasure: purchaseUnitOfMeasureSchema,
   notes: optionalTextSchema
@@ -96,9 +99,15 @@ const purchaseRequestBaseSchema = z.object({
   unitId: z.string({ required_error: "Selecione uma unidade.", invalid_type_error: "Selecione uma unidade." }).uuid("Selecione uma unidade."),
   departmentId: z.string({ required_error: "Selecione um departamento.", invalid_type_error: "Selecione um departamento." }).uuid("Selecione um departamento."),
   costCenterId: optionalUuidSchema,
-  title: z.string().trim().min(3, "Informe o titulo da solicitacao."),
+  title: z
+    .string({ required_error: "Informe o título.", invalid_type_error: "Informe o título." })
+    .trim()
+    .min(3, "Informe o título."),
   description: optionalTextSchema,
-  justification: z.string().trim().min(5, "Informe a justificativa da compra."),
+  justification: z
+    .string({ required_error: "Informe a justificativa.", invalid_type_error: "Informe a justificativa." })
+    .trim()
+    .min(5, "Informe a justificativa."),
   requestType: purchaseRequestTypeSchema,
   priority: purchasePrioritySchema,
   desiredDate: optionalDateSchema,
