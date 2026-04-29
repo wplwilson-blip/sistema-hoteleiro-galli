@@ -7,6 +7,7 @@ import {
   BarChart3,
   BedDouble,
   BriefcaseBusiness,
+  Building2,
   ClipboardCheck,
   ClipboardList,
   FileText,
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
+  Tags,
   Users,
   Utensils,
   Wrench
@@ -24,6 +26,10 @@ import { cn } from "@/lib/utils";
 
 const menuItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Cadastros", href: "/cadastros", icon: SlidersHorizontal },
+  { label: "Unidades", href: "/cadastros/unidades", icon: Building2 },
+  { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags },
+  { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness },
   { label: "Minha Operação", href: "/minha-operacao", icon: BedDouble },
   { label: "Aprovações", href: "#", icon: ClipboardCheck },
   { label: "Solicitações", href: "#", icon: ClipboardList },
@@ -34,7 +40,6 @@ const menuItems = [
   { label: "Governança", href: "#", icon: ShieldCheck },
   { label: "A&B", href: "#", icon: Utensils },
   { label: "Administrativo", href: "#", icon: BriefcaseBusiness },
-  { label: "Cadastros", href: "#", icon: SlidersHorizontal },
   { label: "Relatórios", href: "#", icon: FileText },
   { label: "Auditoria", href: "#", icon: BarChart3 },
   { label: "Configurações", href: "#", icon: Settings }
