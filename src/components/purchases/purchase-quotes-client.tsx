@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
@@ -661,7 +662,13 @@ export function PurchaseQuotesClient() {
 
                 {selectedRequest?.status === "quotation" && !suppliers.length ? (
                   <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Cadastre ao menos um fornecedor ativo antes de registrar cotações.
+                    <p>Cadastre ao menos um fornecedor ativo antes de registrar cotações.</p>
+                    <Link
+                      href="/cadastros/fornecedores"
+                      className="mt-3 inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+                    >
+                      Ir para fornecedores
+                    </Link>
                   </div>
                 ) : null}
 
@@ -754,7 +761,13 @@ export function PurchaseQuotesClient() {
                   <form className="space-y-5" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
                     {!suppliers.length ? (
                       <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.
+                        <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
+                        <Link
+                          href="/cadastros/fornecedores"
+                          className="mt-3 inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+                        >
+                          Ir para fornecedores
+                        </Link>
                       </div>
                     ) : null}
 

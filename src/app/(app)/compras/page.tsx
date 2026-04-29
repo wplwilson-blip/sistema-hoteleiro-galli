@@ -1,33 +1,40 @@
 import Link from "next/link";
-import { ClipboardList, ChevronRight, FileText, LineChart, ShoppingCart } from "lucide-react";
+import { ChevronRight, ClipboardList, FileText, IdCard, LineChart, ShoppingCart } from "lucide-react";
 import { PageTitle } from "@/components/common/page-title";
-import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Card } from "@/components/ui/card";
 
 const cards = [
   {
-    title: "Solicitações de compra",
-    description: "Abrir e acompanhar solicitações de compra internas por unidade e departamento.",
+    title: "Solicita\u00e7\u00f5es de compra",
+    description: "Abrir e acompanhar solicita\u00e7\u00f5es de compra internas por unidade e departamento.",
     href: "/compras/solicitacoes",
     icon: ClipboardList,
-    label: "Disponivel"
+    label: "Dispon\u00edvel"
   },
   {
-    title: "Cotações",
-    description: "Gerencie cotações e comparação de fornecedores por solicitação.",
+    title: "Cota\u00e7\u00f5es",
+    description: "Gerencie cota\u00e7\u00f5es e compara\u00e7\u00e3o de fornecedores por solicita\u00e7\u00e3o.",
     href: "/compras/cotacoes",
     icon: ShoppingCart,
-    label: "Disponivel"
+    label: "Dispon\u00edvel"
+  },
+  {
+    title: "Fornecedores",
+    description: "Gerencie fornecedores antes de registrar cota\u00e7\u00f5es.",
+    href: "/cadastros/fornecedores",
+    icon: IdCard,
+    label: "Cadastro"
   },
   {
     title: "Recebimentos",
-    description: "Recebimento parcial, total e com divergencia ficara para a proxima fase.",
+    description: "Recebimento parcial, total e com diverg\u00eancia ficar\u00e1 para a pr\u00f3xima fase.",
     icon: FileText,
     label: "Em breve"
   },
   {
     title: "Indicadores",
-    description: "Painel de acompanhamento e indicadores operacionais sera liberado depois.",
+    description: "Painel de acompanhamento e indicadores operacionais ser\u00e1 liberado depois.",
     icon: LineChart,
     label: "Em breve"
   }
@@ -36,7 +43,7 @@ const cards = [
 export default function ComprasPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Compras" description="Gestão de solicitações, cotações, aprovações e recebimentos de compras internas." />
+      <PageTitle title="Compras" description="Gest\u00e3o de solicita\u00e7\u00f5es, cota\u00e7\u00f5es, aprova\u00e7\u00f5es e recebimentos de compras internas." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => {

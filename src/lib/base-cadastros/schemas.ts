@@ -28,6 +28,23 @@ export const departmentPayloadSchema = z.object({
   status: recordStatusSchema.default("active")
 });
 
+export const supplierDocumentTypeSchema = z.enum(["CNPJ", "CPF", "OTHER"]);
+
+export const supplierPayloadSchema = z.object({
+  unitId: z.string().uuid("Selecione uma unidade.").optional().or(z.literal("").transform(() => undefined)),
+  name: z.string().trim().min(2, "Informe o nome do fornecedor."),
+  tradeName: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  documentType: supplierDocumentTypeSchema.default("OTHER"),
+  documentNumber: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  email: z.string().trim().email("Informe um e-mail valido.").optional().or(z.literal("").transform(() => undefined)),
+  phone: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  whatsapp: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  contactName: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  category: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  notes: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  status: recordStatusSchema.default("active")
+});
+
 export const jobPositionPayloadSchema = z.object({
   unitId: z.string().uuid("Selecione uma unidade."),
   departmentId: z.string().uuid("Selecione um departamento.").optional().or(z.literal("").transform(() => undefined)),
