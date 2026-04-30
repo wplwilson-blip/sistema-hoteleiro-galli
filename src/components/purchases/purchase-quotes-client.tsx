@@ -372,8 +372,11 @@ export function PurchaseQuotesClient() {
 
   const requests = useMemo(() => listQuery.data?.requests ?? [], [listQuery.data?.requests]);
   const suppliers = useMemo(() => detailQuery.data?.suppliers ?? listQuery.data?.suppliers ?? [], [detailQuery.data?.suppliers, listQuery.data?.suppliers]);
-  const selectedRequest = detailQuery.data?.request ?? null;
-  const quotes = useMemo(() => detailQuery.data?.quotes ?? [], [detailQuery.data?.quotes]);
+  const selectedRequest = detailQuery.data?.request?.id === selectedRequestId ? detailQuery.data.request : null;
+  const quotes = useMemo(
+    () => (detailQuery.data?.request?.id === selectedRequestId ? detailQuery.data.quotes : []),
+    [detailQuery.data?.quotes, detailQuery.data?.request?.id, selectedRequestId]
+  );
   const quoteIds = useMemo(() => quotes.map((quote) => quote.id), [quotes]);
 
   const attachmentsQuery = useQuery({
@@ -397,8 +400,8 @@ export function PurchaseQuotesClient() {
   });
 
   useEffect(() => {
-    if (!selectedRequestId && requests.length) {
-      setSelectedRequestId(requests[0].id);
+    if (selectedRequestId && requests.length && !requests.some((request) => request.id === selectedRequestId)) {
+      setSelectedRequestId("");
     }
   }, [requests, selectedRequestId]);
 
@@ -408,16 +411,23 @@ export function PurchaseQuotesClient() {
     }
   }, [quoteValidityException, quoteForm]);
 
-  function closeQuoteForm() {
+  function clearQuoteTemporaryState(request: PurchaseRequestDetail | null = selectedRequest) {
     setQuoteFormOpen(false);
     setEditingQuoteId(null);
     setError("");
+    setAttachmentMessage("");
+    setAttachmentFiles({});
+    setAttachmentDescriptions({});
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
     quoteForm.clearErrors();
-    const nextValues = buildDefaultQuoteForm(selectedRequest);
+    const nextValues = buildDefaultQuoteForm(request);
     quoteForm.reset(nextValues);
     replace(nextValues.items);
+  }
+
+  function closeQuoteForm() {
+    clearQuoteTemporaryState();
   }
 
   useEffect(() => {
@@ -442,11 +452,12 @@ export function PurchaseQuotesClient() {
   }, [quoteFormOpen, selectedRequest]);
 
   function openRequest(requestId: string) {
+    if (requestId === selectedRequestId) {
+      return;
+    }
+
     setSelectedRequestId(requestId);
-    setQuoteFormOpen(false);
-    setEditingQuoteId(null);
-    setError("");
-    setAttachmentMessage("");
+    clearQuoteTemporaryState(null);
   }
 
   function openNewQuote() {
@@ -663,7 +674,7 @@ export function PurchaseQuotesClient() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Solicitações elegíveis</h2>
-              <p className="text-sm text-muted-foreground">Somente solicitações enviadas, em análise ou em cotação.</p>
+              <p className="text-sm text-muted-foreground">Clique em uma solicitação ou use Selecionar para carregar os detalhes e cotações à direita.</p>
             </div>
           </div>
 
@@ -695,8 +706,19 @@ export function PurchaseQuotesClient() {
                     const isSelected = request.id === selectedRequestId;
 
                     return (
-                      <tr key={request.id} className={isSelected ? "bg-muted/30" : "hover:bg-muted/25"}>
-                        <td className="px-4 py-3 font-medium">{request.requestNumber}</td>
+                      <tr
+                        key={request.id}
+                        className={isSelected ? "cursor-pointer bg-primary/10" : "cursor-pointer hover:bg-muted/25"}
+                        onClick={() => openRequest(request.id)}
+                      >
+                        <td className={isSelected ? "border-l-4 border-primary px-4 py-3 font-medium" : "border-l-4 border-transparent px-4 py-3 font-medium"}>
+                          <div className="flex flex-col gap-1">
+                            <span>{request.requestNumber}</span>
+                            {isSelected ? (
+                              <span className="inline-flex w-fit rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">Selecionada</span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           <p className="font-medium">{request.title}</p>
                           <p className="mt-1 text-xs text-muted-foreground">{request.justification}</p>
@@ -716,7 +738,8 @@ export function PurchaseQuotesClient() {
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
+                                onClick={(event) => {
+                                  event.stopPropagation();
                                   openRequest(request.id);
                                   startMutation.mutate(request.id);
                                 }}
@@ -727,14 +750,30 @@ export function PurchaseQuotesClient() {
                               </Button>
                             ) : null}
                             {request.status === "quotation" ? (
-                              <Button type="button" size="sm" variant="outline" onClick={() => openRequest(request.id)}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openRequest(request.id);
+                                }}
+                              >
                                 <RotateCcw className="h-4 w-4" />
                                 Abrir cotação
                               </Button>
                             ) : null}
-                            <Button type="button" size="sm" onClick={() => openRequest(request.id)}>
-                              <Search className="h-4 w-4" />
-                              Ver cotações
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={isSelected}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openRequest(request.id);
+                              }}
+                            >
+                              {isSelected ? <Check className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                              {isSelected ? "Selecionada" : "Selecionar"}
                             </Button>
                           </div>
                         </td>
@@ -748,13 +787,16 @@ export function PurchaseQuotesClient() {
         </section>
 
         <section className="space-y-4">
-          {!selectedRequest ? (
-            <EmptyState title="Selecione uma solicitação" description="Escolha uma solicitação da lista para iniciar, cadastrar ou comparar cotações." />
+          {selectedRequestId && detailQuery.isLoading ? (
+            <LoadingTable label="Carregando solicitação selecionada..." />
+          ) : !selectedRequest ? (
+            <EmptyState title="Selecione uma solicitação" description="Selecione uma solicitação à esquerda para visualizar os itens e cadastrar cotações." />
           ) : (
             <>
               <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-semibold">{selectedRequest.requestNumber}</h2>
                       <StatusBadge status={getPurchaseRequestStatusTone(selectedRequest.status)} label={selectedRequest.statusLabel} />
