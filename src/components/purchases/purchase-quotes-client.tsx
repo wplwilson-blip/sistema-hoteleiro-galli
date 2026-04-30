@@ -1028,51 +1028,41 @@ export function PurchaseQuotesClient() {
                               <p className="text-sm text-muted-foreground">Nenhum anexo cadastrado para esta cotação.</p>
                             ) : null}
                             {quoteAttachments.length ? (
-                              <div className="overflow-hidden rounded-md border">
-                                <table className="w-full min-w-[760px] text-left text-sm">
-                                  <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
-                                    <tr>
-                                      <th className="px-3 py-2 font-semibold">Arquivo</th>
-                                      <th className="px-3 py-2 font-semibold">Tipo</th>
-                                      <th className="px-3 py-2 font-semibold">Tamanho</th>
-                                      <th className="px-3 py-2 font-semibold">Envio</th>
-                                      <th className="px-3 py-2 font-semibold">Descrição</th>
-                                      <th className="px-3 py-2 text-right font-semibold">Ações</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y">
-                                    {quoteAttachments.map((attachment) => (
-                                      <tr key={attachment.id}>
-                                        <td className="px-3 py-2 font-medium">{attachment.fileName}</td>
-                                        <td className="px-3 py-2 text-muted-foreground">{attachment.fileMimeType}</td>
-                                        <td className="px-3 py-2 text-muted-foreground">{formatFileSize(attachment.fileSizeBytes)}</td>
-                                        <td className="px-3 py-2 text-muted-foreground">{formatDate(attachment.createdAt)}</td>
-                                        <td className="px-3 py-2 text-muted-foreground">{attachment.description || "-"}</td>
-                                        <td className="px-3 py-2">
-                                          <div className="flex justify-end gap-2">
-                                            {attachment.signedUrl ? (
-                                              <Button type="button" size="sm" variant="outline" asChild>
-                                                <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
-                                                  Abrir
-                                                </a>
-                                              </Button>
-                                            ) : null}
-                                            <Button
-                                              type="button"
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
-                                              disabled={deleteAttachmentMutation.isPending}
-                                            >
-                                              <Trash2 className="h-4 w-4" />
-                                              Remover
-                                            </Button>
-                                          </div>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                              <div className="space-y-2">
+                                {quoteAttachments.map((attachment) => (
+                                  <div key={attachment.id} className="rounded-md border bg-muted/20 p-3">
+                                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                      <div className="min-w-0 flex-1 space-y-2">
+                                        <p className="break-words text-sm font-semibold text-foreground">{attachment.fileName}</p>
+                                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                          <span>Tipo: {attachment.fileMimeType}</span>
+                                          <span>Tamanho: {formatFileSize(attachment.fileSizeBytes)}</span>
+                                          <span>Envio: {formatDate(attachment.createdAt)}</span>
+                                        </div>
+                                        <p className="break-words text-xs text-muted-foreground">Descrição: {attachment.description || "-"}</p>
+                                      </div>
+                                      <div className="flex shrink-0 flex-wrap justify-start gap-2 lg:justify-end">
+                                        {attachment.signedUrl ? (
+                                          <Button type="button" size="sm" variant="outline" asChild>
+                                            <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
+                                              Abrir
+                                            </a>
+                                          </Button>
+                                        ) : null}
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
+                                          disabled={deleteAttachmentMutation.isPending}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                          Remover
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             ) : null}
                           </div>
