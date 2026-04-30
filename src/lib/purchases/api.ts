@@ -69,8 +69,9 @@ export function buildNextPurchaseQuoteNumber(requestNumber: string | null | unde
   if (normalizedRequestNumber) {
     const prefix = `${normalizedRequestNumber}-COT-`;
     const sequencePattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)$`);
+    const legacySequencePattern = new RegExp(`^CQ-${escapeRegExp(normalizedRequestNumber)}-(\\d+)$`);
     const latestSequence = existingQuoteNumbers.reduce((latest, quoteNumber) => {
-      const sequence = quoteNumber.match(sequencePattern)?.[1];
+      const sequence = quoteNumber.match(sequencePattern)?.[1] ?? quoteNumber.match(legacySequencePattern)?.[1];
       const parsed = sequence ? Number.parseInt(sequence, 10) : 0;
       return Number.isFinite(parsed) && parsed > latest ? parsed : latest;
     }, 0);

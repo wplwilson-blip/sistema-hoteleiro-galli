@@ -32,41 +32,41 @@ const modules = [
   },
   {
     title: "Cargos",
-    description: "Cargos e posi\u00e7\u00f5es por departamento.",
+    description: "Cargos e posições por departamento.",
     href: "/cadastros/cargos",
     icon: BriefcaseBusiness,
     enabled: true
   },
   {
     title: "Colaboradores",
-    description: "Cadastro estrutural dos colaboradores vinculados \u00e0s unidades, departamentos e cargos.",
+    description: "Cadastro estrutural dos colaboradores vinculados às unidades, departamentos e cargos.",
     href: "/cadastros/colaboradores",
     icon: UserRound,
     enabled: true
   },
   {
-    title: "Usu\u00e1rios internos",
-    description: "Controle de acessos dos colaboradores ao sistema, com v\u00ednculo a perfil e unidades permitidas.",
+    title: "Usuários internos",
+    description: "Controle de acessos dos colaboradores ao sistema, com vínculo a perfil e unidades permitidas.",
     href: "/cadastros/usuarios",
     icon: Users,
     enabled: true
   },
   {
     title: "Fornecedores",
-    description: "Cadastro de fornecedores utilizados em compras, cota\u00e7\u00f5es, manuten\u00e7\u00e3o, A&B e rotinas administrativas.",
+    description: "Cadastro de fornecedores utilizados em compras, cotações, manutenção, A&B e rotinas administrativas.",
     href: "/cadastros/fornecedores",
     icon: IdCard,
     enabled: true
   },
   {
-    title: "Perfis e permiss\u00f5es",
+    title: "Perfis e permissões",
     description: "Matriz granular prevista para Sprint 4C.",
     icon: ShieldCheck,
     enabled: false
   },
   {
     title: "UHs/Quartos",
-    description: "Estrutura operacional ser\u00e1 detalhada em sprint posterior.",
+    description: "Estrutura operacional será detalhada em sprint posterior.",
     icon: BedDouble,
     enabled: false
   }
@@ -77,7 +77,7 @@ export default function CadastrosPage() {
     <div className="space-y-6">
       <PageTitle
         title="Cadastros"
-        description="M\u00f3dulo Base para manter unidades, departamentos, cargos e fornecedores usados pelos fluxos administrativos."
+        description="Módulo Base para manter unidades, departamentos, cargos e fornecedores usados pelos fluxos administrativos."
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -94,7 +94,7 @@ export default function CadastrosPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
                   <Icon className="h-5 w-5" />
                 </div>
-                <StatusBadge status={module.enabled ? "success" : "visual"} label={module.enabled ? "Dispon\u00edvel" : "Em breve"} />
+                <StatusBadge status={module.enabled ? "success" : "visual"} label={module.enabled ? "Disponível" : "Em breve"} />
               </div>
               <div className="flex items-end justify-between gap-3">
                 <div>

@@ -220,10 +220,10 @@ export function SuppliersClient() {
 
   const getUnitLabel = (supplier: SupplierRecord) => {
     if (!supplier.unitId) {
-      return "Global da organiza\u00e7\u00e3o";
+      return "Global da organização";
     }
 
-    return supplier.unitCode ? `${supplier.unitCode} - ${supplier.unitName}` : supplier.unitName || "Unidade n\u00e3o informada";
+    return supplier.unitCode ? `${supplier.unitCode} - ${supplier.unitName}` : supplier.unitName || "Unidade não informada";
   };
 
   return (
@@ -265,7 +265,7 @@ export function SuppliersClient() {
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Unidade">
                 <SelectField value={form.unitId} onChange={(event) => setForm({ ...form, unitId: event.target.value })}>
-                  <option value="">Fornecedor global da organiza\u00e7\u00e3o</option>
+                  <option value="">Fornecedor global da organização</option>
                   {activeUnits.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.code} - {unit.name}
@@ -311,7 +311,7 @@ export function SuppliersClient() {
               <Field label="Categoria">
                 <TextInput value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
               </Field>
-              <Field label="Observa\u00e7\u00f5es" className="md:col-span-2">
+              <Field label="Observações" className="md:col-span-2">
                 <TextArea rows={3} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
               </Field>
             </div>
@@ -329,7 +329,7 @@ export function SuppliersClient() {
       {!suppliersQuery.isLoading && !filteredSuppliers.length ? (
         <EmptyState
           title="Nenhum fornecedor cadastrado"
-          description="Cadastre fornecedores para liberar o registro de cota\u00e7\u00f5es em Compras."
+          description="Cadastre fornecedores para liberar o registro de cotações em Compras."
         />
       ) : null}
       {filteredSuppliers.length ? (
@@ -342,7 +342,7 @@ export function SuppliersClient() {
                 <th className="px-4 py-3 font-semibold">Contato</th>
                 <th className="px-4 py-3 font-semibold">Unidade</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 text-right font-semibold">A\u00e7\u00f5es</th>
+                <th className="px-4 py-3 text-right font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y">

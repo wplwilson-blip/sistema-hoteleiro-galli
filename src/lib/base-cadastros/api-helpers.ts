@@ -35,7 +35,7 @@ export async function requireSuperAdminRequest() {
   }
 
   if (session.profile.code !== SUPER_ADMIN_PROFILE_CODE) {
-    return { session, response: apiError("Voc\u00ea n\u00e3o tem permiss\u00e3o para gerenciar usu\u00e1rios internos.", 403) };
+    return { session, response: apiError("Você não tem permissão para gerenciar usuários internos.", 403) };
   }
 
   return { session, response: null };

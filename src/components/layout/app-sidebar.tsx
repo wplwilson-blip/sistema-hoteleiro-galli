@@ -32,23 +32,23 @@ const menuItems = [
   { label: "Unidades", href: "/cadastros/unidades", icon: Building2 },
   { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags },
   { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness },
-  { label: "Usu\u00e1rios internos", href: "/cadastros/usuarios", icon: Users },
+  { label: "Usuários internos", href: "/cadastros/usuarios", icon: Users },
   { label: "Colaboradores", href: "/cadastros/colaboradores", icon: UserRound },
   { label: "Fornecedores", href: "/cadastros/fornecedores", icon: IdCard },
-  { label: "Minha Opera\u00e7\u00e3o", href: "/minha-operacao", icon: BedDouble },
-  { label: "Aprova\u00e7\u00f5es", href: "#", icon: ClipboardCheck },
+  { label: "Minha Operação", href: "/minha-operacao", icon: BedDouble },
+  { label: "Aprovações", href: "#", icon: ClipboardCheck },
   { label: "Compras", href: "/compras", icon: ShoppingCart },
-  { label: "Solicita\u00e7\u00f5es", href: "/compras/solicitacoes", icon: ClipboardList },
-  { label: "Cota\u00e7\u00f5es", href: "/compras/cotacoes", icon: ClipboardCheck },
+  { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList },
+  { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck },
   { label: "RH", href: "#", icon: Users },
   { label: "Contas a Pagar", href: "#", icon: Landmark },
-  { label: "Manuten\u00e7\u00e3o", href: "#", icon: Wrench },
-  { label: "Governan\u00e7a", href: "#", icon: ShieldCheck },
+  { label: "Manutenção", href: "#", icon: Wrench },
+  { label: "Governança", href: "#", icon: ShieldCheck },
   { label: "A&B", href: "#", icon: Utensils },
   { label: "Administrativo", href: "#", icon: BriefcaseBusiness },
-  { label: "Relat\u00f3rios", href: "#", icon: FileText },
+  { label: "Relatórios", href: "#", icon: FileText },
   { label: "Auditoria", href: "#", icon: BarChart3 },
-  { label: "Configura\u00e7\u00f5es", href: "#", icon: Settings }
+  { label: "Configurações", href: "#", icon: Settings }
 ];
 
 export function AppSidebar() {

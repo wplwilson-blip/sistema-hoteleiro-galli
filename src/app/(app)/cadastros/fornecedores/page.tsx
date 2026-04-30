@@ -4,7 +4,7 @@ import { SuppliersClient } from "@/components/base-cadastros/suppliers-client";
 export default function FornecedoresPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Fornecedores" description="Cadastre e mantenha fornecedores ativos para compras e cota\u00e7\u00f5es." />
+      <PageTitle title="Fornecedores" description="Cadastre e mantenha fornecedores ativos para compras e cotações." />
       <SuppliersClient />
     </div>
   );

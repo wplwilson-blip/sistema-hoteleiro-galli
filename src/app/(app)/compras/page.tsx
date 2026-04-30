@@ -6,35 +6,35 @@ import { Card } from "@/components/ui/card";
 
 const cards = [
   {
-    title: "Solicita\u00e7\u00f5es de compra",
-    description: "Abrir e acompanhar solicita\u00e7\u00f5es de compra internas por unidade e departamento.",
+    title: "Solicitações de compra",
+    description: "Abrir e acompanhar solicitações de compra internas por unidade e departamento.",
     href: "/compras/solicitacoes",
     icon: ClipboardList,
-    label: "Dispon\u00edvel"
+    label: "Disponível"
   },
   {
-    title: "Cota\u00e7\u00f5es",
-    description: "Gerencie cota\u00e7\u00f5es e compara\u00e7\u00e3o de fornecedores por solicita\u00e7\u00e3o.",
+    title: "Cotações",
+    description: "Gerencie cotações e comparação de fornecedores por solicitação.",
     href: "/compras/cotacoes",
     icon: ShoppingCart,
-    label: "Dispon\u00edvel"
+    label: "Disponível"
   },
   {
     title: "Fornecedores",
-    description: "Gerencie fornecedores antes de registrar cota\u00e7\u00f5es.",
+    description: "Gerencie fornecedores antes de registrar cotações.",
     href: "/cadastros/fornecedores",
     icon: IdCard,
     label: "Cadastro"
   },
   {
     title: "Recebimentos",
-    description: "Recebimento parcial, total e com diverg\u00eancia ficar\u00e1 para a pr\u00f3xima fase.",
+    description: "Recebimento parcial, total e com divergência ficará para a próxima fase.",
     icon: FileText,
     label: "Em breve"
   },
   {
     title: "Indicadores",
-    description: "Painel de acompanhamento e indicadores operacionais ser\u00e1 liberado depois.",
+    description: "Painel de acompanhamento e indicadores operacionais será liberado depois.",
     icon: LineChart,
     label: "Em breve"
   }
@@ -43,7 +43,7 @@ const cards = [
 export default function ComprasPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Compras" description="Gest\u00e3o de solicita\u00e7\u00f5es, cota\u00e7\u00f5es, aprova\u00e7\u00f5es e recebimentos de compras internas." />
+      <PageTitle title="Compras" description="Gestão de solicitações, cotações, aprovações e recebimentos de compras internas." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => {
