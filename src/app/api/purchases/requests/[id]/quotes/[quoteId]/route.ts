@@ -167,6 +167,10 @@ async function fetchQuoteById(supabase: SupabaseAdmin, requestId: string, quoteI
     .single();
 
   if (error) {
+    if (error.code === "PGRST116") {
+      throw new Error("Cotação não encontrada ou já removida.");
+    }
+
     logBaseCadastroError("purchase_quotes.quote_lookup_failed", error);
     throw new Error("Não foi possível localizar a cotação.");
   }
@@ -309,8 +313,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         return apiError("A cotação so pode ser selecionada em uma solicitação em cotação.", 409);
       }
 
-      if (quoteRow.status !== "received" && quoteRow.status !== "selected") {
-        return apiError("A cotação selecionada deve estar recebida ou selecionada.", 409);
+      if (quoteRow.status !== "received" && quoteRow.status !== "selected" && quoteRow.status !== "rejected") {
+        return apiError("A cotação selecionada deve estar recebida, rejeitada ou selecionada.", 409);
       }
 
       const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
@@ -368,7 +372,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           purchaseRequestId: requestRow.id,
           eventType: "quote_selected",
           fromStatus: requestRow.status,
-          toStatus: "quotation",
+          toStatus: requestRow.status,
           description: "Cotacao selecionada.",
           createdBy: session.user.id
         });
@@ -588,6 +592,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     }
 
+    if (error instanceof Error && error.message === "Cotação não encontrada ou já removida.") {
+      return apiError(error.message, 404);
+    }
+
     return apiError(error instanceof Error ? error.message : "Não foi possível atualizar a cotação.", 500);
   }
 }
@@ -608,6 +616,11 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     }
 
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
+
+    if (quoteRow.status === "cancelled" || quoteRow.deleted_at) {
+      return apiError("Cotação não encontrada ou já removida.", 404);
+    }
+
     const quoteItems = await fetchQuoteItems(supabase, quoteRow.id);
     const wasSelected = quoteRow.is_selected;
     const now = new Date().toISOString();
@@ -669,9 +682,9 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       unitId: requestRow.unit_id,
       purchaseRequestId: requestRow.id,
       eventType: "quote_cancelled",
-      fromStatus: quoteRow.status,
-      toStatus: "cancelled",
-      description: "Cotacao cancelada.",
+      fromStatus: requestRow.status,
+      toStatus: requestRow.status,
+      description: wasSelected ? "Cotação vencedora cancelada. A solicitação ficou sem cotação vencedora." : "Cotacao cancelada.",
       createdBy: session.user.id
     });
 
@@ -681,6 +694,10 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       cancelledItems: quoteItems.length
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Cotação não encontrada ou já removida.") {
+      return apiError(error.message, 404);
+    }
+
     return apiError(error instanceof Error ? error.message : "Não foi possível cancelar a cotação.", 500);
   }
 }

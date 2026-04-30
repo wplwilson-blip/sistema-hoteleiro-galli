@@ -625,10 +625,17 @@ export function PurchaseQuotesClient() {
   const canStart = selectedRequest?.status === "submitted" || selectedRequest?.status === "under_review";
   const canOpenQuote = selectedRequest?.status === "quotation";
   const canCreateQuote = canOpenQuote && suppliers.length > 0;
-  const showQuoteWarning = selectedRequest ? Boolean(selectedRequest.requiredQuoteCount) && quotes.length < selectedRequest.requiredQuoteCount : false;
   const selectedRequestItems = selectedRequest?.items ?? [];
   const isQuoteFormVisible = quoteFormOpen && Boolean(selectedRequest);
   const winningQuote = quotes.find((quote) => quote.isSelected) ?? null;
+  const validQuoteCount = quotes.filter((quote) => quote.status === "received" || quote.status === "selected" || quote.status === "rejected").length;
+  const showQuoteWarning = Boolean(winningQuote && winningQuote.totalAmount > 200 && validQuoteCount < 3);
+  const quoteWarningText =
+    validQuoteCount === 1
+      ? "Há apenas 1 cotação válida cadastrada."
+      : `Há apenas ${validQuoteCount} cotações válidas cadastradas.`;
+  const selectedRequestStatusLabel = winningQuote ? "Cotação selecionada" : selectedRequest?.statusLabel;
+  const selectedRequestStatusTone = winningQuote ? "success" : selectedRequest ? getPurchaseRequestStatusTone(selectedRequest.status) : "visual";
 
   const quoteItemsWatch = useWatch({ control: quoteForm.control, name: "items" });
   const quoteTotalPreview = useMemo(
@@ -651,6 +658,22 @@ export function PurchaseQuotesClient() {
       file,
       description: attachmentDescriptions[quoteId]?.trim() ?? ""
     });
+  }
+
+  function cancelQuote(quote: PurchaseQuoteRecord) {
+    if (!selectedRequest) {
+      return;
+    }
+
+    if (quote.isSelected) {
+      const confirmed = window.confirm("Você está cancelando a cotação vencedora. A solicitação ficará sem vencedora até que outra cotação seja selecionada. Deseja continuar?");
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    deleteMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id });
   }
 
   return (
@@ -727,7 +750,10 @@ export function PurchaseQuotesClient() {
                         <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
                         <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={getPurchaseRequestStatusTone(request.status)} label={request.statusLabel} />
+                          <StatusBadge
+                            status={isSelected && winningQuote ? "success" : getPurchaseRequestStatusTone(request.status)}
+                            label={isSelected && winningQuote ? "Cotação selecionada" : request.statusLabel}
+                          />
                         </td>
                         <td className="px-4 py-3 font-medium">
                           {request.totalApprovedAmount > 0 ? formatCurrency(request.totalApprovedAmount) : "Valor será definido na cotação"}
@@ -800,7 +826,7 @@ export function PurchaseQuotesClient() {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-semibold">{selectedRequest.requestNumber}</h2>
-                      <StatusBadge status={getPurchaseRequestStatusTone(selectedRequest.status)} label={selectedRequest.statusLabel} />
+                      <StatusBadge status={selectedRequestStatusTone} label={selectedRequestStatusLabel ?? selectedRequest.statusLabel} />
                     </div>
                     <h3 className="text-base font-semibold">{selectedRequest.title}</h3>
                     <p className="max-w-3xl text-sm text-muted-foreground">{selectedRequest.justification}</p>
@@ -857,7 +883,7 @@ export function PurchaseQuotesClient() {
 
               {showQuoteWarning ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Esta compra exige 3 cotações antes da aprovação.
+                  Atenção: esta compra exige 3 cotações antes da aprovação. {quoteWarningText}
                 </div>
               ) : null}
 
@@ -895,9 +921,12 @@ export function PurchaseQuotesClient() {
 
                 <div className="mt-4 rounded-md border bg-muted/30 px-4 py-3 text-sm">
                   {winningQuote ? (
-                    <p className="font-medium text-foreground">
-                      Cotação vencedora: {winningQuote.supplierTradeName || winningQuote.supplierName} — {winningQuote.totalAmountLabel}
-                    </p>
+                    <div className="space-y-1">
+                      <p className="font-medium text-foreground">
+                        Cotação vencedora: {winningQuote.supplierTradeName || winningQuote.supplierName} — {winningQuote.totalAmountLabel}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Próxima etapa: aprovação da compra.</p>
+                    </div>
                   ) : (
                     <p className="text-muted-foreground">Nenhuma cotação vencedora selecionada.</p>
                   )}
@@ -918,15 +947,39 @@ export function PurchaseQuotesClient() {
                                   Cotação vencedora
                                 </span>
                               ) : null}
+                              {quote.status === "rejected" && !quote.isSelected ? (
+                                <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Não selecionada</span>
+                              ) : null}
                             </div>
-                            <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
-                              <span>Número: <strong className="font-medium text-foreground">{quote.quoteNumber}</strong></span>
-                              <span>Total: <strong className="font-medium text-foreground">{quote.totalAmountLabel}</strong></span>
-                              <span>Prazo: {quote.deliveryDays || "-"}</span>
-                              <span>Validade: {formatDate(quote.validUntil)}{quote.isExpired ? " (vencida)" : ""}</span>
-                              <span>Pagamento: {quote.paymentTerms || "-"}</span>
-                              <span>Documento: {quote.supplierDocumentNumber || "-"}</span>
-                              <span>Selecionada: {quote.isSelected ? "Sim" : "Não"}</span>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Número</p>
+                                <p className="mt-1 break-words text-sm font-medium text-foreground">{quote.quoteNumber}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{quote.totalAmountLabel}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Prazo</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{quote.deliveryDays || "-"}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Validade</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{formatDate(quote.validUntil)}{quote.isExpired ? " (vencida)" : ""}</p>
+                              </div>
+                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Pagamento</p>
+                                <p className="mt-1 break-words text-sm font-medium text-foreground">{quote.paymentTerms || "-"}</p>
+                              </div>
+                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Documento</p>
+                                <p className="mt-1 break-words text-sm font-medium text-foreground">{quote.supplierDocumentNumber || "-"}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionada</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{quote.isSelected ? "Sim" : "Não"}</p>
+                              </div>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
@@ -934,7 +987,7 @@ export function PurchaseQuotesClient() {
                               <Pencil className="h-4 w-4" />
                               Editar
                             </Button>
-                            {!quote.isSelected ? (
+                            {!quote.isSelected && quote.status === "received" ? (
                               <Button
                                 type="button"
                                 size="sm"
@@ -949,11 +1002,11 @@ export function PurchaseQuotesClient() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              onClick={() => deleteMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id })}
+                              onClick={() => cancelQuote(quote)}
                               disabled={deleteMutation.isPending}
                             >
                               <Ban className="h-4 w-4" />
-                              Cancelar
+                              {quote.isSelected ? "Cancelar cotação vencedora" : "Cancelar cotação"}
                             </Button>
                           </div>
                         </div>
