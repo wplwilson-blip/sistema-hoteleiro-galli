@@ -70,9 +70,27 @@ function mapSupplier(row: SupplierRow, unit?: UnitRow | null) {
   };
 }
 
+function serializeSupplier(row: SupplierRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    trade_name: row.trade_name ?? "",
+    document_type: row.document_type,
+    document_number: row.document_number ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    whatsapp: row.whatsapp ?? "",
+    contact_name: row.contact_name ?? "",
+    category: row.category ?? "",
+    status: row.status,
+    unit_id: row.unit_id ?? ""
+  };
+}
+
 async function validateDuplicateDocument(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   organizationId: string,
+  documentType: string,
   documentNumber: string | undefined,
   currentSupplierId?: string
 ) {
@@ -84,26 +102,23 @@ async function validateDuplicateDocument(
 
   const { data, error } = await supabase
     .from("suppliers")
-    .select("id, document_number")
+    .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
     .eq("organization_id", organizationId)
+    .eq("document_type", documentType)
     .is("deleted_at", null);
 
   if (error) {
     logBaseCadastroError("suppliers.document_lookup_failed", error);
-    throw new Error("Nao foi possivel validar o documento do fornecedor.");
+    throw new Error("Não foi possível validar o documento do fornecedor.");
   }
 
-  const duplicate = (data ?? []).find((supplier) => {
+  return ((data ?? []) as SupplierRow[]).find((supplier) => {
     if (currentSupplierId && supplier.id === currentSupplierId) {
       return false;
     }
 
     return normalizeDocumentNumber(supplier.document_number) === normalizedDocument;
   });
-
-  if (duplicate) {
-    throw new Error("Ja existe um fornecedor com este documento nesta organizacao.");
-  }
 }
 
 export async function GET() {
@@ -162,39 +177,57 @@ export async function POST(request: Request) {
     const supabase = createSupabaseAdminClient();
     const organizationId = payload.unitId ? await getUnitOrganizationId(supabase, payload.unitId) : await getInitialOrganizationId(supabase);
 
-    await validateDuplicateDocument(supabase, organizationId, payload.documentNumber);
+    const duplicateSupplier = await validateDuplicateDocument(supabase, organizationId, payload.documentType, payload.documentNumber);
 
-    const { error } = await supabase.from("suppliers").insert({
-      organization_id: organizationId,
-      unit_id: payload.unitId ?? null,
-      name: payload.name,
-      trade_name: payload.tradeName ?? null,
-      document_type: payload.documentType,
-      document_number: normalizeDocumentNumber(payload.documentNumber) || null,
-      email: payload.email ?? null,
-      phone: payload.phone ?? null,
-      whatsapp: payload.whatsapp ?? null,
-      contact_name: payload.contactName ?? null,
-      address_json: null,
-      bank_data_json: null,
-      category: payload.category ?? null,
-      notes: payload.notes ?? null,
-      status: payload.status,
-      created_by: session.user.id,
-      updated_by: session.user.id
-    });
+    if (duplicateSupplier) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Já existe um fornecedor cadastrado com este CNPJ/CPF.",
+          supplier: serializeSupplier(duplicateSupplier)
+        },
+        { status: 409 }
+      );
+    }
+
+    const { data: createdSupplier, error } = await supabase
+      .from("suppliers")
+      .insert({
+        organization_id: organizationId,
+        unit_id: payload.unitId ?? null,
+        name: payload.name,
+        trade_name: payload.tradeName ?? null,
+        document_type: payload.documentType,
+        document_number: normalizeDocumentNumber(payload.documentNumber) || null,
+        email: payload.email ?? null,
+        phone: payload.phone ?? null,
+        whatsapp: payload.whatsapp ?? null,
+        contact_name: payload.contactName ?? null,
+        address_json: null,
+        bank_data_json: null,
+        category: payload.category ?? null,
+        notes: payload.notes ?? null,
+        status: payload.status,
+        created_by: session.user.id,
+        updated_by: session.user.id
+      })
+      .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
+      .single();
 
     if (error) {
       logBaseCadastroError("suppliers.create_failed", error);
-      return apiError("Nao foi possivel salvar o fornecedor.", 500);
+      if (error.code === "23505") {
+        return apiError("Já existe um fornecedor cadastrado com este CNPJ/CPF.", 409);
+      }
+      return apiError("Não foi possível salvar o fornecedor.", 500);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, supplier: serializeSupplier(createdSupplier as SupplierRow) }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
+      return apiError(error.errors[0]?.message ?? "Dados inválidos.", 422);
     }
 
-    return apiError(error instanceof Error ? error.message : "Nao foi possivel salvar o fornecedor.", 500);
+    return apiError(error instanceof Error ? error.message : "Não foi possível salvar o fornecedor.", 500);
   }
 }

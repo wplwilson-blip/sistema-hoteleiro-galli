@@ -1,80 +1,45 @@
-import Link from "next/link";
-import { ChevronRight, ClipboardList, FileText, IdCard, LineChart, ShoppingCart } from "lucide-react";
-import { PageTitle } from "@/components/common/page-title";
-import { StatusBadge } from "@/components/common/status-badge";
-import { Card } from "@/components/ui/card";
+import { ClipboardCheck, ClipboardList, FileCheck2, IdCard, ShoppingCart } from "lucide-react";
+import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
   {
-    title: "Solicitações de compra",
+    title: "Solicitações de Compra",
     description: "Abrir e acompanhar solicitações de compra internas por unidade e departamento.",
     href: "/compras/solicitacoes",
-    icon: ClipboardList,
-    label: "Disponível"
+    icon: ClipboardList
   },
   {
     title: "Cotações",
-    description: "Gerencie cotações e comparação de fornecedores por solicitação.",
+    description: "Registrar cotações, comparar propostas e acompanhar anexos enviados por fornecedores.",
     href: "/compras/cotacoes",
-    icon: ShoppingCart,
-    label: "Disponível"
+    icon: ShoppingCart
   },
   {
     title: "Fornecedores",
-    description: "Gerencie fornecedores antes de registrar cotações.",
+    description: "Acessar o cadastro de fornecedores usado nas compras e cotações.",
     href: "/cadastros/fornecedores",
     icon: IdCard,
-    label: "Cadastro"
+    status: "Cadastro" as const
   },
   {
-    title: "Recebimentos",
-    description: "Recebimento parcial, total e com divergência ficará para a próxima fase.",
-    icon: FileText,
-    label: "Em breve"
+    title: "Aprovações futuras",
+    description: "Aprovação da compra será tratada na Sprint 5D, sem execução nesta etapa.",
+    icon: ClipboardCheck
   },
   {
-    title: "Indicadores",
-    description: "Painel de acompanhamento e indicadores operacionais será liberado depois.",
-    icon: LineChart,
-    label: "Em breve"
+    title: "Evidências e documentos",
+    description: "Propostas, PDFs, imagens e documentos anexados às cotações ficam centralizados no fluxo.",
+    icon: FileCheck2,
+    status: "Disponível" as const
   }
 ];
 
 export default function ComprasPage() {
   return (
-    <div className="space-y-6">
-      <PageTitle title="Compras" description="Gestão de solicitações, cotações, aprovações e recebimentos de compras internas." />
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => {
-          const Icon = card.icon;
-          const content = (
-            <Card className="h-full border-border/80 p-5 shadow-sm shadow-primary/5 transition-colors hover:border-primary/30 hover:bg-card">
-              <div className="mb-5 flex items-start justify-between gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <StatusBadge status={card.href ? "success" : "visual"} label={card.label} />
-              </div>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold">{card.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
-                </div>
-                {card.href ? <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" /> : null}
-              </div>
-            </Card>
-          );
-
-          return card.href ? (
-            <Link key={card.title} href={card.href}>
-              {content}
-            </Link>
-          ) : (
-            <div key={card.title}>{content}</div>
-          );
-        })}
-      </div>
-    </div>
+    <ModuleDashboard
+      title="Compras"
+      description="Módulo para controlar solicitações, cotações, anexos, fornecedores e futura aprovação de compras internas."
+      cards={cards}
+    />
   );
 }
