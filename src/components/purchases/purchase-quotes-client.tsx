@@ -936,78 +936,84 @@ export function PurchaseQuotesClient() {
                   <div className="mt-4 space-y-3">
                     {quotes.map((quote) => (
                       <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                          <div className="min-w-0 space-y-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="break-words text-sm font-semibold text-foreground">{quote.supplierTradeName || quote.supplierName}</p>
-                              <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
-                              {quote.isSelected ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
-                                  <Check className="h-3.5 w-3.5" />
-                                  Cotação vencedora
-                                </span>
-                              ) : null}
-                              {quote.status === "rejected" && !quote.isSelected ? (
-                                <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Não selecionada</span>
-                              ) : null}
+                        <div className="space-y-4">
+                          <div className="flex flex-col gap-3 border-b pb-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="min-w-0 break-words text-sm font-semibold text-foreground">{quote.supplierTradeName || quote.supplierName}</p>
+                                <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
+                                {quote.isSelected ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
+                                    <Check className="h-3.5 w-3.5" />
+                                    Cotação vencedora
+                                  </span>
+                                ) : null}
+                                {quote.status === "rejected" && !quote.isSelected ? (
+                                  <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Não selecionada</span>
+                                ) : null}
+                              </div>
+                              <p className="truncate text-xs text-muted-foreground" title={quote.supplierDocumentNumber || "Documento não informado"}>
+                                Documento: {quote.supplierDocumentNumber || "-"}
+                              </p>
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Número</p>
-                                <p className="mt-1 break-words text-sm font-medium text-foreground">{quote.quoteNumber}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{quote.totalAmountLabel}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Prazo</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{quote.deliveryDays || "-"}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Validade</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{formatDate(quote.validUntil)}{quote.isExpired ? " (vencida)" : ""}</p>
-                              </div>
-                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Pagamento</p>
-                                <p className="mt-1 break-words text-sm font-medium text-foreground">{quote.paymentTerms || "-"}</p>
-                              </div>
-                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Documento</p>
-                                <p className="mt-1 break-words text-sm font-medium text-foreground">{quote.supplierDocumentNumber || "-"}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionada</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{quote.isSelected ? "Sim" : "Não"}</p>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
-                            <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)}>
-                              <Pencil className="h-4 w-4" />
-                              Editar
-                            </Button>
-                            {!quote.isSelected && quote.status === "received" ? (
+                            <div className="flex flex-wrap gap-2 lg:shrink-0 lg:justify-end">
+                              <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)}>
+                                <Pencil className="h-4 w-4" />
+                                Editar
+                              </Button>
+                              {!quote.isSelected && quote.status === "received" ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => selectMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id })}
+                                  disabled={selectMutation.isPending}
+                                >
+                                  <Check className="h-4 w-4" />
+                                  Selecionar como vencedora
+                                </Button>
+                              ) : null}
                               <Button
                                 type="button"
                                 size="sm"
-                                onClick={() => selectMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id })}
-                                disabled={selectMutation.isPending}
+                                variant="outline"
+                                onClick={() => cancelQuote(quote)}
+                                disabled={deleteMutation.isPending}
                               >
-                                <Check className="h-4 w-4" />
-                                Selecionar como vencedora
+                                <Ban className="h-4 w-4" />
+                                {quote.isSelected ? "Cancelar cotação vencedora" : "Cancelar cotação"}
                               </Button>
-                            ) : null}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => cancelQuote(quote)}
-                              disabled={deleteMutation.isPending}
-                            >
-                              <Ban className="h-4 w-4" />
-                              {quote.isSelected ? "Cancelar cotação vencedora" : "Cancelar cotação"}
-                            </Button>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Número</p>
+                              <p className="mt-1 overflow-x-auto whitespace-nowrap text-sm font-medium leading-relaxed text-foreground">{quote.quoteNumber}</p>
+                            </div>
+                            <div className="rounded-md border bg-background/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
+                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.totalAmountLabel}</p>
+                            </div>
+                            <div className="rounded-md border bg-background/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Prazo</p>
+                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.deliveryDays || "-"}</p>
+                            </div>
+                            <div className="rounded-md border bg-background/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Validade</p>
+                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{formatDate(quote.validUntil)}{quote.isExpired ? " (vencida)" : ""}</p>
+                            </div>
+                            <div className="min-w-0 rounded-md border bg-background/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Pagamento</p>
+                              <p className="mt-1 break-words text-sm font-medium leading-relaxed text-foreground">{quote.paymentTerms || "-"}</p>
+                            </div>
+                            <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2 lg:col-span-1">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Documento</p>
+                              <p className="mt-1 truncate text-sm font-medium leading-relaxed text-foreground" title={quote.supplierDocumentNumber || "-"}>{quote.supplierDocumentNumber || "-"}</p>
+                            </div>
+                            <div className="rounded-md border bg-background/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionada</p>
+                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.isSelected ? "Sim" : "Não"}</p>
+                            </div>
                           </div>
                         </div>
                       </article>
