@@ -101,7 +101,6 @@ const purchaseQuoteFormBaseSchema = z.object({
   supplierId: z
     .string({ required_error: "Selecione um fornecedor.", invalid_type_error: "Selecione um fornecedor." })
     .uuid("Selecione um fornecedor."),
-  quoteNumber: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
   quoteDate: purchaseQuoteDateSchema,
   validUntil: purchaseQuoteDateSchema,
   deliveryDays: purchaseOptionalIntegerSchema,

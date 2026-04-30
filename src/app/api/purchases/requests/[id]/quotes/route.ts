@@ -1,10 +1,9 @@
 ﻿import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseQuoteNumber,
-  calculatePurchaseRequestFlags,
   roundMoney,
   sumPurchaseQuoteItems
 } from "@/lib/purchases/api";
@@ -183,8 +182,8 @@ async function insertPurchaseRequestEvent(
   }
 }
 
-function buildQuoteNumber(requestNumber: string, existingQuotesCount: number) {
-  return buildNextPurchaseQuoteNumber(requestNumber, existingQuotesCount);
+function buildQuoteNumber(requestNumber: string, existingQuotes: PurchaseQuoteRow[]) {
+  return buildNextPurchaseQuoteNumber(requestNumber, existingQuotes.map((quote) => quote.quote_number));
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -278,7 +277,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const supplier = await fetchSupplier(supabase, payload.supplierId, requestRow.organization_id, accessibleUnitIds);
-    const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
     const requestItemMap = new Map(requestItems.map((item) => [item.id, item]));
     const seenRequestItemIds = new Set<string>();
 
@@ -311,36 +309,55 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const totalAmount = sumPurchaseQuoteItems(quoteItems.map((item) => ({ quantity: item.quantity, unitPrice: item.unitPrice })));
-    const quoteNumber = payload.quoteNumber?.trim() || buildQuoteNumber(requestRow.request_number, existingQuotes.length);
+    let quoteInsert: { id: string } | null = null;
+    let quoteNumber = "";
+    let duplicateQuoteErrorMessage = "";
 
-    const { data: quoteInsert, error: quoteError } = await supabase
-      .from("purchase_quotes")
-      .insert({
-        organization_id: requestRow.organization_id,
-        unit_id: requestRow.unit_id,
-        purchase_request_id: requestRow.id,
-        supplier_id: supplier.id,
-        quote_number: quoteNumber,
-        quote_date: payload.quoteDate,
-        valid_until: payload.validUntil,
-        total_amount: totalAmount,
-        delivery_days: payload.deliveryDays ?? null,
-        payment_terms: payload.paymentTerms ?? null,
-        is_selected: false,
-        is_recurring_supplier_quote: payload.isRecurringSupplierQuote ?? false,
-        quote_validity_exception: payload.quoteValidityException ?? false,
-        quote_validity_exception_reason: payload.quoteValidityExceptionReason?.trim() || null,
-        notes: payload.notes ?? null,
-        status: "received",
-        created_by: session.user.id,
-        updated_by: session.user.id
-      })
-      .select("id")
-      .single();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
+      quoteNumber = buildQuoteNumber(requestRow.request_number, existingQuotes);
 
-    if (quoteError) {
+      const { data, error: quoteError } = await supabase
+        .from("purchase_quotes")
+        .insert({
+          organization_id: requestRow.organization_id,
+          unit_id: requestRow.unit_id,
+          purchase_request_id: requestRow.id,
+          supplier_id: supplier.id,
+          quote_number: quoteNumber,
+          quote_date: payload.quoteDate,
+          valid_until: payload.validUntil,
+          total_amount: totalAmount,
+          delivery_days: payload.deliveryDays ?? null,
+          payment_terms: payload.paymentTerms ?? null,
+          is_selected: false,
+          is_recurring_supplier_quote: payload.isRecurringSupplierQuote ?? false,
+          quote_validity_exception: payload.quoteValidityException ?? false,
+          quote_validity_exception_reason: payload.quoteValidityExceptionReason?.trim() || null,
+          notes: payload.notes ?? null,
+          status: "received",
+          created_by: session.user.id,
+          updated_by: session.user.id
+        })
+        .select("id")
+        .single();
+
+      if (!quoteError) {
+        quoteInsert = data;
+        break;
+      }
+
+      if (quoteError.code === "23505" && attempt < 2) {
+        duplicateQuoteErrorMessage = quoteError.message;
+        continue;
+      }
+
       logBaseCadastroError("purchase_quotes.create_failed", quoteError);
       return apiError(quoteError.message || "Não foi possível salvar a cotação.", 500);
+    }
+
+    if (!quoteInsert) {
+      return apiError(duplicateQuoteErrorMessage || "Não foi possível gerar um número único para a cotação.", 409);
     }
 
     const quoteId = quoteInsert.id;
@@ -380,7 +397,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       createdBy: session.user.id
     });
 
-    return NextResponse.json({ ok: true, quoteId });
+    return NextResponse.json({ ok: true, quoteId, quoteNumber });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);

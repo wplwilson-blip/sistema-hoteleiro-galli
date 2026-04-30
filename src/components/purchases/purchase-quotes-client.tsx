@@ -5,9 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
-import { Ban, Check, Pencil, Plus, RotateCcw, Search, Truck } from "lucide-react";
+import { Ban, Check, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2, Truck, Upload } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
-import { ErrorMessage, Field, FormCard, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
+import { ErrorMessage, Field, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -107,6 +107,19 @@ type SupplierRecord = {
   status: string;
 };
 
+type AttachmentRecord = {
+  id: string;
+  module: string;
+  entityType: string;
+  entityId: string;
+  fileName: string;
+  fileMimeType: string;
+  fileSizeBytes: number;
+  description: string;
+  createdAt: string;
+  signedUrl?: string;
+};
+
 type PurchaseQuotesResponse = {
   ok: true;
   requests: PurchaseRequestSummary[];
@@ -120,6 +133,17 @@ type PurchaseQuoteDetailResponse = {
   suppliers: SupplierRecord[];
 };
 
+type AttachmentsResponse = {
+  ok: true;
+  attachments: AttachmentRecord[];
+};
+
+type SaveQuoteResponse = {
+  ok: true;
+  quoteId?: string;
+  quoteNumber?: string;
+};
+
 type QuoteItemFormValue = {
   purchaseRequestItemId: string;
   itemDescription: string;
@@ -130,7 +154,6 @@ type QuoteItemFormValue = {
 
 type PurchaseQuoteFormValues = {
   supplierId: string;
-  quoteNumber: string;
   quoteDate: string;
   validUntil: string;
   deliveryDays: string;
@@ -198,6 +221,18 @@ function parseLocalizedNumber(value: string | number | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+
+  return `${bytes} bytes`;
+}
+
 function FieldError({ message }: { message?: string }) {
   if (!message) {
     return null;
@@ -220,13 +255,39 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
+async function requestFormData<T>(url: string, body: FormData): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    body
+  });
+  const payload = await response.json();
+
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
+  }
+
+  return payload;
+}
+
+async function uploadAttachmentToQuote(input: { quoteId: string; file: File; description: string }) {
+  const body = new FormData();
+  body.append("module", "purchases");
+  body.append("entity_type", "purchase_quote");
+  body.append("entity_id", input.quoteId);
+  body.append("description", input.description);
+  body.append("visibility_scope", "unit");
+  body.append("file", input.file);
+
+  return requestFormData("/api/attachments", body);
+}
+
 function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQuoteFormValues {
   const today = new Date();
   const validUntil = addDays(today, 90);
+  const requestItems = request?.items ?? [];
 
   return {
     supplierId: "",
-    quoteNumber: "",
     quoteDate: toDateInputValue(today),
     validUntil: toDateInputValue(validUntil),
     deliveryDays: "",
@@ -235,7 +296,7 @@ function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQ
     isRecurringSupplierQuote: false,
     quoteValidityException: false,
     quoteValidityExceptionReason: "",
-    items: request?.items.map((item) => ({
+    items: requestItems.map((item) => ({
       purchaseRequestItemId: item.id,
       itemDescription: item.description,
       quantity: String(item.quantity),
@@ -246,9 +307,10 @@ function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQ
 }
 
 function buildEditQuoteForm(quote: PurchaseQuoteRecord): PurchaseQuoteFormValues {
+  const quoteItems = quote.items ?? [];
+
   return {
     supplierId: quote.supplierId,
-    quoteNumber: quote.quoteNumber,
     quoteDate: quote.quoteDate,
     validUntil: quote.validUntil,
     deliveryDays: quote.deliveryDays === "" ? "" : String(quote.deliveryDays),
@@ -257,7 +319,7 @@ function buildEditQuoteForm(quote: PurchaseQuoteRecord): PurchaseQuoteFormValues
     isRecurringSupplierQuote: quote.isRecurringSupplierQuote,
     quoteValidityException: quote.quoteValidityException,
     quoteValidityExceptionReason: quote.quoteValidityExceptionReason,
-    items: quote.items.map((item) => ({
+    items: quoteItems.map((item) => ({
       purchaseRequestItemId: item.purchaseRequestItemId,
       itemDescription: item.description,
       quantity: String(item.quantity),
@@ -273,6 +335,11 @@ export function PurchaseQuotesClient() {
   const [quoteFormOpen, setQuoteFormOpen] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [attachmentMessage, setAttachmentMessage] = useState("");
+  const [attachmentFiles, setAttachmentFiles] = useState<Record<string, File | null>>({});
+  const [attachmentDescriptions, setAttachmentDescriptions] = useState<Record<string, string>>({});
+  const [pendingQuoteAttachmentFiles, setPendingQuoteAttachmentFiles] = useState<File[]>([]);
+  const [pendingQuoteAttachmentDescription, setPendingQuoteAttachmentDescription] = useState("");
   const [search, setSearch] = useState("");
 
   const listQuery = useQuery({
@@ -307,6 +374,27 @@ export function PurchaseQuotesClient() {
   const suppliers = useMemo(() => detailQuery.data?.suppliers ?? listQuery.data?.suppliers ?? [], [detailQuery.data?.suppliers, listQuery.data?.suppliers]);
   const selectedRequest = detailQuery.data?.request ?? null;
   const quotes = useMemo(() => detailQuery.data?.quotes ?? [], [detailQuery.data?.quotes]);
+  const quoteIds = useMemo(() => quotes.map((quote) => quote.id), [quotes]);
+
+  const attachmentsQuery = useQuery({
+    queryKey: ["attachments", "purchase_quotes", quoteIds],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        quotes.map(async (quote) => {
+          const params = new URLSearchParams({
+            module: "purchases",
+            entity_type: "purchase_quote",
+            entity_id: quote.id
+          });
+          const payload = await requestJson<AttachmentsResponse>(`/api/attachments?${params.toString()}`);
+          return [quote.id, payload.attachments] as const;
+        })
+      );
+
+      return Object.fromEntries(entries) as Record<string, AttachmentRecord[]>;
+    },
+    enabled: quoteIds.length > 0
+  });
 
   useEffect(() => {
     if (!selectedRequestId && requests.length) {
@@ -319,6 +407,18 @@ export function PurchaseQuotesClient() {
       quoteForm.clearErrors("quoteValidityExceptionReason");
     }
   }, [quoteValidityException, quoteForm]);
+
+  function closeQuoteForm() {
+    setQuoteFormOpen(false);
+    setEditingQuoteId(null);
+    setError("");
+    setPendingQuoteAttachmentFiles([]);
+    setPendingQuoteAttachmentDescription("");
+    quoteForm.clearErrors();
+    const nextValues = buildDefaultQuoteForm(selectedRequest);
+    quoteForm.reset(nextValues);
+    replace(nextValues.items);
+  }
 
   useEffect(() => {
     if (!selectedRequest) {
@@ -334,11 +434,19 @@ export function PurchaseQuotesClient() {
     replace(nextValues.items);
   }, [editingQuoteId, quoteForm, quoteFormOpen, replace, selectedRequest]);
 
+  useEffect(() => {
+    if (quoteFormOpen && !selectedRequest) {
+      setQuoteFormOpen(false);
+      setEditingQuoteId(null);
+    }
+  }, [quoteFormOpen, selectedRequest]);
+
   function openRequest(requestId: string) {
     setSelectedRequestId(requestId);
     setQuoteFormOpen(false);
     setEditingQuoteId(null);
     setError("");
+    setAttachmentMessage("");
   }
 
   function openNewQuote() {
@@ -350,6 +458,8 @@ export function PurchaseQuotesClient() {
     setEditingQuoteId(null);
     setQuoteFormOpen(true);
     setError("");
+    setPendingQuoteAttachmentFiles([]);
+    setPendingQuoteAttachmentDescription("");
     quoteForm.clearErrors();
     quoteForm.reset(nextValues);
     replace(nextValues.items);
@@ -360,18 +470,11 @@ export function PurchaseQuotesClient() {
     setEditingQuoteId(quote.id);
     setQuoteFormOpen(true);
     setError("");
+    setPendingQuoteAttachmentFiles([]);
+    setPendingQuoteAttachmentDescription("");
     quoteForm.clearErrors();
     quoteForm.reset(nextValues);
     replace(nextValues.items);
-  }
-
-  function closeQuoteForm() {
-    setQuoteFormOpen(false);
-    setEditingQuoteId(null);
-    setError("");
-    quoteForm.clearErrors();
-    quoteForm.reset(buildDefaultQuoteForm(selectedRequest));
-    replace(buildDefaultQuoteForm(selectedRequest).items);
   }
 
   const saveMutation = useMutation({
@@ -385,21 +488,41 @@ export function PurchaseQuotesClient() {
         : `/api/purchases/requests/${selectedRequestId}/quotes`;
       const method = editingQuoteId ? "PATCH" : "POST";
 
-      return requestJson(url, {
+      return requestJson<SaveQuoteResponse>(url, {
         method,
         body: JSON.stringify({ ...payload, action: "save" })
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       setError("");
+      let uploadFailed = false;
+
+      if (!editingQuoteId && data.quoteId && pendingQuoteAttachmentFiles.length) {
+        for (const file of pendingQuoteAttachmentFiles) {
+          try {
+            await uploadAttachmentToQuote({
+              quoteId: data.quoteId,
+              file,
+              description: pendingQuoteAttachmentDescription.trim()
+            });
+          } catch {
+            uploadFailed = true;
+          }
+        }
+      }
+
       setQuoteFormOpen(false);
       setEditingQuoteId(null);
+      setPendingQuoteAttachmentFiles([]);
+      setPendingQuoteAttachmentDescription("");
       quoteForm.reset(buildDefaultQuoteForm(selectedRequest));
       replace(buildDefaultQuoteForm(selectedRequest).items);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
+        queryClient.invalidateQueries({ queryKey: ["attachments"] }),
         selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
       ]);
+      setAttachmentMessage(uploadFailed ? "A cotação foi salva, mas não foi possível enviar um ou mais anexos." : "Cotação salva com sucesso.");
     },
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível salvar a cotação.")
   });
@@ -444,6 +567,36 @@ export function PurchaseQuotesClient() {
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível cancelar a cotação.")
   });
 
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: async ({ quoteId, file, description }: { quoteId: string; file: File; description: string }) => {
+      return uploadAttachmentToQuote({ quoteId, file, description });
+    },
+    onSuccess: async (_data, variables) => {
+      setError("");
+      setAttachmentMessage("Arquivo enviado com sucesso.");
+      setAttachmentFiles((current) => ({ ...current, [variables.quoteId]: null }));
+      setAttachmentDescriptions((current) => ({ ...current, [variables.quoteId]: "" }));
+      await queryClient.invalidateQueries({ queryKey: ["attachments"] });
+    },
+    onError: (mutationError) => {
+      setAttachmentMessage("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível enviar o arquivo.");
+    }
+  });
+
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: async (attachmentId: string) => requestJson(`/api/attachments/${attachmentId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setError("");
+      setAttachmentMessage("Anexo removido com sucesso.");
+      await queryClient.invalidateQueries({ queryKey: ["attachments"] });
+    },
+    onError: (mutationError) => {
+      setAttachmentMessage("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível remover o anexo.");
+    }
+  });
+
   const filteredRequests = useMemo(() => {
     const term = search.trim().toLowerCase();
 
@@ -462,12 +615,31 @@ export function PurchaseQuotesClient() {
   const canOpenQuote = selectedRequest?.status === "quotation";
   const canCreateQuote = canOpenQuote && suppliers.length > 0;
   const showQuoteWarning = selectedRequest ? Boolean(selectedRequest.requiredQuoteCount) && quotes.length < selectedRequest.requiredQuoteCount : false;
+  const selectedRequestItems = selectedRequest?.items ?? [];
+  const isQuoteFormVisible = quoteFormOpen && Boolean(selectedRequest);
 
   const quoteItemsWatch = useWatch({ control: quoteForm.control, name: "items" });
   const quoteTotalPreview = useMemo(
     () => quoteItemsWatch?.reduce((sum, item) => sum + parseLocalizedNumber(item.quantity) * parseLocalizedNumber(item.unitPrice), 0) ?? 0,
     [quoteItemsWatch]
   );
+  const attachmentsByQuoteId = attachmentsQuery.data ?? {};
+
+  function uploadQuoteAttachment(quoteId: string) {
+    const file = attachmentFiles[quoteId];
+
+    if (!file) {
+      setAttachmentMessage("");
+      setError("Selecione um arquivo para enviar.");
+      return;
+    }
+
+    uploadAttachmentMutation.mutate({
+      quoteId,
+      file,
+      description: attachmentDescriptions[quoteId]?.trim() ?? ""
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -627,7 +799,7 @@ export function PurchaseQuotesClient() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {selectedRequest.items.map((item) => (
+                      {selectedRequestItems.map((item) => (
                         <tr key={item.id}>
                           <td className="px-3 py-2">{item.description}</td>
                           <td className="px-3 py-2 text-muted-foreground">{item.quantity}</td>
@@ -669,6 +841,12 @@ export function PurchaseQuotesClient() {
                     >
                       Ir para fornecedores
                     </Link>
+                  </div>
+                ) : null}
+
+                {attachmentMessage ? (
+                  <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                    {attachmentMessage}
                   </div>
                 ) : null}
 
@@ -751,295 +929,488 @@ export function PurchaseQuotesClient() {
                 ) : (
                   <EmptyState title="Nenhuma cotação cadastrada" description="Use Nova cotação para registrar propostas de fornecedores." />
                 )}
-              </div>
 
-              {quoteFormOpen ? (
-                <FormCard
-                  title={editingQuoteId ? "Editar cotação" : "Nova cotação"}
-                  onCancel={closeQuoteForm}
-                >
-                  <form className="space-y-5" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
-                    {!suppliers.length ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
-                        <Link
-                          href="/cadastros/fornecedores"
-                          className="mt-3 inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
-                        >
-                          Ir para fornecedores
-                        </Link>
-                      </div>
-                    ) : null}
+                {quotes.length ? (
+                  <div className="mt-5 space-y-4">
+                    {quotes.map((quote) => {
+                      const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
+                      const selectedFile = attachmentFiles[quote.id];
 
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <Field label="Fornecedor">
-                        <Controller
-                          control={quoteForm.control}
-                          name="supplierId"
-                          render={({ field }) => (
-                            <SelectField
-                              name={field.name}
-                              value={field.value ?? ""}
-                              onBlur={field.onBlur}
-                              onChange={(event) => {
-                                field.onChange(event.target.value);
-                                quoteForm.clearErrors("supplierId");
-                              }}
-                              disabled={!suppliers.length}
-                            >
-                              <option value="">Selecione</option>
-                              {suppliers.map((supplier) => (
-                                <option key={supplier.id} value={supplier.id}>
-                                  {supplier.tradeName || supplier.name}
-                                </option>
-                              ))}
-                            </SelectField>
-                          )}
-                        />
-                        <FieldError message={quoteForm.formState.errors.supplierId?.message} />
-                      </Field>
-                      <Field label="Número da cotação">
-                        <TextInput placeholder="CQ-..." {...quoteForm.register("quoteNumber")} />
-                      </Field>
-                      <Field label="Data da cotação">
-                        <Controller
-                          control={quoteForm.control}
-                          name="quoteDate"
-                          render={({ field }) => (
-                            <TextInput
-                              type="date"
-                              value={field.value ?? ""}
-                              onBlur={field.onBlur}
-                              onChange={(event) => {
-                                field.onChange(event.target.value);
-                                quoteForm.clearErrors("quoteDate");
-                              }}
-                            />
-                          )}
-                        />
-                        <FieldError message={quoteForm.formState.errors.quoteDate?.message} />
-                      </Field>
-                      <Field label="Validade da cotação">
-                        <Controller
-                          control={quoteForm.control}
-                          name="validUntil"
-                          render={({ field }) => (
-                            <TextInput
-                              type="date"
-                              value={field.value ?? ""}
-                              onBlur={field.onBlur}
-                              onChange={(event) => {
-                                field.onChange(event.target.value);
-                                quoteForm.clearErrors("validUntil");
-                              }}
-                            />
-                          )}
-                        />
-                        <FieldError message={quoteForm.formState.errors.validUntil?.message} />
-                      </Field>
-                      <Field label="Prazo de entrega (dias)">
-                        <Controller
-                          control={quoteForm.control}
-                          name="deliveryDays"
-                          render={({ field }) => (
-                            <TextInput
-                              type="text"
-                              inputMode="numeric"
-                              value={field.value ?? ""}
-                              onBlur={field.onBlur}
-                              onChange={(event) => {
-                                field.onChange(event.target.value);
-                                quoteForm.clearErrors("deliveryDays");
-                              }}
-                            />
-                          )}
-                        />
-                        <FieldError message={quoteForm.formState.errors.deliveryDays?.message} />
-                      </Field>
-                      <Field label="Condição de pagamento">
-                        <TextInput placeholder="Ex.: 30 dias" {...quoteForm.register("paymentTerms")} />
-                      </Field>
-                      <Field label="Observações" className="lg:col-span-2">
-                        <TextArea rows={3} {...quoteForm.register("notes")} />
-                      </Field>
-                      <Field label="Fornecedor recorrente" className="flex items-center gap-2 lg:col-span-1">
-                        <Controller
-                          control={quoteForm.control}
-                          name="isRecurringSupplierQuote"
-                          render={({ field }) => (
-                            <input
-                              type="checkbox"
-                              checked={Boolean(field.value)}
-                              onChange={(event) => field.onChange(event.target.checked)}
-                              className="h-4 w-4 rounded border-input"
-                            />
-                          )}
-                        />
-                        <span className="text-sm text-muted-foreground">Cotação de fornecedor recorrente/homologado</span>
-                      </Field>
-                      <Field label="Exceção de validade" className="flex items-center gap-2 lg:col-span-1">
-                        <Controller
-                          control={quoteForm.control}
-                          name="quoteValidityException"
-                          render={({ field }) => (
-                            <input
-                              type="checkbox"
-                              checked={Boolean(field.value)}
-                              onChange={(event) => field.onChange(event.target.checked)}
-                              className="h-4 w-4 rounded border-input"
-                            />
-                          )}
-                        />
-                        <span className="text-sm text-muted-foreground">Permitir validade acima do padrão com justificativa</span>
-                      </Field>
-                      {quoteValidityException ? (
-                        <Field label="Justificativa da exceção" className="lg:col-span-2">
-                          <Controller
-                            control={quoteForm.control}
-                            name="quoteValidityExceptionReason"
-                            render={({ field }) => (
-                              <TextArea
-                                rows={3}
-                                value={field.value ?? ""}
-                                onBlur={field.onBlur}
-                                onChange={(event) => {
-                                  field.onChange(event.target.value);
-                                  quoteForm.clearErrors("quoteValidityExceptionReason");
-                                }}
-                              />
-                            )}
-                          />
-                          <FieldError message={quoteForm.formState.errors.quoteValidityExceptionReason?.message} />
-                        </Field>
-                      ) : null}
-                    </div>
-
-                    <div className="rounded-lg border bg-muted/30 p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <h4 className="text-sm font-semibold">Itens cotados</h4>
-                          <p className="text-xs text-muted-foreground">Informe o valor unitário para cada item solicitado.</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        {fields.map((field, index) => (
-                          <div key={field.id} className="rounded-md border bg-background p-3">
-                            <div className="grid gap-3 lg:grid-cols-12">
-                      <Field label="Item da solicitação" className="lg:col-span-3">
-                                <Controller
-                                  control={quoteForm.control}
-                                  name={`items.${index}.purchaseRequestItemId`}
-                                  render={({ field: itemField }) => <input type="hidden" value={itemField.value ?? ""} readOnly />}
-                                />
-                                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                                  {selectedRequest.items[index]?.description || "-"}
-                                </div>
-                              </Field>
-                              <Field label="Descrição do item" className="lg:col-span-3">
-                                <Controller
-                                  control={quoteForm.control}
-                                  name={`items.${index}.itemDescription`}
-                                  render={({ field: itemField }) => (
-                                    <TextInput
-                                      value={itemField.value ?? ""}
-                                      onBlur={itemField.onBlur}
-                                      onChange={(event) => {
-                                        itemField.onChange(event.target.value);
-                                        quoteForm.clearErrors(`items.${index}.itemDescription`);
-                                      }}
-                                    />
-                                  )}
-                                />
-                                <FieldError message={quoteForm.formState.errors.items?.[index]?.itemDescription?.message} />
-                              </Field>
-                              <Field label="Quantidade" className="lg:col-span-2">
-                                <Controller
-                                  control={quoteForm.control}
-                                  name={`items.${index}.quantity`}
-                                  render={({ field: itemField }) => (
-                                    <TextInput
-                                      type="text"
-                                      inputMode="decimal"
-                                      readOnly
-                                      value={itemField.value ?? ""}
-                                      onBlur={itemField.onBlur}
-                                      onChange={(event) => {
-                                        itemField.onChange(event.target.value);
-                                        quoteForm.clearErrors(`items.${index}.quantity`);
-                                      }}
-                                    />
-                                  )}
-                                />
-                                <FieldError message={quoteForm.formState.errors.items?.[index]?.quantity?.message} />
-                              </Field>
-                              <Field label="Valor unitário" className="lg:col-span-2">
-                                <Controller
-                                  control={quoteForm.control}
-                                  name={`items.${index}.unitPrice`}
-                                  render={({ field: itemField }) => (
-                                    <TextInput
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={itemField.value ?? ""}
-                                      onBlur={itemField.onBlur}
-                                      onChange={(event) => {
-                                        itemField.onChange(event.target.value);
-                                        quoteForm.clearErrors(`items.${index}.unitPrice`);
-                                      }}
-                                    />
-                                  )}
-                                />
-                                <FieldError message={quoteForm.formState.errors.items?.[index]?.unitPrice?.message} />
-                              </Field>
-                              <Field label="Total" className="lg:col-span-1">
-                                <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm">
-                                  {formatCurrency(parseLocalizedNumber(quoteItemsWatch?.[index]?.quantity) * parseLocalizedNumber(quoteItemsWatch?.[index]?.unitPrice))}
-                                </div>
-                              </Field>
-                              <Field label="Observações de entrega" className="lg:col-span-1">
-                                <Controller
-                                  control={quoteForm.control}
-                                  name={`items.${index}.deliveryNotes`}
-                                  render={({ field: itemField }) => (
-                                    <TextArea
-                                      rows={2}
-                                      value={itemField.value ?? ""}
-                                      onBlur={itemField.onBlur}
-                                      onChange={(event) => itemField.onChange(event.target.value)}
-                                    />
-                                  )}
-                                />
-                              </Field>
+                      return (
+                        <section key={quote.id} className="space-y-4 rounded-lg border bg-background p-4">
+                          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Paperclip className="h-4 w-4" />
+                                Anexos
+                              </div>
+                              <p className="text-xs text-muted-foreground">Propostas, documentos ou imagens enviados pelo fornecedor.</p>
+                              <p className="text-xs font-medium text-foreground">
+                                {quote.quoteNumber} - {quote.supplierTradeName || quote.supplierName}
+                              </p>
                             </div>
                           </div>
-                        ))}
-                      </div>
 
-                      <div className="mt-4 flex flex-col gap-2 border-t pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-muted-foreground">Valor será definido na cotação pelo setor de Compras.</p>
-                        <p className="font-semibold text-foreground">Total: {formatCurrency(quoteTotalPreview)}</p>
-                      </div>
-                    </div>
+                          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)_auto] lg:items-end">
+                            <div className="space-y-1">
+                              <Label>Descrição opcional</Label>
+                              <Input
+                                value={attachmentDescriptions[quote.id] ?? ""}
+                                onChange={(event) => setAttachmentDescriptions((current) => ({ ...current, [quote.id]: event.target.value }))}
+                                placeholder="Ex.: Proposta comercial"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label>Arquivo</Label>
+                              <Input
+                                key={`${quote.id}-${selectedFile?.name ?? "empty"}`}
+                                type="file"
+                                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                onChange={(event) => {
+                                  setError("");
+                                  setAttachmentMessage("");
+                                  setAttachmentFiles((current) => ({ ...current, [quote.id]: event.target.files?.[0] ?? null }));
+                                }}
+                              />
+                            </div>
+                            <Button type="button" onClick={() => uploadQuoteAttachment(quote.id)} disabled={uploadAttachmentMutation.isPending}>
+                              <Upload className="h-4 w-4" />
+                              Enviar anexo
+                            </Button>
+                          </div>
 
-                    <ErrorMessage message={error} />
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">Arquivos</p>
+                            {attachmentsQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando anexos...</p> : null}
+                            {!attachmentsQuery.isLoading && !quoteAttachments.length ? (
+                              <p className="text-sm text-muted-foreground">Nenhum anexo cadastrado para esta cotação.</p>
+                            ) : null}
+                            {quoteAttachments.length ? (
+                              <div className="overflow-hidden rounded-md border">
+                                <table className="w-full min-w-[760px] text-left text-sm">
+                                  <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
+                                    <tr>
+                                      <th className="px-3 py-2 font-semibold">Arquivo</th>
+                                      <th className="px-3 py-2 font-semibold">Tipo</th>
+                                      <th className="px-3 py-2 font-semibold">Tamanho</th>
+                                      <th className="px-3 py-2 font-semibold">Envio</th>
+                                      <th className="px-3 py-2 font-semibold">Descrição</th>
+                                      <th className="px-3 py-2 text-right font-semibold">Ações</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y">
+                                    {quoteAttachments.map((attachment) => (
+                                      <tr key={attachment.id}>
+                                        <td className="px-3 py-2 font-medium">{attachment.fileName}</td>
+                                        <td className="px-3 py-2 text-muted-foreground">{attachment.fileMimeType}</td>
+                                        <td className="px-3 py-2 text-muted-foreground">{formatFileSize(attachment.fileSizeBytes)}</td>
+                                        <td className="px-3 py-2 text-muted-foreground">{formatDate(attachment.createdAt)}</td>
+                                        <td className="px-3 py-2 text-muted-foreground">{attachment.description || "-"}</td>
+                                        <td className="px-3 py-2">
+                                          <div className="flex justify-end gap-2">
+                                            {attachment.signedUrl ? (
+                                              <Button type="button" size="sm" variant="outline" asChild>
+                                                <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
+                                                  Abrir
+                                                </a>
+                                              </Button>
+                                            ) : null}
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
+                                              disabled={deleteAttachmentMutation.isPending}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                              Remover
+                                            </Button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : null}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
 
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-xs text-muted-foreground">
-                        {quoteForm.formState.errors.items?.message ?? "Compare fornecedores, prazo, condição de pagamento e validade antes de selecionar a melhor proposta."}
-                      </p>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button type="submit" disabled={saveMutation.isPending || !suppliers.length}>
-                          <Pencil className="h-4 w-4" />
-                          {editingQuoteId ? "Salvar cotação" : "Salvar cotação"}
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={closeQuoteForm}>
+              {isQuoteFormVisible ? (
+                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" role="presentation" onClick={closeQuoteForm}>
+                  <div className="flex h-full w-full items-stretch justify-end p-0 sm:p-4">
+                    <div
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="quote-form-title"
+                      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background shadow-2xl sm:max-w-[min(1120px,calc(100vw-2rem))] sm:rounded-l-2xl"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex items-start justify-between border-b px-6 py-5">
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {editingQuoteId ? "Editar cotação" : "Nova cotação"}
+                          </p>
+                          <h3 id="quote-form-title" className="text-lg font-semibold text-foreground">
+                            Informe os valores propostos pelo fornecedor para esta solicitação.
+                          </h3>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={closeQuoteForm}>
+                          <Ban className="h-4 w-4" />
                           Fechar
                         </Button>
                       </div>
+
+                      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
+                        <form className="space-y-6" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
+                          {!suppliers.length ? (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
+                              <Link
+                                href="/cadastros/fornecedores"
+                                className="mt-3 inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+                              >
+                                Ir para fornecedores
+                              </Link>
+                            </div>
+                          ) : null}
+
+                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-semibold">Dados da cotação</h4>
+                              <p className="text-xs text-muted-foreground">Preencha as condições oferecidas pelo fornecedor para esta solicitação.</p>
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                              <Field label="Fornecedor">
+                                <Controller
+                                  control={quoteForm.control}
+                                  name="supplierId"
+                                  render={({ field }) => (
+                                    <SelectField
+                                      name={field.name}
+                                      value={field.value ?? ""}
+                                      onBlur={field.onBlur}
+                                      onChange={(event) => {
+                                        field.onChange(event.target.value);
+                                        quoteForm.clearErrors("supplierId");
+                                      }}
+                                      disabled={!suppliers.length}
+                                    >
+                                      <option value="">Selecione</option>
+                                      {suppliers.map((supplier) => (
+                                        <option key={supplier.id} value={supplier.id}>
+                                          {supplier.tradeName || supplier.name}
+                                        </option>
+                                      ))}
+                                    </SelectField>
+                                  )}
+                                />
+                                <FieldError message={quoteForm.formState.errors.supplierId?.message} />
+                              </Field>
+                              <Field label="Data da cotação">
+                                <Controller
+                                  control={quoteForm.control}
+                                  name="quoteDate"
+                                  render={({ field }) => (
+                                    <TextInput
+                                      type="date"
+                                      value={field.value ?? ""}
+                                      onBlur={field.onBlur}
+                                      onChange={(event) => {
+                                        field.onChange(event.target.value);
+                                        quoteForm.clearErrors("quoteDate");
+                                      }}
+                                    />
+                                  )}
+                                />
+                                <FieldError message={quoteForm.formState.errors.quoteDate?.message} />
+                              </Field>
+                              <Field label="Validade da cotação">
+                                <Controller
+                                  control={quoteForm.control}
+                                  name="validUntil"
+                                  render={({ field }) => (
+                                    <TextInput
+                                      type="date"
+                                      value={field.value ?? ""}
+                                      onBlur={field.onBlur}
+                                      onChange={(event) => {
+                                        field.onChange(event.target.value);
+                                        quoteForm.clearErrors("validUntil");
+                                      }}
+                                    />
+                                  )}
+                                />
+                                <FieldError message={quoteForm.formState.errors.validUntil?.message} />
+                              </Field>
+                              <Field label="Prazo de entrega (dias)">
+                                <Controller
+                                  control={quoteForm.control}
+                                  name="deliveryDays"
+                                  render={({ field }) => (
+                                    <TextInput
+                                      type="text"
+                                      inputMode="numeric"
+                                      value={field.value ?? ""}
+                                      onBlur={field.onBlur}
+                                      onChange={(event) => {
+                                        field.onChange(event.target.value);
+                                        quoteForm.clearErrors("deliveryDays");
+                                      }}
+                                    />
+                                  )}
+                                />
+                                <FieldError message={quoteForm.formState.errors.deliveryDays?.message} />
+                              </Field>
+                              <Field label="Condição de pagamento">
+                                <TextInput placeholder="Ex.: 30 dias" {...quoteForm.register("paymentTerms")} />
+                              </Field>
+                              <Field label="Observações gerais" className="lg:col-span-2">
+                                <TextArea rows={3} {...quoteForm.register("notes")} />
+                              </Field>
+                              <Field label="Fornecedor recorrente" className="flex items-center gap-2 lg:col-span-1">
+                                <Controller
+                                  control={quoteForm.control}
+                                  name="isRecurringSupplierQuote"
+                                  render={({ field }) => (
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(field.value)}
+                                      onChange={(event) => field.onChange(event.target.checked)}
+                                      className="h-4 w-4 rounded border-input"
+                                    />
+                                  )}
+                                />
+                                <span className="text-sm text-muted-foreground">Cotação de fornecedor recorrente/homologado</span>
+                              </Field>
+                              <Field label="Exceção de validade" className="flex items-center gap-2 lg:col-span-1">
+                                <Controller
+                                  control={quoteForm.control}
+                                  name="quoteValidityException"
+                                  render={({ field }) => (
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(field.value)}
+                                      onChange={(event) => field.onChange(event.target.checked)}
+                                      className="h-4 w-4 rounded border-input"
+                                    />
+                                  )}
+                                />
+                                <span className="text-sm text-muted-foreground">Permitir validade acima do padrão com justificativa</span>
+                              </Field>
+                              {quoteValidityException ? (
+                                <Field label="Justificativa da exceção" className="lg:col-span-2">
+                                  <Controller
+                                    control={quoteForm.control}
+                                    name="quoteValidityExceptionReason"
+                                    render={({ field }) => (
+                                      <TextArea
+                                        rows={3}
+                                        value={field.value ?? ""}
+                                        onBlur={field.onBlur}
+                                        onChange={(event) => {
+                                          field.onChange(event.target.value);
+                                          quoteForm.clearErrors("quoteValidityExceptionReason");
+                                        }}
+                                      />
+                                    )}
+                                  />
+                                  <FieldError message={quoteForm.formState.errors.quoteValidityExceptionReason?.message} />
+                                </Field>
+                              ) : null}
+                            </div>
+                          </section>
+
+                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-semibold">Itens cotados</h4>
+                                <p className="text-xs text-muted-foreground">Cada item recebe o valor unitário proposto pelo fornecedor.</p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              {fields.map((field, index) => {
+                                const requestItem = selectedRequestItems[index];
+                                const itemQuantity = parseLocalizedNumber(quoteItemsWatch?.[index]?.quantity);
+                                const itemUnitPrice = parseLocalizedNumber(quoteItemsWatch?.[index]?.unitPrice);
+
+                                return (
+                                  <div key={field.id} className="rounded-xl border bg-background p-4 shadow-sm">
+                                    <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+                                      <div className="space-y-1">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Item da solicitação</p>
+                                        <p className="text-sm font-semibold text-foreground">{requestItem?.description || "-"}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Quantidade solicitada: {requestItem?.quantity ?? "-"} {requestItem?.unitOfMeasureLabel || ""}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-lg border bg-muted/30 px-3 py-2 text-right">
+                                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Total do item</p>
+                                        <p className="text-sm font-semibold text-foreground">{formatCurrency(itemQuantity * itemUnitPrice)}</p>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-3 lg:grid-cols-12">
+                                      <Field label="Descrição do item" className="lg:col-span-5">
+                                        <Controller
+                                          control={quoteForm.control}
+                                          name={`items.${index}.itemDescription`}
+                                          render={({ field: itemField }) => (
+                                            <TextInput
+                                              value={itemField.value ?? ""}
+                                              onBlur={itemField.onBlur}
+                                              onChange={(event) => {
+                                                itemField.onChange(event.target.value);
+                                                quoteForm.clearErrors(`items.${index}.itemDescription`);
+                                              }}
+                                            />
+                                          )}
+                                        />
+                                        <FieldError message={quoteForm.formState.errors.items?.[index]?.itemDescription?.message} />
+                                      </Field>
+                                      <Field label="Quantidade" className="lg:col-span-2">
+                                        <Controller
+                                          control={quoteForm.control}
+                                          name={`items.${index}.quantity`}
+                                          render={({ field: itemField }) => (
+                                            <TextInput
+                                              type="text"
+                                              inputMode="decimal"
+                                              readOnly
+                                              value={itemField.value ?? ""}
+                                              onBlur={itemField.onBlur}
+                                              onChange={(event) => {
+                                                itemField.onChange(event.target.value);
+                                                quoteForm.clearErrors(`items.${index}.quantity`);
+                                              }}
+                                            />
+                                          )}
+                                        />
+                                        <FieldError message={quoteForm.formState.errors.items?.[index]?.quantity?.message} />
+                                      </Field>
+                                      <Field label="Unidade de medida" className="lg:col-span-2">
+                                        <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm">
+                                          {requestItem?.unitOfMeasureLabel || "-"}
+                                        </div>
+                                      </Field>
+                                      <Field label="Valor unitário" className="lg:col-span-3">
+                                        <Controller
+                                          control={quoteForm.control}
+                                          name={`items.${index}.unitPrice`}
+                                          render={({ field: itemField }) => (
+                                            <TextInput
+                                              type="text"
+                                              inputMode="decimal"
+                                              value={itemField.value ?? ""}
+                                              onBlur={itemField.onBlur}
+                                              onChange={(event) => {
+                                                itemField.onChange(event.target.value);
+                                                quoteForm.clearErrors(`items.${index}.unitPrice`);
+                                              }}
+                                            />
+                                          )}
+                                        />
+                                        <FieldError message={quoteForm.formState.errors.items?.[index]?.unitPrice?.message} />
+                                      </Field>
+                                    </div>
+
+                                    <Field label="Observações de entrega" className="mt-3">
+                                      <Controller
+                                        control={quoteForm.control}
+                                        name={`items.${index}.deliveryNotes`}
+                                        render={({ field: itemField }) => (
+                                          <TextArea
+                                            rows={3}
+                                            value={itemField.value ?? ""}
+                                            onBlur={itemField.onBlur}
+                                            onChange={(event) => itemField.onChange(event.target.value)}
+                                          />
+                                        )}
+                                      />
+                                    </Field>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </section>
+
+                          {!editingQuoteId ? (
+                            <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-semibold">Anexos da proposta</h4>
+                                <p className="text-xs text-muted-foreground">Os arquivos serão enviados após salvar a cotação.</p>
+                              </div>
+
+                              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)]">
+                                <Field label="Descrição opcional">
+                                  <TextInput
+                                    value={pendingQuoteAttachmentDescription}
+                                    onChange={(event) => setPendingQuoteAttachmentDescription(event.target.value)}
+                                    placeholder="Ex.: Proposta comercial"
+                                  />
+                                </Field>
+                                <Field label="Arquivos">
+                                  <Input
+                                    type="file"
+                                    multiple
+                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                    onChange={(event) => {
+                                      setError("");
+                                      setAttachmentMessage("");
+                                      setPendingQuoteAttachmentFiles(Array.from(event.target.files ?? []));
+                                    }}
+                                  />
+                                </Field>
+                              </div>
+
+                              {pendingQuoteAttachmentFiles.length ? (
+                                <div className="rounded-md border bg-background p-3">
+                                  <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
+                                  <ul className="mt-2 space-y-1 text-sm">
+                                    {pendingQuoteAttachmentFiles.map((file) => (
+                                      <li key={`${file.name}-${file.size}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                                        <Paperclip className="h-4 w-4" />
+                                        <span className="font-medium text-foreground">{file.name}</span>
+                                        <span>{formatFileSize(file.size)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </section>
+                          ) : null}
+
+                          <ErrorMessage message={error} />
+                        </form>
+                      </div>
+
+                      <div className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1 text-sm">
+                          <p className="font-semibold text-foreground">Total da cotação: {formatCurrency(quoteTotalPreview)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {quoteForm.formState.errors.items?.message ?? "Compare fornecedores, prazo, condição de pagamento e validade antes de selecionar a melhor proposta."}
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button type="button" disabled={saveMutation.isPending || !suppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
+                            <Pencil className="h-4 w-4" />
+                            Salvar cotação
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={closeQuoteForm}>
+                            Fechar
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                  </form>
-                </FormCard>
+                  </div>
+                </div>
               ) : null}
             </>
           )}

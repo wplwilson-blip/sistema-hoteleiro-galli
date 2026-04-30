@@ -59,9 +59,35 @@ export function sumPurchaseQuoteItems(items: Array<{ quantity: number; unitPrice
   return roundMoney(items.reduce((accumulator, item) => accumulator + item.quantity * item.unitPrice, 0));
 }
 
-export function buildNextPurchaseQuoteNumber(requestNumber: string, existingCount: number) {
-  const nextSequence = existingCount + 1;
-  return `CQ-${requestNumber}-${String(nextSequence).padStart(2, "0")}`;
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function buildNextPurchaseQuoteNumber(requestNumber: string | null | undefined, existingQuoteNumbers: string[]) {
+  const normalizedRequestNumber = requestNumber?.trim();
+
+  if (normalizedRequestNumber) {
+    const prefix = `${normalizedRequestNumber}-COT-`;
+    const sequencePattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)$`);
+    const latestSequence = existingQuoteNumbers.reduce((latest, quoteNumber) => {
+      const sequence = quoteNumber.match(sequencePattern)?.[1];
+      const parsed = sequence ? Number.parseInt(sequence, 10) : 0;
+      return Number.isFinite(parsed) && parsed > latest ? parsed : latest;
+    }, 0);
+
+    return `${prefix}${String(latestSequence + 1).padStart(2, "0")}`;
+  }
+
+  const year = new Date().getFullYear();
+  const prefix = `COT-${year}-`;
+  const sequencePattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)$`);
+  const latestSequence = existingQuoteNumbers.reduce((latest, quoteNumber) => {
+    const sequence = quoteNumber.match(sequencePattern)?.[1];
+    const parsed = sequence ? Number.parseInt(sequence, 10) : 0;
+    return Number.isFinite(parsed) && parsed > latest ? parsed : latest;
+  }, 0);
+
+  return `${prefix}${String(latestSequence + 1).padStart(6, "0")}`;
 }
 
 export async function buildNextPurchaseRequestNumber(supabase: SupabaseAdmin, organizationId: string) {

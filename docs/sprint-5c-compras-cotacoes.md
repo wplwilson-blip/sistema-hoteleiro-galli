@@ -28,6 +28,13 @@ Implementar a camada funcional de cotacoes do modulo de Compras, permitindo inic
 5. O usuario compara as propostas e pode selecionar a vencedora.
 6. A cotacao selecionada atualiza o valor aprovado da solicitacao para uso futuro em aprovacao.
 
+## Numeracao automatica da cotacao
+- O numero interno da cotacao (`quote_number`) e gerado no servidor no cadastro da cotacao.
+- O formato preferencial usa o numero da solicitacao com sufixo sequencial por solicitacao: `SC-2026-000001-COT-01`, `SC-2026-000001-COT-02`.
+- Se a solicitacao nao tiver `request_number`, o fallback e `COT-ANO-000001`, por exemplo `COT-2026-000001`.
+- A tela nao solicita numero interno ao usuario; apos salvar, a listagem exibe o `quote_number` retornado do cadastro.
+- Hardening futuro: criar uma constraint unica por `purchase_request_id` e `quote_number` para eliminar duplicidade em concorrencia entre fornecedores diferentes. Nesta sprint nao foi criada migration.
+
 ## Regra dos R$ 200,00
 - Se a cotacao selecionada for menor ou igual a R$ 200,00, a solicitacao permanece sem exigencia de aprovacao e sem quantidade minima de cotacoes.
 - Se a cotacao selecionada for maior que R$ 200,00, a solicitacao passa a exigir 3 cotacoes e flags de aprovacao ficam preparadas para a proxima etapa.

@@ -420,7 +420,6 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError("Ação invalida para edicao de cotação.", 409);
     }
 
-    const quoteNumber = parsed.quoteNumber?.trim() || quoteRow.quote_number;
     const quoteItems: PurchaseQuoteItemUpdateRow[] = parsed.items.map((item: PurchaseQuotePayloadItem) => {
       if (!requestItemMap.has(item.purchaseRequestItemId)) {
         throw new Error("Item da cotação nao pertence a solicitação.");
@@ -451,7 +450,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const totalAmount = sumPurchaseQuoteItems(quoteItems.map((item: PurchaseQuoteItemUpdateRow) => ({ quantity: item.quantity, unitPrice: item.unit_price })));
     const quoteUpdateBody = {
       supplier_id: parsed.supplierId,
-      quote_number: quoteNumber,
+      quote_number: quoteRow.quote_number,
       quote_date: parsed.quoteDate,
       valid_until: parsed.validUntil,
       total_amount: totalAmount,
