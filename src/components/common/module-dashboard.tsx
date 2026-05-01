@@ -27,23 +27,23 @@ export function ModuleDashboard({ title, description, cards, columns = "four" }:
     <div className="space-y-6">
       <PageTitle title={title} description={description} />
 
-      <div className={`grid gap-4 ${gridColumns}`}>
+      <div className={`grid min-w-0 gap-4 ${gridColumns}`}>
         {cards.map((card) => {
           const Icon = card.icon;
           const isEnabled = Boolean(card.href);
           const status = card.status ?? (isEnabled ? "Disponível" : "Futuro");
           const content = (
-            <Card className="h-full border-border/80 p-5 shadow-sm shadow-primary/5 transition-colors hover:border-primary/30 hover:bg-card">
+            <Card className="h-full min-w-0 border-border/80 p-5 shadow-sm shadow-primary/5 transition-colors hover:border-primary/30 hover:bg-card">
               <div className="mb-5 flex items-start justify-between gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
                   <Icon className="h-5 w-5" />
                 </div>
                 <StatusBadge status={isEnabled ? "success" : "visual"} label={status} />
               </div>
-              <div className="flex items-end justify-between gap-3">
+              <div className="flex min-w-0 items-end justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="text-base font-semibold">{card.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
+                  <h2 className="break-words text-base font-semibold">{card.title}</h2>
+                  <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">{card.description}</p>
                 </div>
                 {isEnabled ? <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" /> : null}
               </div>

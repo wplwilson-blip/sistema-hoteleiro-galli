@@ -15,16 +15,18 @@ const cards = [
     icon: ShoppingCart
   },
   {
+    title: "Aprovações",
+    description: "Aprovação da compra será tratada na Sprint 5D, sem execução nesta etapa.",
+    href: "/compras/aprovacoes",
+    icon: ClipboardCheck,
+    status: "Em breve" as const
+  },
+  {
     title: "Fornecedores",
     description: "Acessar o cadastro de fornecedores usado nas compras e cotações.",
     href: "/cadastros/fornecedores",
     icon: IdCard,
     status: "Cadastro" as const
-  },
-  {
-    title: "Aprovações futuras",
-    description: "Aprovação da compra será tratada na Sprint 5D, sem execução nesta etapa.",
-    icon: ClipboardCheck
   },
   {
     title: "Evidências e documentos",

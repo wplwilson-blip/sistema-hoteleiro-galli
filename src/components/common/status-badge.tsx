@@ -15,7 +15,7 @@ const statusClasses = {
 
 export function StatusBadge({ status, label }: StatusBadgeProps) {
   return (
-    <span className={cn("inline-flex items-center rounded-md px-2 py-1 text-xs font-medium", statusClasses[status])}>
+    <span className={cn("inline-flex max-w-full items-center rounded-md px-2 py-1 text-xs font-medium leading-snug whitespace-normal break-words", statusClasses[status])}>
       {label}
     </span>
   );

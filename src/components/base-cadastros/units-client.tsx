@@ -163,7 +163,7 @@ export function UnitsClient() {
         <EmptyState title="Nenhuma unidade cadastrada" description="Cadastre a primeira unidade operacional da rede." />
       ) : null}
       {units.length ? (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm shadow-primary/5">
+        <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>

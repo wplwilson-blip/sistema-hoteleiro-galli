@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/status-badge";
 import { QuickSupplierDialog, type QuickSupplierRecord } from "@/components/purchases/quick-supplier-dialog";
+import { cn } from "@/lib/utils";
 import {
   getPurchasePriorityLabel,
   getPurchaseRequestStatusLabel,
@@ -256,6 +257,40 @@ function normalizeDocumentSearch(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
 }
 
+function getSupplierContactLabel(supplier: SupplierRecord) {
+  if (supplier.whatsapp) {
+    return `WhatsApp: ${supplier.whatsapp}`;
+  }
+
+  if (supplier.phone) {
+    return `Telefone: ${supplier.phone}`;
+  }
+
+  return "";
+}
+
+function getSupplierSummaryParts(supplier: SupplierRecord) {
+  return [
+    supplier.tradeName ? `Nome fantasia: ${supplier.tradeName}` : "",
+    supplier.documentNumber ? `Documento: ${supplier.documentNumber}` : "",
+    getSupplierContactLabel(supplier)
+  ].filter(Boolean);
+}
+
+function getPurchaseRequestQuotationFlowStatus(request: PurchaseRequestSummary, hasWinningQuote = request.totalApprovedAmount > 0) {
+  if (request.status === "quotation" && hasWinningQuote) {
+    return request.totalApprovedAmount > 200
+      ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const, stage: "approval" as const }
+      : { label: "Aguardando aprovação da Gerência Administrativa", tone: "info" as const, stage: "approval" as const };
+  }
+
+  return {
+    label: request.statusLabel,
+    tone: getPurchaseRequestStatusTone(request.status),
+    stage: "quotation" as const
+  };
+}
+
 function SupplierCombobox({
   suppliers,
   value,
@@ -270,6 +305,7 @@ function SupplierCombobox({
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const selectedSupplier = suppliers.find((supplier) => supplier.id === value);
+  const selectedSupplierSummary = selectedSupplier ? getSupplierSummaryParts(selectedSupplier).join(" • ") : "";
   const normalizedTerm = normalizeSearchValue(term);
   const documentTerm = normalizeDocumentSearch(term);
   const filteredSuppliers = suppliers.filter((supplier) => {
@@ -290,7 +326,7 @@ function SupplierCombobox({
   }
 
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className={cn("relative min-w-0 flex-1", open && "z-[80]")}>
       <Button
         type="button"
         variant="outline"
@@ -302,47 +338,53 @@ function SupplierCombobox({
           <p className="truncate text-sm font-medium">{selectedSupplier ? selectedSupplier.name : "Selecione um fornecedor"}</p>
           {selectedSupplier ? (
             <p className="mt-1 truncate text-xs font-normal text-muted-foreground">
-              {[selectedSupplier.tradeName ? `Nome fantasia: ${selectedSupplier.tradeName}` : "", selectedSupplier.documentNumber ? `Documento: ${selectedSupplier.documentNumber}` : "", selectedSupplier.phone || selectedSupplier.whatsapp || ""]
-                .filter(Boolean)
-                .join(" • ")}
+              {selectedSupplierSummary}
             </p>
           ) : null}
         </div>
       </Button>
 
       {open ? (
-        <div className="absolute z-[70] mt-2 w-full rounded-lg border bg-popover p-2 shadow-lg">
-          <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input
-              value={term}
-              onChange={(event) => setTerm(event.target.value)}
-              placeholder="Buscar por razão social, nome fantasia, CNPJ/CPF ou telefone"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              autoFocus
-            />
+        <div className="absolute left-0 top-full z-[90] mt-2 w-full min-w-[min(32rem,calc(100vw-3rem))] overflow-hidden rounded-md border border-border bg-background p-0 shadow-xl shadow-black/15">
+          <div className="border-b border-border bg-background p-3">
+            <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 shadow-sm">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                value={term}
+                onChange={(event) => setTerm(event.target.value)}
+                placeholder="Buscar por razão social, nome fantasia, CNPJ/CPF ou telefone"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                autoFocus
+              />
+            </div>
           </div>
 
-          <div className="mt-2 max-h-72 overflow-y-auto">
+          <div className="max-h-[22rem] overflow-y-auto bg-background p-2">
             {filteredSuppliers.length ? (
-              filteredSuppliers.map((supplier) => (
-                <button
-                  key={supplier.id}
-                  type="button"
-                  onClick={() => selectSupplier(supplier.id)}
-                  className="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted"
-                >
-                  <Check className={supplier.id === value ? "mt-0.5 h-4 w-4 shrink-0 text-primary" : "mt-0.5 h-4 w-4 shrink-0 text-transparent"} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">{supplier.name}</span>
-                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                      {[supplier.tradeName ? `Nome fantasia: ${supplier.tradeName}` : "", supplier.documentNumber ? `Documento: ${supplier.documentNumber}` : "", supplier.phone || supplier.whatsapp || ""]
-                        .filter(Boolean)
-                        .join(" • ")}
+              filteredSuppliers.map((supplier) => {
+                const summary = getSupplierSummaryParts(supplier).join(" • ");
+
+                return (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    onClick={() => selectSupplier(supplier.id)}
+                    className="flex w-full items-start gap-3 rounded-md px-3 py-3 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
+                  >
+                    <Check className={supplier.id === value ? "mt-0.5 h-4 w-4 shrink-0 text-primary" : "mt-0.5 h-4 w-4 shrink-0 text-transparent"} />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="block truncate text-sm font-semibold text-foreground" title={supplier.name}>
+                        {supplier.name}
+                      </span>
+                      {summary ? (
+                        <span className="block truncate text-xs leading-5 text-muted-foreground" title={summary}>
+                          {summary}
+                        </span>
+                      ) : null}
                     </span>
-                  </span>
-                </button>
-              ))
+                  </button>
+                );
+              })
             ) : (
               <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nenhum fornecedor encontrado.</p>
             )}
@@ -779,8 +821,9 @@ export function PurchaseQuotesClient() {
     validQuoteCount === 1
       ? "Há apenas 1 cotação válida cadastrada."
       : `Há apenas ${validQuoteCount} cotações válidas cadastradas.`;
-  const selectedRequestStatusLabel = winningQuote ? "Cotação selecionada" : selectedRequest?.statusLabel;
-  const selectedRequestStatusTone = winningQuote ? "success" : selectedRequest ? getPurchaseRequestStatusTone(selectedRequest.status) : "visual";
+  const selectedRequestFlowStatus = selectedRequest
+    ? getPurchaseRequestQuotationFlowStatus(selectedRequest, Boolean(winningQuote))
+    : { label: "", tone: "visual" as const };
 
   const quoteItemsWatch = useWatch({ control: quoteForm.control, name: "items" });
   const quoteTotalPreview = useMemo(
@@ -838,12 +881,12 @@ export function PurchaseQuotesClient() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
+      <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Solicitações elegíveis</h2>
-              <p className="text-sm text-muted-foreground">Clique em uma solicitação ou use Selecionar para carregar os detalhes e cotações à direita.</p>
+              <h2 className="text-lg font-semibold">Solicitações em cotação e aprovação</h2>
+              <p className="text-sm text-muted-foreground">Acompanhe solicitações ainda em cotação e compras com vencedora aguardando alçada.</p>
             </div>
           </div>
 
@@ -857,7 +900,7 @@ export function PurchaseQuotesClient() {
           ) : null}
 
           {filteredRequests.length ? (
-            <div className="overflow-hidden rounded-lg border bg-card shadow-sm shadow-primary/5">
+            <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                   <tr>
@@ -873,11 +916,16 @@ export function PurchaseQuotesClient() {
                 <tbody className="divide-y">
                   {filteredRequests.map((request) => {
                     const isSelected = request.id === selectedRequestId;
+                    const flowStatus = getPurchaseRequestQuotationFlowStatus(request, isSelected ? Boolean(winningQuote) : request.totalApprovedAmount > 0);
 
                     return (
                       <tr
                         key={request.id}
-                        className={isSelected ? "cursor-pointer bg-primary/10" : "cursor-pointer hover:bg-muted/25"}
+                        className={cn(
+                          "cursor-pointer",
+                          isSelected ? "bg-primary/10" : "hover:bg-muted/25",
+                          !isSelected && flowStatus.stage === "approval" && "bg-primary/5 hover:bg-primary/10"
+                        )}
                         onClick={() => openRequest(request.id)}
                       >
                         <td className={isSelected ? "border-l-4 border-primary px-4 py-3 font-medium" : "border-l-4 border-transparent px-4 py-3 font-medium"}>
@@ -895,16 +943,13 @@ export function PurchaseQuotesClient() {
                         <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
                         <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge
-                            status={isSelected && winningQuote ? "success" : getPurchaseRequestStatusTone(request.status)}
-                            label={isSelected && winningQuote ? "Cotação selecionada" : request.statusLabel}
-                          />
+                          <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
                         </td>
                         <td className="px-4 py-3 font-medium">
                           {request.totalApprovedAmount > 0 ? formatCurrency(request.totalApprovedAmount) : "Valor será definido na cotação"}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex flex-wrap justify-end gap-2">
                             {request.status === "submitted" || request.status === "under_review" ? (
                               <Button
                                 type="button"
@@ -971,7 +1016,8 @@ export function PurchaseQuotesClient() {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-semibold">{selectedRequest.requestNumber}</h2>
-                      <StatusBadge status={selectedRequestStatusTone} label={selectedRequestStatusLabel ?? selectedRequest.statusLabel} />
+                      <StatusBadge status={selectedRequestFlowStatus.tone} label={selectedRequestFlowStatus.label} />
+                      {winningQuote ? <StatusBadge status="success" label="Cotação selecionada" /> : null}
                     </div>
                     <h3 className="text-base font-semibold">{selectedRequest.title}</h3>
                     <p className="max-w-3xl text-sm text-muted-foreground">{selectedRequest.justification}</p>
@@ -1002,7 +1048,7 @@ export function PurchaseQuotesClient() {
                     {selectedRequest.totalApprovedAmount > 0 ? formatCurrency(selectedRequest.totalApprovedAmount) : "Valor será definido na cotação."}
                   </div>
                 </div>
-                <div className="mt-4 overflow-hidden rounded-md border bg-background">
+                <div className="mt-4 max-w-full overflow-x-auto rounded-md border bg-background">
                   <table className="w-full text-left text-sm">
                     <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                       <tr>
@@ -1088,10 +1134,12 @@ export function PurchaseQuotesClient() {
                     {quotes.map((quote) => (
                       <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
                         <div className="space-y-4">
-                          <div className="flex flex-col gap-3 border-b pb-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="min-w-0 space-y-2">
+                          <div className="flex flex-col gap-3 border-b pb-3 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="w-full min-w-0 space-y-2 xl:min-w-[20rem] xl:flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="min-w-0 break-words text-sm font-semibold text-foreground">{quote.supplierTradeName || quote.supplierName}</p>
+                                <p className="min-w-0 max-w-full truncate text-sm font-semibold text-foreground" title={quote.supplierTradeName || quote.supplierName}>
+                                  {quote.supplierTradeName || quote.supplierName}
+                                </p>
                                 <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
                                 {quote.isSelected ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
@@ -1107,7 +1155,7 @@ export function PurchaseQuotesClient() {
                                 Documento: {quote.supplierDocumentNumber || "-"}
                               </p>
                             </div>
-                            <div className="flex flex-wrap gap-2 lg:shrink-0 lg:justify-end">
+                            <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:shrink-0 xl:justify-end">
                               <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)}>
                                 <Pencil className="h-4 w-4" />
                                 Editar
@@ -1195,21 +1243,23 @@ export function PurchaseQuotesClient() {
                             </div>
                           </div>
 
-                          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)_auto] lg:items-end">
-                            <div className="space-y-1">
+                          <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_max-content] xl:items-end">
+                            <div className="min-w-0 space-y-1">
                               <Label>Descrição opcional</Label>
                               <Input
                                 value={attachmentDescriptions[quote.id] ?? ""}
                                 onChange={(event) => setAttachmentDescriptions((current) => ({ ...current, [quote.id]: event.target.value }))}
                                 placeholder="Ex.: Proposta comercial"
+                                className="w-full min-w-0"
                               />
                             </div>
-                            <div className="space-y-1">
+                            <div className="min-w-0 space-y-1">
                               <Label>Arquivo</Label>
                               <Input
                                 key={`${quote.id}-${selectedFile?.name ?? "empty"}`}
                                 type="file"
                                 accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                className="w-full min-w-0 max-w-full text-xs sm:text-sm"
                                 onChange={(event) => {
                                   setError("");
                                   setAttachmentMessage("");
@@ -1217,7 +1267,12 @@ export function PurchaseQuotesClient() {
                                 }}
                               />
                             </div>
-                            <Button type="button" onClick={() => uploadQuoteAttachment(quote.id)} disabled={uploadAttachmentMutation.isPending}>
+                            <Button
+                              type="button"
+                              onClick={() => uploadQuoteAttachment(quote.id)}
+                              disabled={uploadAttachmentMutation.isPending}
+                              className="w-full justify-center whitespace-nowrap xl:w-auto"
+                            >
                               <Upload className="h-4 w-4" />
                               Enviar anexo
                             </Button>
@@ -1326,7 +1381,7 @@ export function PurchaseQuotesClient() {
                               <p className="text-xs text-muted-foreground">Preencha as condições oferecidas pelo fornecedor para esta solicitação.</p>
                             </div>
 
-                            <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
                               <Field label="Razão social / Nome do fornecedor">
                                 <Controller
                                   control={quoteForm.control}
@@ -1586,7 +1641,7 @@ export function PurchaseQuotesClient() {
                                 <p className="text-xs text-muted-foreground">Os arquivos serão enviados após salvar a cotação.</p>
                               </div>
 
-                              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)]">
+                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                 <Field label="Descrição opcional">
                                   <TextInput
                                     value={pendingQuoteAttachmentDescription}

@@ -294,7 +294,7 @@ export function JobPositionsClient() {
         <EmptyState title="Nenhum cargo cadastrado" description="Cadastre os cargos por unidade e departamento conforme a estrutura operacional." />
       ) : null}
       {positions.length ? (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm shadow-primary/5">
+        <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>

@@ -31,6 +31,7 @@ type SidebarLink = {
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
+  match?: "exact" | "prefix";
 };
 
 type SidebarGroup = {
@@ -48,6 +49,7 @@ const menuGroups: SidebarGroup[] = [
     href: "/cadastros",
     icon: SlidersHorizontal,
     items: [
+      { label: "Dashboard", href: "/cadastros", icon: LayoutDashboard, match: "exact" },
       { label: "Unidades", href: "/cadastros/unidades", icon: Building2 },
       { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags },
       { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness },
@@ -61,10 +63,10 @@ const menuGroups: SidebarGroup[] = [
     href: "/compras",
     icon: ShoppingCart,
     items: [
-      { label: "Dashboard", href: "/compras", icon: LayoutDashboard },
+      { label: "Dashboard", href: "/compras", icon: LayoutDashboard, match: "exact" },
       { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList },
       { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck },
-      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: IdCard }
+      { label: "Aprovações", href: "/compras/aprovacoes", icon: ShieldCheck }
     ]
   },
   {
@@ -120,6 +122,10 @@ function isPathActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function isLinkActive(pathname: string, item: SidebarLink) {
+  return item.match === "exact" ? pathname === item.href : isPathActive(pathname, item.href);
+}
+
 function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
   const Icon = item.icon;
 
@@ -140,7 +146,7 @@ function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
 export function AppSidebar() {
   const pathname = usePathname();
   const activeGroups = useMemo(
-    () => menuGroups.filter((group) => isPathActive(pathname, group.href) || group.items.some((item) => isPathActive(pathname, item.href))).map((group) => group.label),
+    () => menuGroups.filter((group) => isPathActive(pathname, group.href) || group.items.some((item) => isLinkActive(pathname, item))).map((group) => group.label),
     [pathname]
   );
   const [openGroups, setOpenGroups] = useState<string[]>(activeGroups.length ? activeGroups : ["Cadastros", "Compras"]);
@@ -163,12 +169,12 @@ export function AppSidebar() {
 
       <nav className="max-h-[calc(100vh-5rem)] space-y-2 overflow-y-auto px-3 py-4">
         {mainItems.map((item) => (
-          <SidebarItem key={item.label} item={item} active={isPathActive(pathname, item.href)} />
+          <SidebarItem key={item.label} item={item} active={isLinkActive(pathname, item)} />
         ))}
 
         {menuGroups.map((group) => {
           const Icon = group.icon;
-          const isGroupActive = isPathActive(pathname, group.href) || group.items.some((item) => isPathActive(pathname, item.href));
+          const isGroupActive = isPathActive(pathname, group.href) || group.items.some((item) => isLinkActive(pathname, item));
           const isOpen = openGroups.includes(group.label) || activeGroups.includes(group.label);
 
           return (
@@ -189,7 +195,7 @@ export function AppSidebar() {
               {isOpen ? (
                 <div className="ml-4 space-y-1 border-l border-border/80 pl-2">
                   {group.items.map((item) => (
-                    <SidebarItem key={`${group.label}-${item.label}`} item={item} active={isPathActive(pathname, item.href)} />
+                    <SidebarItem key={`${group.label}-${item.label}`} item={item} active={isLinkActive(pathname, item)} />
                   ))}
                 </div>
               ) : null}
@@ -199,7 +205,7 @@ export function AppSidebar() {
 
         <div className="border-t border-border/80 pt-2">
           {footerItems.map((item) => (
-            <SidebarItem key={item.label} item={item} active={isPathActive(pathname, item.href)} />
+            <SidebarItem key={item.label} item={item} active={isLinkActive(pathname, item)} />
           ))}
         </div>
       </nav>

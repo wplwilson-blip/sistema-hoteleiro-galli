@@ -358,7 +358,7 @@ export function EmployeesClient() {
         <EmptyState title="Nenhum colaborador encontrado" description="Cadastre colaboradores vinculados a unidade, departamento e cargo." />
       ) : null}
       {filteredEmployees.length ? (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm shadow-primary/5">
+        <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>

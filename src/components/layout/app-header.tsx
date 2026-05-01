@@ -17,8 +17,8 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border/80 bg-card/95 px-5 shadow-sm shadow-primary/5 backdrop-blur lg:px-8">
-      <div className="min-w-0">
+    <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/95 px-4 py-3 shadow-sm shadow-primary/5 backdrop-blur sm:flex-nowrap lg:px-6 xl:px-8">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <MapPin className="h-4 w-4 text-primary" />
           <span className="truncate">{activeUnit.name}</span>
@@ -26,10 +26,10 @@ export function AppHeader() {
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{profile.name}</p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">
         <div className="relative hidden md:block">
           <select
-            className="h-10 min-w-52 appearance-none rounded-md border border-input bg-background px-3 pr-9 text-sm font-medium text-foreground outline-none transition-colors hover:border-primary/40 focus:ring-2 focus:ring-ring"
+            className="h-10 w-48 min-w-0 appearance-none rounded-md border border-input bg-background px-3 pr-9 text-sm font-medium text-foreground outline-none transition-colors hover:border-primary/40 focus:ring-2 focus:ring-ring lg:w-52"
             value={activeUnit.id}
             onChange={(event) => setActiveUnit(event.target.value)}
             aria-label="Unidade ativa"
