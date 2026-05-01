@@ -3,24 +3,28 @@ import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
   {
-    title: "Checklists futuros",
-    description: "Checklists operacionais da governança serão criados em sprint futura.",
-    icon: ListChecks
+    title: "Checklists",
+    description: "Checklists operacionais da governança serão criados em próxima etapa.",
+    icon: ListChecks,
+    status: "Em breve" as const
   },
   {
-    title: "Inspeções futuras",
-    description: "Inspeções com evidências e pendências serão estruturadas posteriormente.",
-    icon: ClipboardCheck
+    title: "Inspeções",
+    description: "Inspeções com evidências e pendências serão estruturadas em próxima etapa.",
+    icon: ClipboardCheck,
+    status: "Em breve" as const
   },
   {
-    title: "Camareiras futuras",
-    description: "Acompanhamento operacional de equipes será tratado em etapa específica.",
-    icon: UserRoundCheck
+    title: "Camareiras",
+    description: "Acompanhamento operacional de equipes será tratado em próxima etapa.",
+    icon: UserRoundCheck,
+    status: "Em breve" as const
   },
   {
-    title: "Ocorrências futuras",
-    description: "Ocorrências da governança serão centralizadas em sprint futura.",
-    icon: MessageSquareWarning
+    title: "Ocorrências",
+    description: "Ocorrências da governança serão centralizadas em próxima etapa.",
+    icon: MessageSquareWarning,
+    status: "Em breve" as const
   }
 ];
 
@@ -28,7 +32,7 @@ export default function GovernancaPage() {
   return (
     <ModuleDashboard
       title="Governança"
-      description="Dashboard de entrada para checklists, inspeções, equipes e ocorrências da governança."
+      description="Entrada para checklists, inspeções, equipes e ocorrências da governança."
       cards={cards}
     />
   );

@@ -40,13 +40,15 @@ const cards = [
   },
   {
     title: "Perfis e permissões",
-    description: "Matriz granular prevista para sprint futura.",
-    icon: ShieldCheck
+    description: "Matriz granular de acesso será organizada em próxima etapa.",
+    icon: ShieldCheck,
+    status: "Em breve" as const
   },
   {
     title: "UHs e quartos",
-    description: "Estrutura operacional será detalhada em sprint posterior.",
-    icon: BedDouble
+    description: "Estrutura operacional de quartos será detalhada em próxima etapa.",
+    icon: BedDouble,
+    status: "Em breve" as const
   }
 ];
 

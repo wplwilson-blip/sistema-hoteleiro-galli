@@ -17,7 +17,7 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/95 px-4 py-3 shadow-sm shadow-primary/5 backdrop-blur sm:flex-nowrap lg:px-6 xl:px-8">
+    <header className="sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/95 px-4 py-3 shadow-sm shadow-primary/5 backdrop-blur sm:flex-nowrap lg:px-6 xl:px-8">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <MapPin className="h-4 w-4 text-primary" />

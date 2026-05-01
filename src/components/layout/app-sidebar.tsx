@@ -156,8 +156,8 @@ export function AppSidebar() {
   }
 
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-border/80 bg-card lg:block">
-      <div className="flex h-20 items-center gap-3 border-b border-border/80 px-5">
+    <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-border/80 bg-card lg:flex">
+      <div className="flex h-20 shrink-0 items-center gap-3 border-b border-border/80 px-5">
         <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-white p-2 shadow-sm">
           <Image src="/brand/logo.png" alt="Hotel Galli" width={36} height={36} className="h-auto w-auto" />
         </div>
@@ -167,7 +167,7 @@ export function AppSidebar() {
         </div>
       </div>
 
-      <nav className="max-h-[calc(100vh-5rem)] space-y-2 overflow-y-auto px-3 py-4">
+      <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4">
         {mainItems.map((item) => (
           <SidebarItem key={item.label} item={item} active={isLinkActive(pathname, item)} />
         ))}

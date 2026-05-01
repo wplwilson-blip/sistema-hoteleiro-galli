@@ -75,12 +75,12 @@ const jobPositionCodeSuggestions = [
   { code: "COM-CMP", name: "Comprador" },
   { code: "CAP-ANL", name: "Analista de Contas a Pagar" },
   { code: "REC-REC", name: "Recepcionista" },
-  { code: "REC-SUP", name: "Supervisor de Recepcao" },
+  { code: "REC-SUP", name: "Supervisor de Recepção" },
   { code: "GOV-CAM", name: "Camareira" },
-  { code: "GOV-SUP", name: "Supervisor de Governanca" },
-  { code: "MAN-AUX", name: "Auxiliar de Manutencao" },
-  { code: "MAN-TEC", name: "Tecnico de Manutencao" },
-  { code: "AB-GAR", name: "Garcom" },
+  { code: "GOV-SUP", name: "Supervisor de Governança" },
+  { code: "MAN-AUX", name: "Auxiliar de Manutenção" },
+  { code: "MAN-TEC", name: "Técnico de Manutenção" },
+  { code: "AB-GAR", name: "Garçom" },
   { code: "AB-COZ", name: "Cozinheiro" },
   { code: "AB-AUX", name: "Auxiliar de Cozinha" },
   { code: "AB-SUP", name: "Supervisor de A&B" }
@@ -94,7 +94,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload;

@@ -84,7 +84,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload;
@@ -99,6 +99,22 @@ function accessStatusLabel(status: AccessStatus) {
   };
 
   return labels[status];
+}
+
+function accessProfileLabel(code: string, fallbackName: string) {
+  const labels: Record<string, string> = {
+    SUPER_ADMIN: "Administrador Geral",
+    NETWORK_MANAGER: "Gestor da Rede",
+    UNIT_DIRECTOR: "Diretor da Unidade",
+    DEPARTMENT_MANAGER: "Gerente Departamental",
+    SUPERVISOR: "Supervisor",
+    FINANCE: "Financeiro",
+    AUDIT: "Auditoria",
+    EMPLOYEE: "Colaborador",
+    EXTERNAL_TECHNICIAN: "Técnico Externo"
+  };
+
+  return labels[code] ?? fallbackName;
 }
 
 function AccessStatusBadge({ status }: { status: AccessStatus }) {
@@ -212,7 +228,7 @@ export function UsersClient() {
     }
 
     return users.filter((user) =>
-      [user.username, user.employeeName, user.accessProfileName, user.accessProfileCode, ...user.unitNames]
+      [user.username, user.employeeName, accessProfileLabel(user.accessProfileCode, user.accessProfileName), ...user.unitNames]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(term))
     );
@@ -259,7 +275,7 @@ export function UsersClient() {
                   <option value="">Selecione</option>
                   {profiles.map((profile) => (
                     <option key={profile.id} value={profile.id}>
-                      {profile.code} - {profile.name}
+                      {accessProfileLabel(profile.code, profile.name)}
                     </option>
                   ))}
                 </SelectField>
@@ -323,7 +339,7 @@ export function UsersClient() {
           <table className="w-full min-w-[1040px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 font-semibold">Usuario</th>
+                <th className="px-4 py-3 font-semibold">Usuário</th>
                 <th className="px-4 py-3 font-semibold">Colaborador</th>
                 <th className="px-4 py-3 font-semibold">Perfil</th>
                 <th className="px-4 py-3 font-semibold">Unidades</th>
@@ -336,7 +352,7 @@ export function UsersClient() {
                 <tr key={user.id} className="hover:bg-muted/35">
                   <td className="px-4 py-3 font-medium">@{user.username}</td>
                   <td className="px-4 py-3 text-muted-foreground">{user.employeeName || "-"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{user.accessProfileName || "-"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{user.accessProfileId ? accessProfileLabel(user.accessProfileCode, user.accessProfileName) : "-"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{user.unitNames.join(", ") || "-"}</td>
                   <td className="px-4 py-3">
                     <AccessStatusBadge status={user.status} />

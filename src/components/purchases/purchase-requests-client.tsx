@@ -162,7 +162,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload;
@@ -275,7 +275,7 @@ export function PurchaseRequestsClient() {
       replace([emptyItem]);
       await queryClient.invalidateQueries({ queryKey: ["purchases", "requests"] });
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Nao foi possivel salvar a solicitacao.")
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível salvar a solicitação.")
   });
 
   const cancelMutation = useMutation({
@@ -384,7 +384,7 @@ export function PurchaseRequestsClient() {
               <option value="">Todos</option>
               <option value="draft">Rascunho</option>
               <option value="submitted">Enviada</option>
-              <option value="under_review">Em analise</option>
+              <option value="under_review">Em análise</option>
               <option value="cancelled">Cancelada</option>
             </SelectField>
           </div>
@@ -409,13 +409,13 @@ export function PurchaseRequestsClient() {
         </div>
         <Button onClick={openNew}>
           <Plus className="h-4 w-4" />
-          Nova solicitacao
+          Nova solicitação
         </Button>
       </div>
 
       {formOpen ? (
         <FormCard
-          title={editingId ? "Editar solicitacao de compra" : "Nova solicitacao de compra"}
+          title={editingId ? "Editar solicitação de compra" : "Nova solicitação de compra"}
           onCancel={() => {
             setFormOpen(false);
             setEditingId(null);
@@ -607,7 +607,7 @@ export function PurchaseRequestsClient() {
             <div className="rounded-lg border bg-muted/30 p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">Itens da solicitacao</h3>
+                  <h3 className="text-sm font-semibold">Itens da solicitação</h3>
                   <p className="text-xs text-muted-foreground">Inclua um ou mais itens com quantidade e unidade de medida.</p>
                 </div>
                 <Button type="button" variant="outline" onClick={addItem}>
@@ -681,13 +681,13 @@ export function PurchaseRequestsClient() {
                         />
                         <FieldError message={form.formState.errors.items?.[index]?.unitOfMeasure?.message} />
                       </Field>
-                      <Field label="Observacoes" className="lg:col-span-3">
+                      <Field label="Observações" className="lg:col-span-3">
                         <TextArea rows={2} {...form.register(`items.${index}.notes`)} />
                         <FieldError message={form.formState.errors.items?.[index]?.notes?.message} />
                       </Field>
                     </div>
                     <div className="mt-3 flex justify-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)} disabled={fields.length === 1}>
+                      <Button type="button" variant="danger" size="sm" onClick={() => remove(index)} disabled={fields.length === 1}>
                         <Trash2 className="h-4 w-4" />
                         Remover
                       </Button>
@@ -696,21 +696,21 @@ export function PurchaseRequestsClient() {
                 ))}
               </div>
               <div className="mt-4 flex flex-col gap-2 border-t pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-muted-foreground">Valor sera definido na cotacao pelo setor de Compras.</p>
-                <p className="font-semibold text-foreground">Valor sera definido na cotacao.</p>
+                <p className="text-muted-foreground">Valor será definido na cotação pelo setor de Compras.</p>
+                <p className="font-semibold text-foreground">Valor será definido na cotação.</p>
               </div>
             </div>
 
             {form.watch("requestType") === "emergency" ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Compra emergencial continua exigindo justificativa clara. A analise de cotacao reduzida fica para uma sprint futura.
+                Compra emergencial continua exigindo justificativa clara. A análise de cotação reduzida será tratada em próxima etapa.
               </div>
             ) : null}
 
             <ErrorMessage message={error} />
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">O valor sera definido posteriormente pelo setor de Compras durante a cotacao.</p>
+                <p className="text-xs text-muted-foreground">O valor será definido posteriormente pelo setor de Compras durante a cotação.</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending}>
                     <Pencil className="h-4 w-4" />
@@ -719,7 +719,7 @@ export function PurchaseRequestsClient() {
                   {!isSubmittedEdit ? (
                     <Button type="button" onClick={() => submitForm("submit")} disabled={saveMutation.isPending}>
                       {submitAction === "submit" ? <Send className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                      Enviar para analise
+                      Enviar para análise
                     </Button>
                   ) : (
                     <Button
@@ -755,7 +755,10 @@ export function PurchaseRequestsClient() {
       ) : null}
 
       {!purchasesQuery.isLoading && !filteredRequests.length ? (
-        <EmptyState title="Nenhuma solicitacao encontrada" description="Crie a primeira solicitacao de compra para a unidade selecionada." />
+        <EmptyState
+          title="Nenhuma solicitação de compra encontrada."
+          description="Crie uma nova solicitação para iniciar o fluxo de compras."
+        />
       ) : null}
 
       {filteredRequests.length ? (
@@ -793,7 +796,7 @@ export function PurchaseRequestsClient() {
                       <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
                       <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
                       <td className="px-4 py-3 font-medium">
-                        {request.totalEstimatedAmount > 0 ? formatCurrency(request.totalEstimatedAmount) : "Valor sera definido na cotacao"}
+                        {request.totalEstimatedAmount > 0 ? formatCurrency(request.totalEstimatedAmount) : "Valor será definido na cotação"}
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
@@ -827,10 +830,10 @@ export function PurchaseRequestsClient() {
                         <div className="space-y-4">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                              <p className="text-sm font-semibold">Itens da solicitacao</p>
-                              <p className="text-xs text-muted-foreground">Detalhe dos itens cadastrados para esta solicitacao.</p>
+                              <p className="text-sm font-semibold">Itens da solicitação</p>
+                              <p className="text-xs text-muted-foreground">Detalhe dos itens cadastrados para esta solicitação.</p>
                             </div>
-                            <div className="text-sm font-semibold">Valor sera definido na cotacao.</div>
+                            <div className="text-sm font-semibold">Valor será definido na cotação.</div>
                           </div>
                           <div className="max-w-full overflow-x-auto rounded-md border bg-background">
                             <table className="w-full text-left text-sm">

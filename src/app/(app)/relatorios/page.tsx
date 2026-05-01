@@ -4,43 +4,51 @@ import { ModuleDashboard } from "@/components/common/module-dashboard";
 const cards = [
   {
     title: "Compras",
-    description: "Relatórios futuros de solicitações, cotações, fornecedores e aprovações.",
-    icon: ShoppingCart
+    description: "Relatórios de solicitações, cotações, fornecedores e aprovações serão ativados em próxima etapa.",
+    icon: ShoppingCart,
+    status: "Em breve" as const
   },
   {
     title: "RH",
-    description: "Relatórios futuros de colaboradores, documentos e treinamentos.",
-    icon: Users
+    description: "Relatórios de colaboradores, documentos e treinamentos serão ativados em próxima etapa.",
+    icon: Users,
+    status: "Em breve" as const
   },
   {
     title: "Manutenção",
-    description: "Relatórios futuros de chamados, preventivas e pendências.",
-    icon: Wrench
+    description: "Relatórios de chamados, preventivas e pendências serão ativados em próxima etapa.",
+    icon: Wrench,
+    status: "Em breve" as const
   },
   {
     title: "Governança",
-    description: "Relatórios futuros de checklists, inspeções e ocorrências.",
-    icon: ShieldCheck
+    description: "Relatórios de checklists, inspeções e ocorrências serão ativados em próxima etapa.",
+    icon: ShieldCheck,
+    status: "Em breve" as const
   },
   {
     title: "A&B",
-    description: "Relatórios futuros de requisições, estoque e produção.",
-    icon: Utensils
+    description: "Relatórios de requisições, estoque e produção serão ativados em próxima etapa.",
+    icon: Utensils,
+    status: "Em breve" as const
   },
   {
     title: "Contas a Pagar",
-    description: "Relatórios futuros de pagamentos, documentos e fornecedores.",
-    icon: Landmark
+    description: "Relatórios de pagamentos, documentos e fornecedores serão ativados em próxima etapa.",
+    icon: Landmark,
+    status: "Em breve" as const
   },
   {
     title: "Indicadores gerais",
-    description: "Painéis consolidados serão tratados em sprint específica de dashboards.",
-    icon: BarChart3
+    description: "Painéis consolidados serão tratados em próxima etapa de dashboards.",
+    icon: BarChart3,
+    status: "Em breve" as const
   },
   {
     title: "Operação",
-    description: "Visão administrativa por unidade, departamento e fluxo operacional.",
-    icon: ClipboardList
+    description: "Visão administrativa por unidade, departamento e fluxo operacional será ativada em próxima etapa.",
+    icon: ClipboardList,
+    status: "Em breve" as const
   }
 ];
 
@@ -48,7 +56,7 @@ export default function RelatoriosPage() {
   return (
     <ModuleDashboard
       title="Relatórios"
-      description="Dashboard de entrada para relatórios administrativos e indicadores futuros por módulo."
+      description="Entrada para relatórios administrativos e indicadores por módulo."
       cards={cards}
       columns="three"
     />

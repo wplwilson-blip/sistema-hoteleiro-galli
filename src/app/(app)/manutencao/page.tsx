@@ -3,24 +3,28 @@ import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
   {
-    title: "Chamados futuros",
-    description: "Abertura e acompanhamento de chamados de manutenção serão tratados em sprint futura.",
-    icon: ClipboardList
+    title: "Chamados",
+    description: "Abertura e acompanhamento de chamados de manutenção serão ativados em próxima etapa.",
+    icon: ClipboardList,
+    status: "Em breve" as const
   },
   {
-    title: "Quartos em manutenção futuro",
-    description: "Controle administrativo de UHs bloqueadas ou em manutenção será criado posteriormente.",
-    icon: BedDouble
+    title: "Quartos em manutenção",
+    description: "Controle administrativo de UHs bloqueadas ou em manutenção será criado em próxima etapa.",
+    icon: BedDouble,
+    status: "Em breve" as const
   },
   {
-    title: "Áreas comuns futuro",
-    description: "Chamados e evidências de áreas comuns ficarão para sprint específica.",
-    icon: Building2
+    title: "Áreas comuns",
+    description: "Chamados e evidências de áreas comuns serão ativados em próxima etapa.",
+    icon: Building2,
+    status: "Em breve" as const
   },
   {
-    title: "Preventivas futuras",
-    description: "Agenda de manutenção preventiva será organizada em etapa posterior.",
-    icon: CalendarCheck
+    title: "Preventivas",
+    description: "Agenda de manutenção preventiva será organizada em próxima etapa.",
+    icon: CalendarCheck,
+    status: "Em breve" as const
   }
 ];
 
@@ -28,7 +32,7 @@ export default function ManutencaoPage() {
   return (
     <ModuleDashboard
       title="Manutenção"
-      description="Dashboard de entrada para chamados, quartos, áreas comuns e manutenção preventiva."
+      description="Entrada para chamados, quartos, áreas comuns e manutenção preventiva."
       cards={cards}
     />
   );

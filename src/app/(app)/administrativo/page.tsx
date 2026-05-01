@@ -3,24 +3,28 @@ import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
   {
-    title: "Comunicados futuros",
-    description: "Comunicados internos e avisos administrativos serão criados em sprint futura.",
-    icon: Megaphone
+    title: "Comunicados",
+    description: "Comunicados internos e avisos administrativos serão criados em próxima etapa.",
+    icon: Megaphone,
+    status: "Em breve" as const
   },
   {
-    title: "Documentos internos futuros",
-    description: "Central de documentos administrativos será planejada em etapa posterior.",
-    icon: FileText
+    title: "Documentos internos",
+    description: "Central de documentos administrativos será planejada em próxima etapa.",
+    icon: FileText,
+    status: "Em breve" as const
   },
   {
-    title: "Políticas futuras",
-    description: "Políticas e normas internas ficarão para sprint específica.",
-    icon: Scale
+    title: "Políticas",
+    description: "Políticas e normas internas serão organizadas em próxima etapa.",
+    icon: Scale,
+    status: "Em breve" as const
   },
   {
-    title: "Auditorias futuras",
-    description: "Rotinas de auditoria administrativa serão organizadas posteriormente.",
-    icon: ShieldCheck
+    title: "Auditorias",
+    description: "Rotinas de auditoria administrativa serão organizadas em próxima etapa.",
+    icon: ShieldCheck,
+    status: "Em breve" as const
   }
 ];
 
@@ -28,7 +32,7 @@ export default function AdministrativoPage() {
   return (
     <ModuleDashboard
       title="Administrativo"
-      description="Dashboard de entrada para comunicados, documentos internos, políticas e auditorias."
+      description="Entrada para comunicados, documentos internos, políticas e auditorias."
       cards={cards}
     />
   );

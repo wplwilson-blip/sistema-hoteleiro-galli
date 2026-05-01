@@ -10,7 +10,7 @@ type DashboardCard = {
   description: string;
   icon: LucideIcon;
   href?: string;
-  status?: "Disponível" | "Futuro" | "Em breve" | "Cadastro";
+  status?: "Disponível" | "Em breve" | "Cadastro";
 };
 
 type ModuleDashboardProps = {
@@ -31,7 +31,7 @@ export function ModuleDashboard({ title, description, cards, columns = "four" }:
         {cards.map((card) => {
           const Icon = card.icon;
           const isEnabled = Boolean(card.href);
-          const status = card.status ?? (isEnabled ? "Disponível" : "Futuro");
+          const status = card.status ?? (isEnabled ? "Disponível" : "Em breve");
           const content = (
             <Card className="h-full min-w-0 border-border/80 p-5 shadow-sm shadow-primary/5 transition-colors hover:border-primary/30 hover:bg-card">
               <div className="mb-5 flex items-start justify-between gap-3">

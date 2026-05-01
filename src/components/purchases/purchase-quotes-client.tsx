@@ -1017,7 +1017,10 @@ export function PurchaseQuotesClient() {
           ) : null}
 
           {!listQuery.isLoading && !filteredRequests.length ? (
-            <EmptyState title="Nenhuma solicitação elegível" description="Solicitações enviadas ou em análise aparecerão aqui para cotação." />
+            <EmptyState
+              title="Nenhuma solicitação disponível para cotação."
+              description="Solicitações enviadas ou devolvidas para Compras aparecerão aqui para análise e cotação."
+            />
           ) : null}
 
           {filteredRequests.length ? (
@@ -1075,7 +1078,7 @@ export function PurchaseQuotesClient() {
                               <Button
                                 type="button"
                                 size="sm"
-                                variant="outline"
+                                variant="danger"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   openRequest(request.id);
@@ -1267,7 +1270,9 @@ export function PurchaseQuotesClient() {
                   <div className="mt-4 space-y-3 rounded-lg border bg-background p-4">
                     <div className="flex flex-col gap-1">
                       <h4 className="text-sm font-semibold">Comparativo das cotações</h4>
-                      <p className="text-xs text-muted-foreground">Recomendação automática pela menor cotação válida. Prazo, pagamento e fornecedor entram como contexto da decisão.</p>
+                      <p className="text-xs text-muted-foreground">
+                        A recomendada é a sugestão do sistema pelo menor valor válido. A vencedora é a escolha registrada por Compras para aprovação.
+                      </p>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div className="min-w-0 rounded-md border bg-muted/20 p-3">
@@ -1480,7 +1485,7 @@ export function PurchaseQuotesClient() {
                                           <Button
                                             type="button"
                                             size="sm"
-                                            variant="outline"
+                                            variant="danger"
                                             onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
                                             disabled={deleteAttachmentMutation.isPending}
                                           >
@@ -1501,7 +1506,10 @@ export function PurchaseQuotesClient() {
                     })}
                   </div>
                 ) : (
-                  <EmptyState title="Nenhuma cotação cadastrada" description="Use Nova cotação para registrar propostas de fornecedores." />
+                  <EmptyState
+                    title="Nenhuma cotação cadastrada para esta solicitação."
+                    description="Adicione uma nova cotação para comparar fornecedores e selecionar a vencedora."
+                  />
                 )}
               </div>
 
