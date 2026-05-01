@@ -1,65 +1,97 @@
-# Repository Guidelines
+# AGENTS.md - Sistema Administrativo Hotel Galli
 
-## Visão Geral
+## Identidade do Projeto
 
-Este repositório é um sistema administrativo SaaS multiunidade para rede hoteleira brasileira. O sistema não é PMS, não terá reservas e não será um financeiro completo. O foco é administração interna, operação, aprovações, evidências, padronização, auditoria e gestão multiunidade.
+Sistema Administrativo Hotel Galli é um SaaS administrativo multiunidade para operação interna de rede hoteleira.
 
-Todo desenvolvimento deve considerar o fluxo: rede -> unidade -> departamento -> usuário -> solicitação -> aprovação -> execução -> evidência -> indicador.
+O sistema não é PMS, não possui reservas, não possui check-in/check-out, não controla tarifas, não controla disponibilidade e não deve virar ERP ou financeiro completo. O foco é administração interna, compras, aprovações, evidências, anexos, auditoria, rastreabilidade, RH administrativo, recepção operacional, manutenção, governança, A&B, contas a pagar com aprovação, administrativo geral, dashboards e operação multiunidade.
 
-## Stack Obrigatória
+## Stack
 
-Use Next.js 14 com App Router, TypeScript, Tailwind CSS, shadcn/ui, Supabase, PostgreSQL, Supabase Auth, Supabase Storage, React Hook Form, Zod, TanStack Query e Zustand.
+- Next.js 14 com App Router.
+- TypeScript.
+- Tailwind CSS.
+- shadcn/ui.
+- Supabase.
+- Supabase Storage.
+- GitHub.
+- Vercel.
 
-## Decisões Obrigatórias
+## Regras Invioláveis
 
-- Login deve ser por nome de usuário + senha. Não usar e-mail como login.
-- E-mail é opcional e serve apenas para contato ou notificação futura.
-- Na V1, notificações principais são in-app; e-mail transacional não é obrigatório.
-- `users`, `employees` e `user_employee_link` são entidades separadas.
-- Nem todo colaborador terá login, e um usuário pode ser auditor, técnico externo ou consultor.
-- O sistema deve ser multiunidade desde o início; todo dado operacional deve ter `unit_id`.
-- Registros críticos exigem auditoria e soft delete com `deleted_at` e `deleted_by`.
-- Toda tabela operacional deve considerar RLS no Supabase.
-- Não expor `auth_email` técnico em telas, APIs públicas ou logs de interface.
-- Se Supabase Auth exigir e-mail técnico, usar `auth_email` interno fictício invisível ao usuário.
+- Não alterar login, autenticação, Supabase Auth ou `auth_email` técnico sem autorização explícita.
+- Não criar migration sem necessidade clara e autorização de sprint.
+- Não alterar banco, APIs sensíveis ou regras de permissão fora do escopo.
+- Não criar reservas, check-in/check-out, tarifas, disponibilidade ou PMS.
+- Não transformar Contas a Pagar em financeiro completo.
+- Não colocar nome de pessoa em status de aprovação.
+- Não duplicar Fornecedores no menu Compras.
+- Não misturar `employees` com usuários internos.
+- Não fazer commit ou push sem instrução explícita, exceto quando o prompt pedir COMMIT E PUSH.
+- Não misturar sprints.
 
-## Módulo Base Obrigatório
+## Autenticação
 
-O Módulo Base sustenta todos os demais módulos e deve conter: organizações/rede, unidades, departamentos, cargos, usuários, colaboradores, vínculo usuário x colaborador, perfis de acesso, permissões, vínculos usuário x unidade x departamento, centros de custo, categorias operacionais, fornecedores, alçadas de aprovação, tipos de solicitação, tipos de anexo, status padrão, notificações in-app, logs, auditoria, configurações globais, configurações por unidade e estrutura operacional da unidade.
+- O login do usuário é por username + senha.
+- O usuário não entra com e-mail.
+- Supabase Auth usa `auth_email` técnico interno invisível ao usuário.
+- Colaborador não é necessariamente usuário do sistema.
+- Usuário interno é criado separadamente e pode ser vinculado a colaborador.
+- APIs sensíveis devem validar sessão e permissão server-side.
 
-## Estrutura Operacional Obrigatória
+## Fluxo de Desenvolvimento
 
-Incluir desde o Módulo Base: UHs/quartos, andares, blocos, áreas comuns, ambientes internos, setores físicos, equipamentos principais e status operacional do local.
+1. Criar branch por sprint.
+2. Implementar apenas o escopo fechado.
+3. Rodar `npm.cmd run lint`.
+4. Rodar `npm.cmd run build`.
+5. Rodar `git status --short --untracked-files=all`.
+6. Testar localmente.
+7. Se houver migration, aplicar manualmente no Supabase antes de testar.
+8. Só commitar quando o usuário pedir.
+9. Fazer push somente quando o usuário pedir.
+10. Abrir PR para `main`.
+11. Merge.
+12. Validar deploy da Vercel.
+13. Fechar sprint.
 
-## Módulos do Sistema
+## Regras de Compras e Aprovação
 
-Módulos previstos: RH, Solicitações de Pagamento com Aprovação, Compras, Manutenção, Governança, A&B, Administrativo Geral, Dashboards, Auditoria e Relatórios. Solicitações de Pagamento não devem virar financeiro completo.
+- Solicitante registra necessidade, quantidade e unidade; não informa valor.
+- O valor nasce na cotação.
+- Cotação recomendada V1 é a cotação válida de menor valor total.
+- Recomendada é sugestão do sistema.
+- Vencedora é escolha do comprador.
+- Toda compra com cotação vencedora precisa de aprovação.
+- Até R$ 200,00: Gerência Administrativa.
+- Acima de R$ 200,00: Diretoria Geral.
+- Aprovar confirma a compra.
+- Reprovar encerra a compra e exige justificativa.
+- Devolver para Compras permite revisão e exige justificativa.
+- Reenviar para aprovação volta para `pending` e recalcula alçada.
 
-## Ordem de Desenvolvimento
+## UI/UX
 
-Nunca criar o sistema inteiro de uma vez. Trabalhar sempre por sprint e não avançar sem solicitação explícita.
+- Sistema deve funcionar em 100% de zoom em 1366x768, 1440x900 e 1920x1080.
+- Sidebar fixa em desktop.
+- Conteúdo principal rola à direita.
+- Sem scroll horizontal global.
+- Tabelas largas usam overflow local.
+- Badges longas podem quebrar em duas linhas.
+- Não exibir códigos técnicos em inglês para usuários operacionais.
+- Não usar textos quebrados por encoding.
+- Não usar “Sprint X” na interface final.
 
-Ordem obrigatória: base inicial do projeto; banco do Módulo Base; login por username + senha; usuários, unidades, departamentos, cargos e permissões; estrutura operacional; workflow geral; Solicitações de Pagamento; Compras; Manutenção; Governança; Administrativo Geral; RH; A&B; Dashboards e relatórios; testes e produção.
+## Documentos de Apoio
 
-## Regras Para o Codex
+Antes de iniciar sprint, consultar:
 
-- Não implementar módulos operacionais quando a tarefa pedir apenas estrutura base.
-- Não criar banco quando a tarefa pedir apenas layout.
-- Não inventar regras fora do escopo.
-- Sempre listar arquivos criados, alterados e comandos executados.
-- Sempre explicar como testar localmente.
-- Sempre preservar segurança, RLS, soft delete, auditoria e multiunidade.
-- Sempre perguntar antes de mudanças grandes.
-- Não usar e-mail na tela de login.
-- Não criar autenticação própria insegura sem necessidade.
-- Não expor dados sensíveis.
-- Não misturar `users` com `employees`.
-- Não criar módulos isolados sem integração com workflow geral.
-
-## Padrão de Telas
-
-A interface deve ser limpa, empresarial e objetiva. Deve ser fácil para usuários operacionais e útil para diretoria. Usar menu lateral com módulos e header com usuário, unidade ativa, notificações e sair. Tabelas devem ter filtros, formulários devem ter validação, status devem ser claros e botões de ação devem aparecer apenas conforme permissão.
-
-## Padrão de Banco
-
-Use UUID como chave primária. Tabelas críticas devem conter `created_at`, `updated_at`, `created_by`, `updated_by`, `deleted_at` e `deleted_by`. Tabelas operacionais devem conter `unit_id`. Criar índices em `unit_id`, `status`, `created_at` e campos de busca. Usar constraints para `username` único e formato válido. Usar `audit_trail` para alterações críticas, `system_logs` para logs técnicos, soft delete e RLS desde o início.
+- `docs/STATUS_PROJETO.md`
+- `docs/SPRINTS.md`
+- `docs/REGRAS_DE_NEGOCIO.md`
+- `docs/NAO_ALTERAR.md`
+- `docs/ARQUITETURA.md`
+- `docs/FLUXO_DESENVOLVIMENTO.md`
+- `docs/BANCO_DADOS.md`
+- `docs/UI_UX_GUIDELINES.md`
+- `docs/PROXIMAS_SPRINTS.md`

@@ -1,0 +1,131 @@
+# Histórico de Sprints
+
+## Sprint 1 - Base visual Hotel Galli
+
+- Status: concluída.
+- Objetivo: criar base visual inicial do sistema.
+- Entregas: layout administrativo, navegação, páginas iniciais.
+- Migrations: não aplicável.
+- Não implementado: fluxos operacionais reais.
+
+## Sprint 2 - Banco base + arquitetura lógica
+
+- Status: concluída.
+- Objetivo: estruturar base lógica e banco inicial.
+- Entregas: estrutura multiunidade, usuários, permissões, cadastros base.
+- Migrations: `001` a `010`.
+- Não implementado: módulos operacionais completos.
+
+## Sprint 2.5 - Validação Supabase
+
+- Status: concluída.
+- Objetivo: validar Supabase, conexão e estrutura.
+- Entregas: checagem de tabelas, policies e funcionamento básico.
+- Migrations: validação das migrations base.
+
+## Sprint 2.6 - Orçamento integrado às compras
+
+- Status: concluída.
+- Objetivo: preparar fundação para orçamento ligado a compras.
+- Entregas: tabelas compartilhadas e base orçamentária.
+- Migrations: `011`, `012`.
+- Não implementado: financeiro completo.
+
+## Sprint 3 - Login real por username + senha
+
+- Status: concluída.
+- Objetivo: implementar login real sem e-mail visível.
+- Entregas: login por username + senha, `auth_email` técnico invisível, setup inicial.
+- Não alterar sem autorização: login, Supabase Auth e setup inicial.
+
+## Sprint 4A - Unidades, Departamentos e Cargos
+
+- Status: concluída.
+- Objetivo: CRUDs do módulo base.
+- Entregas: unidades, departamentos e cargos.
+
+## Sprint 4B - Colaboradores
+
+- Status: concluída.
+- Objetivo: cadastro de colaboradores separado de usuários.
+- Entregas: CRUD de colaboradores vinculado a unidade, departamento e cargo.
+
+## Sprint 4C - Usuários internos
+
+- Status: concluída.
+- Objetivo: cadastro de usuários internos.
+- Entregas: usuários, vínculo com colaborador, perfil e unidades.
+- Observação: perfil aparece em português na interface; códigos técnicos continuam internos.
+
+## Sprint 5A - Banco operacional de compras
+
+- Status: concluída.
+- Objetivo: criar base de compras.
+- Entregas: solicitações, cotações, itens, eventos e recebimentos base.
+- Migrations: `013_purchase_module_base.sql`.
+
+## Sprint 5B - Solicitações de compra
+
+- Status: concluída.
+- Objetivo: permitir criação e acompanhamento de solicitações.
+- Entregas: solicitação, itens, status, filtros e envio para análise/cotação.
+- Não implementado: decisão inicial formal da solicitação.
+
+## Sprint 5C - Cotações
+
+- Status: concluída.
+- Objetivo: registrar cotações para solicitações.
+- Entregas: cotações, itens de cotação, total, prazo, validade, seleção de vencedora.
+
+## Sprint 5C.1 - Cadastro de fornecedores
+
+- Status: concluída.
+- Objetivo: criar cadastro de fornecedores.
+- Entregas: fornecedores em Cadastros e integração com Compras.
+- Migrations: `014_suppliers_unique_document.sql`.
+
+## Sprint 5C.2 - Anexos de cotação
+
+- Status: concluída.
+- Objetivo: anexar evidências às cotações.
+- Entregas: upload/listagem/remoção usando bucket `attachments`.
+
+## Sprint 5C.3 - Fornecedor rápido na cotação + busca + duplicidade
+
+- Status: concluída.
+- Objetivo: melhorar operação de cotação.
+- Entregas: cadastro rápido de fornecedor, combobox pesquisável, bloqueio de duplicidade.
+
+## Sprint 5C.4 - Cotação recomendada
+
+- Status: concluída.
+- Objetivo: indicar cotação recomendada.
+- Entregas: recomendação V1 por menor valor total, comparativo, badges de menor valor/recomendada/vencedora.
+- Não implementado: score complexo ou IA.
+
+## Sprint 5D - Aprovação real de compras
+
+- Status: concluída.
+- Objetivo: transformar aprovações em fluxo real.
+- Entregas: tela `/compras/aprovacoes`, API de decisão, histórico, aprovação e reprovação.
+- Migrations: `015_purchase_approvals.sql`.
+- Não implementado: grupos avançados de aprovação.
+
+## Sprint 5D.1 - Devolução para Compras + anexos na aprovação
+
+- Status: concluída.
+- Objetivo: permitir devolução sem reprovar definitivamente e exibir evidências na aprovação.
+- Entregas: devolução para Compras, reenvio para aprovação, anexos da vencedora e demais cotações.
+- Migrations: `016_purchase_approval_return_to_purchases.sql`.
+
+## UI-FIX - Sidebar fixa e layout global
+
+- Status: concluída.
+- Objetivo: manter sidebar fixa e conteúdo rolando à direita.
+- Entregas: layout global com `h-screen`, sidebar sticky e scroll no conteúdo.
+
+## UI-1 - Padronização visual global
+
+- Status: concluída.
+- Objetivo: padronizar textos, dashboards, badges, empty states e ações cautelosas.
+- Entregas: textos em português, remoção de referências antigas, badges longas, `danger` em botões e perfis em português.
