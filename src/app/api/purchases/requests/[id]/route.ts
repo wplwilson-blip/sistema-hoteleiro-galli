@@ -58,6 +58,8 @@ type PurchaseRequestRow = {
   required_quote_count: number;
   approval_required: boolean;
   director_approval_required: boolean;
+  approval_status?: "pending" | "approved" | "rejected" | "returned_to_purchases" | null;
+  approval_decision_notes?: string | null;
   status: PurchaseRequestStatus;
   approval_request_id: string | null;
   budget_period_id: string | null;
@@ -169,6 +171,8 @@ function mapRequestRow(
     requiredQuoteCount: request.required_quote_count,
     approvalRequired: request.approval_required,
     directorApprovalRequired: request.director_approval_required,
+    approvalStatus: request.approval_status ?? "pending",
+    approvalDecisionNotes: request.approval_decision_notes ?? "",
     status: request.status,
     statusLabel: getPurchaseRequestStatusLabel(request.status),
     approvalRequestId: request.approval_request_id ?? "",
@@ -243,7 +247,7 @@ async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
   const { data, error } = await supabase
     .from("purchase_requests")
     .select(
-      "id, organization_id, unit_id, department_id, cost_center_id, requested_by, request_number, title, description, justification, request_type, priority, desired_date, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, status, approval_request_id, budget_period_id, budget_line_id, budget_reservation_id, over_budget, over_budget_justification, payment_request_id, created_at, updated_at, created_by, updated_by"
+      "id, organization_id, unit_id, department_id, cost_center_id, requested_by, request_number, title, description, justification, request_type, priority, desired_date, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, approval_status, approval_decision_notes, status, approval_request_id, budget_period_id, budget_line_id, budget_reservation_id, over_budget, over_budget_justification, payment_request_id, created_at, updated_at, created_by, updated_by"
     )
     .eq("id", requestId)
     .is("deleted_at", null)

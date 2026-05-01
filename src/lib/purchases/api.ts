@@ -60,6 +60,17 @@ export function calculateWinningQuoteApprovalFlags(totalAmount: number) {
   };
 }
 
+export type PurchaseApprovalLevel = "administrative_management" | "general_directorate";
+export type PurchaseApprovalStatus = "pending" | "approved" | "rejected" | "returned_to_purchases";
+
+export function getPurchaseApprovalLevel(totalAmount: number): PurchaseApprovalLevel {
+  return totalAmount > 200 ? "general_directorate" : "administrative_management";
+}
+
+export function getPurchaseApprovalLevelLabel(level: PurchaseApprovalLevel | string | null | undefined) {
+  return level === "general_directorate" ? "Diretoria Geral" : "Gerência Administrativa";
+}
+
 export function sumPurchaseRequestItems(items: Array<{ quantity: number; estimatedUnitPrice: number }>) {
   return roundMoney(items.reduce((accumulator, item) => accumulator + item.quantity * item.estimatedUnitPrice, 0));
 }
