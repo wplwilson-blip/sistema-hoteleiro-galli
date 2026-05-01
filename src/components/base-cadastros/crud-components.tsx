@@ -45,10 +45,10 @@ export function FormCard({
   onCancel: () => void;
 }) {
   return (
-    <Card className="border-border/80 shadow-sm shadow-primary/5">
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-lg">{title}</CardTitle>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+    <Card className="min-w-0 border-border/80 shadow-sm shadow-primary/5">
+      <CardHeader className="flex flex-col items-start justify-between gap-3 space-y-0 pb-4 sm:flex-row sm:items-center">
+        <CardTitle className="min-w-0 break-words text-lg">{title}</CardTitle>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} className="shrink-0">
           <X className="h-4 w-4" />
           Fechar
         </Button>
@@ -60,7 +60,7 @@ export function FormCard({
 
 export function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("min-w-0 space-y-2", className)}>
       <Label>{label}</Label>
       {children}
     </div>
@@ -72,7 +72,7 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
     <textarea
       {...props}
       className={cn(
-        "flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        "flex min-h-24 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
         props.className
       )}
     />
@@ -84,7 +84,7 @@ export function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>
     <select
       {...props}
       className={cn(
-        "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-10 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
         props.className
       )}
     />
@@ -101,11 +101,11 @@ export function FormActions({
   submitLabel?: string;
 }) {
   return (
-    <div className="flex justify-end gap-2">
-      <Button type="button" variant="outline" onClick={onCancel}>
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button type="button" variant="outline" onClick={onCancel} className="max-w-full">
         Cancelar
       </Button>
-      <Button type="submit" disabled={isSaving}>
+      <Button type="submit" disabled={isSaving} className="max-w-full">
         {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {submitLabel}
       </Button>
@@ -115,7 +115,7 @@ export function FormActions({
 
 export function NewRecordButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <Button onClick={onClick}>
+    <Button onClick={onClick} className="max-w-full">
       <Plus className="h-4 w-4" />
       {label}
     </Button>
@@ -134,12 +134,12 @@ export function RowActions({
   inactivateLabel?: string;
 }) {
   return (
-    <div className="flex justify-end gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button type="button" variant="outline" size="sm" onClick={onEdit} className="max-w-full">
         <Edit2 className="h-4 w-4" />
         Editar
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={onInactivate} disabled={disableInactivate}>
+      <Button type="button" variant="outline" size="sm" onClick={onInactivate} disabled={disableInactivate} className="max-w-full">
         <PowerOff className="h-4 w-4" />
         {inactivateLabel}
       </Button>

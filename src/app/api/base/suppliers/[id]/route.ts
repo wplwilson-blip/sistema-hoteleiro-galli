@@ -70,9 +70,27 @@ function mapSupplier(row: SupplierRow, unit?: UnitRow | null) {
   };
 }
 
+function serializeSupplier(row: SupplierRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    trade_name: row.trade_name ?? "",
+    document_type: row.document_type,
+    document_number: row.document_number ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    whatsapp: row.whatsapp ?? "",
+    contact_name: row.contact_name ?? "",
+    category: row.category ?? "",
+    status: row.status,
+    unit_id: row.unit_id ?? ""
+  };
+}
+
 async function validateDuplicateDocument(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   organizationId: string,
+  documentType: string,
   documentNumber: string | undefined,
   currentSupplierId: string
 ) {
@@ -84,26 +102,23 @@ async function validateDuplicateDocument(
 
   const { data, error } = await supabase
     .from("suppliers")
-    .select("id, document_number")
+    .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
     .eq("organization_id", organizationId)
+    .eq("document_type", documentType)
     .is("deleted_at", null);
 
   if (error) {
     logBaseCadastroError("suppliers.document_lookup_failed", error);
-    throw new Error("Nao foi possivel validar o documento do fornecedor.");
+    throw new Error("Não foi possível validar o documento do fornecedor.");
   }
 
-  const duplicate = (data ?? []).find((supplier) => {
+  return ((data ?? []) as SupplierRow[]).find((supplier) => {
     if (supplier.id === currentSupplierId) {
       return false;
     }
 
     return normalizeDocumentNumber(supplier.document_number) === normalizedDocument;
   });
-
-  if (duplicate) {
-    throw new Error("Ja existe um fornecedor com este documento nesta organizacao.");
-  }
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
@@ -182,9 +197,20 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     const existingSupplier = currentSupplier?.[0];
 
-    await validateDuplicateDocument(supabase, organizationId, payload.documentNumber, params.id);
+    const duplicateSupplier = await validateDuplicateDocument(supabase, organizationId, payload.documentType, payload.documentNumber, params.id);
 
-    const { error } = await supabase
+    if (duplicateSupplier) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Já existe um fornecedor cadastrado com este CNPJ/CPF.",
+          supplier: serializeSupplier(duplicateSupplier)
+        },
+        { status: 409 }
+      );
+    }
+
+    const { data: updatedSupplier, error } = await supabase
       .from("suppliers")
       .update({
         organization_id: organizationId,
@@ -205,19 +231,24 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         updated_by: session.user.id
       })
       .eq("id", params.id)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
+      .single();
 
     if (error) {
       logBaseCadastroError("suppliers.update_failed", error);
-      return apiError("Nao foi possivel atualizar o fornecedor.", 500);
+      if (error.code === "23505") {
+        return apiError("Já existe um fornecedor cadastrado com este CNPJ/CPF.", 409);
+      }
+      return apiError("Não foi possível atualizar o fornecedor.", 500);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, supplier: serializeSupplier(updatedSupplier as SupplierRow) });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
+      return apiError(error.errors[0]?.message ?? "Dados inválidos.", 422);
     }
 
-    return apiError(error instanceof Error ? error.message : "Nao foi possivel atualizar o fornecedor.", 500);
+    return apiError(error instanceof Error ? error.message : "Não foi possível atualizar o fornecedor.", 500);
   }
 }

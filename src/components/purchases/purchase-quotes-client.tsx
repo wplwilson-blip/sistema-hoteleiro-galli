@@ -7,11 +7,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Ban, Check, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2, Truck, Upload } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
-import { ErrorMessage, Field, LoadingTable, SelectField, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
+import { ErrorMessage, Field, LoadingTable, TextArea, TextInput } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/status-badge";
+import { QuickSupplierDialog, type QuickSupplierRecord } from "@/components/purchases/quick-supplier-dialog";
+import { cn } from "@/lib/utils";
 import {
   getPurchasePriorityLabel,
   getPurchaseRequestStatusLabel,
@@ -102,7 +104,10 @@ type SupplierRecord = {
   id: string;
   name: string;
   tradeName: string;
+  documentType?: string;
   documentNumber: string;
+  phone?: string;
+  whatsapp?: string;
   unitId: string;
   status: string;
 };
@@ -241,6 +246,155 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-xs text-destructive">{message}</p>;
 }
 
+function normalizeSearchValue(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizeDocumentSearch(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function getSupplierContactLabel(supplier: SupplierRecord) {
+  if (supplier.whatsapp) {
+    return `WhatsApp: ${supplier.whatsapp}`;
+  }
+
+  if (supplier.phone) {
+    return `Telefone: ${supplier.phone}`;
+  }
+
+  return "";
+}
+
+function getSupplierSummaryParts(supplier: SupplierRecord) {
+  return [
+    supplier.tradeName ? `Nome fantasia: ${supplier.tradeName}` : "",
+    supplier.documentNumber ? `Documento: ${supplier.documentNumber}` : "",
+    getSupplierContactLabel(supplier)
+  ].filter(Boolean);
+}
+
+function getPurchaseRequestQuotationFlowStatus(request: PurchaseRequestSummary, hasWinningQuote = request.totalApprovedAmount > 0) {
+  if (request.status === "quotation" && hasWinningQuote) {
+    return request.totalApprovedAmount > 200
+      ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const, stage: "approval" as const }
+      : { label: "Aguardando aprovação da Gerência Administrativa", tone: "info" as const, stage: "approval" as const };
+  }
+
+  return {
+    label: request.statusLabel,
+    tone: getPurchaseRequestStatusTone(request.status),
+    stage: "quotation" as const
+  };
+}
+
+function SupplierCombobox({
+  suppliers,
+  value,
+  onChange,
+  disabled
+}: {
+  suppliers: SupplierRecord[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState("");
+  const selectedSupplier = suppliers.find((supplier) => supplier.id === value);
+  const selectedSupplierSummary = selectedSupplier ? getSupplierSummaryParts(selectedSupplier).join(" • ") : "";
+  const normalizedTerm = normalizeSearchValue(term);
+  const documentTerm = normalizeDocumentSearch(term);
+  const filteredSuppliers = suppliers.filter((supplier) => {
+    if (!normalizedTerm && !documentTerm) {
+      return true;
+    }
+
+    const text = normalizeSearchValue([supplier.name, supplier.tradeName, supplier.documentNumber, supplier.phone, supplier.whatsapp].filter(Boolean).join(" "));
+    const documentText = normalizeDocumentSearch([supplier.documentNumber, supplier.phone, supplier.whatsapp].filter(Boolean).join(" "));
+
+    return text.includes(normalizedTerm) || Boolean(documentTerm && documentText.includes(documentTerm));
+  });
+
+  function selectSupplier(supplierId: string) {
+    onChange(supplierId);
+    setTerm("");
+    setOpen(false);
+  }
+
+  return (
+    <div className={cn("relative min-w-0 flex-1", open && "z-[80]")}>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        className="h-auto min-h-10 w-full justify-start px-3 py-2 text-left"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{selectedSupplier ? selectedSupplier.name : "Selecione um fornecedor"}</p>
+          {selectedSupplier ? (
+            <p className="mt-1 truncate text-xs font-normal text-muted-foreground">
+              {selectedSupplierSummary}
+            </p>
+          ) : null}
+        </div>
+      </Button>
+
+      {open ? (
+        <div className="absolute left-0 top-full z-[90] mt-2 w-full min-w-[min(32rem,calc(100vw-3rem))] overflow-hidden rounded-md border border-border bg-background p-0 shadow-xl shadow-black/15">
+          <div className="border-b border-border bg-background p-3">
+            <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 shadow-sm">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                value={term}
+                onChange={(event) => setTerm(event.target.value)}
+                placeholder="Buscar por razão social, nome fantasia, CNPJ/CPF ou telefone"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div className="max-h-[22rem] overflow-y-auto bg-background p-2">
+            {filteredSuppliers.length ? (
+              filteredSuppliers.map((supplier) => {
+                const summary = getSupplierSummaryParts(supplier).join(" • ");
+
+                return (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    onClick={() => selectSupplier(supplier.id)}
+                    className="flex w-full items-start gap-3 rounded-md px-3 py-3 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
+                  >
+                    <Check className={supplier.id === value ? "mt-0.5 h-4 w-4 shrink-0 text-primary" : "mt-0.5 h-4 w-4 shrink-0 text-transparent"} />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="block truncate text-sm font-semibold text-foreground" title={supplier.name}>
+                        {supplier.name}
+                      </span>
+                      {summary ? (
+                        <span className="block truncate text-xs leading-5 text-muted-foreground" title={summary}>
+                          {summary}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">Nenhum fornecedor encontrado.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -340,6 +494,8 @@ export function PurchaseQuotesClient() {
   const [attachmentDescriptions, setAttachmentDescriptions] = useState<Record<string, string>>({});
   const [pendingQuoteAttachmentFiles, setPendingQuoteAttachmentFiles] = useState<File[]>([]);
   const [pendingQuoteAttachmentDescription, setPendingQuoteAttachmentDescription] = useState("");
+  const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
+  const [quickSuppliers, setQuickSuppliers] = useState<QuickSupplierRecord[]>([]);
   const [search, setSearch] = useState("");
 
   const listQuery = useQuery({
@@ -372,6 +528,17 @@ export function PurchaseQuotesClient() {
 
   const requests = useMemo(() => listQuery.data?.requests ?? [], [listQuery.data?.requests]);
   const suppliers = useMemo(() => detailQuery.data?.suppliers ?? listQuery.data?.suppliers ?? [], [detailQuery.data?.suppliers, listQuery.data?.suppliers]);
+  const availableSuppliers = useMemo(() => {
+    const suppliersById = new Map<string, SupplierRecord>();
+
+    for (const supplier of [...suppliers, ...quickSuppliers]) {
+      if (supplier.status === "active") {
+        suppliersById.set(supplier.id, supplier);
+      }
+    }
+
+    return Array.from(suppliersById.values()).sort((a, b) => (a.tradeName || a.name).localeCompare(b.tradeName || b.name, "pt-BR"));
+  }, [quickSuppliers, suppliers]);
   const selectedRequest = detailQuery.data?.request?.id === selectedRequestId ? detailQuery.data.request : null;
   const quotes = useMemo(
     () => (detailQuery.data?.request?.id === selectedRequestId ? detailQuery.data.quotes : []),
@@ -428,6 +595,7 @@ export function PurchaseQuotesClient() {
 
   function closeQuoteForm() {
     clearQuoteTemporaryState();
+    setQuickSupplierOpen(false);
   }
 
   useEffect(() => {
@@ -471,6 +639,7 @@ export function PurchaseQuotesClient() {
     setError("");
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
+    setQuickSupplierOpen(false);
     quoteForm.clearErrors();
     quoteForm.reset(nextValues);
     replace(nextValues.items);
@@ -483,9 +652,27 @@ export function PurchaseQuotesClient() {
     setError("");
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
+    setQuickSupplierOpen(false);
     quoteForm.clearErrors();
     quoteForm.reset(nextValues);
     replace(nextValues.items);
+  }
+
+  async function handleQuickSupplierCreated(supplier: QuickSupplierRecord, message = "Fornecedor cadastrado com sucesso.") {
+    setQuickSuppliers((current) => {
+      const filtered = current.filter((item) => item.id !== supplier.id);
+      return [...filtered, supplier];
+    });
+    quoteForm.setValue("supplierId", supplier.id, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    quoteForm.clearErrors("supplierId");
+    setQuickSupplierOpen(false);
+    setAttachmentMessage(message);
+    setError("");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["base", "suppliers"] }),
+      queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
+      selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
+    ]);
   }
 
   const saveMutation = useMutation({
@@ -624,7 +811,7 @@ export function PurchaseQuotesClient() {
 
   const canStart = selectedRequest?.status === "submitted" || selectedRequest?.status === "under_review";
   const canOpenQuote = selectedRequest?.status === "quotation";
-  const canCreateQuote = canOpenQuote && suppliers.length > 0;
+  const canCreateQuote = canOpenQuote && availableSuppliers.length > 0;
   const selectedRequestItems = selectedRequest?.items ?? [];
   const isQuoteFormVisible = quoteFormOpen && Boolean(selectedRequest);
   const winningQuote = quotes.find((quote) => quote.isSelected) ?? null;
@@ -634,8 +821,9 @@ export function PurchaseQuotesClient() {
     validQuoteCount === 1
       ? "Há apenas 1 cotação válida cadastrada."
       : `Há apenas ${validQuoteCount} cotações válidas cadastradas.`;
-  const selectedRequestStatusLabel = winningQuote ? "Cotação selecionada" : selectedRequest?.statusLabel;
-  const selectedRequestStatusTone = winningQuote ? "success" : selectedRequest ? getPurchaseRequestStatusTone(selectedRequest.status) : "visual";
+  const selectedRequestFlowStatus = selectedRequest
+    ? getPurchaseRequestQuotationFlowStatus(selectedRequest, Boolean(winningQuote))
+    : { label: "", tone: "visual" as const };
 
   const quoteItemsWatch = useWatch({ control: quoteForm.control, name: "items" });
   const quoteTotalPreview = useMemo(
@@ -693,12 +881,12 @@ export function PurchaseQuotesClient() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
+      <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Solicitações elegíveis</h2>
-              <p className="text-sm text-muted-foreground">Clique em uma solicitação ou use Selecionar para carregar os detalhes e cotações à direita.</p>
+              <h2 className="text-lg font-semibold">Solicitações em cotação e aprovação</h2>
+              <p className="text-sm text-muted-foreground">Acompanhe solicitações ainda em cotação e compras com vencedora aguardando alçada.</p>
             </div>
           </div>
 
@@ -712,7 +900,7 @@ export function PurchaseQuotesClient() {
           ) : null}
 
           {filteredRequests.length ? (
-            <div className="overflow-hidden rounded-lg border bg-card shadow-sm shadow-primary/5">
+            <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                   <tr>
@@ -728,11 +916,16 @@ export function PurchaseQuotesClient() {
                 <tbody className="divide-y">
                   {filteredRequests.map((request) => {
                     const isSelected = request.id === selectedRequestId;
+                    const flowStatus = getPurchaseRequestQuotationFlowStatus(request, isSelected ? Boolean(winningQuote) : request.totalApprovedAmount > 0);
 
                     return (
                       <tr
                         key={request.id}
-                        className={isSelected ? "cursor-pointer bg-primary/10" : "cursor-pointer hover:bg-muted/25"}
+                        className={cn(
+                          "cursor-pointer",
+                          isSelected ? "bg-primary/10" : "hover:bg-muted/25",
+                          !isSelected && flowStatus.stage === "approval" && "bg-primary/5 hover:bg-primary/10"
+                        )}
                         onClick={() => openRequest(request.id)}
                       >
                         <td className={isSelected ? "border-l-4 border-primary px-4 py-3 font-medium" : "border-l-4 border-transparent px-4 py-3 font-medium"}>
@@ -750,16 +943,13 @@ export function PurchaseQuotesClient() {
                         <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
                         <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge
-                            status={isSelected && winningQuote ? "success" : getPurchaseRequestStatusTone(request.status)}
-                            label={isSelected && winningQuote ? "Cotação selecionada" : request.statusLabel}
-                          />
+                          <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
                         </td>
                         <td className="px-4 py-3 font-medium">
                           {request.totalApprovedAmount > 0 ? formatCurrency(request.totalApprovedAmount) : "Valor será definido na cotação"}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex flex-wrap justify-end gap-2">
                             {request.status === "submitted" || request.status === "under_review" ? (
                               <Button
                                 type="button"
@@ -826,7 +1016,8 @@ export function PurchaseQuotesClient() {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-semibold">{selectedRequest.requestNumber}</h2>
-                      <StatusBadge status={selectedRequestStatusTone} label={selectedRequestStatusLabel ?? selectedRequest.statusLabel} />
+                      <StatusBadge status={selectedRequestFlowStatus.tone} label={selectedRequestFlowStatus.label} />
+                      {winningQuote ? <StatusBadge status="success" label="Cotação selecionada" /> : null}
                     </div>
                     <h3 className="text-base font-semibold">{selectedRequest.title}</h3>
                     <p className="max-w-3xl text-sm text-muted-foreground">{selectedRequest.justification}</p>
@@ -857,7 +1048,7 @@ export function PurchaseQuotesClient() {
                     {selectedRequest.totalApprovedAmount > 0 ? formatCurrency(selectedRequest.totalApprovedAmount) : "Valor será definido na cotação."}
                   </div>
                 </div>
-                <div className="mt-4 overflow-hidden rounded-md border bg-background">
+                <div className="mt-4 max-w-full overflow-x-auto rounded-md border bg-background">
                   <table className="w-full text-left text-sm">
                     <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                       <tr>
@@ -901,15 +1092,21 @@ export function PurchaseQuotesClient() {
                   </div>
                 </div>
 
-                {selectedRequest?.status === "quotation" && !suppliers.length ? (
+                {selectedRequest?.status === "quotation" && !availableSuppliers.length ? (
                   <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     <p>Cadastre ao menos um fornecedor ativo antes de registrar cotações.</p>
-                    <Link
-                      href="/cadastros/fornecedores"
-                      className="mt-3 inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
-                    >
-                      Ir para fornecedores
-                    </Link>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="outline" className="border-amber-300 text-amber-900 hover:bg-amber-100" onClick={() => setQuickSupplierOpen(true)}>
+                        <Plus className="h-4 w-4" />
+                        Novo fornecedor
+                      </Button>
+                      <Link
+                        href="/cadastros/fornecedores"
+                        className="inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+                      >
+                        Ir para fornecedores
+                      </Link>
+                    </div>
                   </div>
                 ) : null}
 
@@ -937,10 +1134,12 @@ export function PurchaseQuotesClient() {
                     {quotes.map((quote) => (
                       <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
                         <div className="space-y-4">
-                          <div className="flex flex-col gap-3 border-b pb-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="min-w-0 space-y-2">
+                          <div className="flex flex-col gap-3 border-b pb-3 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="w-full min-w-0 space-y-2 xl:min-w-[20rem] xl:flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="min-w-0 break-words text-sm font-semibold text-foreground">{quote.supplierTradeName || quote.supplierName}</p>
+                                <p className="min-w-0 max-w-full truncate text-sm font-semibold text-foreground" title={quote.supplierTradeName || quote.supplierName}>
+                                  {quote.supplierTradeName || quote.supplierName}
+                                </p>
                                 <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
                                 {quote.isSelected ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
@@ -956,7 +1155,7 @@ export function PurchaseQuotesClient() {
                                 Documento: {quote.supplierDocumentNumber || "-"}
                               </p>
                             </div>
-                            <div className="flex flex-wrap gap-2 lg:shrink-0 lg:justify-end">
+                            <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:shrink-0 xl:justify-end">
                               <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)}>
                                 <Pencil className="h-4 w-4" />
                                 Editar
@@ -1044,21 +1243,23 @@ export function PurchaseQuotesClient() {
                             </div>
                           </div>
 
-                          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)_auto] lg:items-end">
-                            <div className="space-y-1">
+                          <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_max-content] xl:items-end">
+                            <div className="min-w-0 space-y-1">
                               <Label>Descrição opcional</Label>
                               <Input
                                 value={attachmentDescriptions[quote.id] ?? ""}
                                 onChange={(event) => setAttachmentDescriptions((current) => ({ ...current, [quote.id]: event.target.value }))}
                                 placeholder="Ex.: Proposta comercial"
+                                className="w-full min-w-0"
                               />
                             </div>
-                            <div className="space-y-1">
+                            <div className="min-w-0 space-y-1">
                               <Label>Arquivo</Label>
                               <Input
                                 key={`${quote.id}-${selectedFile?.name ?? "empty"}`}
                                 type="file"
                                 accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                className="w-full min-w-0 max-w-full text-xs sm:text-sm"
                                 onChange={(event) => {
                                   setError("");
                                   setAttachmentMessage("");
@@ -1066,7 +1267,12 @@ export function PurchaseQuotesClient() {
                                 }}
                               />
                             </div>
-                            <Button type="button" onClick={() => uploadQuoteAttachment(quote.id)} disabled={uploadAttachmentMutation.isPending}>
+                            <Button
+                              type="button"
+                              onClick={() => uploadQuoteAttachment(quote.id)}
+                              disabled={uploadAttachmentMutation.isPending}
+                              className="w-full justify-center whitespace-nowrap xl:w-auto"
+                            >
                               <Upload className="h-4 w-4" />
                               Enviar anexo
                             </Button>
@@ -1151,15 +1357,21 @@ export function PurchaseQuotesClient() {
 
                       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
                         <form className="space-y-6" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
-                          {!suppliers.length ? (
+                          {!availableSuppliers.length ? (
                             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                               <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
-                              <Link
-                                href="/cadastros/fornecedores"
-                                className="mt-3 inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
-                              >
-                                Ir para fornecedores
-                              </Link>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <Button type="button" size="sm" variant="outline" className="border-amber-300 text-amber-900 hover:bg-amber-100" onClick={() => setQuickSupplierOpen(true)}>
+                                  <Plus className="h-4 w-4" />
+                                  Novo fornecedor
+                                </Button>
+                                <Link
+                                  href="/cadastros/fornecedores"
+                                  className="inline-flex items-center rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+                                >
+                                  Ir para fornecedores
+                                </Link>
+                              </div>
                             </div>
                           ) : null}
 
@@ -1169,29 +1381,27 @@ export function PurchaseQuotesClient() {
                               <p className="text-xs text-muted-foreground">Preencha as condições oferecidas pelo fornecedor para esta solicitação.</p>
                             </div>
 
-                            <div className="grid gap-4 lg:grid-cols-2">
-                              <Field label="Fornecedor">
+                            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+                              <Field label="Razão social / Nome do fornecedor">
                                 <Controller
                                   control={quoteForm.control}
                                   name="supplierId"
                                   render={({ field }) => (
-                                    <SelectField
-                                      name={field.name}
-                                      value={field.value ?? ""}
-                                      onBlur={field.onBlur}
-                                      onChange={(event) => {
-                                        field.onChange(event.target.value);
-                                        quoteForm.clearErrors("supplierId");
-                                      }}
-                                      disabled={!suppliers.length}
-                                    >
-                                      <option value="">Selecione</option>
-                                      {suppliers.map((supplier) => (
-                                        <option key={supplier.id} value={supplier.id}>
-                                          {supplier.tradeName || supplier.name}
-                                        </option>
-                                      ))}
-                                    </SelectField>
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                      <SupplierCombobox
+                                        suppliers={availableSuppliers}
+                                        value={field.value ?? ""}
+                                        disabled={!availableSuppliers.length}
+                                        onChange={(supplierId) => {
+                                          field.onChange(supplierId);
+                                          quoteForm.clearErrors("supplierId");
+                                        }}
+                                      />
+                                      <Button type="button" variant="outline" onClick={() => setQuickSupplierOpen(true)} className="shrink-0">
+                                        <Plus className="h-4 w-4" />
+                                        Novo fornecedor
+                                      </Button>
+                                    </div>
                                   )}
                                 />
                                 <FieldError message={quoteForm.formState.errors.supplierId?.message} />
@@ -1431,7 +1641,7 @@ export function PurchaseQuotesClient() {
                                 <p className="text-xs text-muted-foreground">Os arquivos serão enviados após salvar a cotação.</p>
                               </div>
 
-                              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)]">
+                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                 <Field label="Descrição opcional">
                                   <TextInput
                                     value={pendingQuoteAttachmentDescription}
@@ -1482,7 +1692,7 @@ export function PurchaseQuotesClient() {
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button type="button" disabled={saveMutation.isPending || !suppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
+                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
                             <Pencil className="h-4 w-4" />
                             Salvar cotação
                           </Button>
@@ -1495,6 +1705,13 @@ export function PurchaseQuotesClient() {
                   </div>
                 </div>
               ) : null}
+
+              <QuickSupplierDialog
+                open={quickSupplierOpen}
+                unitId={selectedRequest?.unitId}
+                onClose={() => setQuickSupplierOpen(false)}
+                onCreated={handleQuickSupplierCreated}
+              />
             </>
           )}
         </section>

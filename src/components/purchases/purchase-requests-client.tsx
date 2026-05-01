@@ -127,6 +127,19 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+function getPurchaseRequestFlowStatus(request: PurchaseRequestRecord) {
+  if (request.status === "quotation" && request.totalApprovedAmount > 0) {
+    return request.totalApprovedAmount > 200
+      ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const }
+      : { label: "Aguardando aprovação da Gerência Administrativa", tone: "info" as const };
+  }
+
+  return {
+    label: request.statusLabel,
+    tone: getPurchaseRequestStatusTone(request.status)
+  };
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -343,7 +356,7 @@ export function PurchaseRequestsClient() {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-2">
             <Label>Buscar</Label>
             <div className="relative">
@@ -398,7 +411,7 @@ export function PurchaseRequestsClient() {
           }}
         >
           <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
               <Field label="Unidade">
                 <Controller
                   control={form.control}
@@ -732,7 +745,7 @@ export function PurchaseRequestsClient() {
       ) : null}
 
       {filteredRequests.length ? (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm shadow-primary/5">
+        <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
           <table className="w-full min-w-[1280px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>
@@ -750,28 +763,31 @@ export function PurchaseRequestsClient() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredRequests.map((request) => (
-                <Fragment key={request.id}>
-                  <tr className="hover:bg-muted/35">
-                    <td className="px-4 py-3 font-medium">{request.requestNumber}</td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{request.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{request.justification}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{buildUnitLabel(request)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{request.departmentCode ? `${request.departmentCode} - ${request.departmentName}` : request.departmentName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
-                    <td className="px-4 py-3 font-medium">
-                      {request.totalEstimatedAmount > 0 ? formatCurrency(request.totalEstimatedAmount) : "Valor sera definido na cotacao"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={getPurchaseRequestStatusTone(request.status)} label={request.statusLabel} />
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{request.requestedByName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{new Date(request.createdAt).toLocaleString("pt-BR")}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
+              {filteredRequests.map((request) => {
+                const flowStatus = getPurchaseRequestFlowStatus(request);
+
+                return (
+                  <Fragment key={request.id}>
+                    <tr className="hover:bg-muted/35">
+                      <td className="px-4 py-3 font-medium">{request.requestNumber}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{request.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{request.justification}</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{buildUnitLabel(request)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{request.departmentCode ? `${request.departmentCode} - ${request.departmentName}` : request.departmentName}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {request.totalEstimatedAmount > 0 ? formatCurrency(request.totalEstimatedAmount) : "Valor sera definido na cotacao"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{request.requestedByName}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{new Date(request.createdAt).toLocaleString("pt-BR")}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap justify-end gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setExpandedRequestId(expandedRequestId === request.id ? null : request.id)}>
                           <Eye className="h-4 w-4" />
                           Itens
@@ -802,7 +818,7 @@ export function PurchaseRequestsClient() {
                             </div>
                             <div className="text-sm font-semibold">Valor sera definido na cotacao.</div>
                           </div>
-                          <div className="overflow-hidden rounded-md border bg-background">
+                          <div className="max-w-full overflow-x-auto rounded-md border bg-background">
                             <table className="w-full text-left text-sm">
                               <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                                 <tr>
@@ -829,7 +845,8 @@ export function PurchaseRequestsClient() {
                     </tr>
                   ) : null}
                 </Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

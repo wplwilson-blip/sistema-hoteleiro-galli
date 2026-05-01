@@ -51,6 +51,15 @@ export function calculatePurchaseRequestFlags(totalEstimatedAmount: number) {
   };
 }
 
+export function calculateWinningQuoteApprovalFlags(totalAmount: number) {
+  return {
+    quotationRequired: totalAmount > 200,
+    requiredQuoteCount: totalAmount > 200 ? 3 : 0,
+    approvalRequired: true,
+    directorApprovalRequired: totalAmount > 200
+  };
+}
+
 export function sumPurchaseRequestItems(items: Array<{ quantity: number; estimatedUnitPrice: number }>) {
   return roundMoney(items.reduce((accumulator, item) => accumulator + item.quantity * item.estimatedUnitPrice, 0));
 }

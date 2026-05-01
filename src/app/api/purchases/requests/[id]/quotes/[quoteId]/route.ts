@@ -4,6 +4,7 @@ import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/l
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   calculatePurchaseRequestFlags,
+  calculateWinningQuoteApprovalFlags,
   normalizeOptionalUuid,
   roundMoney,
   sumPurchaseQuoteItems
@@ -263,7 +264,8 @@ async function restoreQuoteSelectionState(
   existingQuotes: PurchaseQuoteRow[],
   actorId: string
 ) {
-  const requestFlags = calculatePurchaseRequestFlags(toNumber(requestRow.total_approved_amount));
+  const requestTotal = toNumber(requestRow.total_approved_amount);
+  const requestFlags = requestTotal > 0 ? calculateWinningQuoteApprovalFlags(requestTotal) : calculatePurchaseRequestFlags(requestTotal);
 
   await supabase
     .from("purchase_requests")
@@ -319,7 +321,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
       const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
       const selectedTotal = roundMoney(toNumber(quoteRow.total_amount));
-      const requestFlags = calculatePurchaseRequestFlags(selectedTotal);
+      const requestFlags = calculateWinningQuoteApprovalFlags(selectedTotal);
 
       const { error: unselectError } = await supabase
         .from("purchase_quotes")
@@ -537,7 +539,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError("Não foi possível atualizar os itens da cotação.", 500);
     }
 
-    const requestFlags = calculatePurchaseRequestFlags(totalAmount);
+    const requestFlags = calculateWinningQuoteApprovalFlags(totalAmount);
     if (quoteRow.is_selected) {
       const { error: requestUpdateError } = await supabase
         .from("purchase_requests")
