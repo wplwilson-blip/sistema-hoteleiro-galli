@@ -26,8 +26,8 @@ export default function MinhaOperacaoPage() {
       </section>
 
       <EmptyState
-        title="Nenhuma integração real nesta sprint"
-        description="Os dados desta página são fictícios. Banco, RLS, workflow real e autenticação ficam para sprints futuras."
+        title="Nenhuma fila operacional ativa"
+        description="Quando os fluxos forem ativados, suas pendências, solicitações, aprovações e notificações aparecerão aqui."
       />
     </div>
   );

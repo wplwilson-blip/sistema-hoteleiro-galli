@@ -36,7 +36,7 @@ export default function DashboardPage() {
           <div className="grid gap-3 md:grid-cols-3">
             <ModuleCard title="Solicitações" description="Fila visual de demandas internas." status="Aberto" />
             <ModuleCard title="Aprovações" description="Pendências por perfil e alçada." status="Pendente" />
-            <ModuleCard title="Evidências" description="Base futura para anexos e execução." status="Previsto" />
+            <ModuleCard title="Evidências" description="Base de anexos e registros para apoiar auditoria operacional." status="Previsto" />
           </div>
         </div>
 

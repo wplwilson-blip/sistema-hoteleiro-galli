@@ -6,7 +6,7 @@ export default function DepartamentosPage() {
     <div className="space-y-6">
       <PageTitle
         title="Departamentos"
-        description="Cadastro de departamentos por unidade. REC pode ser cadastrado manualmente quando a unidade precisar de Recepcao."
+        description="Cadastro de departamentos por unidade. REC pode ser cadastrado manualmente quando a unidade precisar de Recepção."
       />
       <DepartmentsClient />
     </div>

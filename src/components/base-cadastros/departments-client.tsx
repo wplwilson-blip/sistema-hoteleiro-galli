@@ -57,9 +57,9 @@ const departmentCodeSuggestions = [
   { code: "RH", name: "Recursos Humanos" },
   { code: "COM", name: "Compras" },
   { code: "CAP", name: "Contas a Pagar" },
-  { code: "MAN", name: "Manutencao" },
-  { code: "GOV", name: "Governanca" },
-  { code: "REC", name: "Recepcao" },
+  { code: "MAN", name: "Manutenção" },
+  { code: "GOV", name: "Governança" },
+  { code: "REC", name: "Recepção" },
   { code: "AB", name: "A&B" },
   { code: "DIR", name: "Diretoria" },
   { code: "TI", name: "Tecnologia / Sistema" }
@@ -73,7 +73,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload;

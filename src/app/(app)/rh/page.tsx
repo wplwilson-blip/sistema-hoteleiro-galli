@@ -10,19 +10,22 @@ const cards = [
     status: "Disponível" as const
   },
   {
-    title: "Admissões futuras",
-    description: "Fluxo de admissão e integração de colaboradores será tratado em sprint futura.",
-    icon: UserPlus
+    title: "Admissões",
+    description: "Fluxo de admissão e integração de colaboradores será ativado em próxima etapa.",
+    icon: UserPlus,
+    status: "Em breve" as const
   },
   {
-    title: "Documentos futuros",
-    description: "Controle de documentos de RH e vencimentos será organizado em etapa posterior.",
-    icon: FileText
+    title: "Documentos",
+    description: "Controle de documentos de RH e vencimentos será organizado em próxima etapa.",
+    icon: FileText,
+    status: "Em breve" as const
   },
   {
-    title: "Treinamentos futuros",
-    description: "Registro de treinamentos, reciclagens e evidências ficará para sprint futura.",
-    icon: GraduationCap
+    title: "Treinamentos",
+    description: "Registro de treinamentos, reciclagens e evidências será ativado em próxima etapa.",
+    icon: GraduationCap,
+    status: "Em breve" as const
   }
 ];
 
@@ -30,7 +33,7 @@ export default function RhPage() {
   return (
     <ModuleDashboard
       title="RH"
-      description="Dashboard de entrada para rotinas de colaboradores, admissões, documentos e treinamentos."
+      description="Entrada para rotinas de colaboradores, admissões, documentos e treinamentos do hotel."
       cards={cards}
     />
   );

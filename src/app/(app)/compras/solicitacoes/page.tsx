@@ -5,7 +5,7 @@ export default function SolicitacoesComprasPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        title="Solicitacoes de compra"
+        title="Solicitações de compra"
         description="Registre e acompanhe as necessidades de compra das unidades e departamentos."
       />
       <PurchaseRequestsClient />

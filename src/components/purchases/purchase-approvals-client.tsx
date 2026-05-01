@@ -403,7 +403,10 @@ export function PurchaseApprovalsClient() {
       {approvalsQuery.error ? <ErrorMessage message={approvalsQuery.error instanceof Error ? approvalsQuery.error.message : "Erro ao carregar aprovações."} /> : null}
 
       {!approvalsQuery.isLoading && !filteredApprovals.length ? (
-        <EmptyState title="Nenhuma aprovação encontrada" description="Compras com cotação vencedora aparecerão aqui para decisão." />
+        <EmptyState
+          title="Nenhuma compra aguardando aprovação."
+          description="Compras com cotação vencedora aparecerão aqui quando forem enviadas para decisão."
+        />
       ) : null}
 
       {filteredApprovals.length ? (
@@ -465,6 +468,9 @@ export function PurchaseApprovalsClient() {
                       </div>
                       <h3 className="break-words text-base font-semibold">{selectedApproval.title}</h3>
                       <p className="break-words text-sm text-muted-foreground">{selectedApproval.justification}</p>
+                      <p className="break-words text-xs leading-5 text-muted-foreground">
+                        Aprovar confirma a compra. Reprovar encerra a solicitação. Devolver para Compras permite revisar a cotação sem encerrar a compra.
+                      </p>
                       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                         <span>Unidade: {buildUnitLabel(selectedApproval)}</span>
                         <span>Departamento: {buildDepartmentLabel(selectedApproval)}</span>
@@ -481,7 +487,7 @@ export function PurchaseApprovalsClient() {
                           <RotateCcw className="h-4 w-4" />
                           Devolver para Compras
                         </Button>
-                        <Button type="button" variant="outline" onClick={() => openDecision(selectedApproval, "rejected")}>
+                        <Button type="button" variant="danger" onClick={() => openDecision(selectedApproval, "rejected")}>
                           <Ban className="h-4 w-4" />
                           Reprovar
                         </Button>
@@ -625,7 +631,7 @@ export function PurchaseApprovalsClient() {
                 <Button type="button" variant="outline" onClick={() => setDecisionState(emptyDecisionState)}>
                   Cancelar
                 </Button>
-                <Button type="button" onClick={submitDecision} disabled={decisionMutation.isPending}>
+                <Button type="button" variant={decisionState.decision === "rejected" ? "danger" : "default"} onClick={submitDecision} disabled={decisionMutation.isPending}>
                   {decisionState.decision === "approved" ? <Check className="h-4 w-4" /> : decisionState.decision === "rejected" ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
                   Confirmar {decisionState.decision === "approved" ? "aprovação" : decisionState.decision === "rejected" ? "reprovação" : "devolução"}
                 </Button>

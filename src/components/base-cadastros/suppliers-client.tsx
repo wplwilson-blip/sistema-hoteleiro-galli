@@ -100,7 +100,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload;

@@ -3,19 +3,22 @@ import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
   {
-    title: "Pagamentos futuros",
+    title: "Pagamentos",
     description: "Controle administrativo de pagamentos será tratado sem virar financeiro completo.",
-    icon: Landmark
+    icon: Landmark,
+    status: "Em breve" as const
   },
   {
-    title: "Aprovações futuras",
-    description: "Aprovações de pagamento serão organizadas em sprint própria.",
-    icon: ClipboardCheck
+    title: "Aprovações de pagamento",
+    description: "Aprovações de pagamento serão organizadas em próxima etapa.",
+    icon: ClipboardCheck,
+    status: "Em breve" as const
   },
   {
-    title: "Documentos pendentes futuros",
-    description: "Documentos fiscais e pendências de pagamento serão estruturados depois.",
-    icon: FileClock
+    title: "Documentos pendentes",
+    description: "Documentos fiscais e pendências de pagamento serão estruturados em próxima etapa.",
+    icon: FileClock,
+    status: "Em breve" as const
   },
   {
     title: "Fornecedores",
@@ -30,7 +33,7 @@ export default function ContasAPagarPage() {
   return (
     <ModuleDashboard
       title="Contas a Pagar"
-      description="Dashboard de entrada para pagamentos futuros, aprovações e documentos pendentes."
+      description="Entrada para pagamentos administrativos, aprovações e documentos pendentes."
       cards={cards}
     />
   );

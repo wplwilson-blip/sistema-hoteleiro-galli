@@ -16,10 +16,9 @@ const cards = [
   },
   {
     title: "Aprovações",
-    description: "Aprovação da compra será tratada na Sprint 5D, sem execução nesta etapa.",
+    description: "Analisar compras com cotação vencedora, registrar aprovação, reprovação ou devolução para revisão.",
     href: "/compras/aprovacoes",
-    icon: ClipboardCheck,
-    status: "Em breve" as const
+    icon: ClipboardCheck
   },
   {
     title: "Fornecedores",
@@ -40,7 +39,7 @@ export default function ComprasPage() {
   return (
     <ModuleDashboard
       title="Compras"
-      description="Módulo para controlar solicitações, cotações, anexos, fornecedores e futura aprovação de compras internas."
+      description="Módulo para controlar solicitações, cotações, anexos, fornecedores e aprovações de compras internas."
       cards={cards}
     />
   );

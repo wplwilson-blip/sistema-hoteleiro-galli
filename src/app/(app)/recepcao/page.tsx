@@ -3,24 +3,28 @@ import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
   {
-    title: "Passagem de turno futura",
-    description: "Registro operacional de troca de turno da recepção será estruturado em sprint futura.",
-    icon: ClipboardList
+    title: "Passagem de turno",
+    description: "Registro operacional de troca de turno da recepção será ativado em próxima etapa.",
+    icon: ClipboardList,
+    status: "Em breve" as const
   },
   {
-    title: "Ocorrências futuras",
-    description: "Controle de ocorrências operacionais da recepção será criado posteriormente.",
-    icon: MessageSquareWarning
+    title: "Ocorrências",
+    description: "Controle de ocorrências operacionais da recepção será criado em próxima etapa.",
+    icon: MessageSquareWarning,
+    status: "Em breve" as const
   },
   {
-    title: "Achados e perdidos futuro",
-    description: "Registro e acompanhamento de itens encontrados ficará para sprint futura.",
-    icon: Search
+    title: "Achados e perdidos",
+    description: "Registro e acompanhamento de itens encontrados será ativado em próxima etapa.",
+    icon: Search,
+    status: "Em breve" as const
   },
   {
-    title: "Observações de hóspedes futuro",
+    title: "Observações de hóspedes",
     description: "Observações operacionais de hóspedes serão tratadas sem criar fluxo de reservas.",
-    icon: UsersRound
+    icon: UsersRound,
+    status: "Em breve" as const
   }
 ];
 
@@ -28,7 +32,7 @@ export default function RecepcaoPage() {
   return (
     <ModuleDashboard
       title="Recepção"
-      description="Dashboard de entrada para rotinas administrativas da recepção, sem funcionalidades de PMS ou reservas."
+      description="Entrada para rotinas administrativas da recepção, sem funcionalidades de PMS ou reservas."
       cards={cards}
     />
   );
