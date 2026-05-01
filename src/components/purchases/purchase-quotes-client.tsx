@@ -226,6 +226,20 @@ function parseLocalizedNumber(value: string | number | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseDeliveryDays(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value.replace(/\D/g, ""), 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function formatFileSize(bytes: number) {
   if (bytes >= 1024 * 1024) {
     return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
@@ -289,6 +303,54 @@ function getPurchaseRequestQuotationFlowStatus(request: PurchaseRequestSummary, 
     tone: getPurchaseRequestStatusTone(request.status),
     stage: "quotation" as const
   };
+}
+
+function isValidQuoteForRecommendation(quote: PurchaseQuoteRecord) {
+  return (quote.status === "received" || quote.status === "selected" || quote.status === "rejected") && !quote.isExpired;
+}
+
+function compareRecommendedQuotes(left: PurchaseQuoteRecord, right: PurchaseQuoteRecord) {
+  if (left.totalAmount !== right.totalAmount) {
+    return left.totalAmount - right.totalAmount;
+  }
+
+  const leftDeliveryDays = parseDeliveryDays(left.deliveryDays);
+  const rightDeliveryDays = parseDeliveryDays(right.deliveryDays);
+
+  if (leftDeliveryDays !== null && rightDeliveryDays !== null && leftDeliveryDays !== rightDeliveryDays) {
+    return leftDeliveryDays - rightDeliveryDays;
+  }
+
+  if (leftDeliveryDays !== null && rightDeliveryDays === null) {
+    return -1;
+  }
+
+  if (leftDeliveryDays === null && rightDeliveryDays !== null) {
+    return 1;
+  }
+
+  const leftCreatedAt = new Date(left.createdAt).getTime();
+  const rightCreatedAt = new Date(right.createdAt).getTime();
+
+  if (Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt) && leftCreatedAt !== rightCreatedAt) {
+    return leftCreatedAt - rightCreatedAt;
+  }
+
+  return left.quoteNumber.localeCompare(right.quoteNumber, "pt-BR");
+}
+
+function getMostCommonPaymentTerms(quotes: PurchaseQuoteRecord[]) {
+  const counts = new Map<string, number>();
+
+  for (const quote of quotes) {
+    const terms = quote.paymentTerms.trim();
+
+    if (terms) {
+      counts.set(terms, (counts.get(terms) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries()).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "pt-BR"))[0]?.[0] ?? "";
 }
 
 function SupplierCombobox({
@@ -815,6 +877,31 @@ export function PurchaseQuotesClient() {
   const selectedRequestItems = selectedRequest?.items ?? [];
   const isQuoteFormVisible = quoteFormOpen && Boolean(selectedRequest);
   const winningQuote = quotes.find((quote) => quote.isSelected) ?? null;
+  const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
+  const quoteComparison = useMemo(() => {
+    const validQuotes = quotes.filter(isValidQuoteForRecommendation);
+    const sortedQuotes = [...validQuotes].sort(compareRecommendedQuotes);
+    const recommendedQuote = sortedQuotes[0] ?? null;
+    const lowestQuote = sortedQuotes[0] ?? null;
+    const bestDeliveryQuote = [...validQuotes]
+      .filter((quote) => parseDeliveryDays(quote.deliveryDays) !== null)
+      .sort((left, right) => {
+        const deliveryDifference = (parseDeliveryDays(left.deliveryDays) ?? Number.MAX_SAFE_INTEGER) - (parseDeliveryDays(right.deliveryDays) ?? Number.MAX_SAFE_INTEGER);
+
+        return deliveryDifference || compareRecommendedQuotes(left, right);
+      })[0] ?? null;
+
+    return {
+      validQuotes,
+      recommendedQuote,
+      lowestQuote,
+      bestDeliveryQuote,
+      mostCommonPaymentTerms: getMostCommonPaymentTerms(validQuotes)
+    };
+  }, [quotes]);
+  const selectedDiffersFromRecommendation = Boolean(
+    winningQuote && quoteComparison.recommendedQuote && winningQuote.id !== quoteComparison.recommendedQuote.id
+  );
   const validQuoteCount = quotes.filter((quote) => quote.status === "received" || quote.status === "selected" || quote.status === "rejected").length;
   const showQuoteWarning = Boolean(winningQuote && winningQuote.totalAmount > 200 && validQuoteCount < 3);
   const quoteWarningText =
@@ -1129,9 +1216,54 @@ export function PurchaseQuotesClient() {
                   )}
                 </div>
 
+                {quoteComparison.validQuotes.length ? (
+                  <div className="mt-4 space-y-3 rounded-lg border bg-background p-4">
+                    <div className="flex flex-col gap-1">
+                      <h4 className="text-sm font-semibold">Comparativo das cotações</h4>
+                      <p className="text-xs text-muted-foreground">Recomendação automática pela menor cotação válida. Prazo, pagamento e fornecedor entram como contexto da decisão.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Cotação recomendada</p>
+                        <p className="mt-1 break-words text-sm font-semibold text-foreground">
+                          {quoteComparison.recommendedQuote?.quoteNumber} - {quoteComparison.recommendedQuote?.supplierTradeName || quoteComparison.recommendedQuote?.supplierName}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {quoteComparison.validQuotes.length === 1 ? "Única cotação válida cadastrada." : "Critério principal: menor valor total."}
+                        </p>
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Menor valor</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{quoteComparison.lowestQuote?.totalAmountLabel ?? "-"}</p>
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Melhor prazo</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {quoteComparison.bestDeliveryQuote ? `${quoteComparison.bestDeliveryQuote.deliveryDays} dias` : "Não informado"}
+                        </p>
+                      </div>
+                      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Pagamento mais informado</p>
+                        <p className="mt-1 break-words text-sm font-semibold text-foreground">{quoteComparison.mostCommonPaymentTerms || "Não informado"}</p>
+                      </div>
+                    </div>
+                    {selectedDiffersFromRecommendation ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        A cotação vencedora selecionada é diferente da cotação recomendada pelo sistema. Na aprovação, será importante justificar a escolha.
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {quotes.length ? (
                   <div className="mt-4 space-y-3">
-                    {quotes.map((quote) => (
+                    {quotes.map((quote) => {
+                      const isLowestQuote = quoteComparison.lowestQuote?.id === quote.id;
+                      const isRecommendedQuote = quoteComparison.recommendedQuote?.id === quote.id;
+                      const supplier = supplierById.get(quote.supplierId);
+                      const supplierTrustLabel = supplier?.status === "active" ? "Fornecedor ativo" : "Fornecedor cadastrado";
+
+                      return (
                       <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
                         <div className="space-y-4">
                           <div className="flex flex-col gap-3 border-b pb-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1141,11 +1273,16 @@ export function PurchaseQuotesClient() {
                                   {quote.supplierTradeName || quote.supplierName}
                                 </p>
                                 <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
+                                {isLowestQuote ? <StatusBadge status="info" label="Menor valor" /> : null}
+                                {isRecommendedQuote ? <StatusBadge status="success" label="Recomendada" /> : null}
                                 {quote.isSelected ? (
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
                                     <Check className="h-3.5 w-3.5" />
-                                    Cotação vencedora
+                                    Vencedora
                                   </span>
+                                ) : null}
+                                {quote.isSelected && selectedDiffersFromRecommendation ? (
+                                  <StatusBadge status="warning" label="Escolhida diferente da recomendada" />
                                 ) : null}
                                 {quote.status === "rejected" && !quote.isSelected ? (
                                   <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Não selecionada</span>
@@ -1213,10 +1350,15 @@ export function PurchaseQuotesClient() {
                               <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionada</p>
                               <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.isSelected ? "Sim" : "Não"}</p>
                             </div>
+                            <div className="rounded-md border bg-background/70 p-3">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Fornecedor</p>
+                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{supplierTrustLabel}</p>
+                            </div>
                           </div>
                         </div>
                       </article>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <EmptyState title="Nenhuma cotação cadastrada" description="Use Nova cotação para registrar propostas de fornecedores." />
