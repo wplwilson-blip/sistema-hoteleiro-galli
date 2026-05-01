@@ -36,7 +36,7 @@ type PurchaseRequestSummary = {
   requestTypeLabel: string;
   priority: "low" | "normal" | "high" | "critical";
   priorityLabel: string;
-  status: "submitted" | "under_review" | "quotation";
+  status: "submitted" | "under_review" | "quotation" | "approved" | "rejected";
   statusLabel: string;
   unitId: string;
   departmentId: string;
@@ -46,6 +46,8 @@ type PurchaseRequestSummary = {
   requiredQuoteCount: number;
   approvalRequired: boolean;
   directorApprovalRequired: boolean;
+  approvalStatus?: "pending" | "approved" | "rejected" | "returned_to_purchases";
+  approvalDecisionNotes?: string;
   createdAt: string;
 };
 
@@ -292,6 +294,18 @@ function getSupplierSummaryParts(supplier: SupplierRecord) {
 }
 
 function getPurchaseRequestQuotationFlowStatus(request: PurchaseRequestSummary, hasWinningQuote = request.totalApprovedAmount > 0) {
+  if (request.approvalStatus === "approved" || request.status === "approved") {
+    return { label: "Compra aprovada", tone: "success" as const, stage: "approval" as const };
+  }
+
+  if (request.approvalStatus === "rejected" || request.status === "rejected") {
+    return { label: "Compra reprovada", tone: "danger" as const, stage: "approval" as const };
+  }
+
+  if (request.approvalStatus === "returned_to_purchases") {
+    return { label: "Devolvida para Compras", tone: "info" as const, stage: "approval" as const };
+  }
+
   if (request.status === "quotation" && hasWinningQuote) {
     return request.totalApprovedAmount > 200
       ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const, stage: "approval" as const }
@@ -857,6 +871,25 @@ export function PurchaseQuotesClient() {
     }
   });
 
+  const resubmitMutation = useMutation({
+    mutationFn: async (requestId: string) => requestJson<{ ok: true; message: string }>(`/api/purchases/approvals/${requestId}/resubmit`, { method: "POST" }),
+    onSuccess: async (payload) => {
+      setError("");
+      setAttachmentMessage(payload.message);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] })
+      ]);
+      if (selectedRequestId) {
+        await queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" });
+      }
+    },
+    onError: (mutationError) => {
+      setAttachmentMessage("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível reenviar para aprovação.");
+    }
+  });
+
   const filteredRequests = useMemo(() => {
     const term = search.trim().toLowerCase();
 
@@ -877,6 +910,7 @@ export function PurchaseQuotesClient() {
   const selectedRequestItems = selectedRequest?.items ?? [];
   const isQuoteFormVisible = quoteFormOpen && Boolean(selectedRequest);
   const winningQuote = quotes.find((quote) => quote.isSelected) ?? null;
+  const canResubmitApproval = selectedRequest?.approvalStatus === "returned_to_purchases" && Boolean(winningQuote);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const quoteComparison = useMemo(() => {
     const validQuotes = quotes.filter(isValidQuoteForRecommendation);
@@ -1121,9 +1155,22 @@ export function PurchaseQuotesClient() {
                         Iniciar cotação
                       </Button>
                     ) : null}
+                    {canResubmitApproval ? (
+                      <Button type="button" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
+                        <RotateCcw className="h-4 w-4" />
+                        Reenviar para aprovação
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </div>
+
+              {selectedRequest.approvalStatus === "returned_to_purchases" && selectedRequest.approvalDecisionNotes ? (
+                <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                  <p className="font-semibold">Motivo da devolução</p>
+                  <p className="mt-1 break-words">{selectedRequest.approvalDecisionNotes}</p>
+                </div>
+              ) : null}
 
               <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
                 <div className="flex items-center justify-between gap-3">
@@ -1262,6 +1309,8 @@ export function PurchaseQuotesClient() {
                       const isRecommendedQuote = quoteComparison.recommendedQuote?.id === quote.id;
                       const supplier = supplierById.get(quote.supplierId);
                       const supplierTrustLabel = supplier?.status === "active" ? "Fornecedor ativo" : "Fornecedor cadastrado";
+                      const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
+                      const selectedFile = attachmentFiles[quote.id];
 
                       return (
                       <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
@@ -1355,6 +1404,97 @@ export function PurchaseQuotesClient() {
                               <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{supplierTrustLabel}</p>
                             </div>
                           </div>
+
+                          <section className="space-y-4 rounded-lg border bg-background/80 p-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Paperclip className="h-4 w-4" />
+                                Anexos da cotação
+                              </div>
+                              <p className="text-xs text-muted-foreground">Propostas, documentos ou imagens enviados para esta cotação.</p>
+                            </div>
+
+                            <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_max-content] xl:items-end">
+                              <div className="min-w-0 space-y-1">
+                                <Label>Descrição opcional</Label>
+                                <Input
+                                  value={attachmentDescriptions[quote.id] ?? ""}
+                                  onChange={(event) => setAttachmentDescriptions((current) => ({ ...current, [quote.id]: event.target.value }))}
+                                  placeholder="Ex.: Proposta comercial"
+                                  className="w-full min-w-0"
+                                />
+                              </div>
+                              <div className="min-w-0 space-y-1">
+                                <Label>Arquivo</Label>
+                                <Input
+                                  key={`${quote.id}-${selectedFile?.name ?? "empty"}`}
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                  className="w-full min-w-0 max-w-full text-xs sm:text-sm"
+                                  onChange={(event) => {
+                                    setError("");
+                                    setAttachmentMessage("");
+                                    setAttachmentFiles((current) => ({ ...current, [quote.id]: event.target.files?.[0] ?? null }));
+                                  }}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                onClick={() => uploadQuoteAttachment(quote.id)}
+                                disabled={uploadAttachmentMutation.isPending}
+                                className="w-full justify-center whitespace-nowrap xl:w-auto"
+                              >
+                                <Upload className="h-4 w-4" />
+                                Enviar anexo
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold uppercase text-muted-foreground">Arquivos</p>
+                              {attachmentsQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando anexos...</p> : null}
+                              {!attachmentsQuery.isLoading && !quoteAttachments.length ? (
+                                <p className="text-sm text-muted-foreground">Nenhum anexo cadastrado para esta cotação.</p>
+                              ) : null}
+                              {quoteAttachments.length ? (
+                                <div className="space-y-2">
+                                  {quoteAttachments.map((attachment) => (
+                                    <div key={attachment.id} className="rounded-md border bg-muted/20 p-3">
+                                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="min-w-0 flex-1 space-y-2">
+                                          <p className="break-words text-sm font-semibold text-foreground">{attachment.fileName}</p>
+                                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                            <span>Tipo: {attachment.fileMimeType}</span>
+                                            <span>Tamanho: {formatFileSize(attachment.fileSizeBytes)}</span>
+                                            <span>Envio: {formatDate(attachment.createdAt)}</span>
+                                          </div>
+                                          <p className="break-words text-xs text-muted-foreground">Descrição: {attachment.description || "-"}</p>
+                                        </div>
+                                        <div className="flex shrink-0 flex-wrap justify-start gap-2 lg:justify-end">
+                                          {attachment.signedUrl ? (
+                                            <Button type="button" size="sm" variant="outline" asChild>
+                                              <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
+                                                Abrir
+                                              </a>
+                                            </Button>
+                                          ) : null}
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
+                                            disabled={deleteAttachmentMutation.isPending}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                            Remover
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </section>
                         </div>
                       </article>
                       );
@@ -1363,113 +1503,6 @@ export function PurchaseQuotesClient() {
                 ) : (
                   <EmptyState title="Nenhuma cotação cadastrada" description="Use Nova cotação para registrar propostas de fornecedores." />
                 )}
-
-                {quotes.length ? (
-                  <div className="mt-5 space-y-4">
-                    {quotes.map((quote) => {
-                      const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
-                      const selectedFile = attachmentFiles[quote.id];
-
-                      return (
-                        <section key={quote.id} className="space-y-4 rounded-lg border bg-background p-4">
-                          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-sm font-semibold">
-                                <Paperclip className="h-4 w-4" />
-                                Anexos
-                              </div>
-                              <p className="text-xs text-muted-foreground">Propostas, documentos ou imagens enviados pelo fornecedor.</p>
-                              <p className="text-xs font-medium text-foreground">
-                                {quote.quoteNumber} - {quote.supplierTradeName || quote.supplierName}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_max-content] xl:items-end">
-                            <div className="min-w-0 space-y-1">
-                              <Label>Descrição opcional</Label>
-                              <Input
-                                value={attachmentDescriptions[quote.id] ?? ""}
-                                onChange={(event) => setAttachmentDescriptions((current) => ({ ...current, [quote.id]: event.target.value }))}
-                                placeholder="Ex.: Proposta comercial"
-                                className="w-full min-w-0"
-                              />
-                            </div>
-                            <div className="min-w-0 space-y-1">
-                              <Label>Arquivo</Label>
-                              <Input
-                                key={`${quote.id}-${selectedFile?.name ?? "empty"}`}
-                                type="file"
-                                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                                className="w-full min-w-0 max-w-full text-xs sm:text-sm"
-                                onChange={(event) => {
-                                  setError("");
-                                  setAttachmentMessage("");
-                                  setAttachmentFiles((current) => ({ ...current, [quote.id]: event.target.files?.[0] ?? null }));
-                                }}
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              onClick={() => uploadQuoteAttachment(quote.id)}
-                              disabled={uploadAttachmentMutation.isPending}
-                              className="w-full justify-center whitespace-nowrap xl:w-auto"
-                            >
-                              <Upload className="h-4 w-4" />
-                              Enviar anexo
-                            </Button>
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase text-muted-foreground">Arquivos</p>
-                            {attachmentsQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando anexos...</p> : null}
-                            {!attachmentsQuery.isLoading && !quoteAttachments.length ? (
-                              <p className="text-sm text-muted-foreground">Nenhum anexo cadastrado para esta cotação.</p>
-                            ) : null}
-                            {quoteAttachments.length ? (
-                              <div className="space-y-2">
-                                {quoteAttachments.map((attachment) => (
-                                  <div key={attachment.id} className="rounded-md border bg-muted/20 p-3">
-                                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                      <div className="min-w-0 flex-1 space-y-2">
-                                        <p className="break-words text-sm font-semibold text-foreground">{attachment.fileName}</p>
-                                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                          <span>Tipo: {attachment.fileMimeType}</span>
-                                          <span>Tamanho: {formatFileSize(attachment.fileSizeBytes)}</span>
-                                          <span>Envio: {formatDate(attachment.createdAt)}</span>
-                                        </div>
-                                        <p className="break-words text-xs text-muted-foreground">Descrição: {attachment.description || "-"}</p>
-                                      </div>
-                                      <div className="flex shrink-0 flex-wrap justify-start gap-2 lg:justify-end">
-                                        {attachment.signedUrl ? (
-                                          <Button type="button" size="sm" variant="outline" asChild>
-                                            <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
-                                              Abrir
-                                            </a>
-                                          </Button>
-                                        ) : null}
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
-                                          disabled={deleteAttachmentMutation.isPending}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                          Remover
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
-                ) : null}
               </div>
 
               {isQuoteFormVisible ? (

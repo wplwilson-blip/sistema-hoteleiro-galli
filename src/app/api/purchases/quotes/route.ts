@@ -24,6 +24,8 @@ type PurchaseRequestRow = {
   required_quote_count: number;
   approval_required: boolean;
   director_approval_required: boolean;
+  approval_status?: "pending" | "approved" | "rejected" | "returned_to_purchases" | null;
+  approval_decision_notes?: string | null;
   created_at: string;
 };
 
@@ -185,7 +187,7 @@ async function loadEligibleRequests(supabase: SupabaseAdmin, accessibleUnitIds: 
 
   const { data, error } = await supabase
     .from("purchase_requests")
-    .select("id, organization_id, unit_id, department_id, requested_by, request_number, title, justification, request_type, priority, status, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, created_at")
+    .select("id, organization_id, unit_id, department_id, requested_by, request_number, title, justification, request_type, priority, status, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, approval_status, approval_decision_notes, created_at")
     .in("unit_id", accessibleUnitIds)
     .in("status", ["submitted", "under_review", "quotation"])
     .is("deleted_at", null)
@@ -216,6 +218,8 @@ async function loadEligibleRequests(supabase: SupabaseAdmin, accessibleUnitIds: 
     requiredQuoteCount: request.required_quote_count,
     approvalRequired: request.approval_required,
     directorApprovalRequired: request.director_approval_required,
+    approvalStatus: request.approval_status ?? "pending",
+    approvalDecisionNotes: request.approval_decision_notes ?? "",
     createdAt: request.created_at
   }));
 }
@@ -223,7 +227,7 @@ async function loadEligibleRequests(supabase: SupabaseAdmin, accessibleUnitIds: 
 async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, accessibleUnitIds: string[]) {
   const { data: request, error: requestError } = await supabase
     .from("purchase_requests")
-    .select("id, organization_id, unit_id, department_id, requested_by, request_number, title, justification, request_type, priority, status, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, created_at")
+    .select("id, organization_id, unit_id, department_id, requested_by, request_number, title, justification, request_type, priority, status, total_estimated_amount, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, approval_status, approval_decision_notes, created_at")
     .eq("id", requestId)
     .is("deleted_at", null)
     .single();
@@ -310,6 +314,8 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
       requiredQuoteCount: request.required_quote_count,
       approvalRequired: request.approval_required,
       directorApprovalRequired: request.director_approval_required,
+      approvalStatus: request.approval_status ?? "pending",
+      approvalDecisionNotes: request.approval_decision_notes ?? "",
       createdAt: request.created_at,
       items: (requestItems ?? []).map((item) => ({
         id: item.id,

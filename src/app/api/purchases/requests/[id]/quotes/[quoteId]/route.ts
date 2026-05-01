@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   calculatePurchaseRequestFlags,
   calculateWinningQuoteApprovalFlags,
+  getPurchaseApprovalLevel,
   normalizeOptionalUuid,
   roundMoney,
   sumPurchaseQuoteItems
@@ -273,9 +274,14 @@ async function restoreQuoteSelectionState(
       total_approved_amount: toNumber(requestRow.total_approved_amount),
       quotation_required: requestFlags.quotationRequired,
       required_quote_count: requestFlags.requiredQuoteCount,
-      approval_required: requestFlags.approvalRequired,
-      director_approval_required: requestFlags.directorApprovalRequired,
-      updated_by: actorId
+          approval_required: requestFlags.approvalRequired,
+          director_approval_required: requestFlags.directorApprovalRequired,
+          approval_status: "pending",
+          approval_level: requestTotal > 0 ? getPurchaseApprovalLevel(requestTotal) : null,
+          approval_decided_at: null,
+          approval_decided_by: null,
+          approval_decision_notes: null,
+          updated_by: actorId
     })
     .eq("id", requestRow.id);
 
@@ -357,6 +363,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           required_quote_count: requestFlags.requiredQuoteCount,
           approval_required: requestFlags.approvalRequired,
           director_approval_required: requestFlags.directorApprovalRequired,
+          approval_status: "pending",
+          approval_level: getPurchaseApprovalLevel(selectedTotal),
+          approval_decided_at: null,
+          approval_decided_by: null,
+          approval_decision_notes: null,
           updated_by: session.user.id
         })
         .eq("id", requestRow.id);
@@ -549,6 +560,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           required_quote_count: requestFlags.requiredQuoteCount,
           approval_required: requestFlags.approvalRequired,
           director_approval_required: requestFlags.directorApprovalRequired,
+          approval_status: "pending",
+          approval_level: getPurchaseApprovalLevel(totalAmount),
+          approval_decided_at: null,
+          approval_decided_by: null,
+          approval_decision_notes: null,
           updated_by: session.user.id
         })
         .eq("id", requestRow.id);
@@ -667,6 +683,11 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
           required_quote_count: 0,
           approval_required: false,
           director_approval_required: false,
+          approval_status: "pending",
+          approval_level: null,
+          approval_decided_at: null,
+          approval_decided_by: null,
+          approval_decision_notes: null,
           updated_by: session.user.id
         })
         .eq("id", requestRow.id);

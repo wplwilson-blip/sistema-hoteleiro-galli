@@ -81,6 +81,8 @@ type PurchaseRequestRecord = {
   requiredQuoteCount: number;
   approvalRequired: boolean;
   directorApprovalRequired: boolean;
+  approvalStatus?: "pending" | "approved" | "rejected" | "returned_to_purchases";
+  approvalDecisionNotes?: string;
   status: PurchaseRequestStatus;
   statusLabel: string;
   approvalRequestId: string;
@@ -128,6 +130,18 @@ function formatCurrency(value: number) {
 }
 
 function getPurchaseRequestFlowStatus(request: PurchaseRequestRecord) {
+  if (request.approvalStatus === "approved" || request.status === "approved") {
+    return { label: "Compra aprovada", tone: "success" as const };
+  }
+
+  if (request.approvalStatus === "rejected" || request.status === "rejected") {
+    return { label: "Compra reprovada", tone: "danger" as const };
+  }
+
+  if (request.approvalStatus === "returned_to_purchases") {
+    return { label: "Devolvida para Compras", tone: "info" as const };
+  }
+
   if (request.status === "quotation" && request.totalApprovedAmount > 0) {
     return request.totalApprovedAmount > 200
       ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const }
