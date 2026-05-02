@@ -148,5 +148,9 @@ export const purchaseQuoteSelectSchema = z.object({
   action: z.literal("select")
 });
 
+export const purchaseQuoteUnselectSchema = z.object({
+  action: z.literal("unselect")
+});
+
 export const purchaseQuotePostSchema = z.union([purchaseQuoteStartSchema, purchaseQuoteCreateSchema]);
-export const purchaseQuotePatchSchema = z.union([purchaseQuoteUpdateSchema, purchaseQuoteSelectSchema]);
+export const purchaseQuotePatchSchema = z.union([purchaseQuoteUpdateSchema, purchaseQuoteSelectSchema, purchaseQuoteUnselectSchema]);

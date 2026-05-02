@@ -63,6 +63,57 @@ export function calculateWinningQuoteApprovalFlags(totalAmount: number) {
 export type PurchaseApprovalLevel = "administrative_management" | "general_directorate";
 export type PurchaseApprovalStatus = "pending" | "approved" | "rejected" | "returned_to_purchases";
 
+type PurchaseQuotationMutationState = {
+  status: string | null;
+  approvalStatus: PurchaseApprovalStatus | string | null | undefined;
+  approvalRequired: boolean | null | undefined;
+  totalApprovedAmount: string | number | null | undefined;
+};
+
+function toMoneyNumber(value: string | number | null | undefined) {
+  return Number(value ?? 0);
+}
+
+export function getPurchaseQuotationMutationBlockMessage(state: PurchaseQuotationMutationState) {
+  if (state.approvalStatus === "returned_to_purchases") {
+    return "";
+  }
+
+  if (state.approvalStatus === "approved" || state.status === "approved") {
+    return "Esta compra já foi aprovada e não permite alteração de cotações.";
+  }
+
+  if (state.approvalStatus === "rejected" || state.status === "rejected") {
+    return "Esta compra foi reprovada e não permite novas alterações.";
+  }
+
+  if (state.approvalStatus === "pending" && state.approvalRequired && toMoneyNumber(state.totalApprovedAmount) > 0) {
+    return "Esta compra está aguardando aprovação e não pode mais ser alterada.";
+  }
+
+  return "";
+}
+
+export function getPurchaseAttachmentMutationBlockMessage(state: PurchaseQuotationMutationState) {
+  if (state.approvalStatus === "returned_to_purchases") {
+    return "";
+  }
+
+  if (state.approvalStatus === "approved" || state.status === "approved") {
+    return "Não é possível alterar anexos de uma compra já aprovada.";
+  }
+
+  if (state.approvalStatus === "rejected" || state.status === "rejected") {
+    return "Não é possível alterar anexos de uma compra reprovada.";
+  }
+
+  if (state.approvalStatus === "pending" && state.approvalRequired && toMoneyNumber(state.totalApprovedAmount) > 0) {
+    return "Não é possível alterar anexos de uma compra aguardando aprovação.";
+  }
+
+  return "";
+}
+
 export function getPurchaseApprovalLevel(totalAmount: number): PurchaseApprovalLevel {
   return totalAmount > 200 ? "general_directorate" : "administrative_management";
 }

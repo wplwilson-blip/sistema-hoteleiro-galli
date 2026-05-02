@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { validatePurchaseQuoteAttachmentAccess, type AttachmentRow } from "@/lib/attachments/api";
+import { validatePurchaseQuoteAttachmentMutationAccess, type AttachmentRow } from "@/lib/attachments/api";
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
   const { session, response } = await requireAuthenticatedRequest();
@@ -33,7 +33,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       return apiError("Você não tem permissão para acessar este anexo.", 403);
     }
 
-    await validatePurchaseQuoteAttachmentAccess(supabase, attachment.entity_id, accessibleUnitIds);
+    await validatePurchaseQuoteAttachmentMutationAccess(supabase, attachment.entity_id, accessibleUnitIds);
 
     const { error: updateError } = await supabase
       .from("attachments")

@@ -12,6 +12,7 @@ import {
   parseAttachmentBoolean,
   validateAttachmentFile,
   validatePurchaseQuoteAttachmentAccess,
+  validatePurchaseQuoteAttachmentMutationAccess,
   validateSupportedAttachmentEntity,
   type AttachmentRow
 } from "@/lib/attachments/api";
@@ -112,7 +113,7 @@ export async function POST(request: Request) {
 
     const supabase = createSupabaseAdminClient();
     const accessibleUnitIds = session.units.map((unit) => unit.id);
-    const entityContext = await validatePurchaseQuoteAttachmentAccess(supabase, entityId, accessibleUnitIds);
+    const entityContext = await validatePurchaseQuoteAttachmentMutationAccess(supabase, entityId, accessibleUnitIds);
     const filePath = buildAttachmentStoragePath({
       organizationId: entityContext.organizationId,
       unitId: entityContext.unitId,

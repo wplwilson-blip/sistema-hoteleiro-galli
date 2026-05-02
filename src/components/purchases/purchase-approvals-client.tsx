@@ -315,7 +315,7 @@ export function PurchaseApprovalsClient() {
     });
   }, [approvals, levelFilter, search, statusFilter]);
 
-  const selectedApproval = filteredApprovals.find((approval) => approval.id === selectedApprovalId) ?? filteredApprovals[0] ?? null;
+  const selectedApproval = filteredApprovals.find((approval) => approval.id === selectedApprovalId) ?? null;
 
   const decisionMutation = useMutation({
     mutationFn: async (input: { approval: ApprovalRecord; decision: "approved" | "rejected" | "returned_to_purchases"; justification: string }) =>
@@ -327,6 +327,7 @@ export function PurchaseApprovalsClient() {
       setError("");
       setFeedback(payload.message);
       setDecisionState(emptyDecisionState);
+      setSelectedApprovalId("");
       await queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] });
       await queryClient.invalidateQueries({ queryKey: ["purchases", "requests"] });
       await queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] });
@@ -410,22 +411,21 @@ export function PurchaseApprovalsClient() {
       ) : null}
 
       {filteredApprovals.length ? (
-        <div className="grid gap-6 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
+        <div className="space-y-3">
           <section className="space-y-3">
             {filteredApprovals.map((approval) => {
               const isSelected = selectedApproval?.id === approval.id;
 
               return (
-                <button
+                <article
                   key={approval.id}
-                  type="button"
-                  onClick={() => setSelectedApprovalId(approval.id)}
                   className={cn(
                     "w-full rounded-lg border bg-card p-4 text-left shadow-sm shadow-primary/5 transition-colors hover:border-primary/30",
                     isSelected && "border-primary bg-primary/5"
                   )}
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <button type="button" className="w-full text-left" onClick={() => setSelectedApprovalId(approval.id)}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-foreground">{approval.requestNumber}</p>
@@ -438,25 +438,54 @@ export function PurchaseApprovalsClient() {
                       <p className="text-sm font-semibold text-foreground">{approval.totalApprovedAmountLabel}</p>
                       <p className="text-xs text-muted-foreground">{approval.approvalLevelLabel}</p>
                     </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span>Solicitante: {approval.requestedByName || "-"}</span>
                     <span>Vencedora: {approval.winningQuote?.quoteNumber ?? "-"}</span>
                     <span>Recomendada: {approval.recommendedQuote?.quoteNumber ?? "-"}</span>
-                  </div>
-                  {approval.winnerDiffersFromRecommended ? (
+                    </div>
+                    {approval.winnerDiffersFromRecommended ? (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       Vencedora diferente da recomendada.
                     </div>
-                  ) : null}
-                </button>
+                    ) : null}
+                  </button>
+                  <div className="mt-4 flex justify-end border-t pt-3">
+                    <Button type="button" size="sm" onClick={() => setSelectedApprovalId(approval.id)}>
+                      <Search className="h-4 w-4" />
+                      Ver dossiê
+                    </Button>
+                  </div>
+                </article>
               );
             })}
           </section>
+        </div>
+      ) : null}
 
-          <section className="space-y-4">
-            {selectedApproval ? (
-              <>
+      {selectedApproval ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-2 py-3 backdrop-blur-sm sm:px-4 sm:py-6" role="presentation" onClick={() => setSelectedApprovalId("")}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approval-dossier-title"
+            className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-background shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Dossiê de aprovação</p>
+                <h2 id="approval-dossier-title" className="mt-1 truncate text-lg font-semibold text-foreground">
+                  {selectedApproval.requestNumber}
+                </h2>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedApprovalId("")}>
+                <Ban className="h-4 w-4" />
+                Fechar
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+              <div className="space-y-4">
                 <Card className="p-5 shadow-sm shadow-primary/5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-2">
@@ -594,8 +623,8 @@ export function PurchaseApprovalsClient() {
                     <p className="mt-3 text-sm text-muted-foreground">Nenhuma decisão registrada.</p>
                   )}
                 </Card>
-              </>
-            ) : null}
+              </div>
+            </div>
           </section>
         </div>
       ) : null}
@@ -626,6 +655,8 @@ export function PurchaseApprovalsClient() {
                   placeholder={decisionState.decision === "approved" ? "Observação para histórico da aprovação" : decisionState.decision === "rejected" ? "Explique o motivo da reprovação" : "Explique o que Compras precisa revisar antes de reenviar para aprovação"}
                 />
               </div>
+
+              {error ? <div className="mt-4"><ErrorMessage message={error} /></div> : null}
 
               <div className="mt-5 flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setDecisionState(emptyDecisionState)}>

@@ -80,3 +80,8 @@ Não exibir códigos técnicos em inglês para usuários. Usar labels:
 - Recomendada é sugestão do sistema.
 - Vencedora é escolha registrada por Compras.
 - Aprovação deve funcionar como dossiê de decisão.
+
+## Filas operacionais
+
+- Toda tela operacional deve abrir por padrão com registros que exigem ação, decisão ou acompanhamento ativo.
+- Registros finalizados, aprovados, reprovados, cancelados, arquivados ou históricos devem permanecer acessíveis por filtros, abas ou busca, mas não devem poluir a visão principal.

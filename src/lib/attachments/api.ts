@@ -1,4 +1,5 @@
 import { apiError, logBaseCadastroError, type SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
+import { getPurchaseAttachmentMutationBlockMessage, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 
 export const ATTACHMENTS_BUCKET = "attachments";
 export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -54,6 +55,10 @@ type PurchaseRequestContextRow = {
   id: string;
   organization_id: string;
   unit_id: string;
+  status: string;
+  total_approved_amount: string | number | null;
+  approval_required: boolean | null;
+  approval_status: PurchaseApprovalStatus | null;
 };
 
 export function normalizeAttachmentText(value: FormDataEntryValue | null) {
@@ -177,7 +182,7 @@ export async function validatePurchaseQuoteAttachmentAccess(
   const quote = quoteData as PurchaseQuoteContextRow;
   const { data: requestData, error: requestError } = await supabase
     .from("purchase_requests")
-    .select("id, organization_id, unit_id")
+    .select("id, organization_id, unit_id, status, total_approved_amount, approval_required, approval_status")
     .eq("id", quote.purchase_request_id)
     .is("deleted_at", null)
     .single();
@@ -195,6 +200,63 @@ export async function validatePurchaseQuoteAttachmentAccess(
 
   if (!accessibleUnitIds.includes(purchaseRequest.unit_id)) {
     throw new Error("Você não tem permissão para acessar este anexo.");
+  }
+
+  return {
+    organizationId: purchaseRequest.organization_id,
+    unitId: purchaseRequest.unit_id
+  };
+}
+
+export async function validatePurchaseQuoteAttachmentMutationAccess(
+  supabase: SupabaseAdmin,
+  entityId: string,
+  accessibleUnitIds: string[]
+): Promise<AttachmentEntityContext> {
+  const { data: quoteData, error: quoteError } = await supabase
+    .from("purchase_quotes")
+    .select("id, organization_id, unit_id, purchase_request_id")
+    .eq("id", entityId)
+    .is("deleted_at", null)
+    .single();
+
+  if (quoteError) {
+    logBaseCadastroError("attachments.purchase_quote_lookup_failed", quoteError);
+    throw new Error("VocÃª nÃ£o tem permissÃ£o para acessar este anexo.");
+  }
+
+  const quote = quoteData as PurchaseQuoteContextRow;
+  const { data: requestData, error: requestError } = await supabase
+    .from("purchase_requests")
+    .select("id, organization_id, unit_id, status, total_approved_amount, approval_required, approval_status")
+    .eq("id", quote.purchase_request_id)
+    .is("deleted_at", null)
+    .single();
+
+  if (requestError) {
+    logBaseCadastroError("attachments.purchase_request_lookup_failed", requestError);
+    throw new Error("VocÃª nÃ£o tem permissÃ£o para acessar este anexo.");
+  }
+
+  const purchaseRequest = requestData as PurchaseRequestContextRow;
+
+  if (quote.organization_id !== purchaseRequest.organization_id || quote.unit_id !== purchaseRequest.unit_id) {
+    throw new Error("VocÃª nÃ£o tem permissÃ£o para acessar este anexo.");
+  }
+
+  if (!accessibleUnitIds.includes(purchaseRequest.unit_id)) {
+    throw new Error("VocÃª nÃ£o tem permissÃ£o para acessar este anexo.");
+  }
+
+  const blockMessage = getPurchaseAttachmentMutationBlockMessage({
+    status: purchaseRequest.status,
+    approvalStatus: purchaseRequest.approval_status,
+    approvalRequired: purchaseRequest.approval_required,
+    totalApprovedAmount: purchaseRequest.total_approved_amount
+  });
+
+  if (blockMessage) {
+    throw new Error(blockMessage);
   }
 
   return {

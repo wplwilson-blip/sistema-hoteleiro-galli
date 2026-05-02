@@ -122,15 +122,16 @@ async function validateDuplicateDocument(
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const { response } = await requireAuthenticatedRequest();
+  const { session, response } = await requireAuthenticatedRequest();
 
-  if (response) {
+  if (response || !session) {
     return response;
   }
 
   try {
     const supabase = createSupabaseAdminClient();
     const organizationId = await getInitialOrganizationId(supabase);
+    const accessibleUnitIds = session.units.map((unit) => unit.id);
 
     const { data: supplier, error: supplierError } = await supabase
       .from("suppliers")
@@ -151,6 +152,10 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
     if (!currentSupplier) {
       return apiError("Fornecedor nao encontrado.", 404);
+    }
+
+    if (currentSupplier.unit_id && !accessibleUnitIds.includes(currentSupplier.unit_id)) {
+      return apiError("Você não tem acesso à unidade deste fornecedor.", 403);
     }
 
     const { data: unit, error: unitError } = currentSupplier.unit_id
@@ -181,12 +186,16 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     const payload = supplierPayloadSchema.parse(await request.json());
     const supabase = createSupabaseAdminClient();
-    const organizationId = payload.unitId ? await getUnitOrganizationId(supabase, payload.unitId) : await getInitialOrganizationId(supabase);
+    const accessibleUnitIds = session.units.map((unit) => unit.id);
+
+    if (payload.unitId && !accessibleUnitIds.includes(payload.unitId)) {
+      return apiError("Não é possível mover fornecedor para uma unidade sem permissão.", 403);
+    }
+
     const { data: currentSupplier, error: currentSupplierError } = await supabase
       .from("suppliers")
-      .select("address_json, bank_data_json")
+      .select("id, organization_id, unit_id, address_json, bank_data_json")
       .eq("id", params.id)
-      .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .limit(1);
 
@@ -195,7 +204,17 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError("Nao foi possivel carregar o fornecedor.", 500);
     }
 
-    const existingSupplier = currentSupplier?.[0];
+    const existingSupplier = currentSupplier?.[0] as Pick<SupplierRow, "id" | "organization_id" | "unit_id" | "address_json" | "bank_data_json"> | undefined;
+
+    if (!existingSupplier) {
+      return apiError("Fornecedor nao encontrado.", 404);
+    }
+
+    if (existingSupplier.unit_id && !accessibleUnitIds.includes(existingSupplier.unit_id)) {
+      return apiError("Você não tem acesso à unidade deste fornecedor.", 403);
+    }
+
+    const organizationId = payload.unitId ? await getUnitOrganizationId(supabase, payload.unitId) : existingSupplier.organization_id;
 
     const duplicateSupplier = await validateDuplicateDocument(supabase, organizationId, payload.documentType, payload.documentNumber, params.id);
 

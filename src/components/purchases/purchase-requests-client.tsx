@@ -125,8 +125,66 @@ const emptyForm: PurchaseRequestFormValues = {
   items: [emptyItem]
 };
 
+type PurchaseRequestQueueFilter = "active" | "quotation" | "pending_approval" | "returned" | "finished" | "all";
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function isPurchaseRequestAwaitingApproval(request: PurchaseRequestRecord) {
+  return request.approvalStatus === "pending" && request.approvalRequired && request.totalApprovedAmount > 0;
+}
+
+function isPurchaseRequestFinished(request: PurchaseRequestRecord) {
+  return (
+    request.approvalStatus === "approved" ||
+    request.approvalStatus === "rejected" ||
+    request.status === "approved" ||
+    request.status === "rejected" ||
+    request.status === "closed" ||
+    request.status === "cancelled"
+  );
+}
+
+function canCancelPurchaseRequest(request: PurchaseRequestRecord) {
+  const isInitialStatus = request.status === "draft" || request.status === "submitted" || request.status === "under_review";
+  const hasApprovalDecision =
+    request.approvalStatus === "approved" ||
+    request.approvalStatus === "rejected" ||
+    request.approvalStatus === "returned_to_purchases";
+
+  return (
+    isInitialStatus &&
+    !hasApprovalDecision &&
+    !isPurchaseRequestAwaitingApproval(request) &&
+    !isPurchaseRequestFinished(request) &&
+    request.totalApprovedAmount <= 0 &&
+    !request.approvalRequestId
+  );
+}
+
+function matchesQueueFilter(request: PurchaseRequestRecord, filter: PurchaseRequestQueueFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "active") {
+    return request.status === "draft" || request.status === "submitted" || request.status === "under_review";
+  }
+
+  if (filter === "quotation") {
+    return request.status === "quotation" && !isPurchaseRequestAwaitingApproval(request) && request.approvalStatus !== "returned_to_purchases" && !isPurchaseRequestFinished(request);
+  }
+
+  if (filter === "pending_approval") {
+    return isPurchaseRequestAwaitingApproval(request);
+  }
+
+  if (filter === "returned") {
+    return request.approvalStatus === "returned_to_purchases";
+  }
+
+  return isPurchaseRequestFinished(request);
 }
 
 function getPurchaseRequestFlowStatus(request: PurchaseRequestRecord) {
@@ -142,10 +200,14 @@ function getPurchaseRequestFlowStatus(request: PurchaseRequestRecord) {
     return { label: "Devolvida para Compras", tone: "info" as const };
   }
 
-  if (request.status === "quotation" && request.totalApprovedAmount > 0) {
+  if (isPurchaseRequestAwaitingApproval(request)) {
     return request.totalApprovedAmount > 200
       ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const }
       : { label: "Aguardando aprovação da Gerência Administrativa", tone: "info" as const };
+  }
+
+  if (request.status === "quotation" && request.totalApprovedAmount > 0) {
+    return { label: "Vencedora selecionada", tone: "success" as const };
   }
 
   return {
@@ -183,7 +245,7 @@ export function PurchaseRequestsClient() {
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PurchaseRequestQueueFilter>("active");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [editingStatus, setEditingStatus] = useState<PurchaseRequestStatus | null>(null);
@@ -212,6 +274,7 @@ export function PurchaseRequestsClient() {
   const departments = useMemo(() => purchasesQuery.data?.departments ?? [], [purchasesQuery.data?.departments]);
   const costCenters = useMemo(() => purchasesQuery.data?.costCenters ?? [], [purchasesQuery.data?.costCenters]);
   const requests = useMemo(() => purchasesQuery.data?.requests ?? [], [purchasesQuery.data?.requests]);
+  const editingRequest = useMemo(() => requests.find((request) => request.id === editingId) ?? null, [editingId, requests]);
 
   const activeDepartments = useMemo(
     () => departments.filter((department) => !selectedUnitId || department.unit_id === selectedUnitId),
@@ -232,7 +295,7 @@ export function PurchaseRequestsClient() {
           .filter(Boolean)
           .some((value) => value.toLowerCase().includes(term));
 
-      const matchesStatus = !statusFilter || request.status === statusFilter;
+      const matchesStatus = matchesQueueFilter(request, statusFilter);
       const matchesPriority = !priorityFilter || request.priority === priorityFilter;
       const matchesType = !typeFilter || request.requestType === typeFilter;
 
@@ -287,7 +350,8 @@ export function PurchaseRequestsClient() {
       setError("");
       form.clearErrors();
       await queryClient.invalidateQueries({ queryKey: ["purchases", "requests"] });
-    }
+    },
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível cancelar a solicitação.")
   });
 
   function openNew() {
@@ -354,6 +418,7 @@ export function PurchaseRequestsClient() {
   }
 
   const isSubmittedEdit = editingId !== null && editingStatus === "submitted";
+  const canCancelEditingRequest = editingRequest ? canCancelPurchaseRequest(editingRequest) : false;
 
   function canEdit(request: PurchaseRequestRecord) {
     return request.status === "draft" || request.status === "submitted";
@@ -379,13 +444,14 @@ export function PurchaseRequestsClient() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Status</Label>
-            <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="">Todos</option>
-              <option value="draft">Rascunho</option>
-              <option value="submitted">Enviada</option>
-              <option value="under_review">Em análise</option>
-              <option value="cancelled">Cancelada</option>
+            <Label>Fila</Label>
+            <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as PurchaseRequestQueueFilter)}>
+              <option value="active">Aguardando tratamento</option>
+              <option value="quotation">Em cotação</option>
+              <option value="pending_approval">Aguardando aprovação</option>
+              <option value="returned">Devolvidas</option>
+              <option value="finished">Finalizadas</option>
+              <option value="all">Todas</option>
             </SelectField>
           </div>
           <div className="space-y-2">
@@ -566,13 +632,14 @@ export function PurchaseRequestsClient() {
                 <TextInput type="date" {...form.register("desiredDate")} />
                 <FieldError message={form.formState.errors.desiredDate?.message} />
               </Field>
-              <Field label="Descricao / necessidade" className="lg:col-span-2">
+                <Field label="O que precisa ser comprado?" className="lg:col-span-2">
                 <Controller
                   control={form.control}
                   name="description"
                   render={({ field }) => (
                     <TextArea
                       rows={4}
+                      placeholder="Ex.: 10 lâmpadas LED para corredores do 2º andar"
                       value={field.value ?? ""}
                       onBlur={field.onBlur}
                       onChange={(event) => {
@@ -584,13 +651,14 @@ export function PurchaseRequestsClient() {
                 />
                 <FieldError message={form.formState.errors.description?.message} />
               </Field>
-              <Field label="Justificativa" className="lg:col-span-2">
+                <Field label="Por que essa compra é necessária?" className="lg:col-span-2">
                 <Controller
                   control={form.control}
                   name="justification"
                   render={({ field }) => (
                     <TextArea
                       rows={4}
+                      placeholder="Ex.: reposição necessária por lâmpadas queimadas e reclamações de hóspedes"
                       value={field.value ?? ""}
                       onBlur={field.onBlur}
                       onChange={(event) => {
@@ -721,7 +789,7 @@ export function PurchaseRequestsClient() {
                       {submitAction === "submit" ? <Send className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                       Enviar para análise
                     </Button>
-                  ) : (
+                  ) : canCancelEditingRequest ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -731,7 +799,7 @@ export function PurchaseRequestsClient() {
                       <Ban className="h-4 w-4" />
                       Cancelar solicitação
                     </Button>
-                  )}
+                  ) : null}
                 <Button
                   type="button"
                   variant="ghost"
@@ -815,7 +883,7 @@ export function PurchaseRequestsClient() {
                             Editar
                           </Button>
                         ) : null}
-                        {request.status === "draft" || request.status === "submitted" ? (
+                        {canCancelPurchaseRequest(request) ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => cancelMutation.mutate(request.id)} disabled={cancelMutation.isPending}>
                             <Ban className="h-4 w-4" />
                             Cancelar

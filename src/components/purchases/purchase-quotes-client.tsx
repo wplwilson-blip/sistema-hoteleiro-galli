@@ -36,7 +36,7 @@ type PurchaseRequestSummary = {
   requestTypeLabel: string;
   priority: "low" | "normal" | "high" | "critical";
   priorityLabel: string;
-  status: "submitted" | "under_review" | "quotation" | "approved" | "rejected";
+  status: "submitted" | "under_review" | "quotation" | "approved" | "rejected" | "cancelled";
   statusLabel: string;
   unitId: string;
   departmentId: string;
@@ -63,6 +63,8 @@ type PurchaseRequestItem = {
 type PurchaseRequestDetail = PurchaseRequestSummary & {
   items: PurchaseRequestItem[];
 };
+
+type QuoteQueueFilter = "purchasing_queue" | "quotation" | "winner_selected" | "returned" | "pending_approval" | "finished" | "all";
 
 type PurchaseQuoteItem = {
   id: string;
@@ -306,10 +308,14 @@ function getPurchaseRequestQuotationFlowStatus(request: PurchaseRequestSummary, 
     return { label: "Devolvida para Compras", tone: "info" as const, stage: "approval" as const };
   }
 
-  if (request.status === "quotation" && hasWinningQuote) {
+  if (isPurchaseAwaitingApproval(request)) {
     return request.totalApprovedAmount > 200
       ? { label: "Aguardando aprovação da Diretoria Geral", tone: "warning" as const, stage: "approval" as const }
       : { label: "Aguardando aprovação da Gerência Administrativa", tone: "info" as const, stage: "approval" as const };
+  }
+
+  if (request.status === "quotation" && hasWinningQuote) {
+    return { label: "Vencedora selecionada", tone: "success" as const, stage: "quotation" as const };
   }
 
   return {
@@ -318,6 +324,82 @@ function getPurchaseRequestQuotationFlowStatus(request: PurchaseRequestSummary, 
     stage: "quotation" as const
   };
 }
+
+function isPurchaseAwaitingApproval(request: PurchaseRequestSummary) {
+  return request.approvalStatus === "pending" && request.approvalRequired && request.totalApprovedAmount > 0;
+}
+
+function isPurchaseClosedForQuotation(request: PurchaseRequestSummary) {
+  return request.approvalStatus === "approved" || request.approvalStatus === "rejected" || request.status === "approved" || request.status === "rejected" || request.status === "cancelled";
+}
+
+function canMutatePurchaseQuotation(request: PurchaseRequestSummary | null | undefined) {
+  if (!request) {
+    return false;
+  }
+
+  if (request.approvalStatus === "returned_to_purchases") {
+    return true;
+  }
+
+  return request.status === "quotation" && !isPurchaseAwaitingApproval(request) && !isPurchaseClosedForQuotation(request);
+}
+
+function requestHasWinnerSelected(request: PurchaseRequestSummary) {
+  return request.totalApprovedAmount > 0;
+}
+
+function matchesQuoteQueueFilter(request: PurchaseRequestSummary, filter: QuoteQueueFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "finished") {
+    return isPurchaseClosedForQuotation(request);
+  }
+
+  if (filter === "pending_approval") {
+    return isPurchaseAwaitingApproval(request);
+  }
+
+  if (filter === "returned") {
+    return request.approvalStatus === "returned_to_purchases";
+  }
+
+  if (filter === "winner_selected") {
+    return (
+      requestHasWinnerSelected(request) &&
+      !isPurchaseAwaitingApproval(request) &&
+      !isPurchaseClosedForQuotation(request) &&
+      request.approvalStatus !== "returned_to_purchases"
+    );
+  }
+
+  if (filter === "quotation") {
+    return (
+      request.status === "quotation" &&
+      request.approvalStatus !== "returned_to_purchases" &&
+      !isPurchaseAwaitingApproval(request) &&
+      !isPurchaseClosedForQuotation(request)
+    );
+  }
+
+  return (
+    (request.status === "submitted" || request.status === "under_review" || request.status === "quotation" || request.approvalStatus === "returned_to_purchases") &&
+    !isPurchaseAwaitingApproval(request) &&
+    !isPurchaseClosedForQuotation(request)
+  );
+}
+
+const quoteQueueFilters: Array<{ value: QuoteQueueFilter; label: string }> = [
+  { value: "purchasing_queue", label: "Fila de Compras" },
+  { value: "quotation", label: "Em cotação" },
+  { value: "winner_selected", label: "Com vencedora selecionada" },
+  { value: "returned", label: "Devolvidas para Compras" },
+  { value: "pending_approval", label: "Aguardando aprovação" },
+  { value: "finished", label: "Finalizadas" },
+  { value: "all", label: "Todas" }
+];
 
 function isValidQuoteForRecommendation(quote: PurchaseQuoteRecord) {
   return (quote.status === "received" || quote.status === "selected" || quote.status === "rejected") && !quote.isExpired;
@@ -573,6 +655,7 @@ export function PurchaseQuotesClient() {
   const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
   const [quickSuppliers, setQuickSuppliers] = useState<QuickSupplierRecord[]>([]);
   const [search, setSearch] = useState("");
+  const [queueFilter, setQueueFilter] = useState<QuoteQueueFilter>("purchasing_queue");
 
   const listQuery = useQuery({
     queryKey: ["purchases", "quotes", "requests"],
@@ -828,6 +911,24 @@ export function PurchaseQuotesClient() {
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível selecionar a cotação.")
   });
 
+  const unselectMutation = useMutation({
+    mutationFn: async ({ requestId, quoteId }: { requestId: string; quoteId: string }) =>
+      requestJson(`/api/purchases/requests/${requestId}/quotes/${quoteId}`, { method: "PATCH", body: JSON.stringify({ action: "unselect" }) }),
+    onSuccess: async (_data, variables) => {
+      setError("");
+      setAttachmentMessage("Cotação removida como vencedora.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] }),
+        queryClient.refetchQueries({ queryKey: ["purchases", "quotes", variables.requestId], type: "active" })
+      ]);
+    },
+    onError: (mutationError) => {
+      setAttachmentMessage("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível remover a cotação vencedora.");
+    }
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async ({ requestId, quoteId }: { requestId: string; quoteId: string }) =>
       requestJson(`/api/purchases/requests/${requestId}/quotes/${quoteId}`, { method: "DELETE" }),
@@ -873,20 +974,22 @@ export function PurchaseQuotesClient() {
 
   const resubmitMutation = useMutation({
     mutationFn: async (requestId: string) => requestJson<{ ok: true; message: string }>(`/api/purchases/approvals/${requestId}/resubmit`, { method: "POST" }),
-    onSuccess: async (payload) => {
+    onSuccess: async (payload, requestId) => {
       setError("");
       setAttachmentMessage(payload.message);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] })
       ]);
-      if (selectedRequestId) {
-        await queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" });
+      if (requestId) {
+        await queryClient.refetchQueries({ queryKey: ["purchases", "quotes", requestId], type: "active" });
       }
+      clearQuoteTemporaryState(null);
+      setSelectedRequestId("");
     },
     onError: (mutationError) => {
       setAttachmentMessage("");
-      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível reenviar para aprovação.");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível enviar para aprovação.");
     }
   });
 
@@ -894,6 +997,10 @@ export function PurchaseQuotesClient() {
     const term = search.trim().toLowerCase();
 
     return requests.filter((request) => {
+      if (!matchesQuoteQueueFilter(request, queueFilter)) {
+        return false;
+      }
+
       if (!term) {
         return true;
       }
@@ -902,14 +1009,23 @@ export function PurchaseQuotesClient() {
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(term));
     });
-  }, [requests, search]);
+  }, [queueFilter, requests, search]);
 
   const canStart = selectedRequest?.status === "submitted" || selectedRequest?.status === "under_review";
   const canOpenQuote = selectedRequest?.status === "quotation";
-  const canCreateQuote = canOpenQuote && availableSuppliers.length > 0;
   const selectedRequestItems = selectedRequest?.items ?? [];
   const isQuoteFormVisible = quoteFormOpen && Boolean(selectedRequest);
   const winningQuote = quotes.find((quote) => quote.isSelected) ?? null;
+  const selectedRequestCanMutateQuotes = canMutatePurchaseQuotation(selectedRequest);
+  const canCreateQuote = canOpenQuote && selectedRequestCanMutateQuotes && availableSuppliers.length > 0;
+  const selectedRequestAwaitingApproval = selectedRequest ? isPurchaseAwaitingApproval(selectedRequest) : false;
+  const selectedRequestClosedForQuotation = selectedRequest ? isPurchaseClosedForQuotation(selectedRequest) : false;
+  const canSubmitApproval =
+    selectedRequest?.status === "quotation" &&
+    selectedRequest.approvalStatus !== "returned_to_purchases" &&
+    Boolean(winningQuote) &&
+    !selectedRequestAwaitingApproval &&
+    !selectedRequestClosedForQuotation;
   const canResubmitApproval = selectedRequest?.approvalStatus === "returned_to_purchases" && Boolean(winningQuote);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const quoteComparison = useMemo(() => {
@@ -945,6 +1061,7 @@ export function PurchaseQuotesClient() {
   const selectedRequestFlowStatus = selectedRequest
     ? getPurchaseRequestQuotationFlowStatus(selectedRequest, Boolean(winningQuote))
     : { label: "", tone: "visual" as const };
+  const selectedQueueFilter = quoteQueueFilters.find((filter) => filter.value === queueFilter) ?? quoteQueueFilters[0];
 
   const quoteItemsWatch = useWatch({ control: quoteForm.control, name: "items" });
   const quoteTotalPreview = useMemo(
@@ -974,23 +1091,43 @@ export function PurchaseQuotesClient() {
       return;
     }
 
-    if (quote.isSelected) {
-      const confirmed = window.confirm("Você está cancelando a cotação vencedora. A solicitação ficará sem vencedora até que outra cotação seja selecionada. Deseja continuar?");
+    const confirmed = window.confirm("Você está cancelando esta cotação. Deseja continuar?");
 
-      if (!confirmed) {
-        return;
-      }
+    if (!confirmed) {
+      return;
     }
 
     deleteMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id });
   }
 
+  function removeWinningQuote(quote: PurchaseQuoteRecord) {
+    if (!selectedRequest) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Você está removendo esta cotação como vencedora. A solicitação ficará sem vencedora até que outra cotação seja selecionada. Deseja continuar?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    unselectMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id });
+  }
+
+  function closeRequestModal() {
+    clearQuoteTemporaryState(null);
+    setSelectedRequestId("");
+  }
+
   return (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label>Buscar solicitação</Label>
-          <div className="relative max-w-xl">
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="w-full max-w-xl space-y-2">
+            <Label>Buscar solicitação</Label>
+            <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
@@ -998,11 +1135,41 @@ export function PurchaseQuotesClient() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {filteredRequests.length} {filteredRequests.length === 1 ? "registro" : "registros"}
           </div>
         </div>
-      </div>
 
-      <div className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)]">
+        <div className="grid gap-2 sm:max-w-xs">
+          <Label htmlFor="quotes-view-filter">Visualização</Label>
+          <select
+            id="quotes-view-filter"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={queueFilter}
+            onChange={(event) => setQueueFilter(event.target.value as QuoteQueueFilter)}
+          >
+            {quoteQueueFilters.map((filter) => (
+              <option key={filter.value} value={filter.value}>
+                {filter.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {filteredRequests.length} {filteredRequests.length === 1 ? "registro" : "registros"} em {selectedQueueFilter.label}.
+          </p>
+        </div>
+      </section>
+
+      {attachmentMessage ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {attachmentMessage}
+        </div>
+      ) : null}
+      {error && !quoteFormOpen && !selectedRequestId ? <ErrorMessage message={error} /> : null}
+
+      <div className="space-y-4">
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1024,114 +1191,129 @@ export function PurchaseQuotesClient() {
           ) : null}
 
           {filteredRequests.length ? (
-            <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
-                  <tr>
-                          <th className="px-4 py-3 font-semibold">Número</th>
-                    <th className="px-4 py-3 font-semibold">Título</th>
-                    <th className="px-4 py-3 font-semibold">Prioridade</th>
-                    <th className="px-4 py-3 font-semibold">Tipo</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold">Total</th>
-                    <th className="px-4 py-3 text-right font-semibold">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {filteredRequests.map((request) => {
-                    const isSelected = request.id === selectedRequestId;
-                    const flowStatus = getPurchaseRequestQuotationFlowStatus(request, isSelected ? Boolean(winningQuote) : request.totalApprovedAmount > 0);
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {filteredRequests.map((request) => {
+                const isSelected = request.id === selectedRequestId;
+                const hasWinner = requestHasWinnerSelected(request);
+                const flowStatus = getPurchaseRequestQuotationFlowStatus(request, hasWinner);
 
-                    return (
-                      <tr
-                        key={request.id}
-                        className={cn(
-                          "cursor-pointer",
-                          isSelected ? "bg-primary/10" : "hover:bg-muted/25",
-                          !isSelected && flowStatus.stage === "approval" && "bg-primary/5 hover:bg-primary/10"
-                        )}
-                        onClick={() => openRequest(request.id)}
-                      >
-                        <td className={isSelected ? "border-l-4 border-primary px-4 py-3 font-medium" : "border-l-4 border-transparent px-4 py-3 font-medium"}>
-                          <div className="flex flex-col gap-1">
-                            <span>{request.requestNumber}</span>
-                            {isSelected ? (
-                              <span className="inline-flex w-fit rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">Selecionada</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{request.title}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">{request.justification}</p>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{request.priorityLabel}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{request.requestTypeLabel}</td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
-                        </td>
-                        <td className="px-4 py-3 font-medium">
-                          {request.totalApprovedAmount > 0 ? formatCurrency(request.totalApprovedAmount) : "Valor será definido na cotação"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap justify-end gap-2">
-                            {request.status === "submitted" || request.status === "under_review" ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="danger"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openRequest(request.id);
-                                  startMutation.mutate(request.id);
-                                }}
-                                disabled={startMutation.isPending}
-                              >
-                                <Truck className="h-4 w-4" />
-                                Iniciar cotação
-                              </Button>
-                            ) : null}
-                            {request.status === "quotation" ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openRequest(request.id);
-                                }}
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                                Abrir cotação
-                              </Button>
-                            ) : null}
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={isSelected}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openRequest(request.id);
-                              }}
-                            >
-                              {isSelected ? <Check className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-                              {isSelected ? "Selecionada" : "Selecionar"}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                return (
+                  <article
+                    key={request.id}
+                    className={cn(
+                      "flex min-w-0 flex-col justify-between rounded-lg border bg-card p-4 shadow-sm shadow-primary/5 transition-colors",
+                      isSelected ? "border-primary bg-primary/5" : "hover:border-primary/40"
+                    )}
+                  >
+                    <button type="button" className="min-w-0 text-left" onClick={() => openRequest(request.id)}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground">{request.requestNumber}</p>
+                        <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
+                        {hasWinner ? <StatusBadge status="success" label="Vencedora selecionada" /> : null}
+                      </div>
+                      <h3 className="mt-3 line-clamp-2 text-base font-semibold text-foreground">{request.title}</h3>
+                      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{request.justification}</p>
+                      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>Prioridade: {request.priorityLabel}</span>
+                        <span>Tipo: {request.requestTypeLabel}</span>
+                        <span>Criação: {formatDate(request.createdAt)}</span>
+                      </div>
+                    </button>
+
+                    <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-sm font-semibold">
+                        {hasWinner ? formatCurrency(request.totalApprovedAmount) : "Sem vencedora"}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {(request.status === "submitted" || request.status === "under_review") ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="danger"
+                            onClick={() => {
+                              openRequest(request.id);
+                              startMutation.mutate(request.id);
+                            }}
+                            disabled={startMutation.isPending}
+                          >
+                            <Truck className="h-4 w-4" />
+                            Iniciar cotação
+                          </Button>
+                        ) : null}
+                        <Button type="button" size="sm" onClick={() => openRequest(request.id)}>
+                          <Search className="h-4 w-4" />
+                          Ver cotações
+                        </Button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : null}
         </section>
 
-        <section className="space-y-4">
-          {selectedRequestId && detailQuery.isLoading ? (
+        {selectedRequestId ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-2 py-3 backdrop-blur-sm sm:px-4 sm:py-6" role="presentation" onClick={closeRequestModal}>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="quotes-detail-title"
+              className="flex h-[94vh] max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-background shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
+                  <h2 id="quotes-detail-title" className="mt-1 truncate text-lg font-semibold text-foreground">
+                    {selectedRequest?.requestNumber ?? "Carregando solicitação"}
+                  </h2>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={closeRequestModal}>
+                  <Ban className="h-4 w-4" />
+                  Fechar
+                </Button>
+              </div>
+              {selectedRequest ? (
+                <div className="sticky top-0 z-10 border-b bg-background/95 px-4 py-3 shadow-sm backdrop-blur sm:px-6">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge status={selectedRequestFlowStatus.tone} label={selectedRequestFlowStatus.label} />
+                        {winningQuote ? <StatusBadge status="success" label="Vencedora selecionada" /> : null}
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                        <span className="text-muted-foreground">
+                          Vencedora: <strong className="font-semibold text-foreground">{winningQuote ? winningQuote.supplierTradeName || winningQuote.supplierName : "Nenhuma selecionada"}</strong>
+                        </span>
+                        <span className="text-muted-foreground">
+                          Valor: <strong className="font-semibold text-foreground">{winningQuote ? winningQuote.totalAmountLabel : "-"}</strong>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:shrink-0">
+                      {canSubmitApproval ? (
+                        <Button type="button" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
+                          <Check className="h-4 w-4" />
+                          Enviar para aprovação
+                        </Button>
+                      ) : null}
+                      {canResubmitApproval ? (
+                        <Button type="button" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
+                          <RotateCcw className="h-4 w-4" />
+                          Reenviar para aprovação
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                <div className="space-y-4">
+          {detailQuery.isLoading ? (
             <LoadingTable label="Carregando solicitação selecionada..." />
           ) : !selectedRequest ? (
-            <EmptyState title="Selecione uma solicitação" description="Selecione uma solicitação à esquerda para visualizar os itens e cadastrar cotações." />
+            <EmptyState title="Solicitação não encontrada" description="Atualize a lista e tente abrir a solicitação novamente." />
           ) : (
             <>
               <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
@@ -1158,15 +1340,11 @@ export function PurchaseQuotesClient() {
                         Iniciar cotação
                       </Button>
                     ) : null}
-                    {canResubmitApproval ? (
-                      <Button type="button" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
-                        <RotateCcw className="h-4 w-4" />
-                        Reenviar para aprovação
-                      </Button>
-                    ) : null}
                   </div>
                 </div>
               </div>
+
+              {error && !quoteFormOpen ? <ErrorMessage message={error} /> : null}
 
               {selectedRequest.approvalStatus === "returned_to_purchases" && selectedRequest.approvalDecisionNotes ? (
                 <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
@@ -1259,7 +1437,9 @@ export function PurchaseQuotesClient() {
                       <p className="font-medium text-foreground">
                         Cotação vencedora: {winningQuote.supplierTradeName || winningQuote.supplierName} — {winningQuote.totalAmountLabel}
                       </p>
-                      <p className="text-xs text-muted-foreground">Próxima etapa: aprovação da compra.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedRequestAwaitingApproval ? "Compra aguardando decisão de aprovação." : "Próxima etapa: enviar formalmente para aprovação."}
+                      </p>
                     </div>
                   ) : (
                     <p className="text-muted-foreground">Nenhuma cotação vencedora selecionada.</p>
@@ -1316,6 +1496,7 @@ export function PurchaseQuotesClient() {
                       const supplierTrustLabel = supplier?.status === "active" ? "Fornecedor ativo" : "Fornecedor cadastrado";
                       const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
                       const selectedFile = attachmentFiles[quote.id];
+                      const canMutateQuote = selectedRequestCanMutateQuotes && quote.status !== "cancelled";
 
                       return (
                       <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
@@ -1347,7 +1528,7 @@ export function PurchaseQuotesClient() {
                               </p>
                             </div>
                             <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:shrink-0 xl:justify-end">
-                              <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)}>
+                              <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)} disabled={!canMutateQuote}>
                                 <Pencil className="h-4 w-4" />
                                 Editar
                               </Button>
@@ -1356,22 +1537,35 @@ export function PurchaseQuotesClient() {
                                   type="button"
                                   size="sm"
                                   onClick={() => selectMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id })}
-                                  disabled={selectMutation.isPending}
+                                  disabled={selectMutation.isPending || !canMutateQuote}
                                 >
                                   <Check className="h-4 w-4" />
                                   Selecionar como vencedora
                                 </Button>
                               ) : null}
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => cancelQuote(quote)}
-                                disabled={deleteMutation.isPending}
-                              >
-                                <Ban className="h-4 w-4" />
-                                {quote.isSelected ? "Cancelar cotação vencedora" : "Cancelar cotação"}
-                              </Button>
+                              {quote.isSelected ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => removeWinningQuote(quote)}
+                                  disabled={unselectMutation.isPending || !canMutateQuote}
+                                >
+                                  <Ban className="h-4 w-4" />
+                                  Remover como vencedora
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => cancelQuote(quote)}
+                                  disabled={deleteMutation.isPending || !canMutateQuote}
+                                >
+                                  <Ban className="h-4 w-4" />
+                                  Cancelar cotação
+                                </Button>
+                              )}
                             </div>
                           </div>
 
@@ -1427,6 +1621,7 @@ export function PurchaseQuotesClient() {
                                   onChange={(event) => setAttachmentDescriptions((current) => ({ ...current, [quote.id]: event.target.value }))}
                                   placeholder="Ex.: Proposta comercial"
                                   className="w-full min-w-0"
+                                  disabled={!canMutateQuote}
                                 />
                               </div>
                               <div className="min-w-0 space-y-1">
@@ -1436,6 +1631,7 @@ export function PurchaseQuotesClient() {
                                   type="file"
                                   accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
                                   className="w-full min-w-0 max-w-full text-xs sm:text-sm"
+                                  disabled={!canMutateQuote}
                                   onChange={(event) => {
                                     setError("");
                                     setAttachmentMessage("");
@@ -1446,7 +1642,7 @@ export function PurchaseQuotesClient() {
                               <Button
                                 type="button"
                                 onClick={() => uploadQuoteAttachment(quote.id)}
-                                disabled={uploadAttachmentMutation.isPending}
+                                disabled={uploadAttachmentMutation.isPending || !canMutateQuote}
                                 className="w-full justify-center whitespace-nowrap xl:w-auto"
                               >
                                 <Upload className="h-4 w-4" />
@@ -1487,7 +1683,7 @@ export function PurchaseQuotesClient() {
                                             size="sm"
                                             variant="danger"
                                             onClick={() => deleteAttachmentMutation.mutate(attachment.id)}
-                                            disabled={deleteAttachmentMutation.isPending}
+                                            disabled={deleteAttachmentMutation.isPending || !canMutateQuote}
                                           >
                                             <Trash2 className="h-4 w-4" />
                                             Remover
@@ -1897,7 +2093,11 @@ export function PurchaseQuotesClient() {
               />
             </>
           )}
-        </section>
+                </div>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );

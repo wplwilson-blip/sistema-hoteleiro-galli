@@ -122,15 +122,16 @@ async function validateDuplicateDocument(
 }
 
 export async function GET() {
-  const { response } = await requireAuthenticatedRequest();
+  const { session, response } = await requireAuthenticatedRequest();
 
-  if (response) {
+  if (response || !session) {
     return response;
   }
 
   try {
     const supabase = createSupabaseAdminClient();
     const organizationId = await getInitialOrganizationId(supabase);
+    const accessibleUnitIds = session.units.map((unit) => unit.id);
 
     const [{ data: suppliers, error: suppliersError }, { data: units, error: unitsError }] = await Promise.all([
       supabase
@@ -141,7 +142,9 @@ export async function GET() {
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
         .order("name", { ascending: true }),
-      supabase.from("units").select("id, code, name").eq("organization_id", organizationId).is("deleted_at", null).order("name", { ascending: true })
+      accessibleUnitIds.length
+        ? supabase.from("units").select("id, code, name").in("id", accessibleUnitIds).eq("organization_id", organizationId).is("deleted_at", null).order("name", { ascending: true })
+        : Promise.resolve({ data: [], error: null })
     ]);
 
     if (suppliersError) {
@@ -155,10 +158,11 @@ export async function GET() {
     }
 
     const unitsById = new Map((units ?? []).map((unit) => [unit.id, unit]));
+    const visibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
 
     return NextResponse.json({
       ok: true,
-      suppliers: (suppliers ?? []).map((supplier) => mapSupplier(supplier as SupplierRow, supplier.unit_id ? (unitsById.get(supplier.unit_id) ?? null) : null))
+      suppliers: visibleSuppliers.map((supplier) => mapSupplier(supplier, supplier.unit_id ? (unitsById.get(supplier.unit_id) ?? null) : null))
     });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Nao foi possivel carregar os fornecedores.", 500);
@@ -175,6 +179,11 @@ export async function POST(request: Request) {
   try {
     const payload = supplierPayloadSchema.parse(await request.json());
     const supabase = createSupabaseAdminClient();
+
+    if (payload.unitId && !session.units.some((unit) => unit.id === payload.unitId)) {
+      return apiError("Não é possível cadastrar fornecedor em uma unidade sem permissão.", 403);
+    }
+
     const organizationId = payload.unitId ? await getUnitOrganizationId(supabase, payload.unitId) : await getInitialOrganizationId(supabase);
 
     const duplicateSupplier = await validateDuplicateDocument(supabase, organizationId, payload.documentType, payload.documentNumber);

@@ -4,6 +4,7 @@ import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/l
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseQuoteNumber,
+  getPurchaseQuotationMutationBlockMessage,
   roundMoney,
   sumPurchaseQuoteItems
 } from "@/lib/purchases/api";
@@ -22,6 +23,7 @@ type PurchaseRequestRow = {
   required_quote_count: number;
   approval_required: boolean;
   director_approval_required: boolean;
+  approval_status: "pending" | "approved" | "rejected" | "returned_to_purchases" | null;
   created_at: string;
 };
 
@@ -79,7 +81,7 @@ function toNumber(value: string | number | null | undefined) {
 async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
   const { data, error } = await supabase
     .from("purchase_requests")
-    .select("id, organization_id, unit_id, request_number, status, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, created_at")
+    .select("id, organization_id, unit_id, request_number, status, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, approval_status, created_at")
     .eq("id", requestId)
     .is("deleted_at", null)
     .single();
@@ -201,6 +203,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
       return apiError("Você não tem acesso a esta solicitação.", 403);
+    }
+
+    const mutationBlockMessage = getPurchaseQuotationMutationBlockMessage({
+      status: requestRow.status,
+      approvalStatus: requestRow.approval_status,
+      approvalRequired: requestRow.approval_required,
+      totalApprovedAmount: requestRow.total_approved_amount
+    });
+
+    if (mutationBlockMessage) {
+      return apiError(mutationBlockMessage, 409);
     }
 
     const requestItems = await fetchRequestItems(supabase, requestRow.id);

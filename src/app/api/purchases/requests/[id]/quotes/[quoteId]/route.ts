@@ -3,10 +3,9 @@ import { z } from "zod";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
-  calculatePurchaseRequestFlags,
   calculateWinningQuoteApprovalFlags,
   getPurchaseApprovalLevel,
-  normalizeOptionalUuid,
+  getPurchaseQuotationMutationBlockMessage,
   roundMoney,
   sumPurchaseQuoteItems
 } from "@/lib/purchases/api";
@@ -41,6 +40,7 @@ type PurchaseRequestRow = {
   required_quote_count: number;
   approval_required: boolean;
   director_approval_required: boolean;
+  approval_status: "pending" | "approved" | "rejected" | "returned_to_purchases" | null;
   updated_at: string;
 };
 
@@ -103,8 +103,33 @@ type PurchaseQuoteItemUpdateRow = {
   delivery_notes: string | null;
 };
 
+type SupplierRow = {
+  id: string;
+  organization_id: string;
+  unit_id: string | null;
+  status: "active" | "inactive" | "archived";
+};
+
 function toNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
+}
+
+function isReturnedToPurchases(requestRow: PurchaseRequestRow) {
+  return requestRow.approval_status === "returned_to_purchases";
+}
+
+function getReviewApprovalStatusUpdate(requestRow: PurchaseRequestRow) {
+  return isReturnedToPurchases(requestRow) ? { approval_status: "returned_to_purchases" as const } : {};
+}
+
+function getReviewDecisionResetFields(requestRow: PurchaseRequestRow) {
+  return isReturnedToPurchases(requestRow)
+    ? {}
+    : {
+        approval_decided_at: null,
+        approval_decided_by: null,
+        approval_decision_notes: null
+      };
 }
 
 function mapQuoteItemInsertRow(item: PurchaseQuoteItemRow, quoteId: string, organizationId: string, unitId: string, createdBy: string) {
@@ -127,7 +152,7 @@ async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
   const { data, error } = await supabase
     .from("purchase_requests")
     .select(
-      "id, organization_id, unit_id, status, request_number, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, updated_at"
+      "id, organization_id, unit_id, status, request_number, total_approved_amount, quotation_required, required_quote_count, approval_required, director_approval_required, approval_status, updated_at"
     )
     .eq("id", requestId)
     .is("deleted_at", null)
@@ -214,6 +239,34 @@ async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
   return (data ?? []) as PurchaseQuoteRow[];
 }
 
+async function fetchSupplier(supabase: SupabaseAdmin, supplierId: string, organizationId: string, accessibleUnitIds: string[]) {
+  const { data, error } = await supabase
+    .from("suppliers")
+    .select("id, organization_id, unit_id, status")
+    .eq("id", supplierId)
+    .eq("organization_id", organizationId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logBaseCadastroError("purchase_quotes.supplier_lookup_failed", error);
+    throw new Error("Não foi possível validar o fornecedor selecionado.");
+  }
+
+  const supplier = data?.[0] as SupplierRow | undefined;
+
+  if (!supplier) {
+    throw new Error("Fornecedor não encontrado ou inativo.");
+  }
+
+  if (supplier.unit_id && !accessibleUnitIds.includes(supplier.unit_id)) {
+    throw new Error("Você não tem acesso a este fornecedor.");
+  }
+
+  return supplier;
+}
+
 async function insertPurchaseRequestEvent(
   supabase: SupabaseAdmin,
   input: {
@@ -265,23 +318,18 @@ async function restoreQuoteSelectionState(
   existingQuotes: PurchaseQuoteRow[],
   actorId: string
 ) {
-  const requestTotal = toNumber(requestRow.total_approved_amount);
-  const requestFlags = requestTotal > 0 ? calculateWinningQuoteApprovalFlags(requestTotal) : calculatePurchaseRequestFlags(requestTotal);
-
   await supabase
     .from("purchase_requests")
     .update({
       total_approved_amount: toNumber(requestRow.total_approved_amount),
-      quotation_required: requestFlags.quotationRequired,
-      required_quote_count: requestFlags.requiredQuoteCount,
-          approval_required: requestFlags.approvalRequired,
-          director_approval_required: requestFlags.directorApprovalRequired,
-          approval_status: "pending",
-          approval_level: requestTotal > 0 ? getPurchaseApprovalLevel(requestTotal) : null,
-          approval_decided_at: null,
-          approval_decided_by: null,
-          approval_decision_notes: null,
-          updated_by: actorId
+      quotation_required: requestRow.quotation_required,
+      required_quote_count: requestRow.required_quote_count,
+      approval_required: requestRow.approval_required,
+      director_approval_required: requestRow.director_approval_required,
+      ...getReviewApprovalStatusUpdate(requestRow),
+      approval_level: toNumber(requestRow.total_approved_amount) > 0 ? getPurchaseApprovalLevel(toNumber(requestRow.total_approved_amount)) : null,
+      ...getReviewDecisionResetFields(requestRow),
+      updated_by: actorId
     })
     .eq("id", requestRow.id);
 
@@ -314,7 +362,85 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError("Você não tem acesso a esta solicitação.", 403);
     }
 
+    const mutationBlockMessage = getPurchaseQuotationMutationBlockMessage({
+      status: requestRow.status,
+      approvalStatus: requestRow.approval_status,
+      approvalRequired: requestRow.approval_required,
+      totalApprovedAmount: requestRow.total_approved_amount
+    });
+
+    if (mutationBlockMessage) {
+      return apiError(mutationBlockMessage, 409);
+    }
+
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
+
+    if (payload.action === "unselect") {
+      if (requestRow.status !== "quotation") {
+        return apiError("A cotação vencedora só pode ser removida em uma solicitação em cotação.", 409);
+      }
+
+      if (!quoteRow.is_selected) {
+        return apiError("Esta cotação não está marcada como vencedora.", 409);
+      }
+
+      const { error: quoteUpdateError } = await supabase
+        .from("purchase_quotes")
+        .update({ is_selected: false, status: "received", updated_by: session.user.id })
+        .eq("id", quoteRow.id)
+        .eq("purchase_request_id", requestRow.id)
+        .is("deleted_at", null);
+
+      if (quoteUpdateError) {
+        logBaseCadastroError("purchase_quotes.unselect_update_failed", quoteUpdateError);
+        return apiError("Não foi possível remover a cotação vencedora.", 500);
+      }
+
+      const { error: requestUpdateError } = await supabase
+        .from("purchase_requests")
+        .update({
+          total_approved_amount: 0,
+          quotation_required: false,
+          required_quote_count: 0,
+          approval_required: false,
+          director_approval_required: false,
+          ...getReviewApprovalStatusUpdate(requestRow),
+          approval_level: null,
+          ...getReviewDecisionResetFields(requestRow),
+          updated_by: session.user.id
+        })
+        .eq("id", requestRow.id);
+
+      if (requestUpdateError) {
+        logBaseCadastroError("purchase_quotes.unselect_request_update_failed", requestUpdateError);
+        await supabase
+          .from("purchase_quotes")
+          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: session.user.id })
+          .eq("id", quoteRow.id);
+        return apiError("Não foi possível atualizar a solicitação ao remover a vencedora.", 500);
+      }
+
+      try {
+        await insertPurchaseRequestEvent(supabase, {
+          organizationId: requestRow.organization_id,
+          unitId: requestRow.unit_id,
+          purchaseRequestId: requestRow.id,
+          eventType: "quote_unselected",
+          fromStatus: requestRow.status,
+          toStatus: requestRow.status,
+          description: "Cotação removida como vencedora.",
+          createdBy: session.user.id
+        });
+      } catch (eventError) {
+        await supabase
+          .from("purchase_quotes")
+          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: session.user.id })
+          .eq("id", quoteRow.id);
+        return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar a remoção da vencedora.", 500);
+      }
+
+      return NextResponse.json({ ok: true, message: "Cotação removida como vencedora." });
+    }
 
     if (payload.action === "select") {
       if (requestRow.status !== "quotation") {
@@ -328,6 +454,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
       const selectedTotal = roundMoney(toNumber(quoteRow.total_amount));
       const requestFlags = calculateWinningQuoteApprovalFlags(selectedTotal);
+      const keepApprovalRequirement = isReturnedToPurchases(requestRow);
 
       const { error: unselectError } = await supabase
         .from("purchase_quotes")
@@ -361,13 +488,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           total_approved_amount: selectedTotal,
           quotation_required: requestFlags.quotationRequired,
           required_quote_count: requestFlags.requiredQuoteCount,
-          approval_required: requestFlags.approvalRequired,
-          director_approval_required: requestFlags.directorApprovalRequired,
-          approval_status: "pending",
+          approval_required: keepApprovalRequirement ? requestFlags.approvalRequired : false,
+          director_approval_required: keepApprovalRequirement ? requestFlags.directorApprovalRequired : false,
+          ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: getPurchaseApprovalLevel(selectedTotal),
-          approval_decided_at: null,
-          approval_decided_by: null,
-          approval_decision_notes: null,
+          ...getReviewDecisionResetFields(requestRow),
           updated_by: session.user.id
         })
         .eq("id", requestRow.id);
@@ -464,9 +589,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       throw new Error("Informe um item cotado para cada item da solicitação.");
     }
 
+    const supplier = await fetchSupplier(supabase, parsed.supplierId, requestRow.organization_id, accessibleUnitIds);
     const totalAmount = sumPurchaseQuoteItems(quoteItems.map((item: PurchaseQuoteItemUpdateRow) => ({ quantity: item.quantity, unitPrice: item.unit_price })));
     const quoteUpdateBody = {
-      supplier_id: parsed.supplierId,
+      supplier_id: supplier.id,
       quote_number: quoteRow.quote_number,
       quote_date: parsed.quoteDate,
       valid_until: parsed.validUntil,
@@ -551,6 +677,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     const requestFlags = calculateWinningQuoteApprovalFlags(totalAmount);
+    const keepApprovalRequirement = isReturnedToPurchases(requestRow);
     if (quoteRow.is_selected) {
       const { error: requestUpdateError } = await supabase
         .from("purchase_requests")
@@ -558,13 +685,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           total_approved_amount: totalAmount,
           quotation_required: requestFlags.quotationRequired,
           required_quote_count: requestFlags.requiredQuoteCount,
-          approval_required: requestFlags.approvalRequired,
-          director_approval_required: requestFlags.directorApprovalRequired,
-          approval_status: "pending",
+          approval_required: keepApprovalRequirement ? requestFlags.approvalRequired : false,
+          director_approval_required: keepApprovalRequirement ? requestFlags.directorApprovalRequired : false,
+          ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: getPurchaseApprovalLevel(totalAmount),
-          approval_decided_at: null,
-          approval_decided_by: null,
-          approval_decision_notes: null,
+          ...getReviewDecisionResetFields(requestRow),
           updated_by: session.user.id
         })
         .eq("id", requestRow.id);
@@ -633,6 +758,17 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       return apiError("Você não tem acesso a esta solicitação.", 403);
     }
 
+    const mutationBlockMessage = getPurchaseQuotationMutationBlockMessage({
+      status: requestRow.status,
+      approvalStatus: requestRow.approval_status,
+      approvalRequired: requestRow.approval_required,
+      totalApprovedAmount: requestRow.total_approved_amount
+    });
+
+    if (mutationBlockMessage) {
+      return apiError(mutationBlockMessage, 409);
+    }
+
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
 
     if (quoteRow.status === "cancelled" || quoteRow.deleted_at) {
@@ -683,11 +819,9 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
           required_quote_count: 0,
           approval_required: false,
           director_approval_required: false,
-          approval_status: "pending",
+          ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: null,
-          approval_decided_at: null,
-          approval_decided_by: null,
-          approval_decision_notes: null,
+          ...getReviewDecisionResetFields(requestRow),
           updated_by: session.user.id
         })
         .eq("id", requestRow.id);

@@ -113,6 +113,8 @@ type RequesterRow = {
   username: string;
 };
 
+const PURCHASE_REQUEST_CANCEL_BLOCK_MESSAGE = "Esta solicitação já entrou no fluxo de compras e não pode ser cancelada por aqui.";
+
 function toNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
 }
@@ -275,6 +277,44 @@ async function fetchRequestItems(supabase: SupabaseAdmin, requestId: string) {
   }
 
   return (data ?? []) as PurchaseRequestItemRow[];
+}
+
+async function fetchRequestQuoteCancelState(supabase: SupabaseAdmin, requestId: string) {
+  const [quotesResult, selectedQuoteResult] = await Promise.all([
+    supabase.from("purchase_quotes").select("id").eq("purchase_request_id", requestId).is("deleted_at", null).limit(1),
+    supabase.from("purchase_quotes").select("id").eq("purchase_request_id", requestId).eq("is_selected", true).is("deleted_at", null).limit(1)
+  ]);
+
+  if (quotesResult.error) {
+    logBaseCadastroError("purchase_requests.cancel_quotes_lookup_failed", quotesResult.error);
+    throw new Error("Não foi possível validar as cotações da solicitação.");
+  }
+
+  if (selectedQuoteResult.error) {
+    logBaseCadastroError("purchase_requests.cancel_selected_quote_lookup_failed", selectedQuoteResult.error);
+    throw new Error("Não foi possível validar a cotação vencedora da solicitação.");
+  }
+
+  return {
+    hasQuotes: Boolean(quotesResult.data?.length),
+    hasSelectedQuote: Boolean(selectedQuoteResult.data?.length)
+  };
+}
+
+function hasRequestEnteredPurchasingFlow(request: PurchaseRequestRow, quoteState: { hasQuotes: boolean; hasSelectedQuote: boolean }) {
+  const cancellableStatuses: PurchaseRequestStatus[] = ["draft", "submitted", "under_review"];
+
+  return (
+    !cancellableStatuses.includes(request.status) ||
+    quoteState.hasQuotes ||
+    quoteState.hasSelectedQuote ||
+    toNumber(request.total_approved_amount) > 0 ||
+    Boolean(request.approval_request_id) ||
+    (request.approval_status === "pending" && request.approval_required && toNumber(request.total_approved_amount) > 0) ||
+    request.approval_status === "approved" ||
+    request.approval_status === "rejected" ||
+    request.approval_status === "returned_to_purchases"
+  );
 }
 
 async function fetchRequestEvents(supabase: SupabaseAdmin, requestId: string) {
@@ -476,8 +516,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const existingItems = await fetchRequestItems(supabase, requestRow.id);
 
     if (payload.action === "cancel") {
-      if (requestRow.status !== "draft" && requestRow.status !== "submitted") {
-        return apiError("A solicitacao nao pode ser cancelada neste status.", 409);
+      const quoteState = await fetchRequestQuoteCancelState(supabase, requestRow.id);
+
+      if (hasRequestEnteredPurchasingFlow(requestRow, quoteState)) {
+        return apiError(PURCHASE_REQUEST_CANCEL_BLOCK_MESSAGE, 409);
       }
 
       const { error: updateError } = await supabase
