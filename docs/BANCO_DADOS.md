@@ -80,12 +80,23 @@ O banco usa Supabase/PostgreSQL. Dados operacionais devem preservar multiunidade
 - Finalidade: cotação de fornecedor para solicitação.
 - Campos conhecidos: número automático, fornecedor, validade, prazo, condição de pagamento, status, total, seleção de vencedora.
 - Relações: `purchase_requests`, `suppliers`, itens de cotação e anexos.
+- Rodadas de negociação:
+  - `quote_round = 1`, `original_quote_id = null` e `parent_quote_id = null` indicam proposta original.
+  - Proposta renegociada deve ser uma nova linha em `purchase_quotes`, vinculada à proposta original por `original_quote_id` e à proposta anterior por `parent_quote_id`.
+  - `superseded_by_quote_id`, `superseded_at` e `superseded_by` registram quando uma proposta foi superada por nova rodada.
 
 ### `purchase_quote_items`
 
 - Finalidade: itens e valores da cotação.
 - Campos conhecidos: descrição, quantidade, valor unitário, total.
 - Relações: `purchase_quotes`.
+
+### `purchase_quote_negotiations`
+
+- Finalidade: registrar o ato de negociação entre uma proposta anterior e uma nova proposta do mesmo fornecedor.
+- Campos conhecidos: solicitação, fornecedor, cotação original, cotação anterior, nova cotação, rodada, valores anterior/novo, economia absoluta, percentual, observação, negociador e data.
+- Observação: os valores ficam congelados para auditoria e relatórios futuros.
+- Desconto por item/produto fica para sprint futura, com modelagem específica de itens negociados.
 
 ### `purchase_receipts`
 

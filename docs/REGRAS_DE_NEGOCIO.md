@@ -53,6 +53,10 @@
 - Recomendada é sugestão do sistema.
 - Vencedora é escolha do comprador.
 - Aprovada só existe após decisão formal.
+- Cotação original deve ser preservada quando houver renegociação relevante.
+- Renegociação futura com o mesmo fornecedor deve criar nova rodada/proposta, vinculada à proposta original e à proposta imediatamente anterior.
+- Cotação superada por nova rodada não deve concorrer na recomendação futura.
+- Obrigatoriedade de desconto mínimo, justificativa detalhada ou anexo específico por negociação fica para evolução futura configurável.
 
 ## 7. Anexos
 
