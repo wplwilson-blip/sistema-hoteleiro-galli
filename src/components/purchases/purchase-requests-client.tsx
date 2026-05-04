@@ -81,7 +81,7 @@ type PurchaseRequestRecord = {
   requiredQuoteCount: number;
   approvalRequired: boolean;
   directorApprovalRequired: boolean;
-  approvalStatus?: "pending" | "approved" | "rejected" | "returned_to_purchases";
+  approvalStatus?: "pending" | "approved" | "rejected" | "returned_to_purchases" | null;
   approvalDecisionNotes?: string;
   status: PurchaseRequestStatus;
   statusLabel: string;

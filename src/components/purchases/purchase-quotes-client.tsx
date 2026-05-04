@@ -46,7 +46,7 @@ type PurchaseRequestSummary = {
   requiredQuoteCount: number;
   approvalRequired: boolean;
   directorApprovalRequired: boolean;
-  approvalStatus?: "pending" | "approved" | "rejected" | "returned_to_purchases";
+  approvalStatus?: "pending" | "approved" | "rejected" | "returned_to_purchases" | null;
   approvalDecisionNotes?: string;
   createdAt: string;
 };
@@ -98,6 +98,7 @@ type PurchaseQuoteRecord = {
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   statusLabel: string;
   statusTone: "visual" | "warning" | "danger" | "success" | "info";
+  quoteRound?: number;
   supersededByQuoteId: string;
   supersededAt: string;
   isSuperseded: boolean;
@@ -177,6 +178,24 @@ type PurchaseQuoteFormValues = {
   items: QuoteItemFormValue[];
 };
 
+type NegotiationItemFormValue = {
+  purchaseRequestItemId: string;
+  itemDescription: string;
+  quantity: string;
+  previousUnitPrice: string;
+  unitPrice: string;
+  notes: string;
+};
+
+type NegotiationFormValues = {
+  quoteDate: string;
+  validUntil: string;
+  deliveryDays: string;
+  paymentTerms: string;
+  negotiationNotes: string;
+  items: NegotiationItemFormValue[];
+};
+
 const purchaseQuoteFormSchemaClient = purchaseQuoteFormSchema;
 
 function formatCurrency(value: number) {
@@ -231,6 +250,27 @@ function parseLocalizedNumber(value: string | number | null | undefined) {
   const parsed = Number(normalized);
 
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseLocalizedNumberStrict(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.includes(",") ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed;
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseDeliveryDays(value: number | string | null | undefined) {
@@ -644,6 +684,39 @@ function buildEditQuoteForm(quote: PurchaseQuoteRecord): PurchaseQuoteFormValues
   };
 }
 
+function buildDefaultNegotiationForm(quote: PurchaseQuoteRecord | null): NegotiationFormValues {
+  const today = new Date();
+  const validUntil = addDays(today, 30);
+
+  return {
+    quoteDate: toDateInputValue(today),
+    validUntil: toDateInputValue(validUntil),
+    deliveryDays: quote?.deliveryDays === "" || quote?.deliveryDays == null ? "" : String(quote.deliveryDays),
+    paymentTerms: quote?.paymentTerms ?? "",
+    negotiationNotes: "",
+    items: (quote?.items ?? []).map((item) => ({
+      purchaseRequestItemId: item.purchaseRequestItemId,
+      itemDescription: item.description,
+      quantity: String(item.quantity),
+      previousUnitPrice: String(item.unitPrice),
+      unitPrice: String(item.unitPrice),
+      notes: item.deliveryNotes ?? ""
+    }))
+  };
+}
+
+function getQuoteSupplierLabel(quote: PurchaseQuoteRecord | null) {
+  if (!quote) {
+    return "";
+  }
+
+  return quote.supplierTradeName || quote.supplierName || "Fornecedor não informado";
+}
+
+function getQuoteRoundLabel(quote: PurchaseQuoteRecord | null) {
+  return `Rodada ${quote?.quoteRound ?? 1}`;
+}
+
 export function PurchaseQuotesClient() {
   const queryClient = useQueryClient();
   const [selectedRequestId, setSelectedRequestId] = useState("");
@@ -657,6 +730,8 @@ export function PurchaseQuotesClient() {
   const [pendingQuoteAttachmentDescription, setPendingQuoteAttachmentDescription] = useState("");
   const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
   const [quickSuppliers, setQuickSuppliers] = useState<QuickSupplierRecord[]>([]);
+  const [negotiationQuote, setNegotiationQuote] = useState<PurchaseQuoteRecord | null>(null);
+  const [negotiationForm, setNegotiationForm] = useState<NegotiationFormValues>(() => buildDefaultNegotiationForm(null));
   const [search, setSearch] = useState("");
   const [queueFilter, setQueueFilter] = useState<QuoteQueueFilter>("purchasing_queue");
 
@@ -787,6 +862,8 @@ export function PurchaseQuotesClient() {
     }
 
     setSelectedRequestId(requestId);
+    setNegotiationQuote(null);
+    setNegotiationForm(buildDefaultNegotiationForm(null));
     clearQuoteTemporaryState(null);
   }
 
@@ -818,6 +895,95 @@ export function PurchaseQuotesClient() {
     quoteForm.clearErrors();
     quoteForm.reset(nextValues);
     replace(nextValues.items);
+  }
+
+  function openNegotiationForm(quote: PurchaseQuoteRecord) {
+    setNegotiationQuote(quote);
+    setNegotiationForm(buildDefaultNegotiationForm(quote));
+    setQuoteFormOpen(false);
+    setEditingQuoteId(null);
+    setError("");
+    setAttachmentMessage("");
+  }
+
+  function closeNegotiationForm() {
+    setNegotiationQuote(null);
+    setNegotiationForm(buildDefaultNegotiationForm(null));
+    setError("");
+  }
+
+  function updateNegotiationField<K extends keyof NegotiationFormValues>(field: K, value: NegotiationFormValues[K]) {
+    setNegotiationForm((current) => ({ ...current, [field]: value }));
+    setError("");
+  }
+
+  function updateNegotiationItem(index: number, patch: Partial<NegotiationItemFormValue>) {
+    setNegotiationForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item))
+    }));
+    setError("");
+  }
+
+  function buildNegotiationPayload() {
+    if (!negotiationQuote) {
+      throw new Error("Selecione a cotação anterior.");
+    }
+
+    if (!negotiationForm.quoteDate) {
+      throw new Error("Informe a data da nova proposta.");
+    }
+
+    if (!negotiationForm.validUntil) {
+      throw new Error("Informe a validade da nova proposta.");
+    }
+
+    if (negotiationForm.validUntil < negotiationForm.quoteDate) {
+      throw new Error("A validade da nova proposta deve ser maior ou igual à data da nova proposta.");
+    }
+
+    if (!negotiationForm.items.length) {
+      throw new Error("Informe ao menos um item para a nova proposta.");
+    }
+
+    const deliveryDaysValue = negotiationForm.deliveryDays.trim();
+    const deliveryDays = deliveryDaysValue ? Number.parseInt(deliveryDaysValue.replace(/\D/g, ""), 10) : undefined;
+
+    if (deliveryDaysValue && (deliveryDays === undefined || !Number.isFinite(deliveryDays) || deliveryDays < 0)) {
+      throw new Error("Informe um prazo de entrega válido.");
+    }
+
+    return {
+      quoteDate: negotiationForm.quoteDate,
+      validUntil: negotiationForm.validUntil,
+      deliveryDays,
+      paymentTerms: negotiationForm.paymentTerms.trim() || undefined,
+      negotiationNotes: negotiationForm.negotiationNotes.trim() || undefined,
+      items: negotiationForm.items.map((item) => {
+        const unitPrice = parseLocalizedNumberStrict(item.unitPrice);
+        const quantity = parseLocalizedNumberStrict(item.quantity);
+
+        if (quantity === null || quantity <= 0) {
+          throw new Error("Informe uma quantidade válida para todos os itens.");
+        }
+
+        if (unitPrice === null) {
+          throw new Error("Informe o novo valor unitário para todos os itens.");
+        }
+
+        if (unitPrice < 0) {
+          throw new Error("O valor unitário não pode ser negativo.");
+        }
+
+        return {
+          purchaseRequestItemId: item.purchaseRequestItemId,
+          itemDescription: item.itemDescription,
+          quantity,
+          unitPrice,
+          notes: item.notes.trim() || undefined
+        };
+      })
+    };
   }
 
   async function handleQuickSupplierCreated(supplier: QuickSupplierRecord, message = "Fornecedor cadastrado com sucesso.") {
@@ -885,6 +1051,39 @@ export function PurchaseQuotesClient() {
       setAttachmentMessage(uploadFailed ? "A cotação foi salva, mas não foi possível enviar um ou mais anexos." : "Cotação salva com sucesso.");
     },
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível salvar a cotação.")
+  });
+
+  const negotiationMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedRequestId || !negotiationQuote) {
+        throw new Error("Selecione a cotação anterior.");
+      }
+
+      const payload = buildNegotiationPayload();
+
+      return requestJson<{ ok: true; message: string }>(
+        `/api/purchases/requests/${selectedRequestId}/quotes/${negotiationQuote.id}/negotiations`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload)
+        }
+      );
+    },
+    onSuccess: async (payload) => {
+      setError("");
+      setAttachmentMessage(payload.message || "Nova proposta negociada registrada com sucesso.");
+      setNegotiationQuote(null);
+      setNegotiationForm(buildDefaultNegotiationForm(null));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
+        queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] }),
+        selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
+      ]);
+    },
+    onError: (mutationError) => {
+      setAttachmentMessage("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível registrar a nova proposta negociada.");
+    }
   });
 
   const startMutation = useMutation({
@@ -1071,6 +1270,13 @@ export function PurchaseQuotesClient() {
     () => quoteItemsWatch?.reduce((sum, item) => sum + parseLocalizedNumber(item.quantity) * parseLocalizedNumber(item.unitPrice), 0) ?? 0,
     [quoteItemsWatch]
   );
+  const negotiationPreviousTotal = negotiationQuote?.totalAmount ?? 0;
+  const negotiationNewTotalPreview = useMemo(
+    () => negotiationForm.items.reduce((sum, item) => sum + parseLocalizedNumber(item.quantity) * parseLocalizedNumber(item.unitPrice), 0),
+    [negotiationForm.items]
+  );
+  const negotiationDiscountAmount = negotiationPreviousTotal - negotiationNewTotalPreview;
+  const negotiationDiscountPercent = negotiationPreviousTotal > 0 ? (negotiationDiscountAmount / negotiationPreviousTotal) * 100 : 0;
   const attachmentsByQuoteId = attachmentsQuery.data ?? {};
 
   function uploadQuoteAttachment(quoteId: string) {
@@ -1121,6 +1327,8 @@ export function PurchaseQuotesClient() {
 
   function closeRequestModal() {
     clearQuoteTemporaryState(null);
+    setNegotiationQuote(null);
+    setNegotiationForm(buildDefaultNegotiationForm(null));
     setSelectedRequestId("");
   }
 
@@ -1499,10 +1707,16 @@ export function PurchaseQuotesClient() {
                       const supplierTrustLabel = supplier?.status === "active" ? "Fornecedor ativo" : "Fornecedor cadastrado";
                       const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
                       const selectedFile = attachmentFiles[quote.id];
-                      const canMutateQuote = selectedRequestCanMutateQuotes && quote.status !== "cancelled";
+                      const canMutateQuote = selectedRequestCanMutateQuotes && quote.status !== "cancelled" && !quote.isSuperseded;
+                      const canRegisterNegotiation =
+                        selectedRequestCanMutateQuotes &&
+                        quote.status !== "cancelled" &&
+                        !quote.isSuperseded &&
+                        !selectedRequestAwaitingApproval &&
+                        !selectedRequestClosedForQuotation;
 
                       return (
-                      <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : "rounded-lg border bg-background p-4"}>
+                      <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : quote.isSuperseded ? "rounded-lg border bg-muted/20 p-4" : "rounded-lg border bg-background p-4"}>
                         <div className="space-y-4">
                           <div className="flex flex-col gap-3 border-b pb-3 xl:flex-row xl:items-start xl:justify-between">
                             <div className="w-full min-w-0 space-y-2 xl:min-w-[20rem] xl:flex-1">
@@ -1511,6 +1725,7 @@ export function PurchaseQuotesClient() {
                                   {quote.supplierTradeName || quote.supplierName}
                                 </p>
                                 <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
+                                {quote.isSuperseded ? <StatusBadge status="visual" label="Superada" /> : null}
                                 {isLowestQuote ? <StatusBadge status="info" label="Menor valor" /> : null}
                                 {isRecommendedQuote ? <StatusBadge status="success" label="Recomendada" /> : null}
                                 {quote.isSelected ? (
@@ -1531,11 +1746,23 @@ export function PurchaseQuotesClient() {
                               </p>
                             </div>
                             <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:shrink-0 xl:justify-end">
-                              <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)} disabled={!canMutateQuote}>
-                                <Pencil className="h-4 w-4" />
-                                Editar
-                              </Button>
-                              {!quote.isSelected && quote.status === "received" ? (
+                              {quote.isSuperseded ? (
+                                <span className="inline-flex min-h-9 items-center rounded-md border bg-muted px-3 py-2 text-sm font-medium text-muted-foreground">
+                                  Superada por proposta mais recente
+                                </span>
+                              ) : (
+                                <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)} disabled={!canMutateQuote}>
+                                  <Pencil className="h-4 w-4" />
+                                  Editar
+                                </Button>
+                              )}
+                              {canRegisterNegotiation ? (
+                                <Button type="button" size="sm" variant="outline" onClick={() => openNegotiationForm(quote)} disabled={negotiationMutation.isPending}>
+                                  <RotateCcw className="h-4 w-4" />
+                                  Registrar nova proposta
+                                </Button>
+                              ) : null}
+                              {!quote.isSuperseded && !quote.isSelected && quote.status === "received" ? (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -1546,7 +1773,7 @@ export function PurchaseQuotesClient() {
                                   Selecionar como vencedora
                                 </Button>
                               ) : null}
-                              {quote.isSelected ? (
+                              {!quote.isSuperseded && quote.isSelected ? (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -1557,7 +1784,7 @@ export function PurchaseQuotesClient() {
                                   <Ban className="h-4 w-4" />
                                   Remover como vencedora
                                 </Button>
-                              ) : (
+                              ) : !quote.isSuperseded ? (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -1568,7 +1795,7 @@ export function PurchaseQuotesClient() {
                                   <Ban className="h-4 w-4" />
                                   Cancelar cotação
                                 </Button>
-                              )}
+                              ) : null}
                             </div>
                           </div>
 
@@ -1711,6 +1938,221 @@ export function PurchaseQuotesClient() {
                   />
                 )}
               </div>
+
+              {negotiationQuote ? (
+                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" role="presentation" onClick={closeNegotiationForm}>
+                  <div className="flex h-full w-full items-stretch justify-end p-0 sm:p-4">
+                    <div
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="negotiation-form-title"
+                      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background shadow-2xl sm:max-w-[min(1040px,calc(100vw-2rem))] sm:rounded-l-2xl"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nova proposta negociada</p>
+                          <h3 id="negotiation-form-title" className="text-lg font-semibold text-foreground">Registrar nova proposta negociada</h3>
+                          <p className="max-w-2xl text-sm text-muted-foreground">
+                            Crie uma nova proposta do mesmo fornecedor preservando o histórico da cotação anterior.
+                          </p>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={closeNegotiationForm}>
+                          <Ban className="h-4 w-4" />
+                          Fechar
+                        </Button>
+                      </div>
+
+                      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+                        <div className="space-y-6">
+                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-semibold">Cotação anterior</h4>
+                              <p className="text-xs text-muted-foreground">Esta proposta será preservada e a nova proposta entrará como outra cotação recebida.</p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Número</p>
+                                <p className="mt-1 overflow-x-auto whitespace-nowrap text-sm font-medium text-foreground">{negotiationQuote.quoteNumber}</p>
+                              </div>
+                              <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Fornecedor</p>
+                                <p className="mt-1 break-words text-sm font-medium text-foreground">{getQuoteSupplierLabel(negotiationQuote)}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Rodada atual</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{getQuoteRoundLabel(negotiationQuote)}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Valor anterior</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{negotiationQuote.totalAmountLabel}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Prazo</p>
+                                <p className="mt-1 text-sm font-medium text-foreground">{negotiationQuote.deliveryDays || "-"}</p>
+                              </div>
+                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Condição de pagamento</p>
+                                <p className="mt-1 break-words text-sm font-medium text-foreground">{negotiationQuote.paymentTerms || "-"}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Status</p>
+                                <div className="mt-1 flex flex-wrap gap-2">
+                                  <StatusBadge status={negotiationQuote.statusTone} label={negotiationQuote.statusLabel} />
+                                  {negotiationQuote.isSelected ? <StatusBadge status="success" label="Vencedora" /> : null}
+                                </div>
+                              </div>
+                            </div>
+                          </section>
+
+                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-semibold">Dados da nova proposta</h4>
+                            </div>
+                            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+                              <Field label="Data da nova proposta">
+                                <TextInput
+                                  type="date"
+                                  value={negotiationForm.quoteDate}
+                                  onChange={(event) => updateNegotiationField("quoteDate", event.target.value)}
+                                />
+                              </Field>
+                              <Field label="Validade da nova proposta">
+                                <TextInput
+                                  type="date"
+                                  value={negotiationForm.validUntil}
+                                  onChange={(event) => updateNegotiationField("validUntil", event.target.value)}
+                                />
+                              </Field>
+                              <Field label="Prazo de entrega (dias)">
+                                <TextInput
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={negotiationForm.deliveryDays}
+                                  onChange={(event) => updateNegotiationField("deliveryDays", event.target.value)}
+                                />
+                              </Field>
+                              <Field label="Condição de pagamento">
+                                <TextInput
+                                  value={negotiationForm.paymentTerms}
+                                  onChange={(event) => updateNegotiationField("paymentTerms", event.target.value)}
+                                />
+                              </Field>
+                              <Field label="Observação da negociação" className="xl:col-span-2">
+                                <TextArea
+                                  rows={3}
+                                  value={negotiationForm.negotiationNotes}
+                                  placeholder="Ex.: fornecedor concedeu desconto após negociação por WhatsApp."
+                                  onChange={(event) => updateNegotiationField("negotiationNotes", event.target.value)}
+                                />
+                              </Field>
+                            </div>
+                          </section>
+
+                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-semibold">Itens da nova proposta</h4>
+                              <p className="text-xs text-muted-foreground">A quantidade permanece igual à cotação anterior. Informe apenas o novo valor unitário e observações da negociação por item.</p>
+                            </div>
+                            <div className="space-y-4">
+                              {negotiationForm.items.map((item, index) => {
+                                const quantity = parseLocalizedNumber(item.quantity);
+                                const previousUnitPrice = parseLocalizedNumber(item.previousUnitPrice);
+                                const newUnitPrice = parseLocalizedNumber(item.unitPrice);
+
+                                return (
+                                  <div key={item.purchaseRequestItemId} className="rounded-xl border bg-background p-4 shadow-sm">
+                                    <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-start lg:justify-between">
+                                      <div className="min-w-0 space-y-1">
+                                        <p className="text-xs font-semibold uppercase text-muted-foreground">Item</p>
+                                        <p className="break-words text-sm font-semibold text-foreground">{item.itemDescription}</p>
+                                        <p className="text-xs text-muted-foreground">Quantidade: {quantity}</p>
+                                      </div>
+                                      <div className="grid gap-2 text-sm sm:grid-cols-2">
+                                        <div className="rounded-md border bg-muted/30 px-3 py-2">
+                                          <p className="text-xs uppercase text-muted-foreground">Valor anterior</p>
+                                          <p className="font-semibold text-foreground">{formatCurrency(previousUnitPrice)}</p>
+                                        </div>
+                                        <div className="rounded-md border bg-muted/30 px-3 py-2">
+                                          <p className="text-xs uppercase text-muted-foreground">Novo total</p>
+                                          <p className="font-semibold text-foreground">{formatCurrency(quantity * newUnitPrice)}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                                      <Field label="Novo valor unitário">
+                                        <TextInput
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={item.unitPrice}
+                                          onChange={(event) => updateNegotiationItem(index, { unitPrice: event.target.value })}
+                                        />
+                                      </Field>
+                                      <Field label="Observação do item">
+                                        <TextArea
+                                          rows={2}
+                                          value={item.notes}
+                                          onChange={(event) => updateNegotiationItem(index, { notes: event.target.value })}
+                                        />
+                                      </Field>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </section>
+
+                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Valor anterior</p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(negotiationPreviousTotal)}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Novo valor estimado</p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(negotiationNewTotalPreview)}</p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Economia estimada</p>
+                                <p className={cn("mt-1 text-sm font-semibold", negotiationDiscountAmount < 0 ? "text-amber-700" : "text-emerald-700")}>
+                                  {formatCurrency(negotiationDiscountAmount)}
+                                </p>
+                              </div>
+                              <div className="rounded-md border bg-background/70 p-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">Economia estimada %</p>
+                                <p className={cn("mt-1 text-sm font-semibold", negotiationDiscountAmount < 0 ? "text-amber-700" : "text-emerald-700")}>
+                                  {negotiationDiscountPercent.toFixed(2).replace(".", ",")}%
+                                </p>
+                              </div>
+                            </div>
+                            {negotiationDiscountAmount < 0 ? (
+                              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                Nova proposta maior que a anterior. A API permitirá salvar para preservar mudanças de escopo ou condição.
+                              </div>
+                            ) : null}
+                            <p className="text-xs text-muted-foreground">Prévia visual. O cálculo oficial será feito no servidor.</p>
+                          </section>
+
+                          <ErrorMessage message={error} />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">A nova proposta não será vencedora automaticamente.</p>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button type="button" disabled={negotiationMutation.isPending} onClick={() => negotiationMutation.mutate()}>
+                            <RotateCcw className="h-4 w-4" />
+                            Salvar nova proposta
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={closeNegotiationForm} disabled={negotiationMutation.isPending}>
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {isQuoteFormVisible ? (
                 <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" role="presentation" onClick={closeQuoteForm}>

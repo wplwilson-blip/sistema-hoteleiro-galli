@@ -119,7 +119,7 @@ function isReturnedToPurchases(requestRow: PurchaseRequestRow) {
 }
 
 function getReviewApprovalStatusUpdate(requestRow: PurchaseRequestRow) {
-  return isReturnedToPurchases(requestRow) ? { approval_status: "returned_to_purchases" as const } : {};
+  return isReturnedToPurchases(requestRow) ? { approval_status: "returned_to_purchases" as const } : { approval_status: null };
 }
 
 function getReviewDecisionResetFields(requestRow: PurchaseRequestRow) {

@@ -31,6 +31,10 @@ type ApprovalRequestRow = {
   created_at: string;
 };
 
+function hasFormalApprovalStatus(row: ApprovalRequestRow): row is ApprovalRequestRow & { approval_status: PurchaseApprovalStatus } {
+  return row.approval_status !== null;
+}
+
 type PurchaseQuoteRow = {
   id: string;
   purchase_request_id: string;
@@ -211,7 +215,7 @@ export async function GET(request: Request) {
       return apiError("Não foi possível carregar aprovações de compras.", 500);
     }
 
-    const requests = (requestRows ?? []) as ApprovalRequestRow[];
+    const requests = ((requestRows ?? []) as ApprovalRequestRow[]).filter(hasFormalApprovalStatus);
     const requestIds = requests.map((item) => item.id);
     const unitIds = Array.from(new Set(requests.map((item) => item.unit_id)));
     const departmentIds = Array.from(new Set(requests.map((item) => item.department_id).filter(Boolean))) as string[];
@@ -341,7 +345,7 @@ export async function GET(request: Request) {
         statusLabel: getPurchaseRequestStatusLabel(approvalRequest.status as any),
         totalApprovedAmount: toNumber(approvalRequest.total_approved_amount),
         totalApprovedAmountLabel: formatMoney(toNumber(approvalRequest.total_approved_amount)),
-        approvalStatus: approvalRequest.approval_status ?? "pending",
+        approvalStatus: approvalRequest.approval_status,
         approvalLevel,
         approvalLevelLabel: getPurchaseApprovalLevelLabel(approvalLevel),
         approvalDecidedAt: approvalRequest.approval_decided_at ?? "",

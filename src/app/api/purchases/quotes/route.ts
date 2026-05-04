@@ -223,7 +223,7 @@ async function loadEligibleRequests(supabase: SupabaseAdmin, accessibleUnitIds: 
     requiredQuoteCount: request.required_quote_count,
     approvalRequired: request.approval_required,
     directorApprovalRequired: request.director_approval_required,
-    approvalStatus: request.approval_status ?? "pending",
+    approvalStatus: request.approval_status,
     approvalDecisionNotes: request.approval_decision_notes ?? "",
     createdAt: request.created_at
   }));
@@ -319,7 +319,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
       requiredQuoteCount: request.required_quote_count,
       approvalRequired: request.approval_required,
       directorApprovalRequired: request.director_approval_required,
-      approvalStatus: request.approval_status ?? "pending",
+      approvalStatus: request.approval_status,
       approvalDecisionNotes: request.approval_decision_notes ?? "",
       createdAt: request.created_at,
       items: (requestItems ?? []).map((item) => ({

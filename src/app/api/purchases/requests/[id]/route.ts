@@ -173,7 +173,7 @@ function mapRequestRow(
     requiredQuoteCount: request.required_quote_count,
     approvalRequired: request.approval_required,
     directorApprovalRequired: request.director_approval_required,
-    approvalStatus: request.approval_status ?? "pending",
+    approvalStatus: request.approval_status,
     approvalDecisionNotes: request.approval_decision_notes ?? "",
     status: request.status,
     statusLabel: getPurchaseRequestStatusLabel(request.status),
@@ -416,6 +416,11 @@ function buildRequestUpdateBody(
     required_quote_count: flags.requiredQuoteCount,
     approval_required: flags.approvalRequired,
     director_approval_required: flags.directorApprovalRequired,
+    approval_status: null,
+    approval_level: null,
+    approval_decided_at: null,
+    approval_decided_by: null,
+    approval_decision_notes: null,
     updated_by: input.updatedBy,
     status: input.action === "submit" ? "submitted" : currentStatus
   };
