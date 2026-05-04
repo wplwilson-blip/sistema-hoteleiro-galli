@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculateWinningQuoteApprovalFlags, getPurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
+import {
+  createPurchaseApprovalSnapshot,
+  deletePurchaseApprovalSnapshot,
+  PurchaseApprovalSnapshotError
+} from "@/lib/purchases/approval-snapshots";
 
 type PurchaseRequestRow = {
   id: string;
@@ -93,6 +98,29 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     const total = toNumber(selectedQuote.total_amount);
     const requestFlags = calculateWinningQuoteApprovalFlags(total);
+    const approvalLevel = getPurchaseApprovalLevel(total);
+    let approvalSnapshot: { id: string; snapshot_number: number } | null = null;
+
+    try {
+      approvalSnapshot = await createPurchaseApprovalSnapshot({
+        supabase,
+        purchaseRequestId: purchaseRequest.id,
+        selectedQuoteId: selectedQuote.id,
+        submittedBy: session.user.id,
+        approvalLevel,
+        totalAmount: total,
+        approvalStatusAtCreation: "pending",
+        isResubmission
+      });
+    } catch (snapshotError) {
+      if (snapshotError instanceof PurchaseApprovalSnapshotError) {
+        return apiError(snapshotError.message, snapshotError.status);
+      }
+
+      logBaseCadastroError("purchase_approvals.snapshot_create_failed", snapshotError instanceof Error ? snapshotError : { message: "unknown" });
+      return apiError("Não foi possível gerar o dossiê formal da aprovação.", 500);
+    }
+
     const { error: updateError } = await supabase
       .from("purchase_requests")
       .update({
@@ -103,7 +131,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         approval_required: requestFlags.approvalRequired,
         director_approval_required: requestFlags.directorApprovalRequired,
         approval_status: "pending",
-        approval_level: getPurchaseApprovalLevel(total),
+        approval_level: approvalLevel,
         approval_decided_at: null,
         approval_decided_by: null,
         approval_decision_notes: null,
@@ -113,10 +141,14 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     if (updateError) {
       logBaseCadastroError("purchase_approvals.resubmit_update_failed", updateError);
+      if (approvalSnapshot) {
+        await deletePurchaseApprovalSnapshot(supabase, approvalSnapshot.id);
+      }
       return apiError(isResubmission ? "Não foi possível reenviar a compra para aprovação." : "Não foi possível enviar a compra para aprovação.", 500);
     }
 
-    await supabase.from("purchase_request_events").insert({
+    const { error: eventError } = await supabase.from("purchase_request_events").insert([
+      {
       organization_id: purchaseRequest.organization_id,
       unit_id: purchaseRequest.unit_id,
       purchase_request_id: purchaseRequest.id,
@@ -127,7 +159,22 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         ? `Compra ${purchaseRequest.request_number} reenviada para aprovação após revisão de Compras.`
         : `Compra ${purchaseRequest.request_number} enviada para aprovação.`,
       created_by: session.user.id
-    });
+      },
+      {
+        organization_id: purchaseRequest.organization_id,
+        unit_id: purchaseRequest.unit_id,
+        purchase_request_id: purchaseRequest.id,
+        event_type: "approval_snapshot_created",
+        from_status: purchaseRequest.status,
+        to_status: "quotation",
+        description: `Dossie formal de aprovacao #${approvalSnapshot?.snapshot_number ?? "-"} criado para a compra ${purchaseRequest.request_number}.`,
+        created_by: session.user.id
+      }
+    ]);
+
+    if (eventError) {
+      logBaseCadastroError("purchase_approvals.resubmit_event_create_failed", eventError);
+    }
 
     return NextResponse.json({ ok: true, message: isResubmission ? "Compra reenviada para aprovação." : "Compra enviada para aprovação." });
   } catch (error) {
