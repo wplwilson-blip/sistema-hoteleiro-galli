@@ -60,6 +60,9 @@ type ApprovalDecision = {
 
 type ApprovalRecord = {
   id: string;
+  purchaseRequestId: string;
+  snapshotNumber: number;
+  isLegacyWithoutSnapshot?: boolean;
   unitName: string;
   unitCode: string;
   departmentName: string;
@@ -319,7 +322,7 @@ export function PurchaseApprovalsClient() {
 
   const decisionMutation = useMutation({
     mutationFn: async (input: { approval: ApprovalRecord; decision: "approved" | "rejected" | "returned_to_purchases"; justification: string }) =>
-      requestJson<{ ok: true; message: string }>(`/api/purchases/approvals/${input.approval.id}/decision`, {
+      requestJson<{ ok: true; message: string }>(`/api/purchases/approvals/${input.approval.purchaseRequestId}/decision`, {
         method: "POST",
         body: JSON.stringify({ decision: input.decision, justification: input.justification })
       }),
@@ -449,6 +452,11 @@ export function PurchaseApprovalsClient() {
                       Vencedora diferente da recomendada.
                     </div>
                     ) : null}
+                    {approval.isLegacyWithoutSnapshot ? (
+                    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                      Registro legado sem dossie formal. Consulte o historico, mas novas decisoes exigem reenvio formal.
+                    </div>
+                    ) : null}
                   </button>
                   <div className="mt-4 flex justify-end border-t pt-3">
                     <Button type="button" size="sm" onClick={() => setSelectedApprovalId(approval.id)}>
@@ -506,7 +514,7 @@ export function PurchaseApprovalsClient() {
                         <span>Solicitante: {selectedApproval.requestedByName || "-"}</span>
                       </div>
                     </div>
-                    {selectedApproval.approvalStatus === "pending" ? (
+                    {selectedApproval.approvalStatus === "pending" && !selectedApproval.isLegacyWithoutSnapshot ? (
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" onClick={() => openDecision(selectedApproval, "approved")}>
                           <Check className="h-4 w-4" />
@@ -528,6 +536,12 @@ export function PurchaseApprovalsClient() {
                 {selectedApproval.winnerDiffersFromRecommended ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     A cotação vencedora selecionada é diferente da cotação recomendada pelo sistema. Avalie a justificativa operacional antes de decidir.
+                  </div>
+                ) : null}
+
+                {selectedApproval.isLegacyWithoutSnapshot ? (
+                  <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                    Esta aprovacao e anterior ao dossie formal. Ela aparece para consulta historica, mas nao permite decisao nesta tela; para nova decisao, a compra precisa ser reenviada formalmente para aprovacao.
                   </div>
                 ) : null}
 
