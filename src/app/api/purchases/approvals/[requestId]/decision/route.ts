@@ -3,6 +3,11 @@ import { z } from "zod";
 import { apiError, logBaseCadastroError, requireSuperAdminRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
+import {
+  PurchaseApprovalSnapshotError,
+  assertPendingPurchaseApprovalSnapshot,
+  updatePendingPurchaseApprovalSnapshotDecision
+} from "@/lib/purchases/approval-snapshots";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -128,6 +133,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     const approvalLevel = purchaseRequest.approval_level ?? getPurchaseApprovalLevel(toNumber(purchaseRequest.total_approved_amount));
     const decidedAt = new Date().toISOString();
+    const decisionReason = payload.justification.trim() || null;
     const nextStatus = payload.decision === "approved" ? "approved" : payload.decision === "rejected" ? "rejected" : "quotation";
     const eventDescription =
       payload.decision === "approved"
@@ -136,6 +142,17 @@ export async function POST(request: Request, { params }: { params: { requestId: 
           ? `Compra ${purchaseRequest.request_number} reprovada. Justificativa: ${payload.justification.trim()}`
           : `Compra ${purchaseRequest.request_number} devolvida para Compras. Justificativa: ${payload.justification.trim()}`;
 
+    try {
+      await assertPendingPurchaseApprovalSnapshot(supabase, purchaseRequest.id);
+    } catch (snapshotError) {
+      if (snapshotError instanceof PurchaseApprovalSnapshotError) {
+        return apiError(snapshotError.message, snapshotError.status);
+      }
+
+      logBaseCadastroError("purchase_approvals.snapshot_pending_lookup_failed", snapshotError instanceof Error ? snapshotError : { message: "unknown" });
+      return apiError("Nao foi possivel validar o dossie formal pendente da aprovacao.", 500);
+    }
+
     const { error: decisionError } = await supabase.from("purchase_approval_decisions").insert({
       organization_id: purchaseRequest.organization_id,
       unit_id: purchaseRequest.unit_id,
@@ -143,7 +160,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       purchase_quote_id: winningQuote.id,
       approval_level: approvalLevel,
       decision: payload.decision,
-      justification: payload.justification.trim() || null,
+      justification: decisionReason,
       decided_by: session.user.id,
       decided_at: decidedAt
     });
@@ -161,7 +178,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
         approval_level: approvalLevel,
         approval_decided_at: decidedAt,
         approval_decided_by: session.user.id,
-        approval_decision_notes: payload.justification.trim() || null,
+        approval_decision_notes: decisionReason,
         updated_by: session.user.id
       })
       .eq("id", purchaseRequest.id);
@@ -169,6 +186,24 @@ export async function POST(request: Request, { params }: { params: { requestId: 
     if (updateError) {
       logBaseCadastroError("purchase_approvals.request_update_failed", updateError);
       return apiError("A decisão foi registrada, mas não foi possível atualizar a solicitação.", 500);
+    }
+
+    try {
+      await updatePendingPurchaseApprovalSnapshotDecision({
+        supabase,
+        purchaseRequestId: purchaseRequest.id,
+        decision: payload.decision,
+        decisionReason,
+        decidedBy: session.user.id,
+        decidedAt
+      });
+    } catch (snapshotError) {
+      if (snapshotError instanceof PurchaseApprovalSnapshotError) {
+        return apiError(snapshotError.message, snapshotError.status);
+      }
+
+      logBaseCadastroError("purchase_approvals.snapshot_decision_update_failed", snapshotError instanceof Error ? snapshotError : { message: "unknown" });
+      return apiError("A decisao foi registrada, mas nao foi possivel atualizar o dossie formal da aprovacao.", 500);
     }
 
     await insertPurchaseRequestEvent(supabase, {

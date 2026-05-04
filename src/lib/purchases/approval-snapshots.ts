@@ -170,6 +170,15 @@ type CreatedPurchaseApprovalSnapshot = {
   snapshot_number: number;
 };
 
+type UpdatePurchaseApprovalSnapshotDecisionInput = {
+  supabase: SupabaseAdmin;
+  purchaseRequestId: string;
+  decision: Exclude<PurchaseApprovalStatus, "pending">;
+  decisionReason: string | null;
+  decidedBy: string;
+  decidedAt: string;
+};
+
 function toNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
 }
@@ -389,6 +398,55 @@ async function assertNoPendingSnapshot(supabase: SupabaseAdmin, purchaseRequestI
 
 export async function deletePurchaseApprovalSnapshot(supabase: SupabaseAdmin, snapshotId: string) {
   await supabase.from("purchase_approval_snapshots").delete().eq("id", snapshotId);
+}
+
+export async function assertPendingPurchaseApprovalSnapshot(supabase: SupabaseAdmin, purchaseRequestId: string) {
+  const { data, error } = await supabase
+    .from("purchase_approval_snapshots")
+    .select("id")
+    .eq("purchase_request_id", purchaseRequestId)
+    .eq("snapshot_status", "pending")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw new PurchaseApprovalSnapshotError("Nao foi possivel validar o dossie formal pendente.", 500);
+  }
+
+  if (!data) {
+    throw new PurchaseApprovalSnapshotError("Nenhum dossie formal pendente foi encontrado para esta compra.", 409);
+  }
+}
+
+export async function updatePendingPurchaseApprovalSnapshotDecision(input: UpdatePurchaseApprovalSnapshotDecisionInput) {
+  const { supabase, purchaseRequestId, decision, decisionReason, decidedBy, decidedAt } = input;
+
+  const { data, error } = await supabase
+    .from("purchase_approval_snapshots")
+    .update({
+      snapshot_status: decision,
+      decided_by: decidedBy,
+      decided_at: decidedAt,
+      decision,
+      decision_reason: decisionReason,
+      updated_by: decidedBy,
+      updated_at: decidedAt
+    })
+    .eq("purchase_request_id", purchaseRequestId)
+    .eq("snapshot_status", "pending")
+    .is("deleted_at", null)
+    .select("id, snapshot_number")
+    .maybeSingle();
+
+  if (error) {
+    throw new PurchaseApprovalSnapshotError("Nao foi possivel atualizar o dossie formal da aprovacao.", 500);
+  }
+
+  if (!data) {
+    throw new PurchaseApprovalSnapshotError("Nenhum dossie formal pendente foi encontrado para esta compra.", 409);
+  }
+
+  return data as CreatedPurchaseApprovalSnapshot;
 }
 
 export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprovalSnapshotInput) {
