@@ -63,6 +63,8 @@ type QuoteRow = {
   quote_validity_exception_reason: string | null;
   notes: string | null;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
+  superseded_by_quote_id: string | null;
+  superseded_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -134,6 +136,9 @@ function mapQuote(row: QuoteRow, supplier?: SupplierRow, items: QuoteItemRow[] =
     status: row.status,
     statusLabel: getPurchaseQuoteStatusLabel(row.status),
     statusTone: getPurchaseQuoteStatusTone(row.status),
+    supersededByQuoteId: row.superseded_by_quote_id ?? "",
+    supersededAt: row.superseded_at ?? "",
+    isSuperseded: Boolean(row.superseded_by_quote_id || row.superseded_at),
     isExpired: row.valid_until < new Date().toISOString().slice(0, 10),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -251,7 +256,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   const { data: quoteRows, error: quotesError } = await supabase
     .from("purchase_quotes")
-    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, created_at, updated_at")
+    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, superseded_by_quote_id, superseded_at, created_at, updated_at")
     .eq("purchase_request_id", requestId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });

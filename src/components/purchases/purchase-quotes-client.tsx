@@ -98,6 +98,9 @@ type PurchaseQuoteRecord = {
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   statusLabel: string;
   statusTone: "visual" | "warning" | "danger" | "success" | "info";
+  supersededByQuoteId: string;
+  supersededAt: string;
+  isSuperseded: boolean;
   isExpired: boolean;
   createdAt: string;
   updatedAt: string;
@@ -402,7 +405,7 @@ const quoteQueueFilters: Array<{ value: QuoteQueueFilter; label: string }> = [
 ];
 
 function isValidQuoteForRecommendation(quote: PurchaseQuoteRecord) {
-  return (quote.status === "received" || quote.status === "selected" || quote.status === "rejected") && !quote.isExpired;
+  return (quote.status === "received" || quote.status === "selected" || quote.status === "rejected") && !quote.isExpired && !quote.isSuperseded;
 }
 
 function compareRecommendedQuotes(left: PurchaseQuoteRecord, right: PurchaseQuoteRecord) {
@@ -1052,7 +1055,7 @@ export function PurchaseQuotesClient() {
   const selectedDiffersFromRecommendation = Boolean(
     winningQuote && quoteComparison.recommendedQuote && winningQuote.id !== quoteComparison.recommendedQuote.id
   );
-  const validQuoteCount = quotes.filter((quote) => quote.status === "received" || quote.status === "selected" || quote.status === "rejected").length;
+  const validQuoteCount = quotes.filter(isValidQuoteForRecommendation).length;
   const showQuoteWarning = Boolean(winningQuote && winningQuote.totalAmount > 200 && validQuoteCount < 3);
   const quoteWarningText =
     validQuoteCount === 1

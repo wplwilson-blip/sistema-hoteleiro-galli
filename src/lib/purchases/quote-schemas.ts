@@ -144,6 +144,34 @@ export const purchaseQuoteUpdateSchema = purchaseQuoteFormBaseSchema.extend({
   action: z.literal("save")
 }).superRefine(validatePurchaseQuoteForm);
 
+export const purchaseQuoteNegotiationCreateSchema = purchaseQuoteFormBaseSchema
+  .omit({
+    supplierId: true,
+    isRecurringSupplierQuote: true,
+    quoteValidityException: true,
+    quoteValidityExceptionReason: true,
+    notes: true
+  })
+  .extend({
+    negotiationNotes: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+    items: z
+      .array(
+        purchaseQuoteItemSchema.extend({
+          notes: z.string().trim().optional().or(z.literal("").transform(() => undefined))
+        })
+      )
+      .min(1, "Informe ao menos um item para a nova proposta.")
+  })
+  .superRefine((value, ctx) => {
+    if (value.validUntil < value.quoteDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validUntil"],
+        message: "A validade deve ser maior ou igual a data da cotacao."
+      });
+    }
+  });
+
 export const purchaseQuoteSelectSchema = z.object({
   action: z.literal("select")
 });

@@ -43,6 +43,8 @@ type PurchaseQuoteRow = {
   payment_terms: string | null;
   is_selected: boolean;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
+  superseded_by_quote_id: string | null;
+  superseded_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -102,7 +104,12 @@ function parseDeliveryDays(value: number | string | null | undefined) {
 }
 
 function isValidQuoteForRecommendation(quote: PurchaseQuoteRow) {
-  return (quote.status === "received" || quote.status === "selected" || quote.status === "rejected") && quote.valid_until >= new Date().toISOString().slice(0, 10);
+  return (
+    !quote.superseded_by_quote_id &&
+    !quote.superseded_at &&
+    (quote.status === "received" || quote.status === "selected" || quote.status === "rejected") &&
+    quote.valid_until >= new Date().toISOString().slice(0, 10)
+  );
 }
 
 function compareRecommendedQuotes(left: PurchaseQuoteRow, right: PurchaseQuoteRow) {
@@ -214,7 +221,7 @@ export async function GET(request: Request) {
       requestIds.length
         ? supabase
             .from("purchase_quotes")
-            .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, status, created_at, updated_at")
+            .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, status, superseded_by_quote_id, superseded_at, created_at, updated_at")
             .in("purchase_request_id", requestIds)
             .is("deleted_at", null)
             .order("created_at", { ascending: true })
