@@ -65,6 +65,8 @@ type PurchaseRequestDetail = PurchaseRequestSummary & {
 };
 
 type QuoteQueueFilter = "purchasing_queue" | "quotation" | "winner_selected" | "returned" | "pending_approval" | "finished" | "all";
+type QuoteDetailTab = "summary" | "quotes" | "items" | "history";
+type QuoteExpandedSection = "details" | "items" | "attachments" | null;
 
 type PurchaseQuoteItem = {
   id: string;
@@ -200,6 +202,13 @@ const purchaseQuoteFormSchemaClient = purchaseQuoteFormSchema;
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function formatDecimalInputValue(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -442,6 +451,13 @@ const quoteQueueFilters: Array<{ value: QuoteQueueFilter; label: string }> = [
   { value: "pending_approval", label: "Aguardando aprovação" },
   { value: "finished", label: "Finalizadas" },
   { value: "all", label: "Todas" }
+];
+
+const quoteDetailTabs: Array<{ value: QuoteDetailTab; label: string }> = [
+  { value: "summary", label: "Resumo" },
+  { value: "quotes", label: "Cotações" },
+  { value: "items", label: "Itens" },
+  { value: "history", label: "Histórico" }
 ];
 
 function isValidQuoteForRecommendation(quote: PurchaseQuoteRecord) {
@@ -717,6 +733,24 @@ function getQuoteRoundLabel(quote: PurchaseQuoteRecord | null) {
   return `Rodada ${quote?.quoteRound ?? 1}`;
 }
 
+function getQuoteHighlight(quote: PurchaseQuoteRecord, isRecommendedQuote: boolean, selectedDiffersFromRecommendation: boolean) {
+  if (quote.isSuperseded) {
+    return { label: "Superada", tone: "visual" as const };
+  }
+
+  if (quote.isSelected) {
+    return selectedDiffersFromRecommendation
+      ? { label: "Vencedora fora da recomendação", tone: "warning" as const }
+      : { label: "Vencedora", tone: "success" as const };
+  }
+
+  if (isRecommendedQuote) {
+    return { label: "Recomendada", tone: "info" as const };
+  }
+
+  return null;
+}
+
 export function PurchaseQuotesClient() {
   const queryClient = useQueryClient();
   const [selectedRequestId, setSelectedRequestId] = useState("");
@@ -734,6 +768,9 @@ export function PurchaseQuotesClient() {
   const [negotiationForm, setNegotiationForm] = useState<NegotiationFormValues>(() => buildDefaultNegotiationForm(null));
   const [search, setSearch] = useState("");
   const [queueFilter, setQueueFilter] = useState<QuoteQueueFilter>("purchasing_queue");
+  const [detailTab, setDetailTab] = useState<QuoteDetailTab>("summary");
+  const [expandedQuoteSections, setExpandedQuoteSections] = useState<Record<string, QuoteExpandedSection>>({});
+  const [expandedQuoteActions, setExpandedQuoteActions] = useState<Record<string, boolean>>({});
 
   const listQuery = useQuery({
     queryKey: ["purchases", "quotes", "requests"],
@@ -862,6 +899,9 @@ export function PurchaseQuotesClient() {
     }
 
     setSelectedRequestId(requestId);
+    setDetailTab("summary");
+    setExpandedQuoteSections({});
+    setExpandedQuoteActions({});
     setNegotiationQuote(null);
     setNegotiationForm(buildDefaultNegotiationForm(null));
     clearQuoteTemporaryState(null);
@@ -923,6 +963,25 @@ export function PurchaseQuotesClient() {
       items: current.items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item))
     }));
     setError("");
+  }
+
+  function updateNegotiationUnitPrice(index: number, value: string) {
+    if (value.includes("-")) {
+      return;
+    }
+
+    updateNegotiationItem(index, { unitPrice: value });
+  }
+
+  function formatNegotiationUnitPrice(index: number) {
+    const item = negotiationForm.items[index];
+    const parsed = parseLocalizedNumberStrict(item?.unitPrice);
+
+    if (parsed === null) {
+      return;
+    }
+
+    updateNegotiationItem(index, { unitPrice: formatDecimalInputValue(Math.max(parsed, 0)) });
   }
 
   function buildNegotiationPayload() {
@@ -1327,49 +1386,63 @@ export function PurchaseQuotesClient() {
 
   function closeRequestModal() {
     clearQuoteTemporaryState(null);
+    setDetailTab("summary");
+    setExpandedQuoteSections({});
+    setExpandedQuoteActions({});
     setNegotiationQuote(null);
     setNegotiationForm(buildDefaultNegotiationForm(null));
     setSelectedRequestId("");
   }
 
+  function toggleQuoteSection(quoteId: string, section: Exclude<QuoteExpandedSection, null>) {
+    setExpandedQuoteSections((current) => ({
+      ...current,
+      [quoteId]: current[quoteId] === section ? null : section
+    }));
+  }
+
+  function toggleQuoteActions(quoteId: string) {
+    setExpandedQuoteActions((current) => ({
+      ...current,
+      [quoteId]: !current[quoteId]
+    }));
+  }
+
   return (
-    <div className="space-y-6">
-      <section className="space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="w-full max-w-xl space-y-2">
+    <div className="space-y-4">
+      <section className="rounded-lg border bg-card p-3 shadow-sm shadow-primary/5">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-end">
+          <div className="min-w-0 space-y-1">
             <Label>Buscar solicitação</Label>
             <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Número, título, justificativa, status ou prioridade"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Número, título, justificativa, status ou prioridade"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
             </div>
           </div>
-          <div className="text-sm text-muted-foreground">
-            {filteredRequests.length} {filteredRequests.length === 1 ? "registro" : "registros"}
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor="quotes-view-filter">Visualização</Label>
+            <select
+              id="quotes-view-filter"
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={queueFilter}
+              onChange={(event) => setQueueFilter(event.target.value as QuoteQueueFilter)}
+            >
+              {quoteQueueFilters.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-
-        <div className="grid gap-2 sm:max-w-xs">
-          <Label htmlFor="quotes-view-filter">Visualização</Label>
-          <select
-            id="quotes-view-filter"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            value={queueFilter}
-            onChange={(event) => setQueueFilter(event.target.value as QuoteQueueFilter)}
-          >
-            {quoteQueueFilters.map((filter) => (
-              <option key={filter.value} value={filter.value}>
-                {filter.label}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-muted-foreground">
-            {filteredRequests.length} {filteredRequests.length === 1 ? "registro" : "registros"} em {selectedQueueFilter.label}.
-          </p>
+          <div className="text-xs text-muted-foreground lg:text-right">
+            <span className="font-medium text-foreground">{filteredRequests.length}</span> {filteredRequests.length === 1 ? "registro" : "registros"}
+            <span className="block">em {selectedQueueFilter.label}</span>
+          </div>
         </div>
       </section>
 
@@ -1380,12 +1453,12 @@ export function PurchaseQuotesClient() {
       ) : null}
       {error && !quoteFormOpen && !selectedRequestId ? <ErrorMessage message={error} /> : null}
 
-      <div className="space-y-4">
-        <section className="space-y-4">
+      <div className="space-y-3">
+        <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Solicitações em cotação e aprovação</h2>
-              <p className="text-sm text-muted-foreground">Acompanhe solicitações ainda em cotação e compras com vencedora aguardando alçada.</p>
+              <h2 className="text-base font-semibold">Solicitações em cotação e aprovação</h2>
+              <p className="text-xs text-muted-foreground">Fila operacional para abrir, comparar e acompanhar cotações.</p>
             </div>
           </div>
 
@@ -1402,7 +1475,7 @@ export function PurchaseQuotesClient() {
           ) : null}
 
           {filteredRequests.length ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {filteredRequests.map((request) => {
                 const isSelected = request.id === selectedRequestId;
                 const hasWinner = requestHasWinnerSelected(request);
@@ -1412,28 +1485,27 @@ export function PurchaseQuotesClient() {
                   <article
                     key={request.id}
                     className={cn(
-                      "flex min-w-0 flex-col justify-between rounded-lg border bg-card p-4 shadow-sm shadow-primary/5 transition-colors",
+                      "flex min-w-0 flex-col justify-between rounded-lg border bg-card p-3 shadow-sm shadow-primary/5 transition-colors",
                       isSelected ? "border-primary bg-primary/5" : "hover:border-primary/40"
                     )}
                   >
                     <button type="button" className="min-w-0 text-left" onClick={() => openRequest(request.id)}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground">{request.requestNumber}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="text-sm font-medium text-foreground">{request.requestNumber}</p>
                         <StatusBadge status={flowStatus.tone} label={flowStatus.label} />
-                        {hasWinner ? <StatusBadge status="success" label="Vencedora selecionada" /> : null}
                       </div>
-                      <h3 className="mt-3 line-clamp-2 text-base font-semibold text-foreground">{request.title}</h3>
-                      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{request.justification}</p>
-                      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span>Prioridade: {request.priorityLabel}</span>
-                        <span>Tipo: {request.requestTypeLabel}</span>
-                        <span>Criação: {formatDate(request.createdAt)}</span>
+                      <h3 className="mt-2 line-clamp-2 text-sm font-medium text-foreground">{request.title}</h3>
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>{request.priorityLabel}</span>
+                        <span>{request.requestTypeLabel}</span>
+                        <span>{formatDate(request.createdAt)}</span>
                       </div>
                     </button>
 
-                    <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-sm font-semibold">
-                        {hasWinner ? formatCurrency(request.totalApprovedAmount) : "Sem vencedora"}
+                    <div className="mt-3 flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{hasWinner ? formatCurrency(request.totalApprovedAmount) : "Sem vencedora"}</span>
+                        {hasWinner ? <span className="ml-2">vencedora</span> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {(request.status === "submitted" || request.status === "under_review") ? (
@@ -1448,10 +1520,10 @@ export function PurchaseQuotesClient() {
                             disabled={startMutation.isPending}
                           >
                             <Truck className="h-4 w-4" />
-                            Iniciar cotação
+                            Iniciar
                           </Button>
                         ) : null}
-                        <Button type="button" size="sm" onClick={() => openRequest(request.id)}>
+                        <Button type="button" size="sm" variant="outline" onClick={() => openRequest(request.id)}>
                           <Search className="h-4 w-4" />
                           Ver cotações
                         </Button>
@@ -1473,98 +1545,108 @@ export function PurchaseQuotesClient() {
               className="flex h-[94vh] max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-background shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
-                  <h2 id="quotes-detail-title" className="mt-1 truncate text-lg font-semibold text-foreground">
-                    {selectedRequest?.requestNumber ?? "Carregando solicitação"}
-                  </h2>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={closeRequestModal}>
-                  <Ban className="h-4 w-4" />
-                  Fechar
-                </Button>
-              </div>
-              {selectedRequest ? (
-                <div className="sticky top-0 z-10 border-b bg-background/95 px-4 py-3 shadow-sm backdrop-blur sm:px-6">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge status={selectedRequestFlowStatus.tone} label={selectedRequestFlowStatus.label} />
-                        {winningQuote ? <StatusBadge status="success" label="Vencedora selecionada" /> : null}
-                      </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                        <span className="text-muted-foreground">
-                          Vencedora: <strong className="font-semibold text-foreground">{winningQuote ? winningQuote.supplierTradeName || winningQuote.supplierName : "Nenhuma selecionada"}</strong>
-                        </span>
-                        <span className="text-muted-foreground">
-                          Valor: <strong className="font-semibold text-foreground">{winningQuote ? winningQuote.totalAmountLabel : "-"}</strong>
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:shrink-0">
-                      {canSubmitApproval ? (
-                        <Button type="button" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
-                          <Check className="h-4 w-4" />
-                          Enviar para aprovação
-                        </Button>
-                      ) : null}
-                      {canResubmitApproval ? (
-                        <Button type="button" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
-                          <RotateCcw className="h-4 w-4" />
-                          Reenviar para aprovação
-                        </Button>
-                      ) : null}
-                    </div>
+              <div className="border-b px-4 py-3 sm:px-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Solicitação selecionada</p>
+                    <h2 id="quotes-detail-title" className="mt-0.5 truncate text-base font-semibold text-foreground">
+                      {selectedRequest?.requestNumber ?? "Carregando solicitação"}
+                    </h2>
                   </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={closeRequestModal}>
+                    <Ban className="h-4 w-4" />
+                    Fechar
+                  </Button>
                 </div>
-              ) : null}
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-                <div className="space-y-4">
+                {selectedRequest ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5 border-t pt-3">
+                    {quoteDetailTabs.map((tab) => (
+                      <button
+                        key={tab.value}
+                        type="button"
+                        className={cn(
+                          "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                          detailTab === tab.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                        onClick={() => setDetailTab(tab.value)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                <div className="space-y-3">
           {detailQuery.isLoading ? (
             <LoadingTable label="Carregando solicitação selecionada..." />
           ) : !selectedRequest ? (
             <EmptyState title="Solicitação não encontrada" description="Atualize a lista e tente abrir a solicitação novamente." />
           ) : (
             <>
-              <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Solicitação selecionada</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-semibold">{selectedRequest.requestNumber}</h2>
-                      <StatusBadge status={selectedRequestFlowStatus.tone} label={selectedRequestFlowStatus.label} />
-                      {winningQuote ? <StatusBadge status="success" label="Cotação selecionada" /> : null}
-                    </div>
-                    <h3 className="text-base font-semibold">{selectedRequest.title}</h3>
-                    <p className="max-w-3xl text-sm text-muted-foreground">{selectedRequest.justification}</p>
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>Prioridade: {selectedRequest.priorityLabel}</span>
-                      <span>Tipo: {selectedRequest.requestTypeLabel}</span>
-                      <span>Criação: {formatDate(selectedRequest.createdAt)}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {canStart ? (
-                      <Button type="button" variant="outline" onClick={() => startMutation.mutate(selectedRequest.id)} disabled={startMutation.isPending}>
-                        <Truck className="h-4 w-4" />
-                        Iniciar cotação
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
               {error && !quoteFormOpen ? <ErrorMessage message={error} /> : null}
 
-              {selectedRequest.approvalStatus === "returned_to_purchases" && selectedRequest.approvalDecisionNotes ? (
-                <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                  <p className="font-semibold">Motivo da devolução</p>
-                  <p className="mt-1 break-words">{selectedRequest.approvalDecisionNotes}</p>
+              {detailTab === "summary" ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border bg-card p-3 shadow-sm shadow-primary/5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold">{selectedRequest.requestNumber}</h3>
+                          <StatusBadge status={selectedRequestFlowStatus.tone} label={selectedRequestFlowStatus.label} />
+                          {winningQuote ? <StatusBadge status="success" label="Vencedora" /> : null}
+                        </div>
+                        <p className="break-words text-sm font-medium text-foreground">{selectedRequest.title}</p>
+                        <p className="max-w-3xl break-words text-xs text-muted-foreground">{selectedRequest.justification}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <span>Prioridade: {selectedRequest.priorityLabel}</span>
+                          <span>Tipo: {selectedRequest.requestTypeLabel}</span>
+                          <span>Criação: {formatDate(selectedRequest.createdAt)}</span>
+                        </div>
+                      </div>
+                      {canStart ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => startMutation.mutate(selectedRequest.id)} disabled={startMutation.isPending}>
+                          <Truck className="h-4 w-4" />
+                          Iniciar cotação
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <div className="rounded-md border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Vencedora</p>
+                      <p className="mt-1 truncate text-sm font-medium text-foreground" title={winningQuote ? winningQuote.supplierTradeName || winningQuote.supplierName : "Nenhuma selecionada"}>
+                        {winningQuote ? winningQuote.supplierTradeName || winningQuote.supplierName : "Nenhuma selecionada"}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Valor</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">{winningQuote ? winningQuote.totalAmountLabel : "-"}</p>
+                    </div>
+                    <div className="rounded-md border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Próximo passo</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        {selectedRequestAwaitingApproval
+                          ? "Aguardar decisão"
+                          : winningQuote
+                            ? selectedRequest.approvalStatus === "returned_to_purchases" ? "Reenviar para aprovação" : "Enviar para aprovação"
+                            : "Selecionar vencedora"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedRequest.approvalStatus === "returned_to_purchases" && selectedRequest.approvalDecisionNotes ? (
+                    <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                      <p className="font-medium">Motivo da devolução</p>
+                      <p className="mt-1 break-words text-xs">{selectedRequest.approvalDecisionNotes}</p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
-              <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
+              {detailTab === "items" ? (
+              <div className="rounded-lg border bg-card p-3 shadow-sm shadow-primary/5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold">Itens solicitados</h3>
@@ -1597,14 +1679,10 @@ export function PurchaseQuotesClient() {
                   </table>
                 </div>
               </div>
-
-              {showQuoteWarning ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Atenção: esta compra exige 3 cotações antes da aprovação. {quoteWarningText}
-                </div>
               ) : null}
 
-              <div className="rounded-lg border bg-card p-5 shadow-sm shadow-primary/5">
+              {detailTab === "quotes" ? (
+              <div className="rounded-lg border bg-card p-3 shadow-sm shadow-primary/5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-semibold">Cotações cadastradas</h3>
@@ -1642,67 +1720,38 @@ export function PurchaseQuotesClient() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 rounded-md border bg-muted/30 px-4 py-3 text-sm">
-                  {winningQuote ? (
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground">
-                        Cotação vencedora: {winningQuote.supplierTradeName || winningQuote.supplierName} — {winningQuote.totalAmountLabel}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedRequestAwaitingApproval ? "Compra aguardando decisão de aprovação." : "Próxima etapa: enviar formalmente para aprovação."}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">Nenhuma cotação vencedora selecionada.</p>
-                  )}
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-md border bg-background px-3 py-2 text-sm">
+                    <span className="text-xs text-muted-foreground">Vencedora</span>
+                    <p className="truncate font-medium text-foreground">{winningQuote ? winningQuote.supplierTradeName || winningQuote.supplierName : "Nenhuma selecionada"}</p>
+                  </div>
+                  <div className="rounded-md border bg-background px-3 py-2 text-sm">
+                    <span className="text-xs text-muted-foreground">Recomendada</span>
+                    <p className="truncate font-medium text-foreground">{quoteComparison.recommendedQuote ? quoteComparison.recommendedQuote.supplierTradeName || quoteComparison.recommendedQuote.supplierName : "-"}</p>
+                  </div>
+                  <div className="rounded-md border bg-background px-3 py-2 text-sm">
+                    <span className="text-xs text-muted-foreground">Menor valor</span>
+                    <p className="font-medium text-foreground">{quoteComparison.lowestQuote?.totalAmountLabel ?? "-"}</p>
+                  </div>
                 </div>
 
-                {quoteComparison.validQuotes.length ? (
-                  <div className="mt-4 space-y-3 rounded-lg border bg-background p-4">
-                    <div className="flex flex-col gap-1">
-                      <h4 className="text-sm font-semibold">Comparativo das cotações</h4>
-                      <p className="text-xs text-muted-foreground">
-                        A recomendada é a sugestão do sistema pelo menor valor válido. A vencedora é a escolha registrada por Compras para aprovação.
-                      </p>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Cotação recomendada</p>
-                        <p className="mt-1 break-words text-sm font-semibold text-foreground">
-                          {quoteComparison.recommendedQuote?.quoteNumber} - {quoteComparison.recommendedQuote?.supplierTradeName || quoteComparison.recommendedQuote?.supplierName}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {quoteComparison.validQuotes.length === 1 ? "Única cotação válida cadastrada." : "Critério principal: menor valor total."}
-                        </p>
-                      </div>
-                      <div className="rounded-md border bg-muted/20 p-3">
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Menor valor</p>
-                        <p className="mt-1 text-sm font-semibold text-foreground">{quoteComparison.lowestQuote?.totalAmountLabel ?? "-"}</p>
-                      </div>
-                      <div className="rounded-md border bg-muted/20 p-3">
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Melhor prazo</p>
-                        <p className="mt-1 text-sm font-semibold text-foreground">
-                          {quoteComparison.bestDeliveryQuote ? `${quoteComparison.bestDeliveryQuote.deliveryDays} dias` : "Não informado"}
-                        </p>
-                      </div>
-                      <div className="min-w-0 rounded-md border bg-muted/20 p-3">
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Pagamento mais informado</p>
-                        <p className="mt-1 break-words text-sm font-semibold text-foreground">{quoteComparison.mostCommonPaymentTerms || "Não informado"}</p>
-                      </div>
-                    </div>
-                    {selectedDiffersFromRecommendation ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        A cotação vencedora selecionada é diferente da cotação recomendada pelo sistema. Na aprovação, será importante justificar a escolha.
-                      </div>
-                    ) : null}
+                {showQuoteWarning ? (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Esta compra exige 3 cotações antes da aprovação. {quoteWarningText}
+                  </div>
+                ) : null}
+
+                {selectedDiffersFromRecommendation ? (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    A vencedora selecionada é diferente da recomendada pelo sistema.
                   </div>
                 ) : null}
 
                 {quotes.length ? (
-                  <div className="mt-4 space-y-3">
+                  <div className="mt-3 space-y-2">
                     {quotes.map((quote) => {
-                      const isLowestQuote = quoteComparison.lowestQuote?.id === quote.id;
                       const isRecommendedQuote = quoteComparison.recommendedQuote?.id === quote.id;
+                      const quoteHighlight = getQuoteHighlight(quote, isRecommendedQuote, selectedDiffersFromRecommendation);
                       const supplier = supplierById.get(quote.supplierId);
                       const supplierTrustLabel = supplier?.status === "active" ? "Fornecedor ativo" : "Fornecedor cadastrado";
                       const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
@@ -1714,54 +1763,30 @@ export function PurchaseQuotesClient() {
                         !quote.isSuperseded &&
                         !selectedRequestAwaitingApproval &&
                         !selectedRequestClosedForQuotation;
+                      const expandedSection = expandedQuoteSections[quote.id] ?? null;
+                      const actionsOpen = Boolean(expandedQuoteActions[quote.id]);
 
                       return (
-                      <article key={quote.id} className={quote.isSelected ? "rounded-lg border border-emerald-300 bg-emerald-50/70 p-4" : quote.isSuperseded ? "rounded-lg border bg-muted/20 p-4" : "rounded-lg border bg-background p-4"}>
-                        <div className="space-y-4">
-                          <div className="flex flex-col gap-3 border-b pb-3 xl:flex-row xl:items-start xl:justify-between">
-                            <div className="w-full min-w-0 space-y-2 xl:min-w-[20rem] xl:flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="min-w-0 max-w-full truncate text-sm font-semibold text-foreground" title={quote.supplierTradeName || quote.supplierName}>
+                      <article key={quote.id} className={cn("rounded-lg border bg-background p-3", quote.isSelected && "border-emerald-300 bg-emerald-50/60", quote.isSuperseded && "bg-muted/20")}>
+                        <div className="space-y-3">
+                          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="min-w-0 max-w-full truncate text-sm font-medium text-foreground" title={quote.supplierTradeName || quote.supplierName}>
                                   {quote.supplierTradeName || quote.supplierName}
                                 </p>
                                 <StatusBadge status={quote.statusTone} label={quote.statusLabel} />
-                                {quote.isSuperseded ? <StatusBadge status="visual" label="Superada" /> : null}
-                                {isLowestQuote ? <StatusBadge status="info" label="Menor valor" /> : null}
-                                {isRecommendedQuote ? <StatusBadge status="success" label="Recomendada" /> : null}
-                                {quote.isSelected ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-1 text-xs font-medium text-white">
-                                    <Check className="h-3.5 w-3.5" />
-                                    Vencedora
-                                  </span>
-                                ) : null}
-                                {quote.isSelected && selectedDiffersFromRecommendation ? (
-                                  <StatusBadge status="warning" label="Escolhida diferente da recomendada" />
-                                ) : null}
-                                {quote.status === "rejected" && !quote.isSelected ? (
-                                  <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Não selecionada</span>
-                                ) : null}
+                                {quoteHighlight ? <StatusBadge status={quoteHighlight.tone} label={quoteHighlight.label} /> : null}
                               </div>
-                              <p className="truncate text-xs text-muted-foreground" title={quote.supplierDocumentNumber || "Documento não informado"}>
-                                Documento: {quote.supplierDocumentNumber || "-"}
-                              </p>
+                              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-5">
+                                <span className="truncate" title={quote.quoteNumber}>Cotação: <strong className="font-medium text-foreground">{quote.quoteNumber}</strong></span>
+                                <span>Total: <strong className="font-medium text-foreground">{quote.totalAmountLabel}</strong></span>
+                                <span>Prazo: <strong className="font-medium text-foreground">{quote.deliveryDays || "-"}</strong></span>
+                                <span>Pagamento: <strong className="font-medium text-foreground">{quote.paymentTerms || "-"}</strong></span>
+                                <span>Validade: <strong className="font-medium text-foreground">{formatDate(quote.validUntil)}{quote.isExpired ? " vencida" : ""}</strong></span>
+                              </div>
                             </div>
-                            <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:shrink-0 xl:justify-end">
-                              {quote.isSuperseded ? (
-                                <span className="inline-flex min-h-9 items-center rounded-md border bg-muted px-3 py-2 text-sm font-medium text-muted-foreground">
-                                  Superada por proposta mais recente
-                                </span>
-                              ) : (
-                                <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)} disabled={!canMutateQuote}>
-                                  <Pencil className="h-4 w-4" />
-                                  Editar
-                                </Button>
-                              )}
-                              {canRegisterNegotiation ? (
-                                <Button type="button" size="sm" variant="outline" onClick={() => openNegotiationForm(quote)} disabled={negotiationMutation.isPending}>
-                                  <RotateCcw className="h-4 w-4" />
-                                  Registrar nova proposta
-                                </Button>
-                              ) : null}
+                            <div className="flex flex-wrap gap-2 xl:justify-end">
                               {!quote.isSuperseded && !quote.isSelected && quote.status === "received" ? (
                                 <Button
                                   type="button"
@@ -1770,71 +1795,95 @@ export function PurchaseQuotesClient() {
                                   disabled={selectMutation.isPending || !canMutateQuote}
                                 >
                                   <Check className="h-4 w-4" />
-                                  Selecionar como vencedora
+                                  Selecionar
                                 </Button>
                               ) : null}
-                              {!quote.isSuperseded && quote.isSelected ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => removeWinningQuote(quote)}
-                                  disabled={unselectMutation.isPending || !canMutateQuote}
-                                >
-                                  <Ban className="h-4 w-4" />
-                                  Remover como vencedora
+                              {quote.isSuperseded ? (
+                                <span className="inline-flex min-h-9 items-center rounded-md border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                                  Superada por proposta mais recente
+                                </span>
+                              ) : (
+                                <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteActions(quote.id)}>
+                                  Mais ações
                                 </Button>
-                              ) : !quote.isSuperseded ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => cancelQuote(quote)}
-                                  disabled={deleteMutation.isPending || !canMutateQuote}
-                                >
+                              )}
+                            </div>
+                          </div>
+
+                          {actionsOpen && !quote.isSuperseded ? (
+                            <div className="flex flex-wrap gap-2 rounded-md border bg-muted/20 p-2">
+                              <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)} disabled={!canMutateQuote}>
+                                <Pencil className="h-4 w-4" />
+                                Editar
+                              </Button>
+                              {canRegisterNegotiation ? (
+                                <Button type="button" size="sm" variant="outline" onClick={() => openNegotiationForm(quote)} disabled={negotiationMutation.isPending}>
+                                  <RotateCcw className="h-4 w-4" />
+                                  Registrar nova proposta
+                                </Button>
+                              ) : null}
+                              {!quote.isSelected ? (
+                                <Button type="button" size="sm" variant="danger" onClick={() => cancelQuote(quote)} disabled={deleteMutation.isPending || !canMutateQuote}>
                                   <Ban className="h-4 w-4" />
                                   Cancelar cotação
                                 </Button>
-                              ) : null}
+                              ) : (
+                                <Button type="button" size="sm" variant="danger" onClick={() => removeWinningQuote(quote)} disabled={unselectMutation.isPending || !canMutateQuote}>
+                                  <Ban className="h-4 w-4" />
+                                  Remover vencedora
+                                </Button>
+                              )}
                             </div>
+                          ) : null}
+
+                          <div className="flex flex-wrap gap-2 border-t pt-2">
+                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "details")}>
+                              Ver detalhes
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "items")}>
+                              Itens
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "attachments")}>
+                              Anexos {quoteAttachments.length ? `(${quoteAttachments.length})` : ""}
+                            </Button>
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                            <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Número</p>
-                              <p className="mt-1 overflow-x-auto whitespace-nowrap text-sm font-medium leading-relaxed text-foreground">{quote.quoteNumber}</p>
+                          {expandedSection === "details" ? (
+                            <div className="grid gap-2 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                              <span>Documento: <strong className="font-medium text-foreground">{quote.supplierDocumentNumber || "-"}</strong></span>
+                              <span>Fornecedor: <strong className="font-medium text-foreground">{supplierTrustLabel}</strong></span>
+                              <span>Selecionada: <strong className="font-medium text-foreground">{quote.isSelected ? "Sim" : "Não"}</strong></span>
+                              <span>Rodada: <strong className="font-medium text-foreground">{quote.quoteRound ?? 1}</strong></span>
                             </div>
-                            <div className="rounded-md border bg-background/70 p-3">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
-                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.totalAmountLabel}</p>
-                            </div>
-                            <div className="rounded-md border bg-background/70 p-3">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Prazo</p>
-                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.deliveryDays || "-"}</p>
-                            </div>
-                            <div className="rounded-md border bg-background/70 p-3">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Validade</p>
-                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{formatDate(quote.validUntil)}{quote.isExpired ? " (vencida)" : ""}</p>
-                            </div>
-                            <div className="min-w-0 rounded-md border bg-background/70 p-3">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Pagamento</p>
-                              <p className="mt-1 break-words text-sm font-medium leading-relaxed text-foreground">{quote.paymentTerms || "-"}</p>
-                            </div>
-                            <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2 lg:col-span-1">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Documento</p>
-                              <p className="mt-1 truncate text-sm font-medium leading-relaxed text-foreground" title={quote.supplierDocumentNumber || "-"}>{quote.supplierDocumentNumber || "-"}</p>
-                            </div>
-                            <div className="rounded-md border bg-background/70 p-3">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionada</p>
-                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{quote.isSelected ? "Sim" : "Não"}</p>
-                            </div>
-                            <div className="rounded-md border bg-background/70 p-3">
-                              <p className="text-xs font-semibold uppercase text-muted-foreground">Fornecedor</p>
-                              <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">{supplierTrustLabel}</p>
-                            </div>
-                          </div>
+                          ) : null}
 
-                          <section className="space-y-4 rounded-lg border bg-background/80 p-4">
+                          {expandedSection === "items" ? (
+                            <div className="max-w-full overflow-x-auto rounded-md border bg-muted/20">
+                              <table className="w-full text-left text-xs">
+                                <thead className="border-b bg-muted/60 text-muted-foreground">
+                                  <tr>
+                                    <th className="px-3 py-2 font-medium">Item</th>
+                                    <th className="px-3 py-2 font-medium">Qtd</th>
+                                    <th className="px-3 py-2 font-medium">Unitário</th>
+                                    <th className="px-3 py-2 font-medium">Total</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                  {quote.items.map((item) => (
+                                    <tr key={item.id}>
+                                      <td className="px-3 py-2 text-foreground">{item.description}</td>
+                                      <td className="px-3 py-2 text-muted-foreground">{item.quantity}</td>
+                                      <td className="px-3 py-2 text-muted-foreground">{formatCurrency(item.unitPrice)}</td>
+                                      <td className="px-3 py-2 font-medium text-foreground">{formatCurrency(item.totalPrice)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
+
+                          {expandedSection === "attachments" ? (
+                          <section className="space-y-3 rounded-md border bg-muted/20 p-3">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 text-sm font-semibold">
                                 <Paperclip className="h-4 w-4" />
@@ -1926,6 +1975,7 @@ export function PurchaseQuotesClient() {
                               ) : null}
                             </div>
                           </section>
+                          ) : null}
                         </div>
                       </article>
                       );
@@ -1938,6 +1988,21 @@ export function PurchaseQuotesClient() {
                   />
                 )}
               </div>
+              ) : null}
+
+              {detailTab === "history" ? (
+                <div className="space-y-3">
+                  {selectedRequest.approvalStatus === "returned_to_purchases" && selectedRequest.approvalDecisionNotes ? (
+                    <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                      <p className="font-medium">Devolução para Compras</p>
+                      <p className="mt-1 break-words text-xs">{selectedRequest.approvalDecisionNotes}</p>
+                    </div>
+                  ) : null}
+                  <div className="rounded-lg border bg-card p-3 text-sm text-muted-foreground shadow-sm shadow-primary/5">
+                    Histórico operacional detalhado ainda não está disponível nesta tela. Use as cotações e seus anexos para consultar o histórico preservado das propostas.
+                  </div>
+                </div>
+              ) : null}
 
               {negotiationQuote ? (
                 <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" role="presentation" onClick={closeNegotiationForm}>
@@ -1949,10 +2014,10 @@ export function PurchaseQuotesClient() {
                       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background shadow-2xl sm:max-w-[min(1040px,calc(100vw-2rem))] sm:rounded-l-2xl"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+                      <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
                         <div className="min-w-0 space-y-1">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nova proposta negociada</p>
-                          <h3 id="negotiation-form-title" className="text-lg font-semibold text-foreground">Registrar nova proposta negociada</h3>
+                          <p className="text-xs text-muted-foreground">Nova proposta negociada</p>
+                          <h3 id="negotiation-form-title" className="text-base font-semibold text-foreground">Registrar nova proposta negociada</h3>
                           <p className="max-w-2xl text-sm text-muted-foreground">
                             Crie uma nova proposta do mesmo fornecedor preservando o histórico da cotação anterior.
                           </p>
@@ -1963,9 +2028,9 @@ export function PurchaseQuotesClient() {
                         </Button>
                       </div>
 
-                      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-                        <div className="space-y-6">
-                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                        <div className="space-y-4">
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="space-y-1">
                               <h4 className="text-sm font-semibold">Cotação anterior</h4>
                               <p className="text-xs text-muted-foreground">Esta proposta será preservada e a nova proposta entrará como outra cotação recebida.</p>
@@ -2005,7 +2070,7 @@ export function PurchaseQuotesClient() {
                             </div>
                           </section>
 
-                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="space-y-1">
                               <h4 className="text-sm font-semibold">Dados da nova proposta</h4>
                             </div>
@@ -2049,7 +2114,7 @@ export function PurchaseQuotesClient() {
                             </div>
                           </section>
 
-                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="space-y-1">
                               <h4 className="text-sm font-semibold">Itens da nova proposta</h4>
                               <p className="text-xs text-muted-foreground">A quantidade permanece igual à cotação anterior. Informe apenas o novo valor unitário e observações da negociação por item.</p>
@@ -2061,7 +2126,7 @@ export function PurchaseQuotesClient() {
                                 const newUnitPrice = parseLocalizedNumber(item.unitPrice);
 
                                 return (
-                                  <div key={item.purchaseRequestItemId} className="rounded-xl border bg-background p-4 shadow-sm">
+                                  <div key={item.purchaseRequestItemId} className="rounded-lg border bg-background p-3 shadow-sm">
                                     <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-start lg:justify-between">
                                       <div className="min-w-0 space-y-1">
                                         <p className="text-xs font-semibold uppercase text-muted-foreground">Item</p>
@@ -2085,7 +2150,8 @@ export function PurchaseQuotesClient() {
                                           type="text"
                                           inputMode="decimal"
                                           value={item.unitPrice}
-                                          onChange={(event) => updateNegotiationItem(index, { unitPrice: event.target.value })}
+                                          onChange={(event) => updateNegotiationUnitPrice(index, event.target.value)}
+                                          onBlur={() => formatNegotiationUnitPrice(index)}
                                         />
                                       </Field>
                                       <Field label="Observação do item">
@@ -2102,7 +2168,7 @@ export function PurchaseQuotesClient() {
                             </div>
                           </section>
 
-                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                               <div className="rounded-md border bg-background/70 p-3">
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">Valor anterior</p>
@@ -2137,7 +2203,7 @@ export function PurchaseQuotesClient() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 border-t bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-xs text-muted-foreground">A nova proposta não será vencedora automaticamente.</p>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Button type="button" disabled={negotiationMutation.isPending} onClick={() => negotiationMutation.mutate()}>
@@ -2164,12 +2230,12 @@ export function PurchaseQuotesClient() {
                       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background shadow-2xl sm:max-w-[min(1120px,calc(100vw-2rem))] sm:rounded-l-2xl"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex items-start justify-between border-b px-6 py-5">
+                      <div className="flex items-start justify-between border-b px-5 py-4">
                         <div className="space-y-1">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             {editingQuoteId ? "Editar cotação" : "Nova cotação"}
                           </p>
-                          <h3 id="quote-form-title" className="text-lg font-semibold text-foreground">
+                          <h3 id="quote-form-title" className="text-base font-semibold text-foreground">
                             Informe os valores propostos pelo fornecedor para esta solicitação.
                           </h3>
                         </div>
@@ -2179,8 +2245,8 @@ export function PurchaseQuotesClient() {
                         </Button>
                       </div>
 
-                      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-                        <form className="space-y-6" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
+                      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+                        <form className="space-y-4" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
                           {!availableSuppliers.length ? (
                             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                               <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
@@ -2199,7 +2265,7 @@ export function PurchaseQuotesClient() {
                             </div>
                           ) : null}
 
-                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="space-y-1">
                               <h4 className="text-sm font-semibold">Dados da cotação</h4>
                               <p className="text-xs text-muted-foreground">Preencha as condições oferecidas pelo fornecedor para esta solicitação.</p>
@@ -2344,7 +2410,7 @@ export function PurchaseQuotesClient() {
                             </div>
                           </section>
 
-                          <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div className="space-y-1">
                                 <h4 className="text-sm font-semibold">Itens cotados</h4>
@@ -2359,7 +2425,7 @@ export function PurchaseQuotesClient() {
                                 const itemUnitPrice = parseLocalizedNumber(quoteItemsWatch?.[index]?.unitPrice);
 
                                 return (
-                                  <div key={field.id} className="rounded-xl border bg-background p-4 shadow-sm">
+                                  <div key={field.id} className="rounded-lg border bg-background p-3 shadow-sm">
                                     <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
                                       <div className="space-y-1">
                                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Item da solicitação</p>
@@ -2459,7 +2525,7 @@ export function PurchaseQuotesClient() {
                           </section>
 
                           {!editingQuoteId ? (
-                            <section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                            <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                               <div className="space-y-1">
                                 <h4 className="text-sm font-semibold">Anexos da proposta</h4>
                                 <p className="text-xs text-muted-foreground">Os arquivos serão enviados após salvar a cotação.</p>
@@ -2508,7 +2574,7 @@ export function PurchaseQuotesClient() {
                         </form>
                       </div>
 
-                      <div className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 border-t bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1 text-sm">
                           <p className="font-semibold text-foreground">Total da cotação: {formatCurrency(quoteTotalPreview)}</p>
                           <p className="text-xs text-muted-foreground">
@@ -2540,6 +2606,33 @@ export function PurchaseQuotesClient() {
           )}
                 </div>
               </div>
+              {selectedRequest ? (
+                <div className="flex flex-col gap-2 border-t bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div className="min-w-0 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{selectedRequestFlowStatus.label || "Fluxo de cotação"}</span>
+                    <span className="ml-2">
+                      {winningQuote ? `Vencedora: ${winningQuote.supplierTradeName || winningQuote.supplierName}` : "Nenhuma vencedora selecionada"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {canSubmitApproval ? (
+                      <Button type="button" size="sm" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
+                        <Check className="h-4 w-4" />
+                        Enviar para aprovação
+                      </Button>
+                    ) : null}
+                    {canResubmitApproval ? (
+                      <Button type="button" size="sm" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
+                        <RotateCcw className="h-4 w-4" />
+                        Reenviar para aprovação
+                      </Button>
+                    ) : null}
+                    <Button type="button" size="sm" variant="ghost" onClick={closeRequestModal}>
+                      Fechar
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </section>
           </div>
         ) : null}
