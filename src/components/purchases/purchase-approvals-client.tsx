@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Check, ClipboardCheck, RotateCcw, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Ban, Building2, CalendarClock, Check, ClipboardCheck, RotateCcw, Search, ShieldCheck, UserRound, WalletCards } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorMessage, Field, LoadingTable, TextArea } from "@/components/base-cadastros/crud-components";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -80,6 +80,7 @@ type ApprovalRecord = {
   approvalDecidedAt: string;
   approvalDecisionNotes: string;
   approvalDecidedByName: string;
+  submittedAt: string;
   winningQuote: ApprovalQuote | null;
   recommendedQuote: ApprovalQuote | null;
   quotes: ApprovalQuote[];
@@ -179,6 +180,14 @@ function buildDepartmentLabel(approval: ApprovalRecord) {
   return approval.departmentCode ? `${approval.departmentCode} - ${approval.departmentName}` : approval.departmentName || "Departamento não informado";
 }
 
+function getDossierSourceLabel(approval: ApprovalRecord) {
+  return approval.isLegacyWithoutSnapshot ? "Registro legado" : `Dossie formal #${approval.snapshotNumber}`;
+}
+
+function getDossierSourceTone(approval: ApprovalRecord) {
+  return approval.isLegacyWithoutSnapshot ? "info" : "success";
+}
+
 function quoteSupplierLabel(quote: ApprovalQuote | null) {
   if (!quote) {
     return "-";
@@ -200,6 +209,31 @@ function SummaryCard({ title, value, icon: Icon }: { title: string; value: numbe
         </div>
       </div>
     </Card>
+  );
+}
+
+function DossierInfoTile({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
+  return (
+    <div className="min-w-0 rounded-md border bg-background px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{label}</span>
+      </div>
+      <p className="mt-1 truncate text-sm font-medium text-foreground" title={value}>
+        {value || "-"}
+      </p>
+    </div>
+  );
+}
+
+function ApprovalCardMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md border bg-background px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-medium text-foreground" title={value}>
+        {value || "-"}
+      </p>
+    </div>
   );
 }
 
@@ -418,47 +452,59 @@ export function PurchaseApprovalsClient() {
           <section className="space-y-3">
             {filteredApprovals.map((approval) => {
               const isSelected = selectedApproval?.id === approval.id;
+              const departmentLabel = approval.departmentName || approval.departmentCode ? buildDepartmentLabel(approval) : "";
 
               return (
                 <article
                   key={approval.id}
                   className={cn(
-                    "w-full rounded-lg border bg-card p-4 text-left shadow-sm shadow-primary/5 transition-colors hover:border-primary/30",
+                    "w-full rounded-lg border bg-card text-left shadow-sm shadow-primary/5 transition-colors hover:border-primary/30",
                     isSelected && "border-primary bg-primary/5"
                   )}
                 >
-                  <button type="button" className="w-full text-left" onClick={() => setSelectedApprovalId(approval.id)}>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-foreground">{approval.requestNumber}</p>
+                  <button type="button" className="w-full p-4 text-left" onClick={() => setSelectedApprovalId(approval.id)}>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-semibold text-foreground">{approval.requestNumber}</p>
+                        <StatusBadge status={getDossierSourceTone(approval)} label={getDossierSourceLabel(approval)} />
                         <StatusBadge status={getApprovalStatusTone(approval.approvalStatus)} label={getApprovalStatusLabel(approval.approvalStatus)} />
-                      </div>
-                      <p className="break-words text-sm font-medium text-foreground">{approval.title}</p>
-                      <p className="text-xs text-muted-foreground">{buildUnitLabel(approval)} • {buildDepartmentLabel(approval)}</p>
+                        </div>
+                        <div className="space-y-1">
+                        <p className="break-words text-sm font-medium text-foreground">{approval.title}</p>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <span>Unidade: {buildUnitLabel(approval)}</span>
+                            {departmentLabel ? <span>Departamento: {departmentLabel}</span> : null}
+                            <span>Fornecedor: {quoteSupplierLabel(approval.winningQuote)}</span>
+                          </div>
                     </div>
-                    <div className="text-left sm:text-right">
-                      <p className="text-sm font-semibold text-foreground">{approval.totalApprovedAmountLabel}</p>
-                      <p className="text-xs text-muted-foreground">{approval.approvalLevelLabel}</p>
+                    </div>
+                    <div className="shrink-0 text-left lg:text-right">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Total</p>
+                      <p className="text-base font-semibold text-foreground">{approval.totalApprovedAmountLabel}</p>
                     </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>Solicitante: {approval.requestedByName || "-"}</span>
-                    <span>Vencedora: {approval.winningQuote?.quoteNumber ?? "-"}</span>
-                    <span>Recomendada: {approval.recommendedQuote?.quoteNumber ?? "-"}</span>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      <ApprovalCardMetric label="Valor total" value={approval.totalApprovedAmountLabel} />
+                      <ApprovalCardMetric label="Alcada" value={approval.approvalLevelLabel} />
+                      <ApprovalCardMetric label="Envio" value={formatDateTime(approval.submittedAt)} />
+                      <ApprovalCardMetric label="Snapshot" value={getApprovalStatusLabel(approval.approvalStatus)} />
                     </div>
                     {approval.winnerDiffersFromRecommended ? (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       Vencedora diferente da recomendada.
                     </div>
                     ) : null}
-                    {approval.isLegacyWithoutSnapshot ? (
-                    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-                      Registro legado sem dossie formal. Consulte o historico, mas novas decisoes exigem reenvio formal.
-                    </div>
-                    ) : null}
                   </button>
-                  <div className="mt-4 flex justify-end border-t pt-3">
+                  <div className="flex flex-col gap-3 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    {approval.isLegacyWithoutSnapshot ? (
+                      <div className="flex min-w-0 items-start gap-2 text-xs text-sky-900">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>Registro legado sem dossie formal. Consulte o historico, mas novas decisoes exigem reenvio formal.</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Fotografia formal do envio para aprovacao.</p>
+                    )}
                     <Button type="button" size="sm" onClick={() => setSelectedApprovalId(approval.id)}>
                       <Search className="h-4 w-4" />
                       Ver dossiê
@@ -486,6 +532,11 @@ export function PurchaseApprovalsClient() {
                 <h2 id="approval-dossier-title" className="mt-1 truncate text-lg font-semibold text-foreground">
                   {selectedApproval.requestNumber}
                 </h2>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <StatusBadge status={getApprovalStatusTone(selectedApproval.approvalStatus)} label={getApprovalStatusLabel(selectedApproval.approvalStatus)} />
+                  <StatusBadge status={getDossierSourceTone(selectedApproval)} label={getDossierSourceLabel(selectedApproval)} />
+                  <StatusBadge status="info" label={selectedApproval.approvalLevelLabel} />
+                </div>
               </div>
               <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedApprovalId("")}>
                 <Ban className="h-4 w-4" />
@@ -501,6 +552,7 @@ export function PurchaseApprovalsClient() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-semibold">{selectedApproval.requestNumber}</h2>
                         <StatusBadge status={getApprovalStatusTone(selectedApproval.approvalStatus)} label={getApprovalStatusLabel(selectedApproval.approvalStatus)} />
+                        <StatusBadge status={getDossierSourceTone(selectedApproval)} label={getDossierSourceLabel(selectedApproval)} />
                         <StatusBadge status="info" label={selectedApproval.approvalLevelLabel} />
                       </div>
                       <h3 className="break-words text-base font-semibold">{selectedApproval.title}</h3>
@@ -513,9 +565,17 @@ export function PurchaseApprovalsClient() {
                         <span>Departamento: {buildDepartmentLabel(selectedApproval)}</span>
                         <span>Solicitante: {selectedApproval.requestedByName || "-"}</span>
                       </div>
+                      <div className="grid gap-2 pt-2 sm:grid-cols-2 xl:grid-cols-4">
+                        <DossierInfoTile label="Valor" value={selectedApproval.totalApprovedAmountLabel} icon={WalletCards} />
+                        <DossierInfoTile label="Unidade" value={buildUnitLabel(selectedApproval)} icon={Building2} />
+                        <DossierInfoTile label="Solicitante" value={selectedApproval.requestedByName || "-"} icon={UserRound} />
+                        <DossierInfoTile label="Envio formal" value={formatDateTime(selectedApproval.submittedAt)} icon={CalendarClock} />
+                      </div>
                     </div>
                     {selectedApproval.approvalStatus === "pending" && !selectedApproval.isLegacyWithoutSnapshot ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="rounded-md border bg-muted/30 p-3">
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Decisao</p>
+                        <div className="flex flex-wrap gap-2">
                         <Button type="button" onClick={() => openDecision(selectedApproval, "approved")}>
                           <Check className="h-4 w-4" />
                           Aprovar
@@ -528,6 +588,7 @@ export function PurchaseApprovalsClient() {
                           <Ban className="h-4 w-4" />
                           Reprovar
                         </Button>
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -540,8 +601,9 @@ export function PurchaseApprovalsClient() {
                 ) : null}
 
                 {selectedApproval.isLegacyWithoutSnapshot ? (
-                  <div className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                    Esta aprovacao e anterior ao dossie formal. Ela aparece para consulta historica, mas nao permite decisao nesta tela; para nova decisao, a compra precisa ser reenviada formalmente para aprovacao.
+                  <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>Esta aprovacao e anterior ao dossie formal. Ela aparece para consulta historica, mas nao permite decisao nesta tela; para nova decisao, a compra precisa ser reenviada formalmente para aprovacao.</span>
                   </div>
                 ) : null}
 
