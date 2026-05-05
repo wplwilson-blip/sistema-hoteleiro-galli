@@ -87,6 +87,11 @@
 - Reprovar é decisão final de não comprar e exige justificativa.
 - Devolver para Compras permite revisar cotação, documento ou justificativa e exige justificativa.
 - Reenviar para aprovação volta para `pending` e recalcula alçada.
+- Enviar ou reenviar para aprovação cria um snapshot formal do dossiê.
+- O snapshot formal deve congelar os dados reais do momento do envio, incluindo vencedora, recomendada, anexos, cotações concorrentes, itens, unidade, departamento, alçada e usuário.
+- Só pode existir um snapshot formal `pending` ativo por solicitação.
+- A decisão formal deve atualizar o snapshot pendente com decisão, justificativa quando aplicável, usuário e data.
+- Aprovações legadas sem snapshot ficam disponíveis para consulta e rastreabilidade, mas não devem permitir nova decisão direta.
 
 ## 9. RH
 

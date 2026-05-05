@@ -75,7 +75,17 @@ APIs em `src/app/api/purchases`.
 
 - Compras usa `purchase_request_events` para registrar eventos operacionais.
 - Aprovações usam `purchase_approval_decisions` para histórico formal.
+- Aprovações usam `purchase_approval_snapshots` para congelar o dossiê enviado formalmente para decisão.
 - Decisões críticas devem preservar usuário, data, alçada e justificativa/observação.
+
+## Dossiê Formal de Aprovação
+
+- O snapshot formal é criado somente no envio ou reenvio para aprovação.
+- A seleção de cotação vencedora continua sendo etapa de Compras e não cria snapshot por si só.
+- A API de Aprovações deve priorizar o snapshot formal quando ele existir.
+- Compras legadas sem snapshot podem aparecer para consulta histórica, mas não devem exibir ações de decisão.
+- A rota de decisão continua operando por `purchaseRequestId`; o snapshot pendente é localizado e atualizado pelo vínculo com a solicitação.
+- O payload congelado deve preservar dados reais do momento do envio, não apenas IDs.
 
 ## Multiunidade
 

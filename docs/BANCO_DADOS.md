@@ -121,6 +121,16 @@ O banco usa Supabase/PostgreSQL. Dados operacionais devem preservar multiunidade
 - Decisões: `approved`, `rejected`, `returned_to_purchases`.
 - Observação: reprovação e devolução exigem justificativa.
 
+### `purchase_approval_snapshots`
+
+- Finalidade: snapshots formais e históricos do dossiê enviado para aprovação de compras.
+- Origem: criada pela migration `019_purchase_approval_snapshots.sql`.
+- Campos principais: `purchase_request_id`, `selected_quote_id`, `selected_supplier_id`, `snapshot_number`, `snapshot_status`, `approval_status_at_creation`, `approval_rule`, `approval_level`, `total_amount`, `currency`, `is_selected_quote_recommended`, `recommendation_reason`, `submitted_by`, `submitted_at`, `decided_by`, `decided_at`, `decision`, `decision_reason`, `snapshot_payload`.
+- Status: `pending`, `approved`, `rejected`, `returned_to_purchases`, `superseded`.
+- Índices/regra ativa: há apenas um snapshot `pending` por solicitação ativa e a numeração é sequencial por solicitação.
+- Payload: JSONB com fotografia do dossiê no envio formal, incluindo solicitação, unidade, departamento, itens, cotação vencedora, fornecedor, anexos, cotações concorrentes, recomendação, alçada e usuário de envio.
+- Observação: selecionar cotação vencedora não cria snapshot; o snapshot nasce apenas no envio ou reenvio formal para aprovação.
+
 ### `attachments`
 
 - Finalidade: metadados de anexos.

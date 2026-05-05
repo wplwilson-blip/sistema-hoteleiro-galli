@@ -80,6 +80,8 @@ Não exibir códigos técnicos em inglês para usuários. Usar labels:
 - Recomendada é sugestão do sistema.
 - Vencedora é escolha registrada por Compras.
 - Aprovação deve funcionar como dossiê de decisão.
+- Quando houver snapshot formal, a interface deve sinalizar o número do dossiê e priorizar os dados congelados no envio.
+- Registros legados sem snapshot devem aparecer como consulta histórica, com alerta claro e sem botões de decisão.
 
 ## Filas operacionais
 

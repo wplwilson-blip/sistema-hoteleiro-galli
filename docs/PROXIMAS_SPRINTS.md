@@ -4,16 +4,17 @@
 
 1. Sprint DOC-1 - Documentação operacional do projeto.
 2. Sprint UI-2 - Redesign profundo de `/compras/cotacoes`.
-3. Sprint UI-3 - Redesign profundo de `/compras/aprovacoes`.
-4. Sprint 5B.2 - Decisão inicial da solicitação.
-5. Grupos/perfis de aprovação.
-6. Contas a Pagar com aprovação.
-7. RH administrativo.
-8. Recepção operacional.
-9. Manutenção.
-10. Governança.
-11. A&B.
-12. Relatórios/KPIs.
+3. Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`.
+4. Auditoria/exportação do dossiê formal.
+5. Sprint 5B.2 - Decisão inicial da solicitação.
+6. Grupos/perfis de aprovação.
+7. Contas a Pagar com aprovação.
+8. RH administrativo.
+9. Recepção operacional.
+10. Manutenção.
+11. Governança.
+12. A&B.
+13. Relatórios/KPIs.
 
 ## Sprint UI-2 - Redesign de `/compras/cotacoes`
 
@@ -22,12 +23,19 @@
 - Risco: médio, pois a tela concentra muita regra funcional.
 - Não mexer: regra de cotação recomendada, seleção de vencedora, anexos funcionais e aprovação.
 
-## Sprint UI-3 - Redesign de `/compras/aprovacoes`
+## Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`
 
-- Objetivo: transformar aprovação em dossiê de decisão mais claro.
-- Ideias: resumo de risco, barra de ações, histórico em timeline, comparação vencedora x recomendada mais direta.
+- Objetivo: evoluir o dossiê formal já existente sem alterar regras de decisão.
+- Ideias: resumo de risco, barra de ações mais fixa, histórico em timeline, comparação vencedora x recomendada mais direta e consulta de snapshots finalizados.
 - Risco: médio.
-- Não mexer: APIs de decisão, regras de alçada, histórico e permissões.
+- Não mexer: APIs de decisão, regras de alçada, criação de snapshot, histórico e permissões.
+
+## Auditoria/exportação do dossiê formal
+
+- Objetivo: permitir consulta mais auditável de snapshots formais aprovados, reprovados ou devolvidos.
+- Ideias: filtros por status do snapshot, geração de visualização imprimível/PDF e trilha de evidências por solicitação.
+- Risco: médio.
+- Não mexer: decisão de aprovação, criação automática de snapshots legados ou regras de alçada.
 
 ## Sprint 5B.2 - Decisão Inicial da Solicitação
 

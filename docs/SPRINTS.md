@@ -129,3 +129,47 @@
 - Status: concluída.
 - Objetivo: padronizar textos, dashboards, badges, empty states e ações cautelosas.
 - Entregas: textos em português, remoção de referências antigas, badges longas, `danger` em botões e perfis em português.
+
+## DB-COMPRAS-1B - Rodadas de negociação e economia de compras
+
+- Status: concluída.
+- Objetivo: preservar propostas originais e registrar economia de negociações futuras.
+- Entregas: vínculos de proposta original, proposta anterior, rodada, proposta superada e tabela `purchase_quote_negotiations`.
+- Migrations: `017_purchase_quote_negotiations.sql`.
+- Não implementado: desconto por item, motor avançado de negociação ou exigências configuráveis por fornecedor.
+
+## FIX-APPROVAL-STATUS-1 - Status formal de aprovação sem default automático
+
+- Status: concluída.
+- Objetivo: impedir que compras não enviadas formalmente para aprovação nasçam como `pending`.
+- Entregas: `approval_status` passou a aceitar `null` antes do envio formal.
+- Migrations: `018_fix_purchase_approval_status_default.sql`.
+
+## AUDIT-1C-B - Snapshot formal da aprovação
+
+- Status: concluída.
+- Objetivo: congelar o dossiê enviado formalmente para aprovação de compras.
+- Entregas: tabela `purchase_approval_snapshots`, helper de criação de snapshot e integração no envio/reenvio formal.
+- Migrations: `019_purchase_approval_snapshots.sql`.
+- Regra central: selecionar vencedora não cria snapshot; snapshot nasce apenas no envio ou reenvio formal para aprovação.
+
+## AUDIT-1C-C-A - Decisão formal do snapshot
+
+- Status: concluída.
+- Objetivo: fazer a decisão de aprovação atualizar o snapshot formal pendente.
+- Entregas: aprovar, reprovar e devolver para Compras encerram o snapshot `pending` correspondente com decisão, justificativa quando aplicável, usuário e data.
+- Migrations: não aplicável.
+
+## AUDIT-1C-C-B - Aprovações priorizam snapshot formal
+
+- Status: concluída.
+- Objetivo: fazer API e tela de Aprovações priorizarem o dossiê formal congelado.
+- Entregas: compras com snapshot formal pendente aparecem para decisão; compras legadas sem snapshot aparecem para consulta, sem botões de decisão e sem duplicidade.
+- Migrations: não aplicável.
+
+## UI-APROVACOES-1 - Refinamento visual do dossiê de aprovação
+
+- Status: concluída.
+- Objetivo: melhorar a clareza visual da lista e do dossiê de Aprovações.
+- Entregas: cards mais compactos, badges de dossiê formal/registro legado, indicadores de valor/alçada/envio/status e alerta para aprovações legadas.
+- Migrations: não aplicável.

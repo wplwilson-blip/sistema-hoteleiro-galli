@@ -53,6 +53,16 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 - Reenvio para aprovação.
 - Histórico de decisão.
 - Anexos no dossiê de aprovação.
+- Snapshot formal do dossiê enviado para aprovação.
+- Aprovações legadas sem snapshot apenas para consulta.
+
+## Snapshot Formal de Aprovação
+
+- O envio ou reenvio formal para aprovação cria um snapshot do dossiê.
+- O snapshot congela solicitação, unidade, departamento, itens, cotação vencedora, fornecedor, anexos, cotações concorrentes, recomendação e alçada.
+- A decisão formal atualiza o snapshot pendente correspondente.
+- A tela de Aprovações prioriza dados do snapshot formal quando ele existe.
+- Registros legados sem snapshot permanecem visíveis para rastreabilidade, mas não permitem decisão direta.
 
 ## Aprovação de Compras
 
