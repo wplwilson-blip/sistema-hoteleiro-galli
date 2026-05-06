@@ -61,6 +61,9 @@
 - Compras registra os fatos; o sistema classifica automaticamente a base documental.
 - O comprador não decide livremente se a base documental é suficiente.
 - `requires_attachment`, `requires_justification` e `has_formal_evidence` devem ser tratados como derivados pela regra do sistema.
+- O backend deve recalcular `evidence_confidence`, `requires_attachment`, `requires_justification` e `has_formal_evidence` ao persistir cotacao/proposta, ignorando tentativa manual de definir esses campos como verdade absoluta.
+- Listagens, badges, relatorios, dossie e aprovacoes devem usar a classificacao documental calculada ou o snapshot formal congelado; nao usar `has_formal_evidence` isolado como prova de evidencia suficiente.
+- O default legado `true` de `purchase_quotes.has_formal_evidence` permanece por compatibilidade, mas nao deve promover cotacao antiga ou incompleta para "Formal suficiente" sem classificacao calculada.
 - Cotação sem anexo pode seguir para aprovação, mas deve carregar justificativa, alerta e classificação compatível.
 - Evidência crítica exige aprovação restrita à Diretoria.
 - WhatsApp com print/anexo é "Aceitável com ressalva", não "Formal suficiente".
@@ -153,8 +156,8 @@
 - AUDIT-COTACOES-2-A foi uma varredura técnica read-only pós-implementação.
 - AC-01: severidade alta; decisão não validava Diretoria granularmente no backend; corrigido no commit `38a28ab`.
 - AC-02: severidade alta; bloqueio de dossiê não cobria `unselect` e `DELETE/cancel`; corrigido no commit `38a28ab`.
-- AC-03: severidade média; `has_formal_evidence` com default `true` pode gerar falso positivo em telas/relatórios futuros; pendente.
-- Recomendação do AC-03: tratar `has_formal_evidence` como derivado, evitar uso como fonte absoluta de verdade e considerar política futura mais conservadora.
+- AC-03: severidade média; `has_formal_evidence` com default `true` podia gerar falso positivo em telas/relatórios futuros; corrigido na sprint `SEC-AUDIT-COTACOES-3-A`.
+- Resultado do AC-03: `has_formal_evidence` foi blindado como campo derivado; persistência, listagem e UI devem refletir `classifyPurchaseQuoteEvidence` e anexos reais quando disponíveis, sem aceitar declaração livre do frontend.
 
 ## 8.2 Bloqueio de Cotação em Dossiê
 

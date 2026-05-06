@@ -83,6 +83,7 @@ APIs em `src/app/api/purchases`.
 - Cotações registram origem/evidência estruturada em `purchase_quotes`.
 - A função central `classifyPurchaseQuoteEvidence` classifica a base documental em `formal_sufficient`, `acceptable_with_reservation`, `fragile` ou `critical`.
 - Envio e reenvio para aprovação devem recalcular a classificação considerando anexos reais, não apenas campos declarados.
+- `has_formal_evidence`, `requires_attachment`, `requires_justification` e `evidence_confidence` são derivados dessa classificação; consumidores devem usar classificação calculada ou snapshot formal, não o default do banco como verdade isolada.
 
 ## Dossiê Formal de Aprovação
 

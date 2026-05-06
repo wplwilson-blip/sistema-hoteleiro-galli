@@ -214,7 +214,7 @@
 - Objetivo: auditar a implementação de origem/evidência sem alterar arquivos.
 - Achados altos: AC-01, aprovação por Diretoria sem validação granular no backend; AC-02, bloqueio de dossiê sem cobertura suficiente para `unselect` e `DELETE/cancel`.
 - Achado médio: AC-03, `has_formal_evidence` com default `true` pode gerar falso positivo em consumo futuro.
-- Resultado: AC-01 e AC-02 corrigidos na sprint seguinte; AC-03 permanece como evolução futura.
+- Resultado: AC-01 e AC-02 corrigidos na sprint seguinte; AC-03 corrigido posteriormente em `SEC-AUDIT-COTACOES-3-A`.
 
 ## SEC-AUDIT-COTACOES-2-B - Hardening Backend de Aprovação e Bloqueio de Dossiê
 
@@ -226,3 +226,11 @@
 - Helper criado: `src/lib/purchases/approval-authorization.ts`.
 - AC-02: cotação em dossiê formal ficou protegida contra mutações diretas, incluindo `save`, `unselect` direto e `DELETE/cancel`.
 - Regra preservada: nova proposta, seleção permitida de nova vencedora, reenvio formal e criação de novo snapshot continuam no fluxo legítimo de Compras.
+
+## SEC-AUDIT-COTACOES-3-A - Blindagem do `has_formal_evidence` como Campo Derivado
+
+- Status: concluída.
+- Objetivo: corrigir o achado médio AC-03 da auditoria AUDIT-COTACOES-2-A sem migration e sem alterar o banco já aplicado.
+- Regra: Compras registra fatos; o sistema calcula a classificação documental; o aprovador decide pelo dossiê formal.
+- Entregas: schemas passaram a ter default conservador para derivados, a UI deixou de enviar derivados como declaração livre, APIs de persistência recalculam os campos derivados e listagens recalculam classificação com anexos reais quando disponíveis.
+- Compatibilidade: `purchase_quotes.has_formal_evidence` mantém o default legado no banco, mas telas, APIs e relatórios futuros não devem consumi-lo como fonte absoluta de verdade.

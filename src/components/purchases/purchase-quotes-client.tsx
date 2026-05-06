@@ -22,7 +22,6 @@ import {
 } from "@/lib/purchases/schemas";
 import {
   classifyPurchaseQuoteEvidence,
-  getPurchaseQuoteEvidenceConfidenceFromClassification,
   getPurchaseQuoteEvidenceTypeLabel,
   getPurchaseQuoteSourceContactChannelLabel,
   getPurchaseQuoteSourceTypeLabel,
@@ -811,7 +810,7 @@ function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQ
     quoteValidityExceptionReason: "",
     quoteSourceType: "formal_proposal",
     evidenceType: "attached_file",
-    evidenceConfidence: "high",
+    evidenceConfidence: "critical",
     sourceContactName: "",
     sourceContactChannel: "",
     sourceReference: "",
@@ -820,7 +819,7 @@ function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQ
     evidenceMissingReason: "",
     requiresAttachment: false,
     requiresJustification: false,
-    hasFormalEvidence: true,
+    hasFormalEvidence: false,
     isVerbalQuote: false,
     isEmergencyQuote: false,
     emergencyReason: "",
@@ -888,7 +887,7 @@ function buildDefaultNegotiationForm(quote: PurchaseQuoteRecord | null): Negotia
     negotiationNotes: "",
     quoteSourceType: quote?.quoteSourceType || "formal_proposal",
     evidenceType: quote?.evidenceType || "attached_file",
-    evidenceConfidence: quote?.evidenceConfidence || "high",
+    evidenceConfidence: quote?.evidenceConfidence || "critical",
     sourceContactName: quote?.sourceContactName ?? "",
     sourceContactChannel: quote?.sourceContactChannel ?? "",
     sourceReference: quote?.sourceReference ?? "",
@@ -897,7 +896,7 @@ function buildDefaultNegotiationForm(quote: PurchaseQuoteRecord | null): Negotia
     evidenceMissingReason: quote?.evidenceMissingReason ?? "",
     requiresAttachment: quote?.requiresAttachment ?? false,
     requiresJustification: quote?.requiresJustification ?? false,
-    hasFormalEvidence: quote?.hasFormalEvidence ?? true,
+    hasFormalEvidence: quote?.hasFormalEvidence ?? false,
     isVerbalQuote: quote?.isVerbalQuote ?? false,
     isEmergencyQuote: quote?.isEmergencyQuote ?? false,
     emergencyReason: quote?.emergencyReason ?? "",
@@ -1267,8 +1266,6 @@ export function PurchaseQuotesClient() {
       throw new Error("Informe um prazo de entrega válido.");
     }
 
-    const classification = classifyPurchaseQuoteEvidence(buildEvidenceClassificationInput(negotiationForm, pendingNegotiationAttachmentFiles.length > 0));
-
     return {
       quoteDate: negotiationForm.quoteDate,
       validUntil: negotiationForm.validUntil,
@@ -1277,16 +1274,12 @@ export function PurchaseQuotesClient() {
       negotiationNotes: negotiationForm.negotiationNotes.trim() || undefined,
       quoteSourceType: negotiationForm.quoteSourceType || undefined,
       evidenceType: negotiationForm.evidenceType || undefined,
-      evidenceConfidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
       sourceContactName: negotiationForm.sourceContactName.trim() || undefined,
       sourceContactChannel: negotiationForm.sourceContactChannel || undefined,
       sourceReference: negotiationForm.sourceReference.trim() || undefined,
       sourceUrl: negotiationForm.sourceUrl.trim() || undefined,
       sourceNotes: negotiationForm.sourceNotes.trim() || undefined,
       evidenceMissingReason: negotiationForm.evidenceMissingReason.trim() || undefined,
-      requiresAttachment: classification.requiresAttachment,
-      requiresJustification: classification.requiresJustification,
-      hasFormalEvidence: classification.hasFormalEvidence,
       isVerbalQuote: negotiationForm.isVerbalQuote || negotiationForm.quoteSourceType === "phone_call" || negotiationForm.quoteSourceType === "in_person",
       isEmergencyQuote: negotiationForm.isEmergencyQuote || negotiationForm.quoteSourceType === "emergency",
       emergencyReason: negotiationForm.emergencyReason.trim() || undefined,
@@ -1346,22 +1339,17 @@ export function PurchaseQuotesClient() {
         ? `/api/purchases/requests/${selectedRequestId}/quotes/${editingQuoteId}`
         : `/api/purchases/requests/${selectedRequestId}/quotes`;
       const method = editingQuoteId ? "PATCH" : "POST";
-      const classification = classifyPurchaseQuoteEvidence(
-        buildEvidenceClassificationInput(
-          payload,
-          Boolean(editingQuoteId && (attachmentsByQuoteId[editingQuoteId] ?? []).length) || pendingQuoteAttachmentFiles.length > 0
-        )
-      );
+      const quotePayload = { ...payload } as Record<string, unknown>;
+      delete quotePayload.evidenceConfidence;
+      delete quotePayload.requiresAttachment;
+      delete quotePayload.requiresJustification;
+      delete quotePayload.hasFormalEvidence;
 
       return requestJson<SaveQuoteResponse>(url, {
         method,
         body: JSON.stringify({
-          ...payload,
+          ...quotePayload,
           action: "save",
-          evidenceConfidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
-          requiresAttachment: classification.requiresAttachment,
-          requiresJustification: classification.requiresJustification,
-          hasFormalEvidence: classification.hasFormalEvidence,
           isVerbalQuote: payload.isVerbalQuote || payload.quoteSourceType === "phone_call" || payload.quoteSourceType === "in_person",
           isEmergencyQuote: payload.isEmergencyQuote || payload.quoteSourceType === "emergency"
         })

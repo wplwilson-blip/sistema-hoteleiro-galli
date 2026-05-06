@@ -103,7 +103,8 @@ O banco usa Supabase/PostgreSQL. Dados operacionais devem preservar multiunidade
 - Valores de `evidence_type`: `attached_file`, `email_copy`, `whatsapp_screenshot`, `call_note`, `in_person_note`, `catalog_link`, `none`, `other`.
 - Valores de `evidence_confidence`: `high`, `medium`, `low`, `critical`.
 - Valores de `source_contact_channel`: `email`, `whatsapp`, `phone`, `in_person`, `website`, `other`.
-- Observação: `requires_attachment`, `requires_justification` e `has_formal_evidence` devem ser tratados como derivados da regra do sistema; AC-03 mantém pendência sobre o default `true` de `has_formal_evidence`.
+- Observação: `evidence_confidence`, `requires_attachment`, `requires_justification` e `has_formal_evidence` são campos derivados da classificação documental do sistema; não devem ser usados como fonte absoluta de verdade em telas, filtros, relatórios, dossiês ou decisões.
+- Compatibilidade: o default `true` de `has_formal_evidence` permanece no banco por compatibilidade com a migration já aplicada, mas a aplicação deve recalcular a classificação e considerar anexos reais quando disponíveis.
 - Rodadas de negociação:
   - `quote_round = 1`, `original_quote_id = null` e `parent_quote_id = null` indicam proposta original.
   - Proposta renegociada deve ser uma nova linha em `purchase_quotes`, vinculada à proposta original por `original_quote_id` e à proposta anterior por `parent_quote_id`.

@@ -3,28 +3,27 @@
 ## Prioridade Recomendada
 
 1. Sprint DOC-1 - Documentação operacional do projeto.
-2. AC-03 - Revisar uso de `has_formal_evidence` e evitar falso positivo.
-3. Política de Diretoria Geral corporativa, se o Hotel Galli quiser diferenciar de Diretor de Unidade.
-4. Evoluir modelo de vencedora atual sem mutar cotação congelada em dossiê.
-5. Sprint UI-2 - Redesign profundo de `/compras/cotacoes`.
-6. Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`.
-7. Auditoria/exportação do dossiê formal.
-8. Sprint 5B.2 - Decisão inicial da solicitação.
-9. Grupos/perfis de aprovação.
-10. Contas a Pagar com aprovação.
-11. RH administrativo.
-12. Recepção operacional.
-13. Manutenção.
-14. Governança.
-15. A&B.
-16. Relatórios/KPIs.
+2. Política de Diretoria Geral corporativa, se o Hotel Galli quiser diferenciar de Diretor de Unidade.
+3. Evoluir modelo de vencedora atual sem mutar cotação congelada em dossiê.
+4. Sprint UI-2 - Redesign profundo de `/compras/cotacoes`.
+5. Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`.
+6. Auditoria/exportação do dossiê formal.
+7. Sprint 5B.2 - Decisão inicial da solicitação.
+8. Grupos/perfis de aprovação.
+9. Contas a Pagar com aprovação.
+10. RH administrativo.
+11. Recepção operacional.
+12. Manutenção.
+13. Governança.
+14. A&B.
+15. Relatórios/KPIs.
 
 ## Prioridade Alta / Técnica
 
-- AC-03: revisar consumo de `has_formal_evidence`, tratar como derivado e evitar uso como fonte absoluta de verdade.
 - Criar política clara para Diretoria Geral corporativa, caso seja necessário diferenciar `UNIT_DIRECTOR` de uma Diretoria Geral da rede.
 - Evoluir modelo de seleção de vencedora para evitar mutação em `purchase_quotes.is_selected` de cotação já congelada em dossiê formal.
 - Manter `SUPER_ADMIN` separado de autoridade diretiva, salvo decisão explícita de negócio e modelagem auditável.
+- Manter futuras telas, dashboards e relatórios usando classificação documental calculada ou snapshot formal, sem consumir `has_formal_evidence` como verdade isolada.
 
 ## Prioridade Média / Evidência e Auditoria
 

@@ -46,6 +46,7 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 - Anexos de cotação.
 - Origem e evidência estruturada da cotação.
 - Classificação documental automática da evidência.
+- Blindagem de `has_formal_evidence`, `requires_attachment`, `requires_justification` e `evidence_confidence` como campos derivados da classificação documental.
 - Upload de evidência no fluxo de cadastro e negociação de cotação.
 - Cadastro rápido de fornecedor dentro da cotação.
 - Combobox pesquisável de fornecedor.
@@ -78,7 +79,8 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 - A função central de classificação é `classifyPurchaseQuoteEvidence`.
 - Classificações: `formal_sufficient`, `acceptable_with_reservation`, `fragile` e `critical`.
 - Evidência crítica força `approval_level = general_directorate` no envio/reenvio formal.
-- `requires_attachment`, `requires_justification` e `has_formal_evidence` devem ser tratados como derivados da regra do sistema, não como julgamento livre do usuário.
+- `evidence_confidence`, `requires_attachment`, `requires_justification` e `has_formal_evidence` são derivados da regra do sistema, não julgamento livre do usuário nem fonte absoluta de verdade.
+- Listagens e APIs de consulta devem refletir a classificação calculada, considerando anexos reais quando disponíveis, para evitar falso positivo em cotação antiga com default legado.
 
 ## Aprovação de Compras
 
@@ -98,7 +100,7 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 
 - AC-01: aprovação por Diretoria sem validação granular no backend; corrigido no commit `38a28ab sec-audit-cotacoes-hardening-backend`.
 - AC-02: bloqueio de dossiê sem cobertura clara para `unselect` e `DELETE/cancel`; corrigido no commit `38a28ab sec-audit-cotacoes-hardening-backend`.
-- AC-03: `has_formal_evidence` com default `true`; pendente para evolução futura e deve ser consumido com cautela.
+- AC-03: `has_formal_evidence` com default `true`; corrigido na sprint `SEC-AUDIT-COTACOES-3-A` por blindagem de consumo/persistência como campo derivado. O default permanece no banco apenas por compatibilidade.
 
 ## Status Visuais de Compras
 

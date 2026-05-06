@@ -148,7 +148,7 @@ function toNumber(value: string | number | null | undefined) {
 const purchaseQuoteSelectColumns =
   "id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, quote_source_type, evidence_type, evidence_confidence, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, requires_attachment, requires_justification, has_formal_evidence, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline, notes, status, created_at, updated_at, deleted_at";
 
-function mapQuoteEvidenceUpdate(payload: z.infer<typeof purchaseQuotePatchSchema>) {
+function mapQuoteEvidenceUpdate(payload: z.infer<typeof purchaseQuotePatchSchema>, hasAttachment = false) {
   if (payload.action !== "save") {
     return {};
   }
@@ -167,7 +167,7 @@ function mapQuoteEvidenceUpdate(payload: z.infer<typeof purchaseQuotePatchSchema
     emergencyReason: payload.emergencyReason,
     regularizationRequired: payload.regularizationRequired,
     regularizationDeadline: payload.regularizationDeadline,
-    hasAttachment: false
+    hasAttachment
   });
 
   return {
@@ -318,6 +318,25 @@ async function fetchQuoteItems(supabase: SupabaseAdmin, quoteId: string) {
   }
 
   return (data ?? []) as PurchaseQuoteItemRow[];
+}
+
+async function quoteHasActiveEvidenceAttachment(supabase: SupabaseAdmin, quoteId: string) {
+  const { data, error } = await supabase
+    .from("attachments")
+    .select("id")
+    .eq("module", "purchases")
+    .eq("entity_type", "purchase_quote")
+    .eq("entity_id", quoteId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logBaseCadastroError("purchase_quotes.attachment_lookup_failed", error);
+    throw new Error("Não foi possível validar os anexos da cotação.");
+  }
+
+  return Boolean(data?.length);
 }
 
 async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
@@ -733,6 +752,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     const supplier = await fetchSupplier(supabase, parsed.supplierId, requestRow.organization_id, accessibleUnitIds);
     const totalAmount = sumPurchaseQuoteItems(quoteItems.map((item: PurchaseQuoteItemUpdateRow) => ({ quantity: item.quantity, unitPrice: item.unit_price })));
+    const hasActiveAttachment = await quoteHasActiveEvidenceAttachment(supabase, quoteRow.id);
     const quoteUpdateBody = {
       supplier_id: supplier.id,
       quote_number: quoteRow.quote_number,
@@ -745,7 +765,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       is_recurring_supplier_quote: parsed.isRecurringSupplierQuote ?? false,
       quote_validity_exception: parsed.quoteValidityException ?? false,
       quote_validity_exception_reason: parsed.quoteValidityExceptionReason?.trim() || null,
-      ...mapQuoteEvidenceUpdate(parsed),
+      ...mapQuoteEvidenceUpdate(parsed, hasActiveAttachment),
       notes: parsed.notes ?? null,
       status: quoteRow.is_selected ? "selected" : "received",
       updated_by: session.user.id
