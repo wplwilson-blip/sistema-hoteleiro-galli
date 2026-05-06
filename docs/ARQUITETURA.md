@@ -70,6 +70,9 @@ APIs em `src/app/api/purchases`.
 - Bucket privado: `attachments`.
 - Usado para anexos operacionais.
 - Cotações usam `module = purchases`, `entity_type = purchase_quote`, `entity_id = purchase_quotes.id`.
+- No formulário de cotação ou nova proposta, arquivos podem ficar staged antes de existir `purchase_quotes.id`.
+- Ao salvar, a cotação é criada primeiro; depois os arquivos são enviados para a API de anexos e vinculados ao `purchase_quote.id`.
+- Se o upload falhar depois da criação da cotação, a cotação não deve ser apagada.
 
 ## Auditoria e Eventos
 
@@ -77,6 +80,9 @@ APIs em `src/app/api/purchases`.
 - Aprovações usam `purchase_approval_decisions` para histórico formal.
 - Aprovações usam `purchase_approval_snapshots` para congelar o dossiê enviado formalmente para decisão.
 - Decisões críticas devem preservar usuário, data, alçada e justificativa/observação.
+- Cotações registram origem/evidência estruturada em `purchase_quotes`.
+- A função central `classifyPurchaseQuoteEvidence` classifica a base documental em `formal_sufficient`, `acceptable_with_reservation`, `fragile` ou `critical`.
+- Envio e reenvio para aprovação devem recalcular a classificação considerando anexos reais, não apenas campos declarados.
 
 ## Dossiê Formal de Aprovação
 
@@ -84,8 +90,26 @@ APIs em `src/app/api/purchases`.
 - A seleção de cotação vencedora continua sendo etapa de Compras e não cria snapshot por si só.
 - A API de Aprovações deve priorizar o snapshot formal quando ele existir.
 - Compras legadas sem snapshot podem aparecer para consulta histórica, mas não devem exibir ações de decisão.
-- A rota de decisão continua operando por `purchaseRequestId`; o snapshot pendente é localizado e atualizado pelo vínculo com a solicitação.
+- A rota de decisão continua operando por `purchaseRequestId`; o snapshot pendente é localizado pelo vínculo com a solicitação.
+- A rota de decisão deve usar o `approval_level` do snapshot pendente antes de registrar a decisão.
 - O payload congelado deve preservar dados reais do momento do envio, não apenas IDs.
+- O payload deve congelar origem/evidência da cotação, anexos, classificação documental, motivo da classificação, alertas de auditoria e exigência de Diretoria quando a evidência for crítica.
+
+## Hardening Backend de Aprovação
+
+- `src/lib/purchases/approval-authorization.ts` centraliza a validação de autoridade para decisão de compra.
+- Para `approval_level = general_directorate`, a autoridade atual é vínculo ativo de `UNIT_DIRECTOR` na unidade da compra.
+- `SUPER_ADMIN` não é automaticamente Diretoria.
+- Se futuramente houver Diretoria Geral corporativa, criar ou mapear perfil/permissão específica antes de alterar essa regra.
+- A validação acontece no backend da rota de decisão e independe de a UI exibir ou esconder botões.
+
+## Bloqueio de Cotações em Dossiê
+
+- Cotações que já aparecem em `purchase_approval_snapshots` não devem sofrer mutações estruturais diretas.
+- A verificação considera `selected_quote_id` e presença da cotação no `snapshot_payload`, incluindo vencedora e concorrentes.
+- A trava cobre edição/save, `unselect` direto, `DELETE/cancel` e ações equivalentes.
+- Correções após devolução para Compras devem ser feitas por nova proposta/rodada e novo envio formal.
+- Risco residual conhecido: o modelo atual usa `purchase_quotes.is_selected`; a seleção controlada de nova vencedora pode limpar a vencedora anterior para manter uma única vencedora viva. Evolução futura deve modelar a vencedora atual sem alterar o estado vivo de cotação congelada.
 
 ## Multiunidade
 

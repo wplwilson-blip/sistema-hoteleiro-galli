@@ -3,18 +3,46 @@
 ## Prioridade Recomendada
 
 1. Sprint DOC-1 - Documentação operacional do projeto.
-2. Sprint UI-2 - Redesign profundo de `/compras/cotacoes`.
-3. Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`.
-4. Auditoria/exportação do dossiê formal.
-5. Sprint 5B.2 - Decisão inicial da solicitação.
-6. Grupos/perfis de aprovação.
-7. Contas a Pagar com aprovação.
-8. RH administrativo.
-9. Recepção operacional.
-10. Manutenção.
-11. Governança.
-12. A&B.
-13. Relatórios/KPIs.
+2. AC-03 - Revisar uso de `has_formal_evidence` e evitar falso positivo.
+3. Política de Diretoria Geral corporativa, se o Hotel Galli quiser diferenciar de Diretor de Unidade.
+4. Evoluir modelo de vencedora atual sem mutar cotação congelada em dossiê.
+5. Sprint UI-2 - Redesign profundo de `/compras/cotacoes`.
+6. Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`.
+7. Auditoria/exportação do dossiê formal.
+8. Sprint 5B.2 - Decisão inicial da solicitação.
+9. Grupos/perfis de aprovação.
+10. Contas a Pagar com aprovação.
+11. RH administrativo.
+12. Recepção operacional.
+13. Manutenção.
+14. Governança.
+15. A&B.
+16. Relatórios/KPIs.
+
+## Prioridade Alta / Técnica
+
+- AC-03: revisar consumo de `has_formal_evidence`, tratar como derivado e evitar uso como fonte absoluta de verdade.
+- Criar política clara para Diretoria Geral corporativa, caso seja necessário diferenciar `UNIT_DIRECTOR` de uma Diretoria Geral da rede.
+- Evoluir modelo de seleção de vencedora para evitar mutação em `purchase_quotes.is_selected` de cotação já congelada em dossiê formal.
+- Manter `SUPER_ADMIN` separado de autoridade diretiva, salvo decisão explícita de negócio e modelagem auditável.
+
+## Prioridade Média / Evidência e Auditoria
+
+- Dashboard de pendências documentais:
+  - evidência crítica;
+  - evidência frágil;
+  - regularização vencida;
+  - emergência sem regularização;
+  - cotação sem anexo.
+- Política de regularização posterior para cotações emergenciais ou frágeis.
+- Indicadores de origem/evidência por unidade.
+- Relatórios de cotações verbais e emergenciais.
+
+## Prioridade Baixa / Monitoramento
+
+- URL de catálogo sem print.
+- Fornecedor recorrente usado como justificativa fraca.
+- Cotação verbal sem documento posterior.
 
 ## Sprint UI-2 - Redesign de `/compras/cotacoes`
 
@@ -55,6 +83,7 @@
   - filas por alçada.
   - histórico de quem decidiu.
 - Não usar nome fixo de pessoa em regra.
+- Observação atual: `general_directorate` usa `UNIT_DIRECTOR` por unidade; Diretoria Geral corporativa exige evolução de perfil/permissão.
 
 ## Contas a Pagar com Aprovação
 

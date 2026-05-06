@@ -173,3 +173,56 @@
 - Objetivo: melhorar a clareza visual da lista e do dossiê de Aprovações.
 - Entregas: cards mais compactos, badges de dossiê formal/registro legado, indicadores de valor/alçada/envio/status e alerta para aprovações legadas.
 - Migrations: não aplicável.
+
+## AUDIT-COTACOES-1-B - Origem e Evidência da Cotação
+
+- Status: concluída.
+- Commit: `20b60d8 audit-cotacoes-origem-evidencia`.
+- Objetivo: registrar a origem da cotação e a evidência documental que sustenta a proposta.
+- Entregas: migration `020_purchase_quote_evidence.sql`, campos estruturados em `purchase_quotes`, schemas de cotação atualizados e APIs de criação, edição, listagem e negociação ajustadas.
+- Evidência: bloco "Origem e Evidência da Cotação", classificação documental automática, alertas de auditoria, upload/staged files no fluxo da cotação, exibição de origem/evidência em Aprovações e congelamento dos dados no snapshot formal.
+- Auditoria: cotação vinculada a dossiê formal passou a ter bloqueio contra edição direta.
+- Migrations: `020_purchase_quote_evidence.sql`.
+- Observação: migration aplicada manualmente no Supabase pelo usuário.
+
+## UI-AUDIT-COTACOES-1-C - UX Condicional e Classificação Automática
+
+- Status: concluída.
+- Commit: `20b60d8 audit-cotacoes-origem-evidencia`.
+- Objetivo: reduzir julgamento livre do comprador sobre suficiência documental.
+- Entregas: campos condicionais por origem, classificação calculada pelo sistema e orientação visual para anexos, justificativas, evidência crítica, emergência e regularização.
+- Regra central: Compras registra fatos; o sistema classifica a base documental; o aprovador decide com base no dossiê formal.
+
+## UI-AUDIT-COTACOES-1-D - Upload de Evidência no Fluxo da Cotação
+
+- Status: concluída.
+- Commit: `20b60d8 audit-cotacoes-origem-evidencia`.
+- Objetivo: permitir anexar evidências durante o cadastro ou edição da cotação.
+- Entregas: arquivos staged antes da cotação existir, upload após criação do `purchase_quote.id` e vínculo em `attachments` com `module = purchases`, `entity_type = purchase_quote`.
+- Observação: se o upload falhar após a criação da cotação, a cotação permanece registrada e a UI orienta o usuário a anexar a evidência antes do envio formal.
+
+## UI-COTACOES-2 - Organização do Modal de Nova Proposta Negociada
+
+- Status: concluída.
+- Commit: `20b60d8 audit-cotacoes-origem-evidencia`.
+- Objetivo: organizar o fluxo de nova proposta negociada sem duplicar campos de evidência.
+- Entregas: modal reorganizado em cotação anterior compacta, dados da nova proposta, itens/valores, origem/evidência e ação de salvar.
+
+## AUDIT-COTACOES-2-A - Varredura Técnica Pós-Implementação
+
+- Status: concluída em modo read-only.
+- Objetivo: auditar a implementação de origem/evidência sem alterar arquivos.
+- Achados altos: AC-01, aprovação por Diretoria sem validação granular no backend; AC-02, bloqueio de dossiê sem cobertura suficiente para `unselect` e `DELETE/cancel`.
+- Achado médio: AC-03, `has_formal_evidence` com default `true` pode gerar falso positivo em consumo futuro.
+- Resultado: AC-01 e AC-02 corrigidos na sprint seguinte; AC-03 permanece como evolução futura.
+
+## SEC-AUDIT-COTACOES-2-B - Hardening Backend de Aprovação e Bloqueio de Dossiê
+
+- Status: concluída.
+- Commit: `38a28ab sec-audit-cotacoes-hardening-backend`.
+- Objetivo: corrigir os dois achados críticos da auditoria AUDIT-COTACOES-2-A.
+- AC-01: decisão de aprovação passou a usar o `approval_level` do snapshot formal pendente e validar autoridade no backend.
+- Autoridade atual para `general_directorate`: vínculo ativo de `UNIT_DIRECTOR` na unidade da compra; `SUPER_ADMIN` não é tratado automaticamente como Diretoria.
+- Helper criado: `src/lib/purchases/approval-authorization.ts`.
+- AC-02: cotação em dossiê formal ficou protegida contra mutações diretas, incluindo `save`, `unselect` direto e `DELETE/cancel`.
+- Regra preservada: nova proposta, seleção permitida de nova vencedora, reenvio formal e criação de novo snapshot continuam no fluxo legítimo de Compras.

@@ -78,8 +78,32 @@ O banco usa Supabase/PostgreSQL. Dados operacionais devem preservar multiunidade
 ### `purchase_quotes`
 
 - Finalidade: cotação de fornecedor para solicitação.
-- Campos conhecidos: número automático, fornecedor, validade, prazo, condição de pagamento, status, total, seleção de vencedora.
+- Campos conhecidos: número automático, fornecedor, validade, prazo, condição de pagamento, status, total, seleção de vencedora, origem e evidência documental.
 - Relações: `purchase_requests`, `suppliers`, itens de cotação e anexos.
+- Origem/evidência: adicionada pela migration `020_purchase_quote_evidence.sql`, aplicada manualmente no Supabase pelo usuário.
+- Campos de origem/evidência:
+  - `quote_source_type`
+  - `evidence_type`
+  - `evidence_confidence`
+  - `source_contact_name`
+  - `source_contact_channel`
+  - `source_reference`
+  - `source_url`
+  - `source_notes`
+  - `evidence_missing_reason`
+  - `requires_attachment`
+  - `requires_justification`
+  - `has_formal_evidence`
+  - `is_verbal_quote`
+  - `is_emergency_quote`
+  - `emergency_reason`
+  - `regularization_required`
+  - `regularization_deadline`
+- Valores de `quote_source_type`: `formal_proposal`, `email`, `whatsapp`, `phone_call`, `in_person`, `website_catalog`, `recurring_supplier`, `emergency`, `other`.
+- Valores de `evidence_type`: `attached_file`, `email_copy`, `whatsapp_screenshot`, `call_note`, `in_person_note`, `catalog_link`, `none`, `other`.
+- Valores de `evidence_confidence`: `high`, `medium`, `low`, `critical`.
+- Valores de `source_contact_channel`: `email`, `whatsapp`, `phone`, `in_person`, `website`, `other`.
+- Observação: `requires_attachment`, `requires_justification` e `has_formal_evidence` devem ser tratados como derivados da regra do sistema; AC-03 mantém pendência sobre o default `true` de `has_formal_evidence`.
 - Rodadas de negociação:
   - `quote_round = 1`, `original_quote_id = null` e `parent_quote_id = null` indicam proposta original.
   - Proposta renegociada deve ser uma nova linha em `purchase_quotes`, vinculada à proposta original por `original_quote_id` e à proposta anterior por `parent_quote_id`.
@@ -129,7 +153,10 @@ O banco usa Supabase/PostgreSQL. Dados operacionais devem preservar multiunidade
 - Status: `pending`, `approved`, `rejected`, `returned_to_purchases`, `superseded`.
 - Índices/regra ativa: há apenas um snapshot `pending` por solicitação ativa e a numeração é sequencial por solicitação.
 - Payload: JSONB com fotografia do dossiê no envio formal, incluindo solicitação, unidade, departamento, itens, cotação vencedora, fornecedor, anexos, cotações concorrentes, recomendação, alçada e usuário de envio.
+- Payload de evidência: congela origem da cotação, tipo de evidência, confiança, contato/canal, referência externa, URL, observações, justificativa de ausência de evidência, flags verbal/emergência, motivo de emergência, regularização posterior, anexos/metadados, classificação documental, motivo da classificação, alertas de auditoria e exigência de Diretoria quando evidência crítica.
 - Observação: selecionar cotação vencedora não cria snapshot; o snapshot nasce apenas no envio ou reenvio formal para aprovação.
+- Decisão: a rota de decisão deve ler o `approval_level` do snapshot formal pendente; para `general_directorate`, a autoridade atual é vínculo ativo `UNIT_DIRECTOR` na unidade da compra.
+- Compatibilidade: snapshots antigos e compras legadas sem snapshot devem continuar consultáveis sem exigir recriação retroativa.
 
 ### `attachments`
 

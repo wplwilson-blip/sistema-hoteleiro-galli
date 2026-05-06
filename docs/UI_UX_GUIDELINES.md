@@ -52,6 +52,9 @@ Não exibir códigos técnicos em inglês para usuários. Usar labels:
 - Em cotações, anexos ficam dentro do card da cotação.
 - Em aprovações, mostrar anexos da vencedora e das demais cotações.
 - Botões de abrir/remover devem ficar próximos ao arquivo.
+- Upload de evidência deve estar no fluxo da cotação e da nova proposta negociada.
+- Arquivos staged antes de salvar devem ficar visualmente ligados ao formulário da cotação.
+- A UI deve orientar o usuário a anexar evidência antes do envio/reenvio formal para aprovação.
 
 ## Botões
 
@@ -82,6 +85,19 @@ Não exibir códigos técnicos em inglês para usuários. Usar labels:
 - Aprovação deve funcionar como dossiê de decisão.
 - Quando houver snapshot formal, a interface deve sinalizar o número do dossiê e priorizar os dados congelados no envio.
 - Registros legados sem snapshot devem aparecer como consulta histórica, com alerta claro e sem botões de decisão.
+- O bloco "Origem e Evidência da Cotação" deve ser único, sem duplicidade no mesmo formulário.
+- Campos de origem/evidência devem ser condicionais por origem.
+- A classificação documental deve ser clara, compacta e calculada pelo sistema.
+- Não mostrar checkboxes livres para o comprador decidir se a evidência é suficiente.
+- Evidência crítica deve comunicar exigência de Diretoria sem impedir o registro factual pela área de Compras.
+- O modal de nova proposta negociada deve seguir a ordem:
+  - cotação anterior compacta;
+  - dados da nova proposta;
+  - itens/valores;
+  - origem/evidência;
+  - salvar.
+- A tela de Aprovações deve exibir origem/evidência, classificação, alertas e anexos a partir do dossiê formal quando existir.
+- Cotação bloqueada por dossiê formal deve orientar correção por nova proposta/rodada, não por edição direta.
 
 ## Filas operacionais
 
