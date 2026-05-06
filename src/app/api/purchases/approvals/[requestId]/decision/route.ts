@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireSuperAdminRequest } from "@/lib/base-cadastros/api-helpers";
+import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
+import { assertCanDecidePurchaseApprovalLevel, PurchaseApprovalAuthorizationError } from "@/lib/purchases/approval-authorization";
 import {
   PurchaseApprovalSnapshotError,
   assertPendingPurchaseApprovalSnapshot,
@@ -70,7 +71,7 @@ async function insertPurchaseRequestEvent(
 }
 
 export async function POST(request: Request, { params }: { params: { requestId: string } }) {
-  const { session, response } = await requireSuperAdminRequest();
+  const { session, response } = await requireAuthenticatedRequest();
 
   if (response || !session) {
     return response;
@@ -131,7 +132,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       return apiError("Selecione uma cotação vencedora antes de decidir a aprovação.", 409);
     }
 
-    const approvalLevel = purchaseRequest.approval_level ?? getPurchaseApprovalLevel(toNumber(purchaseRequest.total_approved_amount));
+    let approvalLevel = purchaseRequest.approval_level ?? getPurchaseApprovalLevel(toNumber(purchaseRequest.total_approved_amount));
     const decidedAt = new Date().toISOString();
     const decisionReason = payload.justification.trim() || null;
     const nextStatus = payload.decision === "approved" ? "approved" : payload.decision === "rejected" ? "rejected" : "quotation";
@@ -143,7 +144,8 @@ export async function POST(request: Request, { params }: { params: { requestId: 
           : `Compra ${purchaseRequest.request_number} devolvida para Compras. Justificativa: ${payload.justification.trim()}`;
 
     try {
-      await assertPendingPurchaseApprovalSnapshot(supabase, purchaseRequest.id);
+      const pendingSnapshot = await assertPendingPurchaseApprovalSnapshot(supabase, purchaseRequest.id);
+      approvalLevel = pendingSnapshot.approval_level;
     } catch (snapshotError) {
       if (snapshotError instanceof PurchaseApprovalSnapshotError) {
         return apiError(snapshotError.message, snapshotError.status);
@@ -151,6 +153,21 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
       logBaseCadastroError("purchase_approvals.snapshot_pending_lookup_failed", snapshotError instanceof Error ? snapshotError : { message: "unknown" });
       return apiError("Nao foi possivel validar o dossie formal pendente da aprovacao.", 500);
+    }
+
+    try {
+      await assertCanDecidePurchaseApprovalLevel(supabase, {
+        session,
+        unitId: purchaseRequest.unit_id,
+        approvalLevel
+      });
+    } catch (authorizationError) {
+      if (authorizationError instanceof PurchaseApprovalAuthorizationError) {
+        return apiError(authorizationError.message, authorizationError.status);
+      }
+
+      logBaseCadastroError("purchase_approvals.authority_check_failed", authorizationError instanceof Error ? authorizationError : { message: "unknown" });
+      return apiError("Nao foi possivel validar a autoridade para decidir este dossie.", 500);
     }
 
     const { error: decisionError } = await supabase.from("purchase_approval_decisions").insert({

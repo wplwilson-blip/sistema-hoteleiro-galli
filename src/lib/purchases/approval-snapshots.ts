@@ -199,6 +199,10 @@ type CreatedPurchaseApprovalSnapshot = {
   snapshot_number: number;
 };
 
+type PendingPurchaseApprovalSnapshot = CreatedPurchaseApprovalSnapshot & {
+  approval_level: PurchaseApprovalLevel;
+};
+
 type UpdatePurchaseApprovalSnapshotDecisionInput = {
   supabase: SupabaseAdmin;
   purchaseRequestId: string;
@@ -479,7 +483,7 @@ export async function deletePurchaseApprovalSnapshot(supabase: SupabaseAdmin, sn
 export async function assertPendingPurchaseApprovalSnapshot(supabase: SupabaseAdmin, purchaseRequestId: string) {
   const { data, error } = await supabase
     .from("purchase_approval_snapshots")
-    .select("id")
+    .select("id, snapshot_number, approval_level")
     .eq("purchase_request_id", purchaseRequestId)
     .eq("snapshot_status", "pending")
     .is("deleted_at", null)
@@ -492,6 +496,8 @@ export async function assertPendingPurchaseApprovalSnapshot(supabase: SupabaseAd
   if (!data) {
     throw new PurchaseApprovalSnapshotError("Nenhum dossie formal pendente foi encontrado para esta compra.", 409);
   }
+
+  return data as PendingPurchaseApprovalSnapshot;
 }
 
 export async function updatePendingPurchaseApprovalSnapshotDecision(input: UpdatePurchaseApprovalSnapshotDecisionInput) {

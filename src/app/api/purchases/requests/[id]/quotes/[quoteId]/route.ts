@@ -131,6 +131,16 @@ type SupplierRow = {
   status: "active" | "inactive" | "archived";
 };
 
+class PurchaseQuoteFormalDossierError extends Error {
+  status: number;
+
+  constructor(message: string, status = 409) {
+    super(message);
+    this.name = "PurchaseQuoteFormalDossierError";
+    this.status = status;
+  }
+}
+
 function toNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
 }
@@ -361,7 +371,7 @@ async function assertQuoteIsNotInFormalDossier(supabase: SupabaseAdmin, requestI
   const isLocked = (data ?? []).some((snapshot) => snapshot.selected_quote_id === quoteId || snapshotPayloadContainsQuote(snapshot.snapshot_payload, quoteId));
 
   if (isLocked) {
-    throw new Error("Esta cotação já faz parte de um dossiê formal de aprovação. Para preservar a auditoria, registre uma nova proposta.");
+    throw new PurchaseQuoteFormalDossierError("Esta cotação já faz parte de um dossiê formal de aprovação. Para preservar a auditoria, registre uma nova proposta.");
   }
 }
 
@@ -502,6 +512,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
 
     if (payload.action === "unselect") {
+      await assertQuoteIsNotInFormalDossier(supabase, requestRow.id, quoteRow.id);
+
       if (requestRow.status !== "quotation") {
         return apiError("A cotação vencedora só pode ser removida em uma solicitação em cotação.", 409);
       }
@@ -569,6 +581,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     if (payload.action === "select") {
+      await assertQuoteIsNotInFormalDossier(supabase, requestRow.id, quoteRow.id);
+
       if (requestRow.status !== "quotation") {
         return apiError("A cotação so pode ser selecionada em uma solicitação em cotação.", 409);
       }
@@ -867,6 +881,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     }
 
+    if (error instanceof PurchaseQuoteFormalDossierError) {
+      return apiError(error.message, error.status);
+    }
+
     if (error instanceof Error && error.message === "Cotação não encontrada ou já removida.") {
       return apiError(error.message, 404);
     }
@@ -902,6 +920,8 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     }
 
     const quoteRow = await fetchQuoteById(supabase, requestRow.id, params.quoteId);
+
+    await assertQuoteIsNotInFormalDossier(supabase, requestRow.id, quoteRow.id);
 
     if (quoteRow.status === "cancelled" || quoteRow.deleted_at) {
       return apiError("Cotação não encontrada ou já removida.", 404);
@@ -983,6 +1003,10 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       cancelledItems: quoteItems.length
     });
   } catch (error) {
+    if (error instanceof PurchaseQuoteFormalDossierError) {
+      return apiError(error.message, error.status);
+    }
+
     if (error instanceof Error && error.message === "Cotação não encontrada ou já removida.") {
       return apiError(error.message, 404);
     }
