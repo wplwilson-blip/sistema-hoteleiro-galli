@@ -3,6 +3,12 @@ import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/l
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculateWinningQuoteApprovalFlags, getPurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import {
+  classifyPurchaseQuoteEvidence,
+  type PurchaseQuoteEvidenceType,
+  type PurchaseQuoteSourceContactChannel,
+  type PurchaseQuoteSourceType
+} from "@/lib/purchases/quote-schemas";
+import {
   createPurchaseApprovalSnapshot,
   deletePurchaseApprovalSnapshot,
   PurchaseApprovalSnapshotError
@@ -22,6 +28,19 @@ type PurchaseRequestRow = {
 type SelectedQuoteRow = {
   id: string;
   total_amount: string | number;
+  quote_source_type: PurchaseQuoteSourceType | null;
+  evidence_type: PurchaseQuoteEvidenceType | null;
+  source_contact_name: string | null;
+  source_contact_channel: PurchaseQuoteSourceContactChannel | null;
+  source_reference: string | null;
+  source_url: string | null;
+  source_notes: string | null;
+  evidence_missing_reason: string | null;
+  is_verbal_quote: boolean;
+  is_emergency_quote: boolean;
+  emergency_reason: string | null;
+  regularization_required: boolean;
+  regularization_deadline: string | null;
 };
 
 function toNumber(value: string | number | null | undefined) {
@@ -73,7 +92,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     const { data: quoteData, error: quoteError } = await supabase
       .from("purchase_quotes")
-      .select("id, total_amount")
+      .select("id, total_amount, quote_source_type, evidence_type, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline")
       .eq("purchase_request_id", purchaseRequest.id)
       .eq("is_selected", true)
       .is("deleted_at", null)
@@ -98,7 +117,38 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     const total = toNumber(selectedQuote.total_amount);
     const requestFlags = calculateWinningQuoteApprovalFlags(total);
-    const approvalLevel = getPurchaseApprovalLevel(total);
+    const { data: attachmentRows, error: attachmentError } = await supabase
+      .from("attachments")
+      .select("id")
+      .eq("module", "purchases")
+      .eq("entity_type", "purchase_quote")
+      .eq("entity_id", selectedQuote.id)
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (attachmentError) {
+      logBaseCadastroError("purchase_approvals.resubmit_attachment_lookup_failed", attachmentError);
+      return apiError("Não foi possível validar os anexos da cotação vencedora.", 500);
+    }
+
+    const evidenceClassification = classifyPurchaseQuoteEvidence({
+      quoteSourceType: selectedQuote.quote_source_type,
+      evidenceType: selectedQuote.evidence_type,
+      sourceContactName: selectedQuote.source_contact_name,
+      sourceContactChannel: selectedQuote.source_contact_channel,
+      sourceReference: selectedQuote.source_reference,
+      sourceUrl: selectedQuote.source_url,
+      sourceNotes: selectedQuote.source_notes,
+      evidenceMissingReason: selectedQuote.evidence_missing_reason,
+      isVerbalQuote: selectedQuote.is_verbal_quote,
+      isEmergencyQuote: selectedQuote.is_emergency_quote,
+      emergencyReason: selectedQuote.emergency_reason,
+      regularizationRequired: selectedQuote.regularization_required,
+      regularizationDeadline: selectedQuote.regularization_deadline,
+      hasAttachment: Boolean(attachmentRows?.length)
+    });
+    const approvalLevel = evidenceClassification.requiresDirectorApproval ? "general_directorate" : getPurchaseApprovalLevel(total);
     let approvalSnapshot: { id: string; snapshot_number: number } | null = null;
 
     try {
@@ -128,8 +178,8 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         total_approved_amount: total,
         quotation_required: requestFlags.quotationRequired,
         required_quote_count: requestFlags.requiredQuoteCount,
-        approval_required: requestFlags.approvalRequired,
-        director_approval_required: requestFlags.directorApprovalRequired,
+        approval_required: requestFlags.approvalRequired || evidenceClassification.requiresDirectorApproval,
+        director_approval_required: requestFlags.directorApprovalRequired || evidenceClassification.requiresDirectorApproval,
         approval_status: "pending",
         approval_level: approvalLevel,
         approval_decided_at: null,

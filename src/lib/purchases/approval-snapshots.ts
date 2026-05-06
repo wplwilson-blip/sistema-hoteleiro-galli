@@ -12,7 +12,19 @@ import {
   getPurchaseUnitOfMeasureLabel,
   type PurchaseUnitOfMeasure
 } from "@/lib/purchases/schemas";
-import { getPurchaseQuoteStatusLabel } from "@/lib/purchases/quote-schemas";
+import {
+  classifyPurchaseQuoteEvidence,
+  getPurchaseQuoteEvidenceConfidenceLabel,
+  getPurchaseQuoteEvidenceConfidenceFromClassification,
+  getPurchaseQuoteEvidenceTypeLabel,
+  getPurchaseQuoteSourceContactChannelLabel,
+  getPurchaseQuoteSourceTypeLabel,
+  getPurchaseQuoteStatusLabel,
+  type PurchaseQuoteEvidenceConfidence,
+  type PurchaseQuoteEvidenceType,
+  type PurchaseQuoteSourceContactChannel,
+  type PurchaseQuoteSourceType
+} from "@/lib/purchases/quote-schemas";
 
 export const PURCHASE_APPROVAL_SNAPSHOT_RULE = "hotel_galli_purchase_approval_v1";
 
@@ -86,6 +98,23 @@ type PurchaseQuoteRow = {
   is_recurring_supplier_quote: boolean;
   quote_validity_exception: boolean;
   quote_validity_exception_reason: string | null;
+  quote_source_type: PurchaseQuoteSourceType | null;
+  evidence_type: PurchaseQuoteEvidenceType | null;
+  evidence_confidence: PurchaseQuoteEvidenceConfidence | null;
+  source_contact_name: string | null;
+  source_contact_channel: PurchaseQuoteSourceContactChannel | null;
+  source_reference: string | null;
+  source_url: string | null;
+  source_notes: string | null;
+  evidence_missing_reason: string | null;
+  requires_attachment: boolean;
+  requires_justification: boolean;
+  has_formal_evidence: boolean;
+  is_verbal_quote: boolean;
+  is_emergency_quote: boolean;
+  emergency_reason: string | null;
+  regularization_required: boolean;
+  regularization_deadline: string | null;
   notes: string | null;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   original_quote_id: string | null;
@@ -315,6 +344,24 @@ function mapQuote(
   attachments: AttachmentRow[],
   recommendedQuoteId: string | null
   ) {
+  const classification = classifyPurchaseQuoteEvidence({
+    quoteSourceType: row.quote_source_type,
+    evidenceType: row.evidence_type,
+    sourceContactName: row.source_contact_name,
+    sourceContactChannel: row.source_contact_channel,
+    sourceReference: row.source_reference,
+    sourceUrl: row.source_url,
+    sourceNotes: row.source_notes,
+    evidenceMissingReason: row.evidence_missing_reason,
+    isVerbalQuote: row.is_verbal_quote,
+    isEmergencyQuote: row.is_emergency_quote,
+    emergencyReason: row.emergency_reason,
+    regularizationRequired: row.regularization_required,
+    regularizationDeadline: row.regularization_deadline,
+    hasAttachment: attachments.length > 0
+  });
+  const evidenceConfidence = getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status);
+
   return {
     id: row.id,
     purchaseRequestId: row.purchase_request_id,
@@ -330,6 +377,35 @@ function mapQuote(
     isRecurringSupplierQuote: row.is_recurring_supplier_quote,
     quoteValidityException: row.quote_validity_exception,
     quoteValidityExceptionReason: row.quote_validity_exception_reason,
+    evidence: {
+      quoteSourceType: row.quote_source_type,
+      quoteSourceTypeLabel: getPurchaseQuoteSourceTypeLabel(row.quote_source_type),
+      evidenceType: row.evidence_type,
+      evidenceTypeLabel: getPurchaseQuoteEvidenceTypeLabel(row.evidence_type),
+      evidenceConfidence,
+      evidenceConfidenceLabel: getPurchaseQuoteEvidenceConfidenceLabel(evidenceConfidence),
+      sourceContactName: row.source_contact_name,
+      sourceContactChannel: row.source_contact_channel,
+      sourceContactChannelLabel: getPurchaseQuoteSourceContactChannelLabel(row.source_contact_channel),
+      sourceReference: row.source_reference,
+      sourceUrl: row.source_url,
+      sourceNotes: row.source_notes,
+      evidenceMissingReason: row.evidence_missing_reason,
+      requiresAttachment: classification.requiresAttachment,
+      requiresJustification: classification.requiresJustification,
+      hasFormalEvidence: classification.hasFormalEvidence,
+      isVerbalQuote: row.is_verbal_quote,
+      isEmergencyQuote: row.is_emergency_quote,
+      emergencyReason: row.emergency_reason,
+      regularizationRequired: row.regularization_required,
+      regularizationDeadline: row.regularization_deadline,
+      documentaryClassification: classification.status,
+      documentaryClassificationLabel: classification.label,
+      documentaryClassificationSeverity: classification.severity,
+      documentaryClassificationReason: classification.reason,
+      requiresDirectorApproval: classification.requiresDirectorApproval,
+      auditAlerts: classification.alerts
+    },
     notes: row.notes,
     status: row.status,
     statusLabel: getPurchaseQuoteStatusLabel(row.status),
@@ -487,7 +563,7 @@ export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprov
     supabase
       .from("purchase_quotes")
       .select(
-        "id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, created_at, updated_at"
+        "id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, quote_source_type, evidence_type, evidence_confidence, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, requires_attachment, requires_justification, has_formal_evidence, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline, notes, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, created_at, updated_at"
       )
       .eq("purchase_request_id", purchaseRequest.id)
       .is("deleted_at", null)
@@ -583,6 +659,7 @@ export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprov
     )
   );
   const selectedQuotePayload = quotePayloads.find((quote) => quote.id === selectedQuote.id) ?? null;
+  const selectedQuoteEvidence = selectedQuotePayload?.evidence ?? null;
 
   const snapshotPayload = {
     schemaVersion: 1,
@@ -596,6 +673,10 @@ export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprov
       ruleDescription: "Até R$ 200,00: Gerência Administrativa. Acima de R$ 200,00: Diretoria Geral.",
       level: approvalLevel,
       levelLabel: getPurchaseApprovalLevelLabel(approvalLevel),
+      requiresDirectorApprovalByEvidence: Boolean(selectedQuoteEvidence?.requiresDirectorApproval),
+      documentaryClassification: selectedQuoteEvidence?.documentaryClassification ?? null,
+      documentaryClassificationLabel: selectedQuoteEvidence?.documentaryClassificationLabel ?? null,
+      documentaryClassificationReason: selectedQuoteEvidence?.documentaryClassificationReason ?? null,
       totalAmount: roundMoney(totalAmount),
       currency: "BRL"
     },

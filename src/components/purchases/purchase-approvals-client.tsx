@@ -28,7 +28,33 @@ type ApprovalQuote = {
   paymentTerms: string;
   isSelected: boolean;
   statusLabel: string;
+  evidence?: ApprovalQuoteEvidence | null;
   attachments: ApprovalAttachment[];
+};
+
+type ApprovalQuoteEvidence = {
+  quoteSourceTypeLabel?: string | null;
+  evidenceTypeLabel?: string | null;
+  evidenceConfidence?: string | null;
+  evidenceConfidenceLabel?: string | null;
+  sourceContactName?: string | null;
+  sourceContactChannelLabel?: string | null;
+  sourceReference?: string | null;
+  sourceUrl?: string | null;
+  sourceNotes?: string | null;
+  evidenceMissingReason?: string | null;
+  emergencyReason?: string | null;
+  regularizationRequired?: boolean | null;
+  regularizationDeadline?: string | null;
+  hasFormalEvidence?: boolean | null;
+  isVerbalQuote?: boolean | null;
+  isEmergencyQuote?: boolean | null;
+  documentaryClassification?: string | null;
+  documentaryClassificationLabel?: string | null;
+  documentaryClassificationSeverity?: "success" | "info" | "warning" | "danger" | null;
+  documentaryClassificationReason?: string | null;
+  requiresDirectorApproval?: boolean | null;
+  auditAlerts?: string[];
 };
 
 type ApprovalAttachment = {
@@ -238,6 +264,8 @@ function ApprovalCardMetric({ label, value }: { label: string; value: string }) 
 }
 
 function QuoteBox({ title, quote, tone = "default" }: { title: string; quote: ApprovalQuote | null; tone?: "default" | "success" }) {
+  const evidence = quote?.evidence ?? null;
+
   return (
     <div className={cn("rounded-md border p-4", tone === "success" ? "border-emerald-200 bg-emerald-50/70" : "bg-background")}>
       <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
@@ -253,6 +281,46 @@ function QuoteBox({ title, quote, tone = "default" }: { title: string; quote: Ap
             <span>Prazo: {quote.deliveryDays || "-"} dias</span>
             <span>Pagamento: {quote.paymentTerms || "-"}</span>
           </div>
+          {evidence ? (
+            <div className="space-y-2 rounded-md border bg-background/70 p-3 text-xs text-muted-foreground">
+              <div className="grid gap-1 sm:grid-cols-2">
+                <span>Classificação: <strong className="font-medium text-foreground">{evidence.documentaryClassificationLabel || "-"}</strong></span>
+                <span>Origem: <strong className="font-medium text-foreground">{evidence.quoteSourceTypeLabel || "-"}</strong></span>
+                <span>Evidência: <strong className="font-medium text-foreground">{evidence.evidenceTypeLabel || "-"}</strong></span>
+                <span>Confiabilidade: <strong className="font-medium text-foreground">{evidence.evidenceConfidenceLabel || "-"}</strong></span>
+                <span>Contato/canal: <strong className="font-medium text-foreground">{[evidence.sourceContactName, evidence.sourceContactChannelLabel].filter(Boolean).join(" / ") || "-"}</strong></span>
+                <span>Referência: <strong className="font-medium text-foreground">{evidence.sourceReference || "-"}</strong></span>
+                <span>Regularização: <strong className="font-medium text-foreground">{evidence.regularizationRequired ? evidence.regularizationDeadline || "Necessária" : "Não"}</strong></span>
+              </div>
+              {evidence.documentaryClassificationReason ? (
+                <p className="break-words">Motivo da classificação: <span className="text-foreground">{evidence.documentaryClassificationReason}</span></p>
+              ) : null}
+              {evidence.requiresDirectorApproval ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-900">
+                  Evidência crítica: aprovação restrita à Diretoria.
+                </div>
+              ) : null}
+              {evidence.sourceUrl ? (
+                <a className="inline-flex break-all font-medium text-primary underline-offset-4 hover:underline" href={evidence.sourceUrl} target="_blank" rel="noreferrer">
+                  {evidence.sourceUrl}
+                </a>
+              ) : null}
+              {evidence.sourceNotes || evidence.evidenceMissingReason || evidence.emergencyReason ? (
+                <div className="space-y-1">
+                  {evidence.sourceNotes ? <p className="break-words">Observações: <span className="text-foreground">{evidence.sourceNotes}</span></p> : null}
+                  {evidence.evidenceMissingReason ? <p className="break-words">Ausência de evidência: <span className="text-foreground">{evidence.evidenceMissingReason}</span></p> : null}
+                  {evidence.emergencyReason ? <p className="break-words">Emergência: <span className="text-foreground">{evidence.emergencyReason}</span></p> : null}
+                </div>
+              ) : null}
+              {evidence.auditAlerts?.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {evidence.auditAlerts.map((alert) => (
+                    <StatusBadge key={alert} status={alert.includes("critica") || alert.includes("sem evidencia") ? "danger" : "warning"} label={alert} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">Não localizada.</p>
@@ -637,7 +705,21 @@ export function PurchaseApprovalsClient() {
                               <span>Total: {quote.totalAmountLabel}</span>
                               <span>Prazo: {quote.deliveryDays || "-"} dias</span>
                               <span>Pagamento: {quote.paymentTerms || "-"}</span>
+                              {quote.evidence ? (
+                                <>
+                                  <span>Origem: {quote.evidence.quoteSourceTypeLabel || "-"}</span>
+                                  <span>Evidência: {quote.evidence.evidenceTypeLabel || "-"}</span>
+                                  <span>Classificação: {quote.evidence.documentaryClassificationLabel || quote.evidence.evidenceConfidenceLabel || "-"}</span>
+                                </>
+                              ) : null}
                             </div>
+                            {quote.evidence?.auditAlerts?.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {quote.evidence.auditAlerts.map((alert) => (
+                                  <StatusBadge key={alert} status={alert.includes("critica") || alert.includes("sem evidencia") ? "danger" : "warning"} label={alert} />
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         <div className="mt-3">

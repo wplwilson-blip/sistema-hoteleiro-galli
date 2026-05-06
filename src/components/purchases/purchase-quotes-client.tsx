@@ -21,9 +21,22 @@ import {
   getPurchaseRequestTypeLabel
 } from "@/lib/purchases/schemas";
 import {
+  classifyPurchaseQuoteEvidence,
+  getPurchaseQuoteEvidenceConfidenceFromClassification,
+  getPurchaseQuoteEvidenceTypeLabel,
+  getPurchaseQuoteSourceContactChannelLabel,
+  getPurchaseQuoteSourceTypeLabel,
   getPurchaseQuoteStatusLabel,
   getPurchaseQuoteStatusTone,
+  purchaseQuoteEvidenceTypeLabelMap,
   purchaseQuoteFormSchema,
+  purchaseQuoteSourceContactChannelLabelMap,
+  purchaseQuoteSourceTypeLabelMap,
+  type PurchaseQuoteEvidenceConfidence,
+  type PurchaseQuoteEvidenceClassificationInput,
+  type PurchaseQuoteEvidenceType,
+  type PurchaseQuoteSourceContactChannel,
+  type PurchaseQuoteSourceType
 } from "@/lib/purchases/quote-schemas";
 import { z } from "zod";
 
@@ -96,6 +109,23 @@ type PurchaseQuoteRecord = {
   isRecurringSupplierQuote: boolean;
   quoteValidityException: boolean;
   quoteValidityExceptionReason: string;
+  quoteSourceType: PurchaseQuoteSourceType | "";
+  evidenceType: PurchaseQuoteEvidenceType | "";
+  evidenceConfidence: PurchaseQuoteEvidenceConfidence | "";
+  sourceContactName: string;
+  sourceContactChannel: PurchaseQuoteSourceContactChannel | "";
+  sourceReference: string;
+  sourceUrl: string;
+  sourceNotes: string;
+  evidenceMissingReason: string;
+  requiresAttachment: boolean;
+  requiresJustification: boolean;
+  hasFormalEvidence: boolean;
+  isVerbalQuote: boolean;
+  isEmergencyQuote: boolean;
+  emergencyReason: string;
+  regularizationRequired: boolean;
+  regularizationDeadline: string;
   notes: string;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   statusLabel: string;
@@ -104,6 +134,7 @@ type PurchaseQuoteRecord = {
   supersededByQuoteId: string;
   supersededAt: string;
   isSuperseded: boolean;
+  isLockedByFormalDossier: boolean;
   isExpired: boolean;
   createdAt: string;
   updatedAt: string;
@@ -153,10 +184,21 @@ type AttachmentsResponse = {
   attachments: AttachmentRecord[];
 };
 
+type UploadedAttachmentResponse = {
+  ok: true;
+  attachment: AttachmentRecord;
+};
+
 type SaveQuoteResponse = {
   ok: true;
   quoteId?: string;
   quoteNumber?: string;
+};
+
+type SaveNegotiationResponse = {
+  ok: true;
+  message: string;
+  quote?: { id?: string };
 };
 
 type QuoteItemFormValue = {
@@ -177,6 +219,23 @@ type PurchaseQuoteFormValues = {
   isRecurringSupplierQuote: boolean;
   quoteValidityException: boolean;
   quoteValidityExceptionReason: string;
+  quoteSourceType: PurchaseQuoteSourceType | "";
+  evidenceType: PurchaseQuoteEvidenceType | "";
+  evidenceConfidence: PurchaseQuoteEvidenceConfidence | "";
+  sourceContactName: string;
+  sourceContactChannel: PurchaseQuoteSourceContactChannel | "";
+  sourceReference: string;
+  sourceUrl: string;
+  sourceNotes: string;
+  evidenceMissingReason: string;
+  requiresAttachment: boolean;
+  requiresJustification: boolean;
+  hasFormalEvidence: boolean;
+  isVerbalQuote: boolean;
+  isEmergencyQuote: boolean;
+  emergencyReason: string;
+  regularizationRequired: boolean;
+  regularizationDeadline: string;
   items: QuoteItemFormValue[];
 };
 
@@ -195,10 +254,72 @@ type NegotiationFormValues = {
   deliveryDays: string;
   paymentTerms: string;
   negotiationNotes: string;
+  quoteSourceType: PurchaseQuoteSourceType | "";
+  evidenceType: PurchaseQuoteEvidenceType | "";
+  evidenceConfidence: PurchaseQuoteEvidenceConfidence | "";
+  sourceContactName: string;
+  sourceContactChannel: PurchaseQuoteSourceContactChannel | "";
+  sourceReference: string;
+  sourceUrl: string;
+  sourceNotes: string;
+  evidenceMissingReason: string;
+  requiresAttachment: boolean;
+  requiresJustification: boolean;
+  hasFormalEvidence: boolean;
+  isVerbalQuote: boolean;
+  isEmergencyQuote: boolean;
+  emergencyReason: string;
+  regularizationRequired: boolean;
+  regularizationDeadline: string;
   items: NegotiationItemFormValue[];
 };
 
 const purchaseQuoteFormSchemaClient = purchaseQuoteFormSchema;
+const quoteSourceTypeOptions = Object.entries(purchaseQuoteSourceTypeLabelMap) as Array<[PurchaseQuoteSourceType, string]>;
+const evidenceTypeOptions = Object.entries(purchaseQuoteEvidenceTypeLabelMap) as Array<[PurchaseQuoteEvidenceType, string]>;
+const sourceContactChannelOptions = Object.entries(purchaseQuoteSourceContactChannelLabelMap) as Array<[PurchaseQuoteSourceContactChannel, string]>;
+
+function buildEvidenceClassificationInput(values: Partial<PurchaseQuoteFormValues | NegotiationFormValues>, hasAttachment: boolean): PurchaseQuoteEvidenceClassificationInput {
+  return {
+    quoteSourceType: values.quoteSourceType,
+    evidenceType: values.evidenceType,
+    sourceContactName: values.sourceContactName,
+    sourceContactChannel: values.sourceContactChannel,
+    sourceReference: values.sourceReference,
+    sourceUrl: values.sourceUrl,
+    sourceNotes: values.sourceNotes,
+    evidenceMissingReason: values.evidenceMissingReason,
+    isVerbalQuote: values.isVerbalQuote,
+    isEmergencyQuote: values.isEmergencyQuote,
+    emergencyReason: values.emergencyReason,
+    regularizationRequired: values.regularizationRequired,
+    regularizationDeadline: values.regularizationDeadline,
+    hasAttachment
+  };
+}
+
+function getEvidenceUploadHint(sourceType: PurchaseQuoteSourceType | "" | null | undefined) {
+  switch (sourceType) {
+    case "formal_proposal":
+      return "Anexe a proposta formal em PDF ou imagem.";
+    case "email":
+      return "Anexe o PDF, print ou cópia do e-mail recebido.";
+    case "whatsapp":
+      return "Anexe o print da conversa ou proposta recebida pelo WhatsApp.";
+    case "website_catalog":
+      return "Informe a URL consultada e, se possível, anexe um print da página/catálogo.";
+    case "phone_call":
+      return "Cotação por ligação normalmente não possui arquivo. Registre contato, relato e justificativa.";
+    case "in_person":
+      return "Cotação presencial normalmente exige relato e justificativa quando não houver documento.";
+    case "emergency":
+      return "Anexe qualquer evidência disponível e registre motivo da emergência. Se não houver documento, informe regularização posterior.";
+    case "recurring_supplier":
+      return "Anexe documento do fornecedor recorrente se houver; sem documento, registre referência e observação.";
+    default:
+      return "Anexe qualquer arquivo de evidência disponível ou registre a justificativa da ausência.";
+  }
+}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -652,6 +773,27 @@ async function uploadAttachmentToQuote(input: { quoteId: string; file: File; des
   return requestFormData("/api/attachments", body);
 }
 
+async function uploadEvidenceFilesToQuote(input: { quoteId: string; files: File[]; description: string }) {
+  const uploaded: AttachmentRecord[] = [];
+  const failed: File[] = [];
+
+  for (const file of input.files) {
+    try {
+      const payload = await uploadAttachmentToQuote({
+        quoteId: input.quoteId,
+        file,
+        description: input.description
+      }) as UploadedAttachmentResponse;
+
+      uploaded.push(payload.attachment);
+    } catch {
+      failed.push(file);
+    }
+  }
+
+  return { uploaded, failed };
+}
+
 function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQuoteFormValues {
   const today = new Date();
   const validUntil = addDays(today, 90);
@@ -667,6 +809,23 @@ function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQ
     isRecurringSupplierQuote: false,
     quoteValidityException: false,
     quoteValidityExceptionReason: "",
+    quoteSourceType: "formal_proposal",
+    evidenceType: "attached_file",
+    evidenceConfidence: "high",
+    sourceContactName: "",
+    sourceContactChannel: "",
+    sourceReference: "",
+    sourceUrl: "",
+    sourceNotes: "",
+    evidenceMissingReason: "",
+    requiresAttachment: false,
+    requiresJustification: false,
+    hasFormalEvidence: true,
+    isVerbalQuote: false,
+    isEmergencyQuote: false,
+    emergencyReason: "",
+    regularizationRequired: false,
+    regularizationDeadline: "",
     items: requestItems.map((item) => ({
       purchaseRequestItemId: item.id,
       itemDescription: item.description,
@@ -690,6 +849,23 @@ function buildEditQuoteForm(quote: PurchaseQuoteRecord): PurchaseQuoteFormValues
     isRecurringSupplierQuote: quote.isRecurringSupplierQuote,
     quoteValidityException: quote.quoteValidityException,
     quoteValidityExceptionReason: quote.quoteValidityExceptionReason,
+    quoteSourceType: quote.quoteSourceType,
+    evidenceType: quote.evidenceType,
+    evidenceConfidence: quote.evidenceConfidence,
+    sourceContactName: quote.sourceContactName,
+    sourceContactChannel: quote.sourceContactChannel,
+    sourceReference: quote.sourceReference,
+    sourceUrl: quote.sourceUrl,
+    sourceNotes: quote.sourceNotes,
+    evidenceMissingReason: quote.evidenceMissingReason,
+    requiresAttachment: quote.requiresAttachment,
+    requiresJustification: quote.requiresJustification,
+    hasFormalEvidence: quote.hasFormalEvidence,
+    isVerbalQuote: quote.isVerbalQuote,
+    isEmergencyQuote: quote.isEmergencyQuote,
+    emergencyReason: quote.emergencyReason,
+    regularizationRequired: quote.regularizationRequired,
+    regularizationDeadline: quote.regularizationDeadline,
     items: quoteItems.map((item) => ({
       purchaseRequestItemId: item.purchaseRequestItemId,
       itemDescription: item.description,
@@ -710,6 +886,23 @@ function buildDefaultNegotiationForm(quote: PurchaseQuoteRecord | null): Negotia
     deliveryDays: quote?.deliveryDays === "" || quote?.deliveryDays == null ? "" : String(quote.deliveryDays),
     paymentTerms: quote?.paymentTerms ?? "",
     negotiationNotes: "",
+    quoteSourceType: quote?.quoteSourceType || "formal_proposal",
+    evidenceType: quote?.evidenceType || "attached_file",
+    evidenceConfidence: quote?.evidenceConfidence || "high",
+    sourceContactName: quote?.sourceContactName ?? "",
+    sourceContactChannel: quote?.sourceContactChannel ?? "",
+    sourceReference: quote?.sourceReference ?? "",
+    sourceUrl: quote?.sourceUrl ?? "",
+    sourceNotes: quote?.sourceNotes ?? "",
+    evidenceMissingReason: quote?.evidenceMissingReason ?? "",
+    requiresAttachment: quote?.requiresAttachment ?? false,
+    requiresJustification: quote?.requiresJustification ?? false,
+    hasFormalEvidence: quote?.hasFormalEvidence ?? true,
+    isVerbalQuote: quote?.isVerbalQuote ?? false,
+    isEmergencyQuote: quote?.isEmergencyQuote ?? false,
+    emergencyReason: quote?.emergencyReason ?? "",
+    regularizationRequired: quote?.regularizationRequired ?? false,
+    regularizationDeadline: quote?.regularizationDeadline ?? "",
     items: (quote?.items ?? []).map((item) => ({
       purchaseRequestItemId: item.purchaseRequestItemId,
       itemDescription: item.description,
@@ -762,6 +955,8 @@ export function PurchaseQuotesClient() {
   const [attachmentDescriptions, setAttachmentDescriptions] = useState<Record<string, string>>({});
   const [pendingQuoteAttachmentFiles, setPendingQuoteAttachmentFiles] = useState<File[]>([]);
   const [pendingQuoteAttachmentDescription, setPendingQuoteAttachmentDescription] = useState("");
+  const [pendingNegotiationAttachmentFiles, setPendingNegotiationAttachmentFiles] = useState<File[]>([]);
+  const [pendingNegotiationAttachmentDescription, setPendingNegotiationAttachmentDescription] = useState("");
   const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
   const [quickSuppliers, setQuickSuppliers] = useState<QuickSupplierRecord[]>([]);
   const [negotiationQuote, setNegotiationQuote] = useState<PurchaseQuoteRecord | null>(null);
@@ -799,6 +994,19 @@ export function PurchaseQuotesClient() {
     control: quoteForm.control,
     name: "quoteValidityException"
   });
+  const evidenceType = useWatch({ control: quoteForm.control, name: "evidenceType" });
+  const isVerbalQuote = useWatch({ control: quoteForm.control, name: "isVerbalQuote" });
+  const isEmergencyQuote = useWatch({ control: quoteForm.control, name: "isEmergencyQuote" });
+  const quoteSourceType = useWatch({ control: quoteForm.control, name: "quoteSourceType" });
+  const regularizationRequired = useWatch({ control: quoteForm.control, name: "regularizationRequired" });
+  const sourceContactName = useWatch({ control: quoteForm.control, name: "sourceContactName" });
+  const sourceContactChannel = useWatch({ control: quoteForm.control, name: "sourceContactChannel" });
+  const sourceReference = useWatch({ control: quoteForm.control, name: "sourceReference" });
+  const sourceUrl = useWatch({ control: quoteForm.control, name: "sourceUrl" });
+  const sourceNotes = useWatch({ control: quoteForm.control, name: "sourceNotes" });
+  const evidenceMissingReason = useWatch({ control: quoteForm.control, name: "evidenceMissingReason" });
+  const emergencyReason = useWatch({ control: quoteForm.control, name: "emergencyReason" });
+  const regularizationDeadline = useWatch({ control: quoteForm.control, name: "regularizationDeadline" });
 
   const requests = useMemo(() => listQuery.data?.requests ?? [], [listQuery.data?.requests]);
   const suppliers = useMemo(() => detailQuery.data?.suppliers ?? listQuery.data?.suppliers ?? [], [detailQuery.data?.suppliers, listQuery.data?.suppliers]);
@@ -839,6 +1047,7 @@ export function PurchaseQuotesClient() {
     },
     enabled: quoteIds.length > 0
   });
+  const attachmentsByQuoteId = useMemo(() => attachmentsQuery.data ?? {}, [attachmentsQuery.data]);
 
   useEffect(() => {
     if (selectedRequestId && requests.length && !requests.some((request) => request.id === selectedRequestId)) {
@@ -852,6 +1061,44 @@ export function PurchaseQuotesClient() {
     }
   }, [quoteValidityException, quoteForm]);
 
+  const quoteEvidenceClassification = useMemo(
+    () =>
+      classifyPurchaseQuoteEvidence({
+        quoteSourceType,
+        evidenceType,
+        sourceContactName,
+        sourceContactChannel,
+        sourceReference,
+        sourceUrl,
+        sourceNotes,
+        evidenceMissingReason,
+        isVerbalQuote,
+        isEmergencyQuote,
+        emergencyReason,
+        regularizationRequired,
+        regularizationDeadline,
+        hasAttachment: Boolean(editingQuoteId && (attachmentsByQuoteId[editingQuoteId] ?? []).length) || pendingQuoteAttachmentFiles.length > 0
+      }),
+    [
+      attachmentsByQuoteId,
+      editingQuoteId,
+      emergencyReason,
+      evidenceMissingReason,
+      evidenceType,
+      isEmergencyQuote,
+      isVerbalQuote,
+      pendingQuoteAttachmentFiles.length,
+      quoteSourceType,
+      regularizationDeadline,
+      regularizationRequired,
+      sourceContactChannel,
+      sourceContactName,
+      sourceNotes,
+      sourceReference,
+      sourceUrl
+    ]
+  );
+
   function clearQuoteTemporaryState(request: PurchaseRequestDetail | null = selectedRequest) {
     setQuoteFormOpen(false);
     setEditingQuoteId(null);
@@ -861,6 +1108,8 @@ export function PurchaseQuotesClient() {
     setAttachmentDescriptions({});
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
+    setPendingNegotiationAttachmentFiles([]);
+    setPendingNegotiationAttachmentDescription("");
     quoteForm.clearErrors();
     const nextValues = buildDefaultQuoteForm(request);
     quoteForm.reset(nextValues);
@@ -918,6 +1167,8 @@ export function PurchaseQuotesClient() {
     setError("");
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
+    setPendingNegotiationAttachmentFiles([]);
+    setPendingNegotiationAttachmentDescription("");
     setQuickSupplierOpen(false);
     quoteForm.clearErrors();
     quoteForm.reset(nextValues);
@@ -940,6 +1191,8 @@ export function PurchaseQuotesClient() {
   function openNegotiationForm(quote: PurchaseQuoteRecord) {
     setNegotiationQuote(quote);
     setNegotiationForm(buildDefaultNegotiationForm(quote));
+    setPendingNegotiationAttachmentFiles([]);
+    setPendingNegotiationAttachmentDescription("");
     setQuoteFormOpen(false);
     setEditingQuoteId(null);
     setError("");
@@ -949,6 +1202,8 @@ export function PurchaseQuotesClient() {
   function closeNegotiationForm() {
     setNegotiationQuote(null);
     setNegotiationForm(buildDefaultNegotiationForm(null));
+    setPendingNegotiationAttachmentFiles([]);
+    setPendingNegotiationAttachmentDescription("");
     setError("");
   }
 
@@ -1012,12 +1267,31 @@ export function PurchaseQuotesClient() {
       throw new Error("Informe um prazo de entrega válido.");
     }
 
+    const classification = classifyPurchaseQuoteEvidence(buildEvidenceClassificationInput(negotiationForm, pendingNegotiationAttachmentFiles.length > 0));
+
     return {
       quoteDate: negotiationForm.quoteDate,
       validUntil: negotiationForm.validUntil,
       deliveryDays,
       paymentTerms: negotiationForm.paymentTerms.trim() || undefined,
       negotiationNotes: negotiationForm.negotiationNotes.trim() || undefined,
+      quoteSourceType: negotiationForm.quoteSourceType || undefined,
+      evidenceType: negotiationForm.evidenceType || undefined,
+      evidenceConfidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
+      sourceContactName: negotiationForm.sourceContactName.trim() || undefined,
+      sourceContactChannel: negotiationForm.sourceContactChannel || undefined,
+      sourceReference: negotiationForm.sourceReference.trim() || undefined,
+      sourceUrl: negotiationForm.sourceUrl.trim() || undefined,
+      sourceNotes: negotiationForm.sourceNotes.trim() || undefined,
+      evidenceMissingReason: negotiationForm.evidenceMissingReason.trim() || undefined,
+      requiresAttachment: classification.requiresAttachment,
+      requiresJustification: classification.requiresJustification,
+      hasFormalEvidence: classification.hasFormalEvidence,
+      isVerbalQuote: negotiationForm.isVerbalQuote || negotiationForm.quoteSourceType === "phone_call" || negotiationForm.quoteSourceType === "in_person",
+      isEmergencyQuote: negotiationForm.isEmergencyQuote || negotiationForm.quoteSourceType === "emergency",
+      emergencyReason: negotiationForm.emergencyReason.trim() || undefined,
+      regularizationRequired: negotiationForm.regularizationRequired,
+      regularizationDeadline: negotiationForm.regularizationDeadline || undefined,
       items: negotiationForm.items.map((item) => {
         const unitPrice = parseLocalizedNumberStrict(item.unitPrice);
         const quantity = parseLocalizedNumberStrict(item.quantity);
@@ -1072,34 +1346,47 @@ export function PurchaseQuotesClient() {
         ? `/api/purchases/requests/${selectedRequestId}/quotes/${editingQuoteId}`
         : `/api/purchases/requests/${selectedRequestId}/quotes`;
       const method = editingQuoteId ? "PATCH" : "POST";
+      const classification = classifyPurchaseQuoteEvidence(
+        buildEvidenceClassificationInput(
+          payload,
+          Boolean(editingQuoteId && (attachmentsByQuoteId[editingQuoteId] ?? []).length) || pendingQuoteAttachmentFiles.length > 0
+        )
+      );
 
       return requestJson<SaveQuoteResponse>(url, {
         method,
-        body: JSON.stringify({ ...payload, action: "save" })
+        body: JSON.stringify({
+          ...payload,
+          action: "save",
+          evidenceConfidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
+          requiresAttachment: classification.requiresAttachment,
+          requiresJustification: classification.requiresJustification,
+          hasFormalEvidence: classification.hasFormalEvidence,
+          isVerbalQuote: payload.isVerbalQuote || payload.quoteSourceType === "phone_call" || payload.quoteSourceType === "in_person",
+          isEmergencyQuote: payload.isEmergencyQuote || payload.quoteSourceType === "emergency"
+        })
       });
     },
     onSuccess: async (data) => {
       setError("");
       let uploadFailed = false;
 
-      if (!editingQuoteId && data.quoteId && pendingQuoteAttachmentFiles.length) {
-        for (const file of pendingQuoteAttachmentFiles) {
-          try {
-            await uploadAttachmentToQuote({
-              quoteId: data.quoteId,
-              file,
-              description: pendingQuoteAttachmentDescription.trim()
-            });
-          } catch {
-            uploadFailed = true;
-          }
-        }
+      const targetQuoteId = data.quoteId ?? editingQuoteId;
+      if (targetQuoteId && pendingQuoteAttachmentFiles.length) {
+        const uploadResult = await uploadEvidenceFilesToQuote({
+          quoteId: targetQuoteId,
+          files: pendingQuoteAttachmentFiles,
+          description: pendingQuoteAttachmentDescription.trim()
+        });
+        uploadFailed = uploadResult.failed.length > 0;
       }
 
       setQuoteFormOpen(false);
       setEditingQuoteId(null);
       setPendingQuoteAttachmentFiles([]);
       setPendingQuoteAttachmentDescription("");
+      setAttachmentFiles({});
+      setAttachmentDescriptions({});
       quoteForm.reset(buildDefaultQuoteForm(selectedRequest));
       replace(buildDefaultQuoteForm(selectedRequest).items);
       await Promise.all([
@@ -1107,7 +1394,7 @@ export function PurchaseQuotesClient() {
         queryClient.invalidateQueries({ queryKey: ["attachments"] }),
         selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
       ]);
-      setAttachmentMessage(uploadFailed ? "A cotação foi salva, mas não foi possível enviar um ou mais anexos." : "Cotação salva com sucesso.");
+      setAttachmentMessage(uploadFailed ? "A cotação foi salva, mas a evidência não foi anexada. Anexe o arquivo antes de enviar para aprovação." : "Cotação salva com sucesso.");
     },
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível salvar a cotação.")
   });
@@ -1120,7 +1407,7 @@ export function PurchaseQuotesClient() {
 
       const payload = buildNegotiationPayload();
 
-      return requestJson<{ ok: true; message: string }>(
+      return requestJson<SaveNegotiationResponse>(
         `/api/purchases/requests/${selectedRequestId}/quotes/${negotiationQuote.id}/negotiations`,
         {
           method: "POST",
@@ -1130,12 +1417,33 @@ export function PurchaseQuotesClient() {
     },
     onSuccess: async (payload) => {
       setError("");
-      setAttachmentMessage(payload.message || "Nova proposta negociada registrada com sucesso.");
+      let uploadFailed = false;
+      const quoteId = payload.quote?.id;
+
+      if (quoteId && pendingNegotiationAttachmentFiles.length) {
+        const uploadResult = await uploadEvidenceFilesToQuote({
+          quoteId,
+          files: pendingNegotiationAttachmentFiles,
+          description: pendingNegotiationAttachmentDescription.trim()
+        });
+        uploadFailed = uploadResult.failed.length > 0;
+      } else if (!quoteId && pendingNegotiationAttachmentFiles.length) {
+        uploadFailed = true;
+      }
+
+      setAttachmentMessage(
+        uploadFailed
+          ? "A nova proposta foi salva, mas a evidência não foi anexada. Anexe o arquivo antes de enviar para aprovação."
+          : payload.message || "Nova proposta negociada registrada com sucesso."
+      );
       setNegotiationQuote(null);
       setNegotiationForm(buildDefaultNegotiationForm(null));
+      setPendingNegotiationAttachmentFiles([]);
+      setPendingNegotiationAttachmentDescription("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] }),
+        queryClient.invalidateQueries({ queryKey: ["attachments"] }),
         selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
       ]);
     },
@@ -1336,7 +1644,10 @@ export function PurchaseQuotesClient() {
   );
   const negotiationDiscountAmount = negotiationPreviousTotal - negotiationNewTotalPreview;
   const negotiationDiscountPercent = negotiationPreviousTotal > 0 ? (negotiationDiscountAmount / negotiationPreviousTotal) * 100 : 0;
-  const attachmentsByQuoteId = attachmentsQuery.data ?? {};
+  const negotiationEvidenceClassification = useMemo(
+    () => classifyPurchaseQuoteEvidence(buildEvidenceClassificationInput(negotiationForm, pendingNegotiationAttachmentFiles.length > 0)),
+    [negotiationForm, pendingNegotiationAttachmentFiles.length]
+  );
 
   function uploadQuoteAttachment(quoteId: string) {
     const file = attachmentFiles[quoteId];
@@ -1755,8 +2066,28 @@ export function PurchaseQuotesClient() {
                       const supplier = supplierById.get(quote.supplierId);
                       const supplierTrustLabel = supplier?.status === "active" ? "Fornecedor ativo" : "Fornecedor cadastrado";
                       const quoteAttachments = attachmentsByQuoteId[quote.id] ?? [];
+                      const quoteDocumentaryClassification = classifyPurchaseQuoteEvidence(
+                        buildEvidenceClassificationInput(
+                          {
+                            quoteSourceType: quote.quoteSourceType,
+                            evidenceType: quote.evidenceType,
+                            sourceContactName: quote.sourceContactName,
+                            sourceContactChannel: quote.sourceContactChannel,
+                            sourceReference: quote.sourceReference,
+                            sourceUrl: quote.sourceUrl,
+                            sourceNotes: quote.sourceNotes,
+                            evidenceMissingReason: quote.evidenceMissingReason,
+                            isVerbalQuote: quote.isVerbalQuote,
+                            isEmergencyQuote: quote.isEmergencyQuote,
+                            emergencyReason: quote.emergencyReason,
+                            regularizationRequired: quote.regularizationRequired,
+                            regularizationDeadline: quote.regularizationDeadline
+                          },
+                          quoteAttachments.length > 0
+                        )
+                      );
                       const selectedFile = attachmentFiles[quote.id];
-                      const canMutateQuote = selectedRequestCanMutateQuotes && quote.status !== "cancelled" && !quote.isSuperseded;
+                      const canMutateQuote = selectedRequestCanMutateQuotes && quote.status !== "cancelled" && !quote.isSuperseded && !quote.isLockedByFormalDossier;
                       const canRegisterNegotiation =
                         selectedRequestCanMutateQuotes &&
                         quote.status !== "cancelled" &&
@@ -1836,6 +2167,12 @@ export function PurchaseQuotesClient() {
                             </div>
                           ) : null}
 
+                          {quote.isLockedByFormalDossier ? (
+                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                              Esta cotação já faz parte de um dossiê formal de aprovação. Para preservar a auditoria, registre uma nova proposta.
+                            </div>
+                          ) : null}
+
                           <div className="flex flex-wrap gap-2 border-t pt-2">
                             <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "details")}>
                               Ver detalhes
@@ -1849,11 +2186,33 @@ export function PurchaseQuotesClient() {
                           </div>
 
                           {expandedSection === "details" ? (
-                            <div className="grid gap-2 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-                              <span>Documento: <strong className="font-medium text-foreground">{quote.supplierDocumentNumber || "-"}</strong></span>
-                              <span>Fornecedor: <strong className="font-medium text-foreground">{supplierTrustLabel}</strong></span>
-                              <span>Selecionada: <strong className="font-medium text-foreground">{quote.isSelected ? "Sim" : "Não"}</strong></span>
-                              <span>Rodada: <strong className="font-medium text-foreground">{quote.quoteRound ?? 1}</strong></span>
+                            <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                                <span>Documento: <strong className="font-medium text-foreground">{quote.supplierDocumentNumber || "-"}</strong></span>
+                                <span>Fornecedor: <strong className="font-medium text-foreground">{supplierTrustLabel}</strong></span>
+                                <span>Selecionada: <strong className="font-medium text-foreground">{quote.isSelected ? "Sim" : "Não"}</strong></span>
+                                <span>Rodada: <strong className="font-medium text-foreground">{quote.quoteRound ?? 1}</strong></span>
+                                <span>Origem: <strong className="font-medium text-foreground">{getPurchaseQuoteSourceTypeLabel(quote.quoteSourceType || null)}</strong></span>
+                                <span>Evidência: <strong className="font-medium text-foreground">{getPurchaseQuoteEvidenceTypeLabel(quote.evidenceType || null)}</strong></span>
+                                <span>Classificação: <strong className="font-medium text-foreground">{quoteDocumentaryClassification.label}</strong></span>
+                                <span>Canal: <strong className="font-medium text-foreground">{getPurchaseQuoteSourceContactChannelLabel(quote.sourceContactChannel || null)}</strong></span>
+                                <span>Contato: <strong className="font-medium text-foreground">{quote.sourceContactName || "-"}</strong></span>
+                                <span>Referência: <strong className="font-medium text-foreground">{quote.sourceReference || "-"}</strong></span>
+                                <span>Regularização: <strong className="font-medium text-foreground">{quote.regularizationRequired ? quote.regularizationDeadline || "Necessária" : "Não"}</strong></span>
+                                <span>URL: <strong className="font-medium text-foreground">{quote.sourceUrl || "-"}</strong></span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {quoteDocumentaryClassification.alerts.map((alert) => (
+                                  <StatusBadge key={alert} status={quoteDocumentaryClassification.severity === "danger" ? "danger" : "warning"} label={alert} />
+                                ))}
+                              </div>
+                              {quote.sourceNotes || quote.evidenceMissingReason || quote.emergencyReason ? (
+                                <div className="space-y-1 text-xs text-muted-foreground">
+                                  {quote.sourceNotes ? <p className="break-words">Observações: <span className="text-foreground">{quote.sourceNotes}</span></p> : null}
+                                  {quote.evidenceMissingReason ? <p className="break-words">Ausência de evidência: <span className="text-foreground">{quote.evidenceMissingReason}</span></p> : null}
+                                  {quote.emergencyReason ? <p className="break-words">Emergência: <span className="text-foreground">{quote.emergencyReason}</span></p> : null}
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
 
@@ -2031,40 +2390,28 @@ export function PurchaseQuotesClient() {
                       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                         <div className="space-y-4">
                           <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
-                            <div className="space-y-1">
-                              <h4 className="text-sm font-semibold">Cotação anterior</h4>
-                              <p className="text-xs text-muted-foreground">Esta proposta será preservada e a nova proposta entrará como outra cotação recebida.</p>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                              <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Número</p>
-                                <p className="mt-1 overflow-x-auto whitespace-nowrap text-sm font-medium text-foreground">{negotiationQuote.quoteNumber}</p>
-                              </div>
-                              <div className="min-w-0 rounded-md border bg-background/70 p-3 sm:col-span-2">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Fornecedor</p>
-                                <p className="mt-1 break-words text-sm font-medium text-foreground">{getQuoteSupplierLabel(negotiationQuote)}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Rodada atual</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{getQuoteRoundLabel(negotiationQuote)}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Valor anterior</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{negotiationQuote.totalAmountLabel}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Prazo</p>
-                                <p className="mt-1 text-sm font-medium text-foreground">{negotiationQuote.deliveryDays || "-"}</p>
-                              </div>
-                              <div className="min-w-0 rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Condição de pagamento</p>
-                                <p className="mt-1 break-words text-sm font-medium text-foreground">{negotiationQuote.paymentTerms || "-"}</p>
-                              </div>
-                              <div className="rounded-md border bg-background/70 p-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">Status</p>
-                                <div className="mt-1 flex flex-wrap gap-2">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-sm font-semibold">Cotação anterior</h4>
                                   <StatusBadge status={negotiationQuote.statusTone} label={negotiationQuote.statusLabel} />
                                   {negotiationQuote.isSelected ? <StatusBadge status="success" label="Vencedora" /> : null}
+                                  <StatusBadge status="info" label={getQuoteRoundLabel(negotiationQuote)} />
+                                </div>
+                                <p className="break-words text-sm text-muted-foreground">
+                                  <span className="font-medium text-foreground">{negotiationQuote.quoteNumber}</span>
+                                  {" · "}
+                                  {getQuoteSupplierLabel(negotiationQuote)}
+                                  {" · "}
+                                  {negotiationQuote.totalAmountLabel}
+                                </p>
+                              </div>
+                              <div className="grid shrink-0 gap-2 text-xs text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]">
+                                <div className="rounded-md border bg-background/70 px-3 py-2">
+                                  <span className="font-medium text-foreground">Prazo:</span> {negotiationQuote.deliveryDays || "-"} dias
+                                </div>
+                                <div className="min-w-0 rounded-md border bg-background/70 px-3 py-2">
+                                  <span className="font-medium text-foreground">Pagamento:</span> <span className="break-words">{negotiationQuote.paymentTerms || "-"}</span>
                                 </div>
                               </div>
                             </div>
@@ -2105,7 +2452,7 @@ export function PurchaseQuotesClient() {
                               </Field>
                               <Field label="Observação da negociação" className="xl:col-span-2">
                                 <TextArea
-                                  rows={3}
+                                  rows={2}
                                   value={negotiationForm.negotiationNotes}
                                   placeholder="Ex.: fornecedor concedeu desconto após negociação por WhatsApp."
                                   onChange={(event) => updateNegotiationField("negotiationNotes", event.target.value)}
@@ -2199,19 +2546,185 @@ export function PurchaseQuotesClient() {
                             <p className="text-xs text-muted-foreground">Prévia visual. O cálculo oficial será feito no servidor.</p>
                           </section>
 
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-semibold">Origem e Evidência da Cotação</h4>
+                                <p className="text-xs text-muted-foreground">Registre como a proposta foi recebida e anexe a evidência correspondente.</p>
+                              </div>
+                              <StatusBadge status={negotiationEvidenceClassification.severity} label={negotiationEvidenceClassification.label} />
+                            </div>
+                            <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
+                              <p className="text-muted-foreground">
+                                <span className="font-medium text-foreground">Motivo:</span> {negotiationEvidenceClassification.reason}
+                              </p>
+                              {negotiationEvidenceClassification.alerts.length ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {negotiationEvidenceClassification.alerts.map((warning) => (
+                                    <StatusBadge key={warning} status={negotiationEvidenceClassification.severity === "danger" ? "danger" : "warning"} label={warning} />
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="grid min-w-0 gap-4 xl:grid-cols-3">
+                              <Field label="Origem da cotação">
+                                <select
+                                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                  value={negotiationForm.quoteSourceType}
+                                  onChange={(event) => updateNegotiationField("quoteSourceType", event.target.value as PurchaseQuoteSourceType)}
+                                >
+                                  {quoteSourceTypeOptions.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label="Tipo de evidência">
+                                <select
+                                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                  value={negotiationForm.evidenceType}
+                                  onChange={(event) => updateNegotiationField("evidenceType", event.target.value as PurchaseQuoteEvidenceType)}
+                                >
+                                  {evidenceTypeOptions.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                </select>
+                              </Field>
+                              {negotiationForm.quoteSourceType !== "formal_proposal" && negotiationForm.quoteSourceType !== "website_catalog" ? (
+                                <Field label={negotiationForm.quoteSourceType === "in_person" ? "Contato/atendente" : "Nome do contato"}>
+                                  <TextInput value={negotiationForm.sourceContactName} onChange={(event) => updateNegotiationField("sourceContactName", event.target.value)} />
+                                </Field>
+                              ) : null}
+                              {(negotiationForm.quoteSourceType === "phone_call" || negotiationForm.quoteSourceType === "other") ? (
+                                <Field label="Canal de contato">
+                                  <select
+                                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                    value={negotiationForm.sourceContactChannel}
+                                    onChange={(event) => updateNegotiationField("sourceContactChannel", event.target.value as PurchaseQuoteSourceContactChannel | "")}
+                                  >
+                                  <option value="">Não informado</option>
+                                  {sourceContactChannelOptions.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                  </select>
+                                </Field>
+                              ) : null}
+                              {negotiationForm.quoteSourceType !== "phone_call" && negotiationForm.quoteSourceType !== "in_person" ? (
+                                <Field label={negotiationForm.quoteSourceType === "whatsapp" ? "Telefone/WhatsApp ou referência" : "Referência externa"}>
+                                  <TextInput value={negotiationForm.sourceReference} onChange={(event) => updateNegotiationField("sourceReference", event.target.value)} placeholder="Ex.: e-mail, protocolo, mensagem" />
+                                </Field>
+                              ) : null}
+                              {negotiationForm.quoteSourceType === "website_catalog" ? (
+                                <Field label="URL da origem" className="xl:col-span-2">
+                                  <TextInput value={negotiationForm.sourceUrl} onChange={(event) => updateNegotiationField("sourceUrl", event.target.value)} placeholder="https://..." />
+                                </Field>
+                              ) : null}
+                              {negotiationForm.quoteSourceType === "emergency" || negotiationForm.regularizationRequired ? (
+                                <Field label="Prazo de regularização">
+                                  <TextInput type="date" value={negotiationForm.regularizationDeadline} onChange={(event) => updateNegotiationField("regularizationDeadline", event.target.value)} />
+                                </Field>
+                              ) : null}
+                              <Field label="Observações da origem" className="xl:col-span-3">
+                                <TextArea rows={3} value={negotiationForm.sourceNotes} onChange={(event) => updateNegotiationField("sourceNotes", event.target.value)} />
+                              </Field>
+                              {(negotiationForm.evidenceType === "none" || negotiationEvidenceClassification.requiresJustification) ? (
+                                <Field label="Motivo da ausência de evidência" className="xl:col-span-3">
+                                  <TextArea rows={3} value={negotiationForm.evidenceMissingReason} onChange={(event) => updateNegotiationField("evidenceMissingReason", event.target.value)} />
+                                </Field>
+                              ) : null}
+                              {(negotiationForm.isEmergencyQuote || negotiationForm.quoteSourceType === "emergency") ? (
+                                <Field label="Motivo da emergência" className="xl:col-span-3">
+                                  <TextArea rows={3} value={negotiationForm.emergencyReason} onChange={(event) => updateNegotiationField("emergencyReason", event.target.value)} />
+                                </Field>
+                              ) : null}
+                            </div>
+
+                            <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                              <Field label="Cotação verbal?" className="flex items-center gap-2">
+                                <input type="checkbox" className="h-4 w-4 rounded border-input" checked={negotiationForm.isVerbalQuote} onChange={(event) => updateNegotiationField("isVerbalQuote", event.target.checked)} />
+                                <span className="text-muted-foreground">Sem proposta formal escrita</span>
+                              </Field>
+                              <Field label="Cotação emergencial?" className="flex items-center gap-2">
+                                <input type="checkbox" className="h-4 w-4 rounded border-input" checked={negotiationForm.isEmergencyQuote} onChange={(event) => updateNegotiationField("isEmergencyQuote", event.target.checked)} />
+                                <span className="text-muted-foreground">Compra sensível ao tempo</span>
+                              </Field>
+                              <Field label="Exige regularização?" className="flex items-center gap-2">
+                                <input type="checkbox" className="h-4 w-4 rounded border-input" checked={negotiationForm.regularizationRequired} onChange={(event) => updateNegotiationField("regularizationRequired", event.target.checked)} />
+                                <span className="text-muted-foreground">Documentar depois</span>
+                              </Field>
+                            </div>
+                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                              {getEvidenceUploadHint(negotiationForm.quoteSourceType)}
+                            </div>
+                            <div className="space-y-3 rounded-md border bg-background p-3">
+                              <div className="space-y-1">
+                                <h5 className="text-sm font-semibold">Evidências da cotação</h5>
+                                <p className="text-xs text-muted-foreground">Os arquivos serão enviados e vinculados à nova proposta após salvar.</p>
+                              </div>
+                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <Field label="Descrição opcional">
+                                  <TextInput
+                                    value={pendingNegotiationAttachmentDescription}
+                                    onChange={(event) => setPendingNegotiationAttachmentDescription(event.target.value)}
+                                    placeholder="Ex.: Print da conversa, proposta comercial"
+                                  />
+                                </Field>
+                                <Field label="Arquivos de evidência">
+                                  <Input
+                                    type="file"
+                                    multiple
+                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                    onChange={(event) => {
+                                      setError("");
+                                      setAttachmentMessage("");
+                                      setPendingNegotiationAttachmentFiles(Array.from(event.target.files ?? []));
+                                    }}
+                                  />
+                                </Field>
+                              </div>
+                              {pendingNegotiationAttachmentFiles.length ? (
+                                <div className="rounded-md border bg-muted/20 p-3">
+                                  <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
+                                  <ul className="mt-2 space-y-1 text-sm">
+                                    {pendingNegotiationAttachmentFiles.map((file, index) => (
+                                      <li key={`${file.name}-${file.size}-${index}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                                        <Paperclip className="h-4 w-4" />
+                                        <span className="font-medium text-foreground">{file.name}</span>
+                                        <span>{formatFileSize(file.size)}</span>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setPendingNegotiationAttachmentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                                        >
+                                          Remover
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {negotiationEvidenceClassification.requiresAttachment ? (
+                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                  Arquivo obrigatório para esta classificação. Se não houver documento, registre uma justificativa consistente.
+                                </div>
+                              ) : null}
+                            </div>
+                          </section>
+
                           <ErrorMessage message={error} />
                         </div>
                       </div>
 
                       <div className="flex flex-col gap-3 border-t bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs text-muted-foreground">A nova proposta não será vencedora automaticamente.</p>
+                        <p className="text-xs text-muted-foreground">A nova proposta será salva como nova rodada e não altera a cotação anterior.</p>
                         <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button type="button" variant="ghost" onClick={closeNegotiationForm} disabled={negotiationMutation.isPending}>
+                            Cancelar
+                          </Button>
                           <Button type="button" disabled={negotiationMutation.isPending} onClick={() => negotiationMutation.mutate()}>
                             <RotateCcw className="h-4 w-4" />
                             Salvar nova proposta
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={closeNegotiationForm} disabled={negotiationMutation.isPending}>
-                            Cancelar
                           </Button>
                         </div>
                       </div>
@@ -2413,6 +2926,180 @@ export function PurchaseQuotesClient() {
                           <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div className="space-y-1">
+                                <h4 className="text-sm font-semibold">Origem e Evidência da Cotação</h4>
+                                <p className="text-xs text-muted-foreground">Informe os fatos da origem; a classificação documental é calculada pelo sistema.</p>
+                              </div>
+                              <StatusBadge status={quoteEvidenceClassification.severity} label={quoteEvidenceClassification.label} />
+                            </div>
+                            <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                              <div>
+                                <span className="font-medium text-foreground">Classificação documental: {quoteEvidenceClassification.label}</span>
+                                <p className="mt-1 text-xs text-muted-foreground">Motivo: {quoteEvidenceClassification.reason}</p>
+                              </div>
+                              {quoteEvidenceClassification.alerts.length ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {quoteEvidenceClassification.alerts.map((alert) => (
+                                    <StatusBadge key={alert} status={quoteEvidenceClassification.severity === "danger" ? "danger" : "warning"} label={alert} />
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="grid min-w-0 gap-4 xl:grid-cols-3">
+                              <Field label="Origem da cotação">
+                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...quoteForm.register("quoteSourceType")}>
+                                  {quoteSourceTypeOptions.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                </select>
+                                <FieldError message={quoteForm.formState.errors.quoteSourceType?.message} />
+                              </Field>
+                              <Field label="Tipo de evidência">
+                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...quoteForm.register("evidenceType")}>
+                                  {evidenceTypeOptions.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                  ))}
+                                </select>
+                                <FieldError message={quoteForm.formState.errors.evidenceType?.message} />
+                              </Field>
+                              {quoteSourceType !== "formal_proposal" && quoteSourceType !== "website_catalog" ? (
+                                <Field label={quoteSourceType === "in_person" ? "Contato/atendente" : "Nome do contato"}>
+                                  <TextInput {...quoteForm.register("sourceContactName")} />
+                                  <FieldError message={quoteForm.formState.errors.sourceContactName?.message} />
+                                </Field>
+                              ) : null}
+                              {(quoteSourceType === "phone_call" || quoteSourceType === "other") ? (
+                                <Field label="Canal de contato">
+                                  <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...quoteForm.register("sourceContactChannel")}>
+                                    <option value="">Não informado</option>
+                                    {sourceContactChannelOptions.map(([value, label]) => (
+                                      <option key={value} value={value}>{label}</option>
+                                    ))}
+                                  </select>
+                                  <FieldError message={quoteForm.formState.errors.sourceContactChannel?.message} />
+                                </Field>
+                              ) : null}
+                              {quoteSourceType !== "phone_call" && quoteSourceType !== "in_person" ? (
+                                <Field label={quoteSourceType === "whatsapp" ? "Telefone/WhatsApp ou referência" : "Referência externa"}>
+                                  <TextInput placeholder="Ex.: e-mail, protocolo, mensagem" {...quoteForm.register("sourceReference")} />
+                                </Field>
+                              ) : null}
+                              {quoteSourceType === "website_catalog" ? (
+                                <Field label="URL da origem" className="xl:col-span-2">
+                                  <TextInput placeholder="https://..." {...quoteForm.register("sourceUrl")} />
+                                  <FieldError message={quoteForm.formState.errors.sourceUrl?.message} />
+                                </Field>
+                              ) : null}
+                              {(quoteSourceType === "emergency" || regularizationRequired) ? (
+                                <Field label="Prazo de regularização">
+                                  <TextInput type="date" {...quoteForm.register("regularizationDeadline")} />
+                                </Field>
+                              ) : null}
+                              <Field label="Observações da origem" className="xl:col-span-3">
+                                <TextArea rows={3} {...quoteForm.register("sourceNotes")} />
+                                <FieldError message={quoteForm.formState.errors.sourceNotes?.message} />
+                              </Field>
+                              {(evidenceType === "none" || quoteEvidenceClassification.requiresJustification) ? (
+                                <Field label="Justificativa da evidência frágil ou ausente" className="xl:col-span-3">
+                                  <TextArea rows={3} {...quoteForm.register("evidenceMissingReason")} />
+                                  <FieldError message={quoteForm.formState.errors.evidenceMissingReason?.message} />
+                                </Field>
+                              ) : null}
+                              {(isEmergencyQuote || quoteSourceType === "emergency") ? (
+                                <Field label="Motivo da emergência" className="xl:col-span-3">
+                                  <TextArea rows={3} {...quoteForm.register("emergencyReason")} />
+                                  <FieldError message={quoteForm.formState.errors.emergencyReason?.message} />
+                                </Field>
+                              ) : null}
+                            </div>
+
+                            <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+                              <Field label="Cotação verbal?" className="flex items-center gap-2">
+                                <input type="checkbox" className="h-4 w-4 rounded border-input" {...quoteForm.register("isVerbalQuote")} />
+                                <span className="text-muted-foreground">Sem proposta formal escrita</span>
+                              </Field>
+                              <Field label="Cotação emergencial?" className="flex items-center gap-2">
+                                <input type="checkbox" className="h-4 w-4 rounded border-input" {...quoteForm.register("isEmergencyQuote")} />
+                                <span className="text-muted-foreground">Compra sensível ao tempo</span>
+                              </Field>
+                              <Field label="Exige regularização?" className="flex items-center gap-2">
+                                <input type="checkbox" className="h-4 w-4 rounded border-input" {...quoteForm.register("regularizationRequired")} />
+                                <span className="text-muted-foreground">Documentar depois</span>
+                              </Field>
+                            </div>
+                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                              {getEvidenceUploadHint(quoteSourceType)}
+                            </div>
+                            <div className="space-y-3 rounded-md border bg-background p-3">
+                              <div className="space-y-1">
+                                <h5 className="text-sm font-semibold">Evidências da cotação</h5>
+                                <p className="text-xs text-muted-foreground">
+                                  {editingQuoteId ? "Arquivos selecionados serão enviados ao salvar a edição." : "Os arquivos serão enviados após salvar a cotação."}
+                                </p>
+                              </div>
+
+                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <Field label="Descrição opcional">
+                                  <TextInput
+                                    value={pendingQuoteAttachmentDescription}
+                                    onChange={(event) => setPendingQuoteAttachmentDescription(event.target.value)}
+                                    placeholder="Ex.: Proposta comercial, print da conversa"
+                                  />
+                                </Field>
+                                <Field label="Arquivos de evidência">
+                                  <Input
+                                    type="file"
+                                    multiple
+                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                    onChange={(event) => {
+                                      setError("");
+                                      setAttachmentMessage("");
+                                      setPendingQuoteAttachmentFiles(Array.from(event.target.files ?? []));
+                                    }}
+                                  />
+                                </Field>
+                              </div>
+
+                              {pendingQuoteAttachmentFiles.length ? (
+                                <div className="rounded-md border bg-muted/20 p-3">
+                                  <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
+                                  <ul className="mt-2 space-y-1 text-sm">
+                                    {pendingQuoteAttachmentFiles.map((file, index) => (
+                                      <li key={`${file.name}-${file.size}-${index}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                                        <Paperclip className="h-4 w-4" />
+                                        <span className="font-medium text-foreground">{file.name}</span>
+                                        <span>{formatFileSize(file.size)}</span>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setPendingQuoteAttachmentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                                        >
+                                          Remover
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+
+                              {editingQuoteId && (attachmentsByQuoteId[editingQuoteId] ?? []).length ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Anexos já vinculados: {(attachmentsByQuoteId[editingQuoteId] ?? []).length}
+                                </p>
+                              ) : null}
+
+                              {quoteEvidenceClassification.requiresAttachment ? (
+                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                  Arquivo obrigatório para este tipo de evidência. Se não houver documento, registre uma justificativa antes de enviar para aprovação.
+                                </div>
+                              ) : null}
+                            </div>
+                          </section>
+
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-1">
                                 <h4 className="text-sm font-semibold">Itens cotados</h4>
                                 <p className="text-xs text-muted-foreground">Cada item recebe o valor unitário proposto pelo fornecedor.</p>
                               </div>
@@ -2523,52 +3210,6 @@ export function PurchaseQuotesClient() {
                               })}
                             </div>
                           </section>
-
-                          {!editingQuoteId ? (
-                            <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
-                              <div className="space-y-1">
-                                <h4 className="text-sm font-semibold">Anexos da proposta</h4>
-                                <p className="text-xs text-muted-foreground">Os arquivos serão enviados após salvar a cotação.</p>
-                              </div>
-
-                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                                <Field label="Descrição opcional">
-                                  <TextInput
-                                    value={pendingQuoteAttachmentDescription}
-                                    onChange={(event) => setPendingQuoteAttachmentDescription(event.target.value)}
-                                    placeholder="Ex.: Proposta comercial"
-                                  />
-                                </Field>
-                                <Field label="Arquivos">
-                                  <Input
-                                    type="file"
-                                    multiple
-                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                                    onChange={(event) => {
-                                      setError("");
-                                      setAttachmentMessage("");
-                                      setPendingQuoteAttachmentFiles(Array.from(event.target.files ?? []));
-                                    }}
-                                  />
-                                </Field>
-                              </div>
-
-                              {pendingQuoteAttachmentFiles.length ? (
-                                <div className="rounded-md border bg-background p-3">
-                                  <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
-                                  <ul className="mt-2 space-y-1 text-sm">
-                                    {pendingQuoteAttachmentFiles.map((file) => (
-                                      <li key={`${file.name}-${file.size}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                                        <Paperclip className="h-4 w-4" />
-                                        <span className="font-medium text-foreground">{file.name}</span>
-                                        <span>{formatFileSize(file.size)}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-                            </section>
-                          ) : null}
 
                           <ErrorMessage message={error} />
                         </form>

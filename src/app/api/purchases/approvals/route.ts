@@ -93,6 +93,37 @@ type SnapshotQuote = {
   statusLabel?: string | null;
   createdAt?: string | null;
   attachments?: SnapshotAttachment[];
+  evidence?: SnapshotQuoteEvidence | null;
+};
+
+type SnapshotQuoteEvidence = {
+  quoteSourceType?: string | null;
+  quoteSourceTypeLabel?: string | null;
+  evidenceType?: string | null;
+  evidenceTypeLabel?: string | null;
+  evidenceConfidence?: string | null;
+  evidenceConfidenceLabel?: string | null;
+  sourceContactName?: string | null;
+  sourceContactChannel?: string | null;
+  sourceContactChannelLabel?: string | null;
+  sourceReference?: string | null;
+  sourceUrl?: string | null;
+  sourceNotes?: string | null;
+  evidenceMissingReason?: string | null;
+  requiresAttachment?: boolean | null;
+  requiresJustification?: boolean | null;
+  hasFormalEvidence?: boolean | null;
+  isVerbalQuote?: boolean | null;
+  isEmergencyQuote?: boolean | null;
+  emergencyReason?: string | null;
+  regularizationRequired?: boolean | null;
+  regularizationDeadline?: string | null;
+  documentaryClassification?: string | null;
+  documentaryClassificationLabel?: string | null;
+  documentaryClassificationSeverity?: string | null;
+  documentaryClassificationReason?: string | null;
+  requiresDirectorApproval?: boolean | null;
+  auditAlerts?: string[];
 };
 
 type SnapshotSupplier = {
@@ -312,6 +343,7 @@ async function mapSnapshotQuote(supabase: SupabaseAdmin, quote: SnapshotQuote | 
     paymentTerms: quote.paymentTerms ?? "",
     isSelected: Boolean(quote.isSelected),
     statusLabel: quote.statusLabel ?? quote.status ?? "",
+    evidence: quote.evidence ?? null,
     attachments
   };
 }

@@ -61,6 +61,23 @@ type QuoteRow = {
   is_recurring_supplier_quote: boolean;
   quote_validity_exception: boolean;
   quote_validity_exception_reason: string | null;
+  quote_source_type: string | null;
+  evidence_type: string | null;
+  evidence_confidence: string | null;
+  source_contact_name: string | null;
+  source_contact_channel: string | null;
+  source_reference: string | null;
+  source_url: string | null;
+  source_notes: string | null;
+  evidence_missing_reason: string | null;
+  requires_attachment: boolean;
+  requires_justification: boolean;
+  has_formal_evidence: boolean;
+  is_verbal_quote: boolean;
+  is_emergency_quote: boolean;
+  emergency_reason: string | null;
+  regularization_required: boolean;
+  regularization_deadline: string | null;
   notes: string | null;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   superseded_by_quote_id: string | null;
@@ -111,7 +128,7 @@ function mapQuoteItem(item: QuoteItemRow) {
   };
 }
 
-function mapQuote(row: QuoteRow, supplier?: SupplierRow, items: QuoteItemRow[] = []) {
+function mapQuote(row: QuoteRow, supplier?: SupplierRow, items: QuoteItemRow[] = [], lockedQuoteIds = new Set<string>()) {
   const total = toNumber(row.total_amount);
 
   return {
@@ -132,6 +149,23 @@ function mapQuote(row: QuoteRow, supplier?: SupplierRow, items: QuoteItemRow[] =
     isRecurringSupplierQuote: row.is_recurring_supplier_quote,
     quoteValidityException: row.quote_validity_exception,
     quoteValidityExceptionReason: row.quote_validity_exception_reason ?? "",
+    quoteSourceType: row.quote_source_type ?? "",
+    evidenceType: row.evidence_type ?? "",
+    evidenceConfidence: row.evidence_confidence ?? "",
+    sourceContactName: row.source_contact_name ?? "",
+    sourceContactChannel: row.source_contact_channel ?? "",
+    sourceReference: row.source_reference ?? "",
+    sourceUrl: row.source_url ?? "",
+    sourceNotes: row.source_notes ?? "",
+    evidenceMissingReason: row.evidence_missing_reason ?? "",
+    requiresAttachment: row.requires_attachment,
+    requiresJustification: row.requires_justification,
+    hasFormalEvidence: row.has_formal_evidence,
+    isVerbalQuote: row.is_verbal_quote,
+    isEmergencyQuote: row.is_emergency_quote,
+    emergencyReason: row.emergency_reason ?? "",
+    regularizationRequired: row.regularization_required,
+    regularizationDeadline: row.regularization_deadline ?? "",
     notes: row.notes ?? "",
     status: row.status,
     statusLabel: getPurchaseQuoteStatusLabel(row.status),
@@ -139,6 +173,7 @@ function mapQuote(row: QuoteRow, supplier?: SupplierRow, items: QuoteItemRow[] =
     supersededByQuoteId: row.superseded_by_quote_id ?? "",
     supersededAt: row.superseded_at ?? "",
     isSuperseded: Boolean(row.superseded_by_quote_id || row.superseded_at),
+    isLockedByFormalDossier: lockedQuoteIds.has(row.id),
     isExpired: row.valid_until < new Date().toISOString().slice(0, 10),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -256,7 +291,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 
   const { data: quoteRows, error: quotesError } = await supabase
     .from("purchase_quotes")
-    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, superseded_by_quote_id, superseded_at, created_at, updated_at")
+    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, quote_source_type, evidence_type, evidence_confidence, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, requires_attachment, requires_justification, has_formal_evidence, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline, notes, status, superseded_by_quote_id, superseded_at, created_at, updated_at")
     .eq("purchase_request_id", requestId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
@@ -295,6 +330,35 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
   }
 
   const accessibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
+  const { data: snapshots, error: snapshotsError } = await supabase
+    .from("purchase_approval_snapshots")
+    .select("selected_quote_id, snapshot_payload")
+    .eq("purchase_request_id", requestId)
+    .is("deleted_at", null);
+
+  if (snapshotsError) {
+    logBaseCadastroError("purchase_quotes.snapshot_lock_list_failed", snapshotsError);
+    throw new Error("Não foi possível validar o vínculo das cotações com dossiês formais.");
+  }
+
+  const lockedQuoteIds = new Set<string>();
+  for (const snapshot of snapshots ?? []) {
+    if (snapshot.selected_quote_id) {
+      lockedQuoteIds.add(snapshot.selected_quote_id);
+    }
+
+    const payload = snapshot.snapshot_payload as { quotes?: Array<{ id?: string | null }>; selectedQuote?: { id?: string | null } | null } | null;
+    if (payload?.selectedQuote?.id) {
+      lockedQuoteIds.add(payload.selectedQuote.id);
+    }
+
+    for (const quote of payload?.quotes ?? []) {
+      if (quote.id) {
+        lockedQuoteIds.add(quote.id);
+      }
+    }
+  }
+
   const supplierMap = new Map(accessibleSuppliers.map((supplier) => [supplier.id, supplier]));
   const quoteItemsByQuoteId = new Map<string, QuoteItemRow[]>();
   for (const item of (quoteItems ?? []) as QuoteItemRow[]) {
@@ -331,7 +395,7 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
         notes: item.notes ?? ""
       }))
     },
-    quotes: (quoteRows ?? []).map((quote) => mapQuote(quote as QuoteRow, supplierMap.get(quote.supplier_id), quoteItemsByQuoteId.get(quote.id) ?? [])),
+    quotes: (quoteRows ?? []).map((quote) => mapQuote(quote as QuoteRow, supplierMap.get(quote.supplier_id), quoteItemsByQuoteId.get(quote.id) ?? [], lockedQuoteIds)),
     suppliers: accessibleSuppliers.map(mapSupplier)
   };
 }

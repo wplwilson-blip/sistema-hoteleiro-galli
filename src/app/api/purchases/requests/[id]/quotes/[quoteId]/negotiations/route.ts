@@ -3,7 +3,11 @@ import { z } from "zod";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildNextPurchaseQuoteNumber, roundMoney, sumPurchaseQuoteItems } from "@/lib/purchases/api";
-import { purchaseQuoteNegotiationCreateSchema } from "@/lib/purchases/quote-schemas";
+import {
+  classifyPurchaseQuoteEvidence,
+  getPurchaseQuoteEvidenceConfidenceFromClassification,
+  purchaseQuoteNegotiationCreateSchema
+} from "@/lib/purchases/quote-schemas";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -63,6 +67,23 @@ type PurchaseQuoteRow = {
   delivery_days: number | null;
   payment_terms: string | null;
   is_selected: boolean;
+  quote_source_type: string | null;
+  evidence_type: string | null;
+  evidence_confidence: string | null;
+  source_contact_name: string | null;
+  source_contact_channel: string | null;
+  source_reference: string | null;
+  source_url: string | null;
+  source_notes: string | null;
+  evidence_missing_reason: string | null;
+  requires_attachment: boolean;
+  requires_justification: boolean;
+  has_formal_evidence: boolean;
+  is_verbal_quote: boolean;
+  is_emergency_quote: boolean;
+  emergency_reason: string | null;
+  regularization_required: boolean;
+  regularization_deadline: string | null;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   original_quote_id: string | null;
   parent_quote_id: string | null;
@@ -93,6 +114,48 @@ function toNumber(value: string | number | null | undefined) {
 
 function roundPercent(value: number) {
   return Math.round((value + Number.EPSILON) * 10000) / 10000;
+}
+
+const quoteEvidenceSelectColumns =
+  "quote_source_type, evidence_type, evidence_confidence, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, requires_attachment, requires_justification, has_formal_evidence, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline";
+
+function mapNegotiationEvidenceInsert(payload: NegotiationPayload) {
+  const classification = classifyPurchaseQuoteEvidence({
+    quoteSourceType: payload.quoteSourceType,
+    evidenceType: payload.evidenceType,
+    sourceContactName: payload.sourceContactName,
+    sourceContactChannel: payload.sourceContactChannel,
+    sourceReference: payload.sourceReference,
+    sourceUrl: payload.sourceUrl,
+    sourceNotes: payload.sourceNotes,
+    evidenceMissingReason: payload.evidenceMissingReason,
+    isVerbalQuote: payload.isVerbalQuote,
+    isEmergencyQuote: payload.isEmergencyQuote,
+    emergencyReason: payload.emergencyReason,
+    regularizationRequired: payload.regularizationRequired,
+    regularizationDeadline: payload.regularizationDeadline,
+    hasAttachment: false
+  });
+
+  return {
+    quote_source_type: payload.quoteSourceType ?? null,
+    evidence_type: payload.evidenceType ?? null,
+    evidence_confidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
+    source_contact_name: payload.sourceContactName?.trim() || null,
+    source_contact_channel: payload.sourceContactChannel ?? null,
+    source_reference: payload.sourceReference?.trim() || null,
+    source_url: payload.sourceUrl?.trim() || null,
+    source_notes: payload.sourceNotes?.trim() || null,
+    evidence_missing_reason: payload.evidenceMissingReason?.trim() || null,
+    requires_attachment: classification.requiresAttachment,
+    requires_justification: classification.requiresJustification,
+    has_formal_evidence: classification.hasFormalEvidence,
+    is_verbal_quote: payload.isVerbalQuote ?? (payload.quoteSourceType === "phone_call" || payload.quoteSourceType === "in_person"),
+    is_emergency_quote: payload.isEmergencyQuote ?? payload.quoteSourceType === "emergency",
+    emergency_reason: payload.emergencyReason?.trim() || null,
+    regularization_required: payload.regularizationRequired ?? false,
+    regularization_deadline: payload.regularizationDeadline ?? null
+  };
 }
 
 function getNegotiationBlockMessage(requestRow: PurchaseRequestRow) {
@@ -161,7 +224,7 @@ async function fetchPreviousQuote(supabase: SupabaseAdmin, requestId: string, qu
   const { data, error } = await supabase
     .from("purchase_quotes")
     .select(
-      "id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, deleted_at"
+      `id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, ${quoteEvidenceSelectColumns}, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, deleted_at`
     )
     .eq("id", quoteId)
     .eq("purchase_request_id", requestId)
@@ -424,6 +487,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
           is_recurring_supplier_quote: false,
           quote_validity_exception: false,
           quote_validity_exception_reason: null,
+          ...mapNegotiationEvidenceInsert(payload),
           notes: payload.negotiationNotes ?? null,
           status: "received",
           original_quote_id: originalQuoteId,
@@ -432,7 +496,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
           created_by: session.user.id,
           updated_by: session.user.id
         })
-        .select("id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, deleted_at")
+        .select(`id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, ${quoteEvidenceSelectColumns}, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, deleted_at`)
         .single();
 
       if (!quoteError) {
@@ -578,7 +642,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
     const { data: quote } = await supabase
       .from("purchase_quotes")
-      .select("id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, created_at, updated_at")
+      .select(`id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, ${quoteEvidenceSelectColumns}, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, created_at, updated_at`)
       .eq("id", createdQuoteId)
       .single();
 

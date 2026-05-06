@@ -8,7 +8,11 @@ import {
   roundMoney,
   sumPurchaseQuoteItems
 } from "@/lib/purchases/api";
-import { purchaseQuotePostSchema } from "@/lib/purchases/quote-schemas";
+import {
+  classifyPurchaseQuoteEvidence,
+  getPurchaseQuoteEvidenceConfidenceFromClassification,
+  purchaseQuotePostSchema
+} from "@/lib/purchases/quote-schemas";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -60,6 +64,23 @@ type PurchaseQuoteRow = {
   is_recurring_supplier_quote: boolean;
   quote_validity_exception: boolean;
   quote_validity_exception_reason: string | null;
+  quote_source_type: string | null;
+  evidence_type: string | null;
+  evidence_confidence: string | null;
+  source_contact_name: string | null;
+  source_contact_channel: string | null;
+  source_reference: string | null;
+  source_url: string | null;
+  source_notes: string | null;
+  evidence_missing_reason: string | null;
+  requires_attachment: boolean;
+  requires_justification: boolean;
+  has_formal_evidence: boolean;
+  is_verbal_quote: boolean;
+  is_emergency_quote: boolean;
+  emergency_reason: string | null;
+  regularization_required: boolean;
+  regularization_deadline: string | null;
   notes: string | null;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   created_at: string;
@@ -113,7 +134,7 @@ async function fetchRequestItems(supabase: SupabaseAdmin, requestId: string) {
 async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
   const { data, error } = await supabase
     .from("purchase_quotes")
-    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, created_at, updated_at")
+    .select("id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, quote_source_type, evidence_type, evidence_confidence, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, requires_attachment, requires_justification, has_formal_evidence, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline, notes, status, created_at, updated_at")
     .eq("purchase_request_id", requestId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
@@ -186,6 +207,45 @@ async function insertPurchaseRequestEvent(
 
 function buildQuoteNumber(requestNumber: string, existingQuotes: PurchaseQuoteRow[]) {
   return buildNextPurchaseQuoteNumber(requestNumber, existingQuotes.map((quote) => quote.quote_number));
+}
+
+function buildQuoteEvidenceFields(payload: Extract<z.infer<typeof purchaseQuotePostSchema>, { action: "save" }>) {
+  const classification = classifyPurchaseQuoteEvidence({
+    quoteSourceType: payload.quoteSourceType,
+    evidenceType: payload.evidenceType,
+    sourceContactName: payload.sourceContactName,
+    sourceContactChannel: payload.sourceContactChannel,
+    sourceReference: payload.sourceReference,
+    sourceUrl: payload.sourceUrl,
+    sourceNotes: payload.sourceNotes,
+    evidenceMissingReason: payload.evidenceMissingReason,
+    isVerbalQuote: payload.isVerbalQuote,
+    isEmergencyQuote: payload.isEmergencyQuote,
+    emergencyReason: payload.emergencyReason,
+    regularizationRequired: payload.regularizationRequired,
+    regularizationDeadline: payload.regularizationDeadline,
+    hasAttachment: false
+  });
+
+  return {
+    quote_source_type: payload.quoteSourceType ?? null,
+    evidence_type: payload.evidenceType ?? null,
+    evidence_confidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
+    source_contact_name: payload.sourceContactName?.trim() || null,
+    source_contact_channel: payload.sourceContactChannel ?? null,
+    source_reference: payload.sourceReference?.trim() || null,
+    source_url: payload.sourceUrl?.trim() || null,
+    source_notes: payload.sourceNotes?.trim() || null,
+    evidence_missing_reason: payload.evidenceMissingReason?.trim() || null,
+    requires_attachment: classification.requiresAttachment,
+    requires_justification: classification.requiresJustification,
+    has_formal_evidence: classification.hasFormalEvidence,
+    is_verbal_quote: payload.isVerbalQuote ?? (payload.quoteSourceType === "phone_call" || payload.quoteSourceType === "in_person"),
+    is_emergency_quote: payload.isEmergencyQuote ?? payload.quoteSourceType === "emergency",
+    emergency_reason: payload.emergencyReason?.trim() || null,
+    regularization_required: payload.regularizationRequired ?? false,
+    regularization_deadline: payload.regularizationDeadline ?? null
+  };
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -347,6 +407,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
           is_recurring_supplier_quote: payload.isRecurringSupplierQuote ?? false,
           quote_validity_exception: payload.quoteValidityException ?? false,
           quote_validity_exception_reason: payload.quoteValidityExceptionReason?.trim() || null,
+          ...buildQuoteEvidenceFields(payload),
           notes: payload.notes ?? null,
           status: "received",
           created_by: session.user.id,

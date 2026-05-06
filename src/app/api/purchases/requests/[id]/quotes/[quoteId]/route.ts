@@ -9,7 +9,11 @@ import {
   roundMoney,
   sumPurchaseQuoteItems
 } from "@/lib/purchases/api";
-import { purchaseQuotePatchSchema } from "@/lib/purchases/quote-schemas";
+import {
+  classifyPurchaseQuoteEvidence,
+  getPurchaseQuoteEvidenceConfidenceFromClassification,
+  purchaseQuotePatchSchema
+} from "@/lib/purchases/quote-schemas";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -67,6 +71,23 @@ type PurchaseQuoteRow = {
   is_recurring_supplier_quote: boolean;
   quote_validity_exception: boolean;
   quote_validity_exception_reason: string | null;
+  quote_source_type: string | null;
+  evidence_type: string | null;
+  evidence_confidence: string | null;
+  source_contact_name: string | null;
+  source_contact_channel: string | null;
+  source_reference: string | null;
+  source_url: string | null;
+  source_notes: string | null;
+  evidence_missing_reason: string | null;
+  requires_attachment: boolean;
+  requires_justification: boolean;
+  has_formal_evidence: boolean;
+  is_verbal_quote: boolean;
+  is_emergency_quote: boolean;
+  emergency_reason: string | null;
+  regularization_required: boolean;
+  regularization_deadline: string | null;
   notes: string | null;
   status: "received" | "selected" | "rejected" | "expired" | "cancelled";
   created_at: string;
@@ -112,6 +133,74 @@ type SupplierRow = {
 
 function toNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
+}
+
+const purchaseQuoteSelectColumns =
+  "id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, quote_source_type, evidence_type, evidence_confidence, source_contact_name, source_contact_channel, source_reference, source_url, source_notes, evidence_missing_reason, requires_attachment, requires_justification, has_formal_evidence, is_verbal_quote, is_emergency_quote, emergency_reason, regularization_required, regularization_deadline, notes, status, created_at, updated_at, deleted_at";
+
+function mapQuoteEvidenceUpdate(payload: z.infer<typeof purchaseQuotePatchSchema>) {
+  if (payload.action !== "save") {
+    return {};
+  }
+
+  const classification = classifyPurchaseQuoteEvidence({
+    quoteSourceType: payload.quoteSourceType,
+    evidenceType: payload.evidenceType,
+    sourceContactName: payload.sourceContactName,
+    sourceContactChannel: payload.sourceContactChannel,
+    sourceReference: payload.sourceReference,
+    sourceUrl: payload.sourceUrl,
+    sourceNotes: payload.sourceNotes,
+    evidenceMissingReason: payload.evidenceMissingReason,
+    isVerbalQuote: payload.isVerbalQuote,
+    isEmergencyQuote: payload.isEmergencyQuote,
+    emergencyReason: payload.emergencyReason,
+    regularizationRequired: payload.regularizationRequired,
+    regularizationDeadline: payload.regularizationDeadline,
+    hasAttachment: false
+  });
+
+  return {
+    quote_source_type: payload.quoteSourceType ?? null,
+    evidence_type: payload.evidenceType ?? null,
+    evidence_confidence: getPurchaseQuoteEvidenceConfidenceFromClassification(classification.status),
+    source_contact_name: payload.sourceContactName?.trim() || null,
+    source_contact_channel: payload.sourceContactChannel ?? null,
+    source_reference: payload.sourceReference?.trim() || null,
+    source_url: payload.sourceUrl?.trim() || null,
+    source_notes: payload.sourceNotes?.trim() || null,
+    evidence_missing_reason: payload.evidenceMissingReason?.trim() || null,
+    requires_attachment: classification.requiresAttachment,
+    requires_justification: classification.requiresJustification,
+    has_formal_evidence: classification.hasFormalEvidence,
+    is_verbal_quote: payload.isVerbalQuote ?? (payload.quoteSourceType === "phone_call" || payload.quoteSourceType === "in_person"),
+    is_emergency_quote: payload.isEmergencyQuote ?? payload.quoteSourceType === "emergency",
+    emergency_reason: payload.emergencyReason?.trim() || null,
+    regularization_required: payload.regularizationRequired ?? false,
+    regularization_deadline: payload.regularizationDeadline ?? null
+  };
+}
+
+function mapQuoteEvidenceRollback(quoteRow: PurchaseQuoteRow) {
+  return {
+    quote_source_type: quoteRow.quote_source_type,
+    evidence_type: quoteRow.evidence_type,
+    evidence_confidence: quoteRow.evidence_confidence,
+    source_contact_name: quoteRow.source_contact_name,
+    source_contact_channel: quoteRow.source_contact_channel,
+    source_reference: quoteRow.source_reference,
+    source_url: quoteRow.source_url,
+    source_notes: quoteRow.source_notes,
+    evidence_missing_reason: quoteRow.evidence_missing_reason,
+    requires_attachment: quoteRow.requires_attachment,
+    requires_justification: quoteRow.requires_justification,
+    has_formal_evidence: quoteRow.has_formal_evidence,
+    is_verbal_quote: quoteRow.is_verbal_quote,
+    is_emergency_quote: quoteRow.is_emergency_quote,
+    emergency_reason: quoteRow.emergency_reason,
+    regularization_required: quoteRow.regularization_required,
+    regularization_deadline: quoteRow.regularization_deadline
+  };
 }
 
 function isReturnedToPurchases(requestRow: PurchaseRequestRow) {
@@ -186,7 +275,7 @@ async function fetchQuoteById(supabase: SupabaseAdmin, requestId: string, quoteI
   const { data, error } = await supabase
     .from("purchase_quotes")
     .select(
-      "id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, created_at, updated_at, deleted_at"
+      purchaseQuoteSelectColumns
     )
     .eq("id", quoteId)
     .eq("purchase_request_id", requestId)
@@ -225,7 +314,7 @@ async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
   const { data, error } = await supabase
     .from("purchase_quotes")
     .select(
-      "id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, is_recurring_supplier_quote, quote_validity_exception, quote_validity_exception_reason, notes, status, created_at, updated_at, deleted_at"
+      purchaseQuoteSelectColumns
     )
     .eq("purchase_request_id", requestId)
     .is("deleted_at", null)
@@ -237,6 +326,43 @@ async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
   }
 
   return (data ?? []) as PurchaseQuoteRow[];
+}
+
+function snapshotPayloadContainsQuote(snapshotPayload: unknown, quoteId: string) {
+  if (!snapshotPayload || typeof snapshotPayload !== "object") {
+    return false;
+  }
+
+  const payload = snapshotPayload as {
+    selectedQuote?: { id?: string | null } | null;
+    recommendedQuote?: { id?: string | null } | null;
+    quotes?: Array<{ id?: string | null }>;
+  };
+
+  return (
+    payload.selectedQuote?.id === quoteId ||
+    payload.recommendedQuote?.id === quoteId ||
+    Boolean(payload.quotes?.some((quote) => quote.id === quoteId))
+  );
+}
+
+async function assertQuoteIsNotInFormalDossier(supabase: SupabaseAdmin, requestId: string, quoteId: string) {
+  const { data, error } = await supabase
+    .from("purchase_approval_snapshots")
+    .select("id, selected_quote_id, snapshot_payload")
+    .eq("purchase_request_id", requestId)
+    .is("deleted_at", null);
+
+  if (error) {
+    logBaseCadastroError("purchase_quotes.snapshot_lock_lookup_failed", error);
+    throw new Error("Não foi possível validar se a cotação já integra dossiê formal.");
+  }
+
+  const isLocked = (data ?? []).some((snapshot) => snapshot.selected_quote_id === quoteId || snapshotPayloadContainsQuote(snapshot.snapshot_payload, quoteId));
+
+  if (isLocked) {
+    throw new Error("Esta cotação já faz parte de um dossiê formal de aprovação. Para preservar a auditoria, registre uma nova proposta.");
+  }
 }
 
 async function fetchSupplier(supabase: SupabaseAdmin, supplierId: string, organizationId: string, accessibleUnitIds: string[]) {
@@ -527,6 +653,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError("A cotação nao pode ser editada neste status.", 409);
     }
 
+    await assertQuoteIsNotInFormalDossier(supabase, requestRow.id, quoteRow.id);
+
     const requestItems = await fetchRequestItems(supabase, requestRow.id);
     const quoteItemsBefore = await fetchQuoteItems(supabase, quoteRow.id);
     const requestItemMap = new Map(requestItems.map((item) => [item.id, item]));
@@ -603,6 +731,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       is_recurring_supplier_quote: parsed.isRecurringSupplierQuote ?? false,
       quote_validity_exception: parsed.quoteValidityException ?? false,
       quote_validity_exception_reason: parsed.quoteValidityExceptionReason?.trim() || null,
+      ...mapQuoteEvidenceUpdate(parsed),
       notes: parsed.notes ?? null,
       status: quoteRow.is_selected ? "selected" : "received",
       updated_by: session.user.id
@@ -631,6 +760,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         is_recurring_supplier_quote: quoteRow.is_recurring_supplier_quote,
         quote_validity_exception: quoteRow.quote_validity_exception,
         quote_validity_exception_reason: quoteRow.quote_validity_exception_reason,
+        ...mapQuoteEvidenceRollback(quoteRow),
         notes: quoteRow.notes,
         status: quoteRow.status,
         updated_by: session.user.id
@@ -668,6 +798,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         is_recurring_supplier_quote: quoteRow.is_recurring_supplier_quote,
         quote_validity_exception: quoteRow.quote_validity_exception,
         quote_validity_exception_reason: quoteRow.quote_validity_exception_reason,
+        ...mapQuoteEvidenceRollback(quoteRow),
         notes: quoteRow.notes,
         status: quoteRow.status,
         updated_by: session.user.id
@@ -710,6 +841,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           is_recurring_supplier_quote: quoteRow.is_recurring_supplier_quote,
           quote_validity_exception: quoteRow.quote_validity_exception,
           quote_validity_exception_reason: quoteRow.quote_validity_exception_reason,
+          ...mapQuoteEvidenceRollback(quoteRow),
           notes: quoteRow.notes,
           status: quoteRow.status,
           updated_by: session.user.id
