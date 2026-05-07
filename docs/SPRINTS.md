@@ -243,3 +243,11 @@
 - Regras: classificação documental recalculada com `classifyPurchaseQuoteEvidence` e anexos ativos reais; `has_formal_evidence` não é usado como verdade isolada.
 - Escopo: sem alteração de aprovação, snapshot, upload de anexos, `is_selected`, banco ou Storage.
 - Migrations: não aplicável.
+## DASH-COTACOES-2 - Refinamento Gerencial do Dashboard de Pendências Documentais
+
+- Status: concluída.
+- Objetivo: evoluir o dashboard vivo de pendências documentais com leitura gerencial, sem transformar em relatório histórico de dossiê.
+- Entregas: filtros server-side por criação, validade e regularização; códigos internos de pendência; dias até vencimento/regularização; visão por unidade; ranking de tipos de pendência; ranking documental de fornecedores; filtro rápido de evidência crítica; exportação CSV frontend do conjunto filtrado e legenda de severidade.
+- Regras: classificação documental continua recalculada com `classifyPurchaseQuoteEvidence` e anexos ativos reais; `has_formal_evidence` não é usado como verdade isolada.
+- Escopo: sem alteração de aprovação, snapshot, upload de anexos, `is_selected`, banco, Storage, PDF ou leitura histórica completa de `purchase_approval_snapshots`.
+- Migrations: não aplicável.

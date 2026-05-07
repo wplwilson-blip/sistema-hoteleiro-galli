@@ -27,11 +27,11 @@
 
 ## Prioridade Média / Evidência e Auditoria
 
-- Refinar o dashboard de pendências documentais:
-  - exportação CSV/PDF;
-  - gráficos por unidade;
-  - filtros por período;
-  - leitura específica de snapshots antigos quando necessário.
+- Evoluir o dashboard de pendências documentais para frentes que ficaram fora da V2:
+  - exportação PDF;
+  - leitura específica de snapshots antigos quando necessário;
+  - paginação server-side e índices, se o volume justificar;
+  - relatório auditável separado do dashboard vivo operacional.
 - Política de regularização posterior para cotações emergenciais ou frágeis.
 - Indicadores de origem/evidência por unidade.
 - Relatórios de cotações verbais e emergenciais.
