@@ -5,8 +5,8 @@
 1. Sprint DOC-1 - Documentação operacional do projeto.
 2. Política de Diretoria Geral corporativa, se o Hotel Galli quiser diferenciar de Diretor de Unidade.
 3. Evoluir modelo de vencedora atual sem mutar cotação congelada em dossiê.
-4. Sprint UI-2 - Redesign profundo de `/compras/cotacoes`.
-5. Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`.
+4. Sprint UI-COMPRAS-3 - Redesign profundo de `/compras/cotacoes`.
+5. Sprint UI-COMPRAS-4 - Evolução do dossiê formal de `/compras/aprovacoes`.
 6. Auditoria/exportação do dossiê formal.
 7. Sprint 5B.2 - Decisão inicial da solicitação.
 8. Grupos/perfis de aprovação.
@@ -42,14 +42,14 @@
 - Fornecedor recorrente usado como justificativa fraca.
 - Cotação verbal sem documento posterior.
 
-## Sprint UI-2 - Redesign de `/compras/cotacoes`
+## Sprint UI-COMPRAS-3 - Redesign de `/compras/cotacoes`
 
 - Objetivo: reduzir carga visual da tela de cotações.
 - Ideias: mestre-detalhe mais claro, accordions, resumo fixo da solicitação, melhor organização de comparativo e anexos.
 - Risco: médio, pois a tela concentra muita regra funcional.
 - Não mexer: regra de cotação recomendada, seleção de vencedora, anexos funcionais e aprovação.
 
-## Sprint UI-3 - Evolução do dossiê formal de `/compras/aprovacoes`
+## Sprint UI-COMPRAS-4 - Evolução do dossiê formal de `/compras/aprovacoes`
 
 - Objetivo: evoluir o dossiê formal já existente sem alterar regras de decisão.
 - Ideias: resumo de risco, barra de ações mais fixa, histórico em timeline, comparação vencedora x recomendada mais direta e consulta de snapshots finalizados.

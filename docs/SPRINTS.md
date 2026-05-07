@@ -251,3 +251,12 @@
 - Regras: classificação documental continua recalculada com `classifyPurchaseQuoteEvidence` e anexos ativos reais; `has_formal_evidence` não é usado como verdade isolada.
 - Escopo: sem alteração de aprovação, snapshot, upload de anexos, `is_selected`, banco, Storage, PDF ou leitura histórica completa de `purchase_approval_snapshots`.
 - Migrations: não aplicável.
+
+## UI-COMPRAS-2 - Polimento Visual e Linguagem Operacional do Módulo de Compras
+
+- Status: concluída.
+- Objetivo: reduzir ruídos de linguagem, navegação e microcopy do módulo de Compras antes de novas evoluções estruturais.
+- Entregas: correção de textos visíveis sem acento em Solicitações e Aprovações, ordem operacional do menu de Compras, card documental do dashboard apontando para Pendências Documentais, substituição de termos técnicos visíveis por "dossiê formal" e reforço de que a aprovação é administrativa e não financeira.
+- Evidência: Aprovações passou a destacar evidência documental crítica/frágil com microcopy de análise gerencial, sem alterar regra de decisão.
+- Escopo: sem alteração de APIs, aprovação backend, snapshot técnico, classificação documental, pendências, `is_selected`, banco, Auth/login, upload de anexos, Storage, financeiro completo ou PDF.
+- Migrations: não aplicável.

@@ -35,7 +35,8 @@ const cards = [
   },
   {
     title: "Evidências e documentos",
-    description: "Propostas, PDFs, imagens e documentos anexados às cotações ficam centralizados no fluxo.",
+    description: "Abrir a visão documental para acompanhar evidências, anexos e regularizações das cotações.",
+    href: "/compras/pendencias-documentais",
     icon: FileCheck2,
     status: "Disponível" as const
   }

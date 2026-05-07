@@ -67,8 +67,8 @@ const menuGroups: SidebarGroup[] = [
       { label: "Dashboard", href: "/compras", icon: LayoutDashboard, match: "exact" },
       { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList },
       { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck },
-      { label: "Pendências Documentais", href: "/compras/pendencias-documentais", icon: FileWarning },
-      { label: "Aprovações", href: "/compras/aprovacoes", icon: ShieldCheck }
+      { label: "Aprovações", href: "/compras/aprovacoes", icon: ShieldCheck },
+      { label: "Pendências Documentais", href: "/compras/pendencias-documentais", icon: FileWarning }
     ]
   },
   {

@@ -118,9 +118,9 @@ export const purchaseQuoteSourceContactChannelLabelMap: Record<PurchaseQuoteSour
 
 export const purchaseQuoteDocumentaryClassificationLabelMap: Record<PurchaseQuoteDocumentaryClassification, string> = {
   formal_sufficient: "Formal suficiente",
-  acceptable_with_reservation: "Aceitavel com ressalva",
-  fragile: "Fragil",
-  critical: "Critica"
+  acceptable_with_reservation: "Aceitável com ressalva",
+  fragile: "Frágil",
+  critical: "Crítica"
 };
 
 export const purchaseQuoteDocumentaryClassificationSeverityMap: Record<PurchaseQuoteDocumentaryClassification, PurchaseQuoteDocumentaryClassificationSeverity> = {
@@ -170,22 +170,22 @@ export function classifyPurchaseQuoteEvidence(input: PurchaseQuoteEvidenceClassi
   const isVerbal = Boolean(input.isVerbalQuote) || quoteSourceType === "phone_call" || quoteSourceType === "in_person";
   const alerts: string[] = [];
   let status: PurchaseQuoteDocumentaryClassification = "critical";
-  let reason = "Ausencia de dados essenciais para sustentar a cotacao.";
+  let reason = "Ausência de dados essenciais para sustentar a cotação.";
 
   if (evidenceType === "none") {
-    alerts.push("Cotacao sem evidencia formal.");
+    alerts.push("Cotação sem evidência formal.");
   }
 
   if (isVerbal) {
-    alerts.push("Cotacao verbal ou sem proposta formal.");
+    alerts.push("Cotação verbal ou sem proposta formal.");
   }
 
   if (isEmergency) {
-    alerts.push("Cotacao emergencial.");
+    alerts.push("Cotação emergencial.");
   }
 
   if (input.regularizationRequired) {
-    alerts.push("Regularizacao posterior necessaria.");
+    alerts.push("Regularização posterior necessária.");
   }
 
   if (quoteSourceType === "formal_proposal" && evidenceType === "attached_file" && hasAttachment) {
@@ -193,61 +193,61 @@ export function classifyPurchaseQuoteEvidence(input: PurchaseQuoteEvidenceClassi
     reason = "Proposta formal registrada com arquivo anexado.";
   } else if (quoteSourceType === "email" && (evidenceType === "email_copy" || evidenceType === "attached_file") && (hasAttachment || hasText(input.sourceReference))) {
     status = "formal_sufficient";
-    reason = "Cotacao por e-mail com copia, anexo ou referencia documental.";
+    reason = "Cotação por e-mail com cópia, anexo ou referência documental.";
   } else if (quoteSourceType === "whatsapp" && evidenceType === "whatsapp_screenshot" && hasAttachment) {
     status = "acceptable_with_reservation";
-    reason = "WhatsApp com print/anexo: aceitavel com ressalva, sem equivaler a proposta formal suficiente.";
-    alerts.push("WhatsApp com print: aceitavel com ressalva.");
+    reason = "WhatsApp com print/anexo: aceitável com ressalva, sem equivaler a proposta formal suficiente.";
+    alerts.push("WhatsApp com print: aceitável com ressalva.");
   } else if (quoteSourceType === "website_catalog" && (hasUrl || hasAttachment)) {
     status = "acceptable_with_reservation";
-    reason = "Site/catalogo com URL ou print/anexo disponivel.";
+    reason = "Site/catálogo com URL ou print/anexo disponível.";
   } else if (quoteSourceType === "recurring_supplier" && (hasAttachment || hasText(input.sourceReference) || hasNotes)) {
     status = "acceptable_with_reservation";
-    reason = "Fornecedor recorrente com referencia, documento ou observacao minima.";
+    reason = "Fornecedor recorrente com referência, documento ou observação mínima.";
   } else if ((quoteSourceType === "phone_call" || quoteSourceType === "in_person") && hasNotes && hasContact && hasJustification) {
     status = "fragile";
     reason = quoteSourceType === "phone_call"
-      ? "Ligacao sem proposta formal, documentada por contato, observacao e justificativa."
-      : "Cotacao presencial sem proposta formal, documentada por contato/observacao e justificativa.";
+      ? "Ligação sem proposta formal, documentada por contato, observação e justificativa."
+      : "Cotação presencial sem proposta formal, documentada por contato/observação e justificativa.";
   } else if (quoteSourceType === "whatsapp" && hasJustification && (hasContact || hasText(input.sourceReference))) {
     status = "fragile";
-    reason = "WhatsApp sem print/anexo, mas com justificativa e referencia operacional.";
+    reason = "WhatsApp sem print/anexo, mas com justificativa e referência operacional.";
   } else if (!hasAttachment && hasJustification && (hasNotes || hasContact || hasUrl || hasText(input.sourceReference))) {
     status = "fragile";
-    reason = "Cotacao sem anexo, mas com justificativa e dados minimos registrados.";
+    reason = "Cotação sem anexo, mas com justificativa e dados mínimos registrados.";
   }
 
   if (isEmergency && !hasAttachment && !hasUrl && !hasJustification) {
     status = "critical";
-    reason = "Emergencia sem documentacao minima, URL ou justificativa.";
+    reason = "Emergência sem documentação mínima, URL ou justificativa.";
   }
 
   if (evidenceType === "none" && !hasJustification) {
     status = "critical";
-    reason = "Sem evidencia formal e sem justificativa.";
+    reason = "Sem evidência formal e sem justificativa.";
   }
 
   if (!quoteSourceType || !evidenceType) {
     status = "critical";
-    reason = "Origem ou tipo de evidencia nao informado.";
+    reason = "Origem ou tipo de evidência não informado.";
   }
 
   if (quoteSourceType === "website_catalog" && !hasUrl && !hasAttachment && !hasJustification) {
     status = "critical";
-    reason = "Site/catalogo sem URL, anexo ou justificativa.";
+    reason = "Site/catálogo sem URL, anexo ou justificativa.";
   }
 
   if (quoteSourceType === "other" && !hasNotes) {
     status = "critical";
-    reason = "Origem outro exige descricao/observacao da evidencia.";
+    reason = "Origem outro exige descrição/observação da evidência.";
   }
 
   if (status === "fragile") {
-    alerts.push("Evidencia fragil.");
+    alerts.push("Evidência frágil.");
   }
 
   if (status === "critical") {
-    alerts.push("Evidencia critica: aprovacao restrita a Diretoria.");
+    alerts.push("Evidência crítica: aprovação restrita à Diretoria.");
   }
 
   return {
@@ -396,7 +396,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["quoteValidityExceptionReason"],
-      message: "Informe a justificativa da excecao de validade."
+      message: "Informe a justificativa da exceção de validade."
     });
   }
 
@@ -404,7 +404,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["validUntil"],
-      message: "A validade deve ser maior ou igual a data da cotacao."
+      message: "A validade deve ser maior ou igual à data da cotação."
     });
   }
 
@@ -412,7 +412,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["evidenceMissingReason"],
-      message: "Informe a justificativa para ausencia de evidencia formal."
+      message: "Informe a justificativa para ausência de evidência formal."
     });
   }
 
@@ -420,7 +420,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceUrl"],
-      message: "Informe a URL para cotacao por site ou catalogo."
+      message: "Informe a URL para cotação por site ou catálogo."
     });
   }
 
@@ -428,7 +428,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceNotes"],
-      message: "Descreva a origem ou evidencia da cotacao."
+      message: "Descreva a origem ou evidência da cotação."
     });
   }
 
@@ -436,7 +436,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceNotes"],
-      message: "Registre a observacao da cotacao verbal."
+      message: "Registre a observação da cotação verbal."
     });
   }
 
@@ -444,7 +444,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceContactName"],
-      message: "Informe o contato ou canal da cotacao verbal."
+      message: "Informe o contato ou canal da cotação verbal."
     });
   }
 
@@ -453,7 +453,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["sourceContactName"],
-        message: "Informe o contato ou canal da ligacao."
+        message: "Informe o contato ou canal da ligação."
       });
     }
 
@@ -461,7 +461,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["sourceNotes"],
-        message: "Registre a observacao da ligacao."
+        message: "Registre a observação da ligação."
       });
     }
 
@@ -469,7 +469,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["evidenceMissingReason"],
-        message: "Informe o motivo da ausencia de evidencia formal para cotacao por ligacao."
+        message: "Informe o motivo da ausência de evidência formal para cotação por ligação."
       });
     }
   }
@@ -478,7 +478,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceNotes"],
-      message: "Informe uma observacao ou contato para cotacao presencial."
+      message: "Informe uma observação ou contato para cotação presencial."
     });
   }
 
@@ -486,7 +486,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["evidenceMissingReason"],
-      message: "Informe o motivo da ausencia de evidencia formal para cotacao presencial."
+      message: "Informe o motivo da ausência de evidência formal para cotação presencial."
     });
   }
 
@@ -494,7 +494,7 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["emergencyReason"],
-      message: "Informe o motivo da cotacao emergencial."
+      message: "Informe o motivo da cotação emergencial."
     });
   }
 }
@@ -536,7 +536,7 @@ export const purchaseQuoteNegotiationCreateSchema = purchaseQuoteFormBaseSchema
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["validUntil"],
-        message: "A validade deve ser maior ou igual a data da cotacao."
+        message: "A validade deve ser maior ou igual à data da cotação."
       });
     }
   });

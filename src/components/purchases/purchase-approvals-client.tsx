@@ -207,7 +207,7 @@ function buildDepartmentLabel(approval: ApprovalRecord) {
 }
 
 function getDossierSourceLabel(approval: ApprovalRecord) {
-  return approval.isLegacyWithoutSnapshot ? "Registro legado" : `Dossie formal #${approval.snapshotNumber}`;
+  return approval.isLegacyWithoutSnapshot ? "Registro legado" : `Dossiê formal #${approval.snapshotNumber}`;
 }
 
 function getDossierSourceTone(approval: ApprovalRecord) {
@@ -220,6 +220,50 @@ function quoteSupplierLabel(quote: ApprovalQuote | null) {
   }
 
   return quote.supplierTradeName || quote.supplierName || "Fornecedor não informado";
+}
+
+function normalizeVisibleText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function isCriticalEvidenceAlert(alert: string) {
+  const normalized = normalizeVisibleText(alert);
+  return normalized.includes("critica") || normalized.includes("sem evidencia");
+}
+
+function getApprovalEvidenceRisk(approval: ApprovalRecord) {
+  const evidences = approval.quotes.map((quote) => quote.evidence).filter(Boolean) as ApprovalQuoteEvidence[];
+
+  if (
+    evidences.some(
+      (evidence) =>
+        evidence.requiresDirectorApproval ||
+        evidence.documentaryClassification === "critical" ||
+        evidence.documentaryClassificationSeverity === "danger"
+    )
+  ) {
+    return {
+      tone: "danger" as const,
+      label: "Evidência crítica",
+      description: "Atenção: este dossiê possui evidência documental crítica. Revise anexos, justificativas e alçada antes da decisão."
+    };
+  }
+
+  if (
+    evidences.some(
+      (evidence) =>
+        evidence.documentaryClassification === "fragile" ||
+        evidence.documentaryClassificationSeverity === "warning"
+    )
+  ) {
+    return {
+      tone: "warning" as const,
+      label: "Evidência frágil",
+      description: "Este dossiê possui evidência documental frágil. A pendência não impede automaticamente a decisão, mas exige análise gerencial."
+    };
+  }
+
+  return null;
 }
 
 function SummaryCard({ title, value, icon: Icon }: { title: string; value: number; icon: LucideIcon }) {
@@ -315,7 +359,7 @@ function QuoteBox({ title, quote, tone = "default" }: { title: string; quote: Ap
               {evidence.auditAlerts?.length ? (
                 <div className="flex flex-wrap gap-1.5">
                   {evidence.auditAlerts.map((alert) => (
-                    <StatusBadge key={alert} status={alert.includes("critica") || alert.includes("sem evidencia") ? "danger" : "warning"} label={alert} />
+                    <StatusBadge key={alert} status={isCriticalEvidenceAlert(alert) ? "danger" : "warning"} label={alert} />
                   ))}
                 </div>
               ) : null}
@@ -421,6 +465,7 @@ export function PurchaseApprovalsClient() {
   }, [approvals, levelFilter, search, statusFilter]);
 
   const selectedApproval = filteredApprovals.find((approval) => approval.id === selectedApprovalId) ?? null;
+  const selectedApprovalEvidenceRisk = selectedApproval ? getApprovalEvidenceRisk(selectedApproval) : null;
 
   const decisionMutation = useMutation({
     mutationFn: async (input: { approval: ApprovalRecord; decision: "approved" | "rejected" | "returned_to_purchases"; justification: string }) =>
@@ -521,6 +566,7 @@ export function PurchaseApprovalsClient() {
             {filteredApprovals.map((approval) => {
               const isSelected = selectedApproval?.id === approval.id;
               const departmentLabel = approval.departmentName || approval.departmentCode ? buildDepartmentLabel(approval) : "";
+              const evidenceRisk = getApprovalEvidenceRisk(approval);
 
               return (
                 <article
@@ -554,10 +600,16 @@ export function PurchaseApprovalsClient() {
                     </div>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                       <ApprovalCardMetric label="Valor total" value={approval.totalApprovedAmountLabel} />
-                      <ApprovalCardMetric label="Alcada" value={approval.approvalLevelLabel} />
+                      <ApprovalCardMetric label="Alçada" value={approval.approvalLevelLabel} />
                       <ApprovalCardMetric label="Envio" value={formatDateTime(approval.submittedAt)} />
-                      <ApprovalCardMetric label="Snapshot" value={getApprovalStatusLabel(approval.approvalStatus)} />
+                      <ApprovalCardMetric label="Dossiê formal" value={getApprovalStatusLabel(approval.approvalStatus)} />
                     </div>
+                    {evidenceRisk ? (
+                      <div className={cn("mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs", evidenceRisk.tone === "danger" ? "border-red-200 bg-red-50 text-red-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{evidenceRisk.description}</span>
+                      </div>
+                    ) : null}
                     {approval.winnerDiffersFromRecommended ? (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       Vencedora diferente da recomendada.
@@ -568,10 +620,10 @@ export function PurchaseApprovalsClient() {
                     {approval.isLegacyWithoutSnapshot ? (
                       <div className="flex min-w-0 items-start gap-2 text-xs text-sky-900">
                         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        <span>Registro legado sem dossie formal. Consulte o historico, mas novas decisoes exigem reenvio formal.</span>
+                        <span>Registro legado sem dossiê formal. Consulte o histórico, mas novas decisões exigem reenvio formal.</span>
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground">Fotografia formal do envio para aprovacao.</p>
+                      <p className="text-xs text-muted-foreground">Fotografia formal do envio para aprovação.</p>
                     )}
                     <Button type="button" size="sm" onClick={() => setSelectedApprovalId(approval.id)}>
                       <Search className="h-4 w-4" />
@@ -596,7 +648,7 @@ export function PurchaseApprovalsClient() {
           >
             <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Dossiê de aprovação</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Dossiê formal de aprovação</p>
                 <h2 id="approval-dossier-title" className="mt-1 truncate text-lg font-semibold text-foreground">
                   {selectedApproval.requestNumber}
                 </h2>
@@ -616,7 +668,7 @@ export function PurchaseApprovalsClient() {
                 <Card className="p-5 shadow-sm shadow-primary/5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Detalhe da aprovação</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Detalhe da aprovação administrativa</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-semibold">{selectedApproval.requestNumber}</h2>
                         <StatusBadge status={getApprovalStatusTone(selectedApproval.approvalStatus)} label={getApprovalStatusLabel(selectedApproval.approvalStatus)} />
@@ -626,7 +678,7 @@ export function PurchaseApprovalsClient() {
                       <h3 className="break-words text-base font-semibold">{selectedApproval.title}</h3>
                       <p className="break-words text-sm text-muted-foreground">{selectedApproval.justification}</p>
                       <p className="break-words text-xs leading-5 text-muted-foreground">
-                        Aprovar confirma a compra. Reprovar encerra a solicitação. Devolver para Compras permite revisar a cotação sem encerrar a compra.
+                        Esta decisão valida administrativamente a compra e seu dossiê documental. Ela não representa pagamento financeiro. Revise fornecedor, valores, evidências, anexos e alçada antes da decisão.
                       </p>
                       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                         <span>Unidade: {buildUnitLabel(selectedApproval)}</span>
@@ -642,7 +694,7 @@ export function PurchaseApprovalsClient() {
                     </div>
                     {selectedApproval.approvalStatus === "pending" && !selectedApproval.isLegacyWithoutSnapshot ? (
                       <div className="rounded-md border bg-muted/30 p-3">
-                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Decisao</p>
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Decisão administrativa</p>
                         <div className="flex flex-wrap gap-2">
                         <Button type="button" onClick={() => openDecision(selectedApproval, "approved")}>
                           <Check className="h-4 w-4" />
@@ -662,6 +714,16 @@ export function PurchaseApprovalsClient() {
                   </div>
                 </Card>
 
+                {selectedApprovalEvidenceRisk ? (
+                  <div className={cn("flex items-start gap-2 rounded-md border px-4 py-3 text-sm", selectedApprovalEvidenceRisk.tone === "danger" ? "border-red-200 bg-red-50 text-red-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="space-y-1">
+                      <p className="font-medium">{selectedApprovalEvidenceRisk.label}</p>
+                      <p className="text-xs">{selectedApprovalEvidenceRisk.description}</p>
+                    </div>
+                  </div>
+                ) : null}
+
                 {selectedApproval.winnerDiffersFromRecommended ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     A cotação vencedora selecionada é diferente da cotação recomendada pelo sistema. Avalie a justificativa operacional antes de decidir.
@@ -671,7 +733,7 @@ export function PurchaseApprovalsClient() {
                 {selectedApproval.isLegacyWithoutSnapshot ? (
                   <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>Esta aprovacao e anterior ao dossie formal. Ela aparece para consulta historica, mas nao permite decisao nesta tela; para nova decisao, a compra precisa ser reenviada formalmente para aprovacao.</span>
+                    <span>Esta aprovação é anterior ao dossiê formal. Ela aparece para consulta histórica, mas não permite decisão nesta tela; para nova decisão, a compra precisa ser reenviada formalmente para aprovação.</span>
                   </div>
                 ) : null}
 
@@ -716,7 +778,7 @@ export function PurchaseApprovalsClient() {
                             {quote.evidence?.auditAlerts?.length ? (
                               <div className="mt-2 flex flex-wrap gap-1.5">
                                 {quote.evidence.auditAlerts.map((alert) => (
-                                  <StatusBadge key={alert} status={alert.includes("critica") || alert.includes("sem evidencia") ? "danger" : "warning"} label={alert} />
+                                  <StatusBadge key={alert} status={isCriticalEvidenceAlert(alert) ? "danger" : "warning"} label={alert} />
                                 ))}
                               </div>
                             ) : null}
@@ -802,6 +864,9 @@ export function PurchaseApprovalsClient() {
                 </p>
                 <h3 className="text-lg font-semibold">{decisionState.approval.requestNumber}</h3>
                 <p className="text-sm text-muted-foreground">{decisionState.approval.title}</p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Esta ação registra uma decisão administrativa sobre a continuidade da compra e não executa pagamento financeiro.
+                </p>
               </div>
 
               <div className="mt-4 space-y-2">

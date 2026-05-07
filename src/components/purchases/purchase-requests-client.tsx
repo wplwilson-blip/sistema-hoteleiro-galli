@@ -440,7 +440,7 @@ export function PurchaseRequestsClient() {
             <Label>Buscar</Label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Numero, titulo, unidade, departamento ou solicitante" value={search} onChange={(event) => setSearch(event.target.value)} />
+              <Input className="pl-9" placeholder="Número, título, unidade, departamento ou solicitante" value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
@@ -461,7 +461,7 @@ export function PurchaseRequestsClient() {
               <option value="low">Baixa</option>
               <option value="normal">Normal</option>
               <option value="high">Alta</option>
-              <option value="critical">Critica</option>
+              <option value="critical">Crítica</option>
             </SelectField>
           </div>
           <div className="space-y-2">
@@ -567,7 +567,7 @@ export function PurchaseRequestsClient() {
                 />
                 <FieldError message={form.formState.errors.costCenterId?.message} />
               </Field>
-              <Field label="Titulo">
+              <Field label="Título">
                 <Controller
                   control={form.control}
                   name="title"
@@ -622,7 +622,7 @@ export function PurchaseRequestsClient() {
                       <option value="low">Baixa</option>
                       <option value="normal">Normal</option>
                       <option value="high">Alta</option>
-                      <option value="critical">Critica</option>
+                      <option value="critical">Crítica</option>
                     </SelectField>
                   )}
                 />
@@ -688,7 +688,7 @@ export function PurchaseRequestsClient() {
                 {fields.map((field, index) => (
                   <div key={field.id} className="rounded-md border bg-background p-3">
                     <div className="grid gap-3 lg:grid-cols-12">
-                      <Field label="Descricao" className="lg:col-span-4">
+                      <Field label="Descrição" className="lg:col-span-4">
                         <Controller
                           control={form.control}
                           name={`items.${index}.description`}
@@ -817,9 +817,9 @@ export function PurchaseRequestsClient() {
         </FormCard>
       ) : null}
 
-      {purchasesQuery.isLoading ? <LoadingTable label="Carregando solicitacoes..." /> : null}
+      {purchasesQuery.isLoading ? <LoadingTable label="Carregando solicitações..." /> : null}
       {purchasesQuery.error ? (
-        <ErrorMessage message={purchasesQuery.error instanceof Error ? purchasesQuery.error.message : "Erro ao carregar solicitacoes."} />
+        <ErrorMessage message={purchasesQuery.error instanceof Error ? purchasesQuery.error.message : "Erro ao carregar solicitações."} />
       ) : null}
 
       {!purchasesQuery.isLoading && !filteredRequests.length ? (
@@ -834,8 +834,8 @@ export function PurchaseRequestsClient() {
           <table className="w-full min-w-[1280px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 font-semibold">Numero</th>
-                <th className="px-4 py-3 font-semibold">Titulo</th>
+                <th className="px-4 py-3 font-semibold">Número</th>
+                <th className="px-4 py-3 font-semibold">Título</th>
                 <th className="px-4 py-3 font-semibold">Unidade</th>
                 <th className="px-4 py-3 font-semibold">Departamento</th>
                 <th className="px-4 py-3 font-semibold">Prioridade</th>
@@ -843,8 +843,8 @@ export function PurchaseRequestsClient() {
                 <th className="px-4 py-3 font-semibold">Valor estimado</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Solicitante</th>
-                <th className="px-4 py-3 font-semibold">Criacao</th>
-                <th className="px-4 py-3 text-right font-semibold">Acoes</th>
+                <th className="px-4 py-3 font-semibold">Criação</th>
+                <th className="px-4 py-3 text-right font-semibold">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -907,7 +907,7 @@ export function PurchaseRequestsClient() {
                             <table className="w-full text-left text-sm">
                               <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
                                 <tr>
-                                  <th className="px-3 py-2 font-semibold">Descricao</th>
+                                  <th className="px-3 py-2 font-semibold">Descrição</th>
                                   <th className="px-3 py-2 font-semibold">Qtd</th>
                                   <th className="px-3 py-2 font-semibold">Unidade de medida</th>
                                   <th className="px-3 py-2 font-semibold">Obs.</th>
