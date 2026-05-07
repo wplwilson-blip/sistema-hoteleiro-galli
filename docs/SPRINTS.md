@@ -234,3 +234,12 @@
 - Regra: Compras registra fatos; o sistema calcula a classificação documental; o aprovador decide pelo dossiê formal.
 - Entregas: schemas passaram a ter default conservador para derivados, a UI deixou de enviar derivados como declaração livre, APIs de persistência recalculam os campos derivados e listagens recalculam classificação com anexos reais quando disponíveis.
 - Compatibilidade: `purchase_quotes.has_formal_evidence` mantém o default legado no banco, mas telas, APIs e relatórios futuros não devem consumi-lo como fonte absoluta de verdade.
+
+## DASH-COTACOES-1 - Dashboard de Pendências Documentais de Cotações
+
+- Status: concluída.
+- Objetivo: criar uma visão operacional read-only para riscos documentais de cotações.
+- Entregas: API `GET /api/purchases/documentation-dashboard`, página `/compras/pendencias-documentais`, cards de resumo, filtros por unidade/classificação/severidade/status/pendência e tabela responsiva.
+- Regras: classificação documental recalculada com `classifyPurchaseQuoteEvidence` e anexos ativos reais; `has_formal_evidence` não é usado como verdade isolada.
+- Escopo: sem alteração de aprovação, snapshot, upload de anexos, `is_selected`, banco ou Storage.
+- Migrations: não aplicável.

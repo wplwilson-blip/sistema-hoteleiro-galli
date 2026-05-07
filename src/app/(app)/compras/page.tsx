@@ -1,4 +1,4 @@
-import { ClipboardCheck, ClipboardList, FileCheck2, IdCard, ShoppingCart } from "lucide-react";
+import { ClipboardCheck, ClipboardList, FileCheck2, FileWarning, IdCard, ShoppingCart } from "lucide-react";
 import { ModuleDashboard } from "@/components/common/module-dashboard";
 
 const cards = [
@@ -13,6 +13,12 @@ const cards = [
     description: "Registrar cotações, comparar propostas e acompanhar anexos enviados por fornecedores.",
     href: "/compras/cotacoes",
     icon: ShoppingCart
+  },
+  {
+    title: "Pendências Documentais",
+    description: "Acompanhar evidências críticas, regularizações, anexos ausentes e riscos documentais das cotações.",
+    href: "/compras/pendencias-documentais",
+    icon: FileWarning
   },
   {
     title: "Aprovações",

@@ -27,12 +27,11 @@
 
 ## Prioridade Média / Evidência e Auditoria
 
-- Dashboard de pendências documentais:
-  - evidência crítica;
-  - evidência frágil;
-  - regularização vencida;
-  - emergência sem regularização;
-  - cotação sem anexo.
+- Refinar o dashboard de pendências documentais:
+  - exportação CSV/PDF;
+  - gráficos por unidade;
+  - filtros por período;
+  - leitura específica de snapshots antigos quando necessário.
 - Política de regularização posterior para cotações emergenciais ou frágeis.
 - Indicadores de origem/evidência por unidade.
 - Relatórios de cotações verbais e emergenciais.
