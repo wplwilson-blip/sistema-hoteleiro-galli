@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "screenshots:auth": "playwright test tests/screenshots/auth.manual.spec.ts --project=chromium --headed",
     "screenshots:compras": "playwright test tests/screenshots/compras.spec.ts --project=chromium",
     "screenshots:ui": "playwright test tests/screenshots --project=chromium"
   },
