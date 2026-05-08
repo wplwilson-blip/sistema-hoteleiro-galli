@@ -12,6 +12,9 @@ yarn-error.log*
 pnpm-debug.log*
 .vercel
 supabase/.temp/
+playwright/.auth/
+test-results/
+playwright-report/
 ~$*.docx
 *Senhas*.docx
 *senhas*.docx
