@@ -42,6 +42,17 @@ Se a sessao expirar ou o Playwright voltar para `/login`, gere a sessao novament
 npm run screenshots:auth
 ```
 
+## Máscara de dados pessoais nos screenshots
+
+Durante a captura, o script substitui visualmente no navegador dados pessoais do usuário autenticado por textos de treinamento, como:
+
+- `Usuário Treinamento`
+- `@usuario.demo`
+
+Essa máscara ocorre apenas no DOM usado pelo Playwright para gerar o print.
+
+Ela não altera banco de dados, usuário, login, Auth ou informações reais do sistema.
+
 ## Arquivos gerados
 
 Os screenshots serao salvos em:

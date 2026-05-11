@@ -10,6 +10,7 @@ type CaptureTarget = {
   route: string;
   fileName: string;
   expectedText: string | RegExp;
+  prepare?: (page: Page) => Promise<void>;
 };
 
 const captureTargets: CaptureTarget[] = [
@@ -21,28 +22,48 @@ const captureTargets: CaptureTarget[] = [
   {
     route: "/compras/solicitacoes",
     fileName: "02-solicitacoes-compras.png",
-    expectedText: /Solicita/i
+    expectedText: /Solicita/i,
+    prepare: async (page) => {
+      await page.locator("main select").first().selectOption("all");
+      await page.getByPlaceholder("Número, título, unidade, departamento ou solicitante").fill("SC-2026-000013");
+      await expect(page.getByText("Compra de material de limpeza para governança")).toBeVisible({ timeout: 30_000 });
+    }
   },
   {
     route: "/compras/cotacoes",
     fileName: "03-cotacoes-compras.png",
-    expectedText: /Cota/i
+    expectedText: /Cota/i,
+    prepare: async (page) => {
+      await page.getByPlaceholder("Número, título, justificativa, status ou prioridade").fill("Compra de insumos para A&B");
+      await expect(page.getByText("SC-2026-000015")).toBeVisible({ timeout: 30_000 });
+    }
   },
   {
     route: "/compras/aprovacoes",
     fileName: "04-aprovacoes-compras.png",
-    expectedText: /Aprova/i
+    expectedText: /Aprova/i,
+    prepare: async (page) => {
+      await page.getByPlaceholder("Número, título, fornecedor ou solicitante").fill("SC-2026-000017");
+      await expect(page.getByText("Serviço terceirizado emergencial")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("Evidência documental crítica", { exact: false })).toBeVisible({ timeout: 30_000 });
+    }
   },
   {
     route: "/compras/pendencias-documentais",
     fileName: "05-pendencias-documentais-compras.png",
-    expectedText: /Pend.ncias Documentais/i
+    expectedText: /Pend.ncias Documentais/i,
+    prepare: async (page) => {
+      await page.getByLabel("Buscar cotação, solicitação, unidade ou fornecedor").fill("Demo");
+      await expect(page.getByText("Demo Serviços Terceirizados").first()).toBeVisible({ timeout: 30_000 });
+    }
   }
 ];
 
 test.use({
   storageState: authStatePath
 });
+
+test.setTimeout(180_000);
 
 test.beforeAll(() => {
   if (!fs.existsSync(authStatePath)) {
@@ -121,9 +142,45 @@ async function waitForStyledApp(page: Page, expectedText: string | RegExp) {
   await page.waitForTimeout(1_500);
 }
 
+async function maskSensitiveTexts(page: Page) {
+  await page.evaluate(() => {
+    const replacements: Array<[string | RegExp, string]> = [
+      ["Wilson Pinheiro", "Usuário Treinamento"],
+      ["@wilson.admin", "@usuario.demo"],
+      ["wilson.admin", "usuario.demo"],
+      [/\bWilson\b/g, "Usuário"]
+    ];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        textNodes.push(node as Text);
+      }
+    }
+
+    for (const node of textNodes) {
+      let value = node.nodeValue ?? "";
+
+      for (const [from, to] of replacements) {
+        value = value.replaceAll(from as string, to);
+      }
+
+      node.nodeValue = value;
+    }
+  });
+}
+
 async function capturePage(page: Page, target: CaptureTarget) {
   await page.goto(target.route, { waitUntil: "domcontentloaded" });
   await waitForStyledApp(page, target.expectedText);
+  await target.prepare?.(page);
+  await maskSensitiveTexts(page);
+  await expect(page.getByText("Usuário Treinamento").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("@usuario.demo").first()).toBeVisible({ timeout: 10_000 });
+  await page.waitForTimeout(750);
 
   await page.screenshot({
     path: path.join(screenshotsDir, target.fileName),
