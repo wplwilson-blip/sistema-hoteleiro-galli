@@ -75,7 +75,10 @@ const menuGroups: SidebarGroup[] = [
     label: "RH",
     href: "/rh",
     icon: Users,
-    items: [{ label: "Dashboard", href: "/rh", icon: LayoutDashboard }]
+    items: [
+      { label: "Dashboard", href: "/rh", icon: LayoutDashboard, match: "exact" },
+      { label: "Colaboradores", href: "/rh/employees", icon: UserRound }
+    ]
   },
   {
     label: "Recepção",
