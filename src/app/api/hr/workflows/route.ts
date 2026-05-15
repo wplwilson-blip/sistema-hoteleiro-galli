@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { HR_PERMISSIONS } from "@/lib/hr/api-auth";
+import { HR_PERMISSIONS, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
 import {
   HR_WORKFLOW_SELECT,
   escapeIlikePattern,
@@ -11,9 +11,22 @@ import {
   uniqueIds,
   type HrWorkflowRow
 } from "@/lib/hr/workflow-data";
-import { redactWorkflowListItem } from "@/lib/hr/workflow-redaction";
+import {
+  HrWorkflowMutationError,
+  applyCreateWorkflowRpc,
+  assertCreateWorkflowEmployeeRequirement,
+  assertSensitiveWorkflowCreateAllowed,
+  buildCreateWorkflowRpcPayload,
+  createWorkflowRequestHash,
+  getCreateWorkflowIdempotencyKey,
+  mapWorkflowRpcError,
+  parseCreateWorkflowPayload,
+  type CreateWorkflowInput
+} from "@/lib/hr/workflow-mutations";
+import { redactWorkflowDetail, redactWorkflowListItem } from "@/lib/hr/workflow-redaction";
 import {
   canAccessSensitiveWorkflowUnit,
+  canAccessWorkflowUnit,
   canUseWorkflowUnitFilter,
   getWorkflowPermissionAccess,
   handleHrWorkflowRouteError,
@@ -32,6 +45,123 @@ function emptyWorkflowListPayload(page: number, pageSize: number) {
       page_size: pageSize,
       total: 0
     }
+  });
+}
+
+type WorkflowMutationEmployeeRow = {
+  id: string;
+  organization_id: string | null;
+  unit_id: string | null;
+};
+
+type WorkflowMutationUnitRow = {
+  id: string;
+  organization_id: string;
+};
+
+function workflowMutationError(code: string, message: string, status: number): never {
+  throw new HrWorkflowMutationError(code, message, status);
+}
+
+async function resolveCreateWorkflowTarget(context: HrRequestContext, payload: CreateWorkflowInput) {
+  assertCreateWorkflowEmployeeRequirement(payload);
+
+  if (payload.employee_id) {
+    const { data, error } = await context.supabase
+      .from("employees")
+      .select("id, organization_id, unit_id")
+      .eq("id", payload.employee_id)
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (error) {
+      logHrApiError("workflows.create.employee_lookup_failed", error);
+      workflowMutationError("INTERNAL_ERROR", "Nao foi possivel validar o colaborador do workflow.", 500);
+    }
+
+    const employee = data?.[0] as WorkflowMutationEmployeeRow | undefined;
+
+    if (!employee?.organization_id || !employee.unit_id) {
+      workflowMutationError("INVALID_PAYLOAD", "Colaborador invalido para criar workflow.", 422);
+    }
+
+    if (!canAccessWorkflowUnit(context, employee.unit_id)) {
+      workflowMutationError("FORBIDDEN", "Voce nao tem permissao para criar workflows nesta unidade.", 403);
+    }
+
+    if (payload.unit_id && payload.unit_id !== employee.unit_id) {
+      workflowMutationError("INVALID_PAYLOAD", "unit_id nao confere com a unidade do colaborador.", 422);
+    }
+
+    return {
+      organizationId: employee.organization_id,
+      unitId: employee.unit_id
+    };
+  }
+
+  if (!payload.unit_id) {
+    workflowMutationError("INVALID_PAYLOAD", "unit_id e obrigatorio quando o workflow nao possui colaborador.", 422);
+  }
+
+  if (!canAccessWorkflowUnit(context, payload.unit_id)) {
+    workflowMutationError("FORBIDDEN", "Voce nao tem permissao para criar workflows nesta unidade.", 403);
+  }
+
+  const { data, error } = await context.supabase
+    .from("units")
+    .select("id, organization_id")
+    .eq("id", payload.unit_id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logHrApiError("workflows.create.unit_lookup_failed", error);
+    workflowMutationError("INTERNAL_ERROR", "Nao foi possivel validar a unidade do workflow.", 500);
+  }
+
+  const unit = data?.[0] as WorkflowMutationUnitRow | undefined;
+
+  if (!unit?.organization_id) {
+    workflowMutationError("INVALID_PAYLOAD", "Unidade invalida para criar workflow.", 422);
+  }
+
+  return {
+    organizationId: unit.organization_id,
+    unitId: unit.id
+  };
+}
+
+async function loadWorkflowDetailPayload(context: HrRequestContext, workflowId: string) {
+  const { data, error } = await context.supabase
+    .from("hr_workflows")
+    .select(HR_WORKFLOW_SELECT)
+    .eq("id", workflowId)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logHrApiError("workflows.create.created_workflow_lookup_failed", error);
+    workflowMutationError("INTERNAL_ERROR", "Workflow criado, mas nao foi possivel carregar o retorno seguro.", 500);
+  }
+
+  const workflow = data?.[0] as HrWorkflowRow | undefined;
+
+  if (!workflow) {
+    workflowMutationError("INTERNAL_ERROR", "Workflow criado, mas nao foi possivel localizar o retorno seguro.", 500);
+  }
+
+  const sensitiveAccess = await getWorkflowPermissionAccess(context, HR_PERMISSIONS.workflowsSensitiveView);
+  const [stepsByWorkflow, employeesById] = await Promise.all([
+    loadWorkflowSteps(context.supabase, [workflow.id]),
+    loadWorkflowEmployees(context.supabase, workflow.employee_id ? [workflow.employee_id] : [])
+  ]);
+
+  return redactWorkflowDetail({
+    workflow,
+    employee: workflow.employee_id ? employeesById.get(workflow.employee_id) ?? null : null,
+    steps: stepsByWorkflow.get(workflow.id) ?? [],
+    canViewSensitive: canAccessSensitiveWorkflowUnit(sensitiveAccess, workflow.unit_id)
   });
 }
 
@@ -146,5 +276,78 @@ export async function GET(request: Request) {
     }
 
     return handleHrWorkflowRouteError(error, "Nao foi possivel carregar os workflows de RH.");
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const { context, response } = await requireHrWorkflowPermission(HR_PERMISSIONS.workflowsManage);
+
+    if (response || !context) {
+      return response;
+    }
+
+    let rawPayload: unknown;
+
+    try {
+      rawPayload = await request.json();
+    } catch {
+      return hrWorkflowApiError("INVALID_PAYLOAD", "JSON invalido.", 400);
+    }
+
+    const payload = parseCreateWorkflowPayload(rawPayload);
+    const idempotencyKey = getCreateWorkflowIdempotencyKey(request, payload);
+    const target = await resolveCreateWorkflowTarget(context, payload);
+    const sensitiveAccess = await getWorkflowPermissionAccess(context, HR_PERMISSIONS.workflowsSensitiveView);
+
+    assertSensitiveWorkflowCreateAllowed({
+      workflowType: payload.workflow_type,
+      unitId: target.unitId,
+      sensitiveUnitIds: sensitiveAccess.accessibleUnitIds,
+      isSuperAdmin: sensitiveAccess.isSuperAdmin
+    });
+
+    const rpcPayload = buildCreateWorkflowRpcPayload(payload);
+    const requestHash = createWorkflowRequestHash({
+      organizationId: target.organizationId,
+      unitId: target.unitId,
+      payload: rpcPayload
+    });
+    const result = await applyCreateWorkflowRpc({
+      supabase: context.supabase,
+      context,
+      organizationId: target.organizationId,
+      unitId: target.unitId,
+      idempotencyKey,
+      requestHash,
+      payload: rpcPayload
+    });
+
+    if (!result.ok) {
+      throw mapWorkflowRpcError(result);
+    }
+
+    if (!result.workflow_id) {
+      workflowMutationError("INTERNAL_ERROR", "A engine nao retornou o workflow criado.", 500);
+    }
+
+    const workflow = await loadWorkflowDetailPayload(context, result.workflow_id);
+
+    return NextResponse.json(
+      {
+        data: workflow,
+        idempotency: {
+          status: result.idempotency?.status ?? "completed",
+          replayed: result.idempotency?.replayed === true
+        }
+      },
+      { status: result.idempotency?.replayed ? 200 : 201 }
+    );
+  } catch (error) {
+    if (error instanceof HrWorkflowMutationError) {
+      return hrWorkflowApiError(error.code, error.message, error.status);
+    }
+
+    return handleHrWorkflowRouteError(error, "Nao foi possivel criar o workflow de RH.");
   }
 }
