@@ -8,7 +8,8 @@ import { HR_WORKFLOW_TYPES, isWorkflowTypeSensitive, type HrWorkflowType } from 
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-type WorkflowMutationAction = "create_workflow" | "execute_step";
+type WorkflowMutationAction = "create_workflow" | "execute_step" | "approve_step";
+type ExistingWorkflowMutationAction = Exclude<WorkflowMutationAction, "create_workflow">;
 
 const idempotencyKeySchema = z
   .string()
@@ -190,8 +191,9 @@ export type CreateWorkflowRpcResult = {
 };
 
 export type ExecuteStepInput = z.infer<typeof executeStepPayloadSchema>;
+export type ApproveStepInput = z.infer<typeof approveStepPayloadSchema>;
 
-const executeStepIdempotencyRowSchema = z.object({
+const workflowActionIdempotencyRowSchema = z.object({
   workflow_id: z.string().uuid().nullable(),
   request_hash: z.string(),
   status: z.enum(["processing", "completed", "failed"]),
@@ -218,6 +220,13 @@ export class HrWorkflowMutationError extends Error {
 }
 
 const executeStepPayloadSchema = z
+  .object({
+    step_id: uuidSchema,
+    notes: optionalText(2000)
+  })
+  .strict();
+
+const approveStepPayloadSchema = z
   .object({
     step_id: uuidSchema,
     notes: optionalText(2000)
@@ -381,6 +390,20 @@ export function parseExecuteStepPayload(raw: unknown) {
   }
 }
 
+export function parseApproveStepPayload(raw: unknown) {
+  assertNoForbiddenPayload(raw);
+
+  try {
+    return approveStepPayloadSchema.parse(raw);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new HrWorkflowMutationError("INVALID_PAYLOAD", error.errors[0]?.message ?? "Payload invalido.", 422);
+    }
+
+    throw error;
+  }
+}
+
 export function assertCreateWorkflowEmployeeRequirement(input: Pick<CreateWorkflowInput, "workflow_type" | "employee_id">) {
   if (!input.employee_id && !["admission", "training", "general_note"].includes(input.workflow_type)) {
     throw new HrWorkflowMutationError("WORKFLOW_EMPLOYEE_REQUIRED", "Colaborador obrigatorio para este tipo de workflow.", 422);
@@ -423,6 +446,12 @@ export function buildCreateWorkflowRpcPayload(payload: CreateWorkflowInput): Rec
 }
 
 export function buildExecuteStepRpcPayload(payload: ExecuteStepInput): Record<string, JsonValue> {
+  return {
+    notes: payload.notes ?? null
+  };
+}
+
+export function buildApproveStepRpcPayload(payload: ApproveStepInput): Record<string, JsonValue> {
   return {
     notes: payload.notes ?? null
   };
@@ -521,8 +550,39 @@ export async function applyExecuteStepRpc(input: {
   return data as CreateWorkflowRpcResult;
 }
 
-export async function resolveExecuteStepIdempotencyReplay(input: {
+export async function applyApproveStepRpc(input: {
   supabase: SupabaseAdmin;
+  context: HrRequestContext;
+  organizationId: string;
+  unitId: string;
+  workflowId: string;
+  stepId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  payload: Record<string, JsonValue>;
+}) {
+  const { data, error } = await input.supabase.rpc("hr_workflow_apply_action", {
+    p_action: "approve_step",
+    p_organization_id: input.organizationId,
+    p_unit_id: input.unitId,
+    p_actor_user_id: input.context.session.user.id,
+    p_idempotency_key: input.idempotencyKey,
+    p_request_hash: input.requestHash,
+    p_payload: input.payload,
+    p_workflow_id: input.workflowId,
+    p_step_id: input.stepId
+  });
+
+  if (error) {
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Nao foi possivel executar a engine de workflow.", 500);
+  }
+
+  return data as CreateWorkflowRpcResult;
+}
+
+async function resolveWorkflowActionIdempotencyReplay(input: {
+  supabase: SupabaseAdmin;
+  action: ExistingWorkflowMutationAction;
   organizationId: string;
   actorUserId: string;
   idempotencyKey: string;
@@ -533,7 +593,7 @@ export async function resolveExecuteStepIdempotencyReplay(input: {
     .select("workflow_id, request_hash, status, error_snapshot")
     .eq("organization_id", input.organizationId)
     .eq("actor_user_id", input.actorUserId)
-    .eq("action", "execute_step")
+    .eq("action", input.action)
     .eq("idempotency_key", input.idempotencyKey)
     .maybeSingle();
 
@@ -545,7 +605,7 @@ export async function resolveExecuteStepIdempotencyReplay(input: {
     return { replayed: false };
   }
 
-  const parsed = executeStepIdempotencyRowSchema.safeParse(data);
+  const parsed = workflowActionIdempotencyRowSchema.safeParse(data);
 
   if (!parsed.success) {
     throw new HrWorkflowMutationError("INTERNAL_ERROR", "Registro de idempotencia invalido.", 500);
@@ -583,6 +643,32 @@ export async function resolveExecuteStepIdempotencyReplay(input: {
   }
 
   throw new HrWorkflowMutationError("INTERNAL_ERROR", "Tentativa anterior falhou.", 500);
+}
+
+export function resolveExecuteStepIdempotencyReplay(input: {
+  supabase: SupabaseAdmin;
+  organizationId: string;
+  actorUserId: string;
+  idempotencyKey: string;
+  requestHash: string;
+}) {
+  return resolveWorkflowActionIdempotencyReplay({
+    ...input,
+    action: "execute_step"
+  });
+}
+
+export function resolveApproveStepIdempotencyReplay(input: {
+  supabase: SupabaseAdmin;
+  organizationId: string;
+  actorUserId: string;
+  idempotencyKey: string;
+  requestHash: string;
+}) {
+  return resolveWorkflowActionIdempotencyReplay({
+    ...input,
+    action: "approve_step"
+  });
 }
 
 export async function applyCreateWorkflowRpc(input: {
