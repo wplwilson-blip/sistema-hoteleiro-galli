@@ -8,6 +8,7 @@ import { HR_WORKFLOW_TYPES, isWorkflowTypeSensitive, type HrWorkflowType } from 
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type WorkflowMutationAction = "create_workflow" | "execute_step";
 
 const idempotencyKeySchema = z
   .string()
@@ -188,6 +189,22 @@ export type CreateWorkflowRpcResult = {
   };
 };
 
+export type ExecuteStepInput = z.infer<typeof executeStepPayloadSchema>;
+
+const executeStepIdempotencyRowSchema = z.object({
+  workflow_id: z.string().uuid().nullable(),
+  request_hash: z.string(),
+  status: z.enum(["processing", "completed", "failed"]),
+  error_snapshot: z.unknown().nullable()
+});
+
+const failedIdempotencySnapshotSchema = z
+  .object({
+    error_code: z.string().optional(),
+    message: z.string().optional()
+  })
+  .passthrough();
+
 export class HrWorkflowMutationError extends Error {
   code: string;
   status: number;
@@ -199,6 +216,13 @@ export class HrWorkflowMutationError extends Error {
     this.status = status;
   }
 }
+
+const executeStepPayloadSchema = z
+  .object({
+    step_id: uuidSchema,
+    notes: optionalText(2000)
+  })
+  .strict();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -325,6 +349,38 @@ export function getCreateWorkflowIdempotencyKey(request: Request, payload: Pick<
   }
 }
 
+export function getRequiredWorkflowIdempotencyKey(request: Request) {
+  const idempotencyKey = (request.headers.get("Idempotency-Key") ?? request.headers.get("X-Idempotency-Key") ?? "").trim();
+
+  if (!idempotencyKey) {
+    throw new HrWorkflowMutationError("INVALID_PAYLOAD", "Informe o header Idempotency-Key para executar a acao.", 400);
+  }
+
+  try {
+    return idempotencyKeySchema.parse(idempotencyKey);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new HrWorkflowMutationError("INVALID_PAYLOAD", error.errors[0]?.message ?? "Chave de idempotencia invalida.", 400);
+    }
+
+    throw error;
+  }
+}
+
+export function parseExecuteStepPayload(raw: unknown) {
+  assertNoForbiddenPayload(raw);
+
+  try {
+    return executeStepPayloadSchema.parse(raw);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new HrWorkflowMutationError("INVALID_PAYLOAD", error.errors[0]?.message ?? "Payload invalido.", 422);
+    }
+
+    throw error;
+  }
+}
+
 export function assertCreateWorkflowEmployeeRequirement(input: Pick<CreateWorkflowInput, "workflow_type" | "employee_id">) {
   if (!input.employee_id && !["admission", "training", "general_note"].includes(input.workflow_type)) {
     throw new HrWorkflowMutationError("WORKFLOW_EMPLOYEE_REQUIRED", "Colaborador obrigatorio para este tipo de workflow.", 422);
@@ -366,6 +422,12 @@ export function buildCreateWorkflowRpcPayload(payload: CreateWorkflowInput): Rec
   };
 }
 
+export function buildExecuteStepRpcPayload(payload: ExecuteStepInput): Record<string, JsonValue> {
+  return {
+    notes: payload.notes ?? null
+  };
+}
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalize);
@@ -391,16 +453,136 @@ export function createWorkflowRequestHash(input: {
   unitId: string;
   payload: Record<string, JsonValue>;
 }) {
+  return createWorkflowActionRequestHash({
+    action: "create_workflow",
+    organizationId: input.organizationId,
+    unitId: input.unitId,
+    payload: input.payload
+  });
+}
+
+export function createWorkflowActionRequestHash(input: {
+  action: WorkflowMutationAction;
+  organizationId: string;
+  unitId: string;
+  payload: Record<string, JsonValue>;
+  workflowId?: string | null;
+  stepId?: string | null;
+}) {
+  const canonicalInput: Record<string, unknown> = {
+    action: input.action,
+    organization_id: input.organizationId,
+    unit_id: input.unitId,
+    payload: input.payload
+  };
+
+  if (input.workflowId) {
+    canonicalInput.workflow_id = input.workflowId;
+  }
+
+  if (input.stepId) {
+    canonicalInput.step_id = input.stepId;
+  }
+
   const canonicalPayload = JSON.stringify(
-    canonicalize({
-      action: "create_workflow",
-      organization_id: input.organizationId,
-      unit_id: input.unitId,
-      payload: input.payload
-    })
+    canonicalize(canonicalInput)
   );
 
   return createHash("sha256").update(canonicalPayload).digest("hex");
+}
+
+export async function applyExecuteStepRpc(input: {
+  supabase: SupabaseAdmin;
+  context: HrRequestContext;
+  organizationId: string;
+  unitId: string;
+  workflowId: string;
+  stepId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  payload: Record<string, JsonValue>;
+}) {
+  const { data, error } = await input.supabase.rpc("hr_workflow_apply_action", {
+    p_action: "execute_step",
+    p_organization_id: input.organizationId,
+    p_unit_id: input.unitId,
+    p_actor_user_id: input.context.session.user.id,
+    p_idempotency_key: input.idempotencyKey,
+    p_request_hash: input.requestHash,
+    p_payload: input.payload,
+    p_workflow_id: input.workflowId,
+    p_step_id: input.stepId
+  });
+
+  if (error) {
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Nao foi possivel executar a engine de workflow.", 500);
+  }
+
+  return data as CreateWorkflowRpcResult;
+}
+
+export async function resolveExecuteStepIdempotencyReplay(input: {
+  supabase: SupabaseAdmin;
+  organizationId: string;
+  actorUserId: string;
+  idempotencyKey: string;
+  requestHash: string;
+}): Promise<{ replayed: false } | { replayed: true; workflowId: string | null; status: "completed" }> {
+  const { data, error } = await input.supabase
+    .from("hr_workflow_idempotency_keys")
+    .select("workflow_id, request_hash, status, error_snapshot")
+    .eq("organization_id", input.organizationId)
+    .eq("actor_user_id", input.actorUserId)
+    .eq("action", "execute_step")
+    .eq("idempotency_key", input.idempotencyKey)
+    .maybeSingle();
+
+  if (error) {
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Nao foi possivel validar a idempotencia da acao.", 500);
+  }
+
+  if (!data) {
+    return { replayed: false };
+  }
+
+  const parsed = executeStepIdempotencyRowSchema.safeParse(data);
+
+  if (!parsed.success) {
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Registro de idempotencia invalido.", 500);
+  }
+
+  const idempotency = parsed.data;
+
+  if (idempotency.request_hash !== input.requestHash) {
+    throw new HrWorkflowMutationError("IDEMPOTENCY_CONFLICT", "Chave de idempotencia reutilizada com payload diferente.", 409);
+  }
+
+  if (idempotency.status === "completed") {
+    return {
+      replayed: true,
+      workflowId: idempotency.workflow_id,
+      status: "completed"
+    };
+  }
+
+  if (idempotency.status === "processing") {
+    throw new HrWorkflowMutationError("REQUEST_ALREADY_PROCESSING", "A mesma acao ainda esta em processamento.", 409);
+  }
+
+  const failedSnapshot = failedIdempotencySnapshotSchema.safeParse(idempotency.error_snapshot);
+
+  if (failedSnapshot.success) {
+    throw mapWorkflowRpcError(
+      {
+        ok: false,
+        error_code: failedSnapshot.data.error_code,
+        message: failedSnapshot.data.message
+      },
+      "Tentativa anterior falhou."
+    );
+  }
+
+  throw new HrWorkflowMutationError("INTERNAL_ERROR", "Tentativa anterior falhou.", 500);
 }
 
 export async function applyCreateWorkflowRpc(input: {
@@ -431,17 +613,24 @@ export async function applyCreateWorkflowRpc(input: {
   return data as CreateWorkflowRpcResult;
 }
 
-export function mapWorkflowRpcError(result: CreateWorkflowRpcResult) {
+export function mapWorkflowRpcError(result: CreateWorkflowRpcResult, fallbackMessage = "Nao foi possivel criar workflow.") {
   const code = result.error_code ?? "INTERNAL_ERROR";
-  const message = result.message ?? "Nao foi possivel criar workflow.";
+  const message = result.message ?? fallbackMessage;
   const statusByCode: Record<string, number> = {
     INVALID_ACTION: 400,
     INVALID_PAYLOAD: 422,
     LGPD_PAYLOAD_DENIED: 422,
     IDEMPOTENCY_CONFLICT: 409,
     REQUEST_ALREADY_PROCESSING: 409,
+    WORKFLOW_NOT_FOUND: 404,
+    WORKFLOW_STEP_NOT_FOUND: 404,
     WORKFLOW_TYPE_NOT_ALLOWED: 422,
     WORKFLOW_EMPLOYEE_REQUIRED: 422,
+    WORKFLOW_STATUS_INVALID: 409,
+    STEP_STATUS_INVALID: 409,
+    STEP_OUT_OF_ORDER: 409,
+    STEP_NOT_ASSIGNED_TO_ACTOR: 403,
+    ACTOR_INVALID: 403,
     INTERNAL_ERROR: 500
   };
 
