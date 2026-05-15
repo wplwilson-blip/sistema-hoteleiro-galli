@@ -16,7 +16,18 @@ export const HR_PERMISSIONS = {
   documentsView: "HR:documents.view",
   documentsSensitiveView: "HR:documents.sensitive.view",
   historyView: "HR:history.view",
-  historySensitiveView: "HR:history.sensitive.view"
+  historySensitiveView: "HR:history.sensitive.view",
+  workflowsView: "HR:workflows.view",
+  workflowsManage: "HR:workflows.manage",
+  workflowsApprove: "HR:workflows.approve",
+  workflowsCancel: "HR:workflows.cancel",
+  workflowsSensitiveView: "HR:workflows.sensitive.view",
+  workflowStepsView: "HR:workflow_steps.view",
+  workflowStepsManage: "HR:workflow_steps.manage",
+  workflowStepsComplete: "HR:workflow_steps.complete",
+  workflowStepsReturn: "HR:workflow_steps.return",
+  workflowEventsView: "HR:workflow_events.view",
+  workflowEventsSensitiveView: "HR:workflow_events.sensitive.view"
 } as const;
 
 export type HrPermissionCode = (typeof HR_PERMISSIONS)[keyof typeof HR_PERMISSIONS];

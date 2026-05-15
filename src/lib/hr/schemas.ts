@@ -19,6 +19,30 @@ export const employeeDocumentStatusSchema = z.enum([
 
 export const employeeFunctionalEventStatusSchema = z.enum(["active", "cancelled", "corrected"]);
 
+export const hrWorkflowTypeSchema = z.enum([
+  "admission",
+  "termination",
+  "transfer",
+  "promotion",
+  "job_position_change",
+  "training",
+  "vacation",
+  "absence",
+  "warning",
+  "equipment_delivery",
+  "general_note"
+]);
+
+export const hrWorkflowStatusSchema = z.enum([
+  "draft",
+  "open",
+  "in_progress",
+  "waiting_approval",
+  "returned",
+  "completed",
+  "cancelled"
+]);
+
 export const employeeFunctionalEventTypeSchema = z.enum([
   "employee_created",
   "employee_basic_updated",
@@ -103,6 +127,26 @@ export const hrEmployeeHistoryQuerySchema = z.object({
   from: optionalDateSchema,
   to: optionalDateSchema,
   includeSensitive: optionalBooleanSchema
+});
+
+export const hrWorkflowListQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  page_size: paginatedNumber(20, 100),
+  status: hrWorkflowStatusSchema.optional().or(emptyToUndefined),
+  workflow_type: hrWorkflowTypeSchema.optional().or(emptyToUndefined),
+  employee_id: optionalUuidSchema,
+  unit_id: optionalUuidSchema,
+  assigned_to: optionalUuidSchema,
+  created_by: optionalUuidSchema,
+  sensitive: optionalBooleanSchema,
+  created_from: optionalDateSchema,
+  created_to: optionalDateSchema,
+  q: z
+    .string()
+    .trim()
+    .max(120, "Busca muito longa.")
+    .optional()
+    .or(emptyToUndefined)
 });
 
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {
