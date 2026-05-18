@@ -109,6 +109,7 @@ const eventPayloadKeys = new Set([
   "returned_step_id",
   "return_kind",
   "reopen_kind",
+  "cancellation_kind",
   "current_step_id",
   "workflow_status",
   "reason_present",
