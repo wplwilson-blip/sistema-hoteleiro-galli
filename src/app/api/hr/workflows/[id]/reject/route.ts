@@ -10,13 +10,13 @@ import {
 } from "@/lib/hr/workflow-data";
 import {
   HrWorkflowMutationError,
-  applyApproveStepRpc,
-  buildApproveStepRpcPayload,
+  applyRejectStepRpc,
+  buildRejectStepRpcPayload,
   createWorkflowActionRequestHash,
   getRequiredWorkflowIdempotencyKey,
   mapWorkflowRpcError,
-  parseApproveStepPayload,
-  resolveApproveStepIdempotencyReplay
+  parseRejectStepPayload,
+  resolveRejectStepIdempotencyReplay
 } from "@/lib/hr/workflow-mutations";
 import { redactWorkflowDetail } from "@/lib/hr/workflow-redaction";
 import {
@@ -63,14 +63,14 @@ const workflowRowSchema: z.ZodType<HrWorkflowRow> = z.object({
   updated_by: z.string().uuid().nullable()
 });
 
-const approvableWorkflowStatuses = new Set<string>(["in_progress", "waiting_approval"]);
+const rejectableWorkflowStatuses = new Set<string>(["in_progress", "waiting_approval"]);
 const actionableStepStatuses = new Set<string>(["pending", "in_progress", "waiting_approval"]);
 
 function workflowMutationError(code: string, message: string, status: number): never {
   throw new HrWorkflowMutationError(code, message, status);
 }
 
-async function loadWorkflowForApproval(context: HrRequestContext, workflowId: string) {
+async function loadWorkflowForRejection(context: HrRequestContext, workflowId: string) {
   const { data, error } = await context.supabase
     .from("hr_workflows")
     .select(HR_WORKFLOW_SELECT)
@@ -79,7 +79,7 @@ async function loadWorkflowForApproval(context: HrRequestContext, workflowId: st
     .limit(1);
 
   if (error) {
-    logHrApiError("workflows.approve.workflow_lookup_failed", error);
+    logHrApiError("workflows.reject.workflow_lookup_failed", error);
     workflowMutationError("INTERNAL_ERROR", "Nao foi possivel carregar o workflow de RH.", 500);
   }
 
@@ -90,14 +90,14 @@ async function loadWorkflowForApproval(context: HrRequestContext, workflowId: st
   const parsed = workflowRowSchema.safeParse(data[0]);
 
   if (!parsed.success) {
-    logHrApiError("workflows.approve.workflow_parse_failed", { message: parsed.error.message });
-    workflowMutationError("INTERNAL_ERROR", "Workflow invalido para aprovacao.", 500);
+    logHrApiError("workflows.reject.workflow_parse_failed", { message: parsed.error.message });
+    workflowMutationError("INTERNAL_ERROR", "Workflow invalido para rejeicao.", 500);
   }
 
   return parsed.data;
 }
 
-async function assertActorCanApproveWorkflowUnit(context: HrRequestContext, unitId: string) {
+async function assertActorCanRejectWorkflowUnit(context: HrRequestContext, unitId: string) {
   const actorSchema = z.object({
     id: z.string().uuid(),
     status: z.literal("active")
@@ -111,7 +111,7 @@ async function assertActorCanApproveWorkflowUnit(context: HrRequestContext, unit
     .limit(1);
 
   if (actorError) {
-    logHrApiError("workflows.approve.actor_lookup_failed", actorError);
+    logHrApiError("workflows.reject.actor_lookup_failed", actorError);
     workflowMutationError("INTERNAL_ERROR", "Nao foi possivel validar o aprovador.", 500);
   }
 
@@ -136,7 +136,7 @@ async function assertActorCanApproveWorkflowUnit(context: HrRequestContext, unit
     .limit(1);
 
   if (linkError) {
-    logHrApiError("workflows.approve.actor_unit_link_lookup_failed", linkError);
+    logHrApiError("workflows.reject.actor_unit_link_lookup_failed", linkError);
     workflowMutationError("INTERNAL_ERROR", "Nao foi possivel validar a unidade do aprovador.", 500);
   }
 
@@ -145,13 +145,13 @@ async function assertActorCanApproveWorkflowUnit(context: HrRequestContext, unit
   }
 }
 
-function assertWorkflowCanApprove(workflow: HrWorkflowRow) {
-  if (!approvableWorkflowStatuses.has(workflow.status)) {
-    workflowMutationError("WORKFLOW_STATUS_INVALID", "Workflow nao esta ativo para aprovacao de etapa.", 409);
+function assertWorkflowCanReject(workflow: HrWorkflowRow) {
+  if (!rejectableWorkflowStatuses.has(workflow.status)) {
+    workflowMutationError("WORKFLOW_STATUS_INVALID", "Workflow nao esta ativo para rejeicao de etapa.", 409);
   }
 }
 
-function assertStepCanApprove(input: {
+function assertStepCanReject(input: {
   step: HrWorkflowStepRow;
   steps: HrWorkflowStepRow[];
   actorUserId: string;
@@ -165,7 +165,7 @@ function assertStepCanApprove(input: {
     .sort((left, right) => left.step_order - right.step_order)[0];
 
   if (!firstActionableStep || firstActionableStep.id !== input.step.id) {
-    workflowMutationError("STEP_OUT_OF_ORDER", "Aprove a etapa pendente anterior antes desta etapa.", 409);
+    workflowMutationError("STEP_OUT_OF_ORDER", "Rejeite a etapa pendente anterior antes desta etapa.", 409);
   }
 
   if (input.step.assigned_to_user_id && input.step.assigned_to_user_id !== input.actorUserId) {
@@ -174,7 +174,7 @@ function assertStepCanApprove(input: {
 }
 
 async function loadWorkflowDetailPayload(context: HrRequestContext, workflowId: string) {
-  const workflow = await loadWorkflowForApproval(context, workflowId);
+  const workflow = await loadWorkflowForRejection(context, workflowId);
   const sensitiveAccess = await getWorkflowPermissionAccess(context, HR_PERMISSIONS.workflowsSensitiveView);
   const [stepsByWorkflow, employeesById] = await Promise.all([
     loadWorkflowSteps(context.supabase, [workflow.id]),
@@ -206,23 +206,23 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return hrWorkflowApiError("INVALID_PAYLOAD", "JSON invalido.", 400);
     }
 
-    const payload = parseApproveStepPayload(rawPayload);
+    const payload = parseRejectStepPayload(rawPayload);
     const idempotencyKey = getRequiredWorkflowIdempotencyKey(request);
-    const workflow = await loadWorkflowForApproval(context, workflowId);
+    const workflow = await loadWorkflowForRejection(context, workflowId);
 
     assertWorkflowUnitScope(context, workflow.unit_id);
-    await assertActorCanApproveWorkflowUnit(context, workflow.unit_id);
+    await assertActorCanRejectWorkflowUnit(context, workflow.unit_id);
 
-    const rpcPayload = buildApproveStepRpcPayload(payload);
+    const rpcPayload = buildRejectStepRpcPayload(payload);
     const requestHash = createWorkflowActionRequestHash({
-      action: "approve_step",
+      action: "reject_step",
       organizationId: workflow.organization_id,
       unitId: workflow.unit_id,
       workflowId: workflow.id,
       stepId: payload.step_id,
       payload: rpcPayload
     });
-    const replay = await resolveApproveStepIdempotencyReplay({
+    const replay = await resolveRejectStepIdempotencyReplay({
       supabase: context.supabase,
       organizationId: workflow.organization_id,
       actorUserId: context.session.user.id,
@@ -240,7 +240,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       });
     }
 
-    assertWorkflowCanApprove(workflow);
+    assertWorkflowCanReject(workflow);
 
     const stepsByWorkflow = await loadWorkflowSteps(context.supabase, [workflow.id]);
     const steps = stepsByWorkflow.get(workflow.id) ?? [];
@@ -250,13 +250,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
       workflowMutationError("WORKFLOW_STEP_NOT_FOUND", "Etapa nao encontrada.", 404);
     }
 
-    assertStepCanApprove({
+    assertStepCanReject({
       step,
       steps,
       actorUserId: context.session.user.id
     });
 
-    const result = await applyApproveStepRpc({
+    const result = await applyRejectStepRpc({
       supabase: context.supabase,
       context,
       organizationId: workflow.organization_id,
@@ -269,7 +269,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
 
     if (!result.ok) {
-      throw mapWorkflowRpcError(result, "Nao foi possivel aprovar a etapa.");
+      throw mapWorkflowRpcError(result, "Nao foi possivel rejeitar a etapa.");
     }
 
     return NextResponse.json({
@@ -288,6 +288,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return hrWorkflowApiError(error.code, error.message, error.status);
     }
 
-    return handleHrWorkflowRouteError(error, "Nao foi possivel aprovar a etapa do workflow de RH.");
+    return handleHrWorkflowRouteError(error, "Nao foi possivel rejeitar a etapa do workflow de RH.");
   }
 }

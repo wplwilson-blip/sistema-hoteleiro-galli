@@ -40,7 +40,8 @@ export const hrWorkflowStatusSchema = z.enum([
   "waiting_approval",
   "returned",
   "completed",
-  "cancelled"
+  "cancelled",
+  "rejected"
 ]);
 
 export const employeeFunctionalEventTypeSchema = z.enum([

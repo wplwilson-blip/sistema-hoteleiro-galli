@@ -21,7 +21,8 @@ export const HR_WORKFLOW_STATUSES = [
   "waiting_approval",
   "returned",
   "completed",
-  "cancelled"
+  "cancelled",
+  "rejected"
 ] as const;
 
 export type HrWorkflowStatus = (typeof HR_WORKFLOW_STATUSES)[number];
@@ -47,10 +48,12 @@ export const HR_WORKFLOW_EVENT_TYPES = [
   "workflow_submitted_for_approval",
   "workflow_approved",
   "workflow_returned",
+  "workflow_rejected",
   "workflow_completed",
   "workflow_cancelled",
   "step_started",
   "step_completed",
+  "step_rejected",
   "step_returned",
   "step_skipped",
   "document_linked",

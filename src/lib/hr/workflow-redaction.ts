@@ -103,7 +103,11 @@ const eventPayloadKeys = new Set([
   "title",
   "summary",
   "comment",
-  "note"
+  "note",
+  "rejected_step_id",
+  "rejection_kind",
+  "reason_present",
+  "notes_present"
 ]);
 
 export function isWorkflowSensitive(workflow: Pick<HrWorkflowRow, "workflow_type" | "is_sensitive">) {

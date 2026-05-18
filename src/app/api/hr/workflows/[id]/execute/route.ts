@@ -32,7 +32,7 @@ import { HR_WORKFLOW_TYPES } from "@/lib/hr/workflow-types";
 
 export const dynamic = "force-dynamic";
 
-const workflowStatusSchema = z.enum(["draft", "open", "in_progress", "waiting_approval", "returned", "completed", "cancelled"]);
+const workflowStatusSchema = z.enum(["draft", "open", "in_progress", "waiting_approval", "returned", "completed", "cancelled", "rejected"]);
 
 const workflowRowSchema: z.ZodType<HrWorkflowRow> = z.object({
   id: z.string().uuid(),
