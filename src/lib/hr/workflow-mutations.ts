@@ -8,7 +8,7 @@ import { HR_WORKFLOW_TYPES, isWorkflowTypeSensitive, type HrWorkflowType } from 
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-type WorkflowMutationAction = "create_workflow" | "execute_step" | "approve_step" | "reject_step";
+type WorkflowMutationAction = "create_workflow" | "execute_step" | "approve_step" | "reject_step" | "return_step";
 type ExistingWorkflowMutationAction = Exclude<WorkflowMutationAction, "create_workflow">;
 
 const idempotencyKeySchema = z
@@ -193,6 +193,7 @@ export type CreateWorkflowRpcResult = {
 export type ExecuteStepInput = z.infer<typeof executeStepPayloadSchema>;
 export type ApproveStepInput = z.infer<typeof approveStepPayloadSchema>;
 export type RejectStepInput = z.infer<typeof rejectStepPayloadSchema>;
+export type ReturnStepInput = z.infer<typeof returnStepPayloadSchema>;
 
 const workflowActionIdempotencyRowSchema = z.object({
   workflow_id: z.string().uuid().nullable(),
@@ -238,6 +239,14 @@ const rejectStepPayloadSchema = z
   .object({
     step_id: uuidSchema,
     reason: z.string().trim().min(3, "Motivo da rejeicao obrigatorio.").max(2000, "Motivo da rejeicao muito longo."),
+    notes: optionalText(2000)
+  })
+  .strict();
+
+const returnStepPayloadSchema = z
+  .object({
+    step_id: uuidSchema,
+    reason: z.string().trim().min(3, "Motivo da devolucao obrigatorio.").max(2000, "Motivo da devolucao muito longo."),
     notes: optionalText(2000)
   })
   .strict();
@@ -427,6 +436,20 @@ export function parseRejectStepPayload(raw: unknown) {
   }
 }
 
+export function parseReturnStepPayload(raw: unknown) {
+  assertNoForbiddenPayload(raw);
+
+  try {
+    return returnStepPayloadSchema.parse(raw);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new HrWorkflowMutationError("INVALID_PAYLOAD", error.errors[0]?.message ?? "Payload invalido.", 422);
+    }
+
+    throw error;
+  }
+}
+
 export function assertCreateWorkflowEmployeeRequirement(input: Pick<CreateWorkflowInput, "workflow_type" | "employee_id">) {
   if (!input.employee_id && !["admission", "training", "general_note"].includes(input.workflow_type)) {
     throw new HrWorkflowMutationError("WORKFLOW_EMPLOYEE_REQUIRED", "Colaborador obrigatorio para este tipo de workflow.", 422);
@@ -481,6 +504,13 @@ export function buildApproveStepRpcPayload(payload: ApproveStepInput): Record<st
 }
 
 export function buildRejectStepRpcPayload(payload: RejectStepInput): Record<string, JsonValue> {
+  return {
+    reason: payload.reason,
+    notes: payload.notes ?? null
+  };
+}
+
+export function buildReturnStepRpcPayload(payload: ReturnStepInput): Record<string, JsonValue> {
   return {
     reason: payload.reason,
     notes: payload.notes ?? null
@@ -640,6 +670,36 @@ export async function applyRejectStepRpc(input: {
   return data as CreateWorkflowRpcResult;
 }
 
+export async function applyReturnStepRpc(input: {
+  supabase: SupabaseAdmin;
+  context: HrRequestContext;
+  organizationId: string;
+  unitId: string;
+  workflowId: string;
+  stepId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  payload: Record<string, JsonValue>;
+}) {
+  const { data, error } = await input.supabase.rpc("hr_workflow_apply_action", {
+    p_action: "return_step",
+    p_organization_id: input.organizationId,
+    p_unit_id: input.unitId,
+    p_actor_user_id: input.context.session.user.id,
+    p_idempotency_key: input.idempotencyKey,
+    p_request_hash: input.requestHash,
+    p_payload: input.payload,
+    p_workflow_id: input.workflowId,
+    p_step_id: input.stepId
+  });
+
+  if (error) {
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Nao foi possivel executar a engine de workflow.", 500);
+  }
+
+  return data as CreateWorkflowRpcResult;
+}
+
 async function resolveWorkflowActionIdempotencyReplay(input: {
   supabase: SupabaseAdmin;
   action: ExistingWorkflowMutationAction;
@@ -741,6 +801,19 @@ export function resolveRejectStepIdempotencyReplay(input: {
   return resolveWorkflowActionIdempotencyReplay({
     ...input,
     action: "reject_step"
+  });
+}
+
+export function resolveReturnStepIdempotencyReplay(input: {
+  supabase: SupabaseAdmin;
+  organizationId: string;
+  actorUserId: string;
+  idempotencyKey: string;
+  requestHash: string;
+}) {
+  return resolveWorkflowActionIdempotencyReplay({
+    ...input,
+    action: "return_step"
   });
 }
 

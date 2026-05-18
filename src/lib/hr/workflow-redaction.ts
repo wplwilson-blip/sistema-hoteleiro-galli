@@ -106,6 +106,11 @@ const eventPayloadKeys = new Set([
   "note",
   "rejected_step_id",
   "rejection_kind",
+  "returned_step_id",
+  "return_kind",
+  "reopen_kind",
+  "current_step_id",
+  "workflow_status",
   "reason_present",
   "notes_present"
 ]);
