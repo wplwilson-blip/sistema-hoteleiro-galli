@@ -59,6 +59,23 @@ export const hrWorkflowAuditActionSchema = z.enum([
 
 export const hrWorkflowAuditRiskLevelSchema = z.enum(["low", "medium", "high", "critical"]);
 
+export const hrWorkflowTemplateTypeSchema = z.enum([
+  "admission",
+  "termination",
+  "transfer",
+  "promotion",
+  "job_position_change",
+  "training",
+  "vacation",
+  "absence",
+  "warning",
+  "equipment_delivery",
+  "general_note",
+  "vacation_request",
+  "salary_increase",
+  "document_request"
+]);
+
 export const employeeFunctionalEventTypeSchema = z.enum([
   "employee_created",
   "employee_basic_updated",
@@ -192,6 +209,13 @@ export const hrWorkflowAnalyticsQuerySchema = z.object({
   to: optionalDateSchema,
   workflow_type: hrWorkflowTypeSchema.optional().or(emptyToUndefined),
   status: hrWorkflowStatusSchema.optional().or(emptyToUndefined)
+});
+
+export const hrWorkflowTemplatesQuerySchema = z.object({
+  unit_id: optionalUuidSchema,
+  workflow_type: hrWorkflowTemplateTypeSchema.optional().or(emptyToUndefined),
+  is_active: optionalBooleanSchema,
+  include_system: optionalBooleanSchema
 });
 
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {
