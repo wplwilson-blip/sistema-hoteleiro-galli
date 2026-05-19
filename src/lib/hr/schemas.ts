@@ -186,6 +186,14 @@ export const hrWorkflowAuditQuerySchema = z.object({
   to: optionalDateSchema
 });
 
+export const hrWorkflowAnalyticsQuerySchema = z.object({
+  unit_id: optionalUuidSchema,
+  from: optionalDateSchema,
+  to: optionalDateSchema,
+  workflow_type: hrWorkflowTypeSchema.optional().or(emptyToUndefined),
+  status: hrWorkflowStatusSchema.optional().or(emptyToUndefined)
+});
+
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {
   const url = new URL(request.url);
   return schema.parse(Object.fromEntries(url.searchParams.entries()));
