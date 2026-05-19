@@ -159,6 +159,10 @@ export const hrWorkflowNotificationsQuerySchema = z.object({
   channel: hrWorkflowNotificationChannelSchema.optional().or(emptyToUndefined)
 });
 
+export const hrWorkflowDashboardQuerySchema = z.object({
+  unit_id: optionalUuidSchema
+});
+
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {
   const url = new URL(request.url);
   return schema.parse(Object.fromEntries(url.searchParams.entries()));
