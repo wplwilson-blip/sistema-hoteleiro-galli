@@ -5,10 +5,10 @@ import { logHrApiError } from "@/lib/hr/api-auth";
 import type { HrWorkflowEventType, HrWorkflowStatus, HrWorkflowStepStatus, HrWorkflowType } from "@/lib/hr/workflow-types";
 
 export const HR_WORKFLOW_SELECT =
-  "id, organization_id, unit_id, employee_id, workflow_number, workflow_type, title, description, status, priority, visibility_scope, is_sensitive, initiated_by, responsible_user_id, due_at, started_at, completed_at, completed_by, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, created_by, updated_by";
+  "id, organization_id, unit_id, employee_id, workflow_number, workflow_type, title, description, status, priority, visibility_scope, is_sensitive, initiated_by, responsible_user_id, due_at, sla_due_at, sla_status, sla_breached_at, sla_minutes, started_at, completed_at, completed_by, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, created_by, updated_by";
 
 export const HR_WORKFLOW_STEP_SELECT =
-  "id, organization_id, unit_id, workflow_id, employee_id, step_order, step_code, title, description, status, requires_approval, visibility_scope, is_sensitive, assigned_to_user_id, assigned_at, due_at, started_at, completed_at, completed_by, approved_at, approved_by, returned_at, returned_by, return_reason, metadata, created_at, updated_at";
+  "id, organization_id, unit_id, workflow_id, employee_id, step_order, step_code, title, description, status, requires_approval, visibility_scope, is_sensitive, assigned_to_user_id, assigned_at, due_at, sla_due_at, sla_status, sla_breached_at, sla_minutes, started_at, completed_at, completed_by, approved_at, approved_by, returned_at, returned_by, return_reason, metadata, created_at, updated_at";
 
 export const HR_WORKFLOW_EVENT_SELECT =
   "id, organization_id, unit_id, workflow_id, workflow_step_id, employee_id, event_scope, event_type, from_status, to_status, summary, details, visibility_scope, is_sensitive, actor_user_id, occurred_at, event_payload, status, created_at, updated_at";
@@ -29,6 +29,10 @@ export type HrWorkflowRow = {
   initiated_by: string | null;
   responsible_user_id: string | null;
   due_at: string | null;
+  sla_due_at: string | null;
+  sla_status: string | null;
+  sla_breached_at: string | null;
+  sla_minutes: number | null;
   started_at: string | null;
   completed_at: string | null;
   completed_by: string | null;
@@ -59,6 +63,10 @@ export type HrWorkflowStepRow = {
   assigned_to_user_id: string | null;
   assigned_at: string | null;
   due_at: string | null;
+  sla_due_at: string | null;
+  sla_status: string | null;
+  sla_breached_at: string | null;
+  sla_minutes: number | null;
   started_at: string | null;
   completed_at: string | null;
   completed_by: string | null;

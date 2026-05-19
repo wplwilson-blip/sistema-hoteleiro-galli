@@ -50,6 +50,10 @@ const workflowRowSchema: z.ZodType<HrWorkflowRow> = z.object({
   initiated_by: z.string().uuid().nullable(),
   responsible_user_id: z.string().uuid().nullable(),
   due_at: z.string().nullable(),
+  sla_due_at: z.string().nullable(),
+  sla_status: z.string().nullable(),
+  sla_breached_at: z.string().nullable(),
+  sla_minutes: z.number().nullable(),
   started_at: z.string().nullable(),
   completed_at: z.string().nullable(),
   completed_by: z.string().uuid().nullable(),
@@ -69,7 +73,6 @@ const executableStepStatuses = new Set<string>(["pending", "in_progress"]);
 function workflowMutationError(code: string, message: string, status: number): never {
   throw new HrWorkflowMutationError(code, message, status);
 }
-
 async function loadWorkflowForExecution(context: HrRequestContext, workflowId: string) {
   const { data, error } = await context.supabase
     .from("hr_workflows")
@@ -144,7 +147,6 @@ async function assertActorCanExecuteWorkflowUnit(context: HrRequestContext, unit
     workflowMutationError("ACTOR_INVALID", "Executor nao pertence a unidade do workflow.", 403);
   }
 }
-
 function assertWorkflowCanExecute(workflow: HrWorkflowRow) {
   if (!activeWorkflowStatuses.has(workflow.status)) {
     workflowMutationError("WORKFLOW_STATUS_INVALID", "Workflow nao esta ativo para execucao de etapa.", 409);

@@ -39,6 +39,10 @@ export const HR_WORKFLOW_STEP_STATUSES = [
 
 export type HrWorkflowStepStatus = (typeof HR_WORKFLOW_STEP_STATUSES)[number];
 
+export const HR_WORKFLOW_SLA_STATUSES = ["on_time", "warning", "overdue", "completed_on_time", "completed_late", "cancelled"] as const;
+
+export type HrWorkflowSlaStatus = (typeof HR_WORKFLOW_SLA_STATUSES)[number];
+
 export const HR_WORKFLOW_EVENT_TYPES = [
   "workflow_created",
   "workflow_opened",

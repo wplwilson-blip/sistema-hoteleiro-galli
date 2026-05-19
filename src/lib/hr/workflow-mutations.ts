@@ -152,7 +152,8 @@ const createWorkflowStepSchema = z
     title: z.string().trim().min(1, "Titulo da etapa obrigatorio.").max(180, "Titulo da etapa muito longo."),
     step_order: z.number().int().min(1, "Ordem da etapa invalida.").max(999_999_999, "Ordem da etapa invalida."),
     requires_approval: z.boolean().optional().default(false),
-    assigned_to_user_id: z.preprocess((value) => (value === "" || value === null ? undefined : value), uuidSchema.optional())
+    assigned_to_user_id: z.preprocess((value) => (value === "" || value === null ? undefined : value), uuidSchema.optional()),
+    sla_minutes: z.preprocess((value) => (value === "" || value === null ? undefined : value), z.number().int().min(1).max(525_600).optional())
   })
   .strict();
 
@@ -165,6 +166,7 @@ export const createWorkflowPayloadSchema = z
     unit_id: z.preprocess((value) => (value === "" || value === null ? undefined : value), uuidSchema.optional()),
     priority: prioritySchema.optional().default("normal"),
     metadata: z.record(z.unknown()).optional().default({}),
+    sla_minutes: z.preprocess((value) => (value === "" || value === null ? undefined : value), z.number().int().min(1).max(525_600).optional()),
     steps: z.array(createWorkflowStepSchema).min(1, "Informe ao menos uma etapa.").max(20, "O workflow aceita no maximo 20 etapas."),
     idempotency_key: idempotencyKeySchema.optional()
   })
@@ -324,7 +326,8 @@ function normalizeWorkflowPayload(payload: z.infer<typeof createWorkflowPayloadS
       title: step.title,
       step_order: step.step_order,
       requires_approval: step.requires_approval,
-      assigned_to_user_id: step.assigned_to_user_id
+      assigned_to_user_id: step.assigned_to_user_id,
+      sla_minutes: step.sla_minutes
     }))
     .sort((left, right) => left.step_order - right.step_order);
 
@@ -502,13 +505,15 @@ export function buildCreateWorkflowRpcPayload(payload: CreateWorkflowInput): Rec
     description: payload.description ?? null,
     employee_id: payload.employee_id ?? null,
     priority: payload.priority,
+    sla_minutes: payload.sla_minutes ?? null,
     metadata: payload.metadata as Record<string, JsonValue>,
     steps: payload.steps.map((step) => ({
       step_key: step.step_key,
       title: step.title,
       step_order: step.step_order,
       requires_approval: step.requires_approval,
-      assigned_to_user_id: step.assigned_to_user_id ?? null
+      assigned_to_user_id: step.assigned_to_user_id ?? null,
+      sla_minutes: step.sla_minutes ?? null
     }))
   };
 }
