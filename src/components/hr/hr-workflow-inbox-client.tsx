@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRight,
   BellRing,
   CalendarClock,
   ClipboardList,
@@ -560,6 +562,7 @@ export function HrWorkflowInboxClient() {
                   <th className="px-4 py-3 font-semibold">Atraso</th>
                   <th className="px-4 py-3 font-semibold">Escalation</th>
                   <th className="px-4 py-3 font-semibold">Datas</th>
+                  <th className="px-4 py-3 text-right font-semibold">Detalhe</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -613,6 +616,14 @@ export function HrWorkflowInboxClient() {
                           <p>Criado: {formatDateTime(workflow.created_at)}</p>
                           <p>Atualizado: {formatDateTime(workflow.updated_at)}</p>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/rh/workflows/${workflow.id}`}>
+                            Ver detalhe
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        </Button>
                       </td>
                     </tr>
                   );
