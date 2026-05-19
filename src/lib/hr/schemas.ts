@@ -48,6 +48,17 @@ export const hrWorkflowNotificationStatusSchema = z.enum(["pending", "scheduled"
 
 export const hrWorkflowNotificationChannelSchema = z.enum(["in_app", "email", "whatsapp"]);
 
+export const hrWorkflowAuditActionSchema = z.enum([
+  "create_workflow",
+  "execute_step",
+  "approve_step",
+  "reject_step",
+  "return_step",
+  "cancel_workflow"
+]);
+
+export const hrWorkflowAuditRiskLevelSchema = z.enum(["low", "medium", "high", "critical"]);
+
 export const employeeFunctionalEventTypeSchema = z.enum([
   "employee_created",
   "employee_basic_updated",
@@ -161,6 +172,18 @@ export const hrWorkflowNotificationsQuerySchema = z.object({
 
 export const hrWorkflowDashboardQuerySchema = z.object({
   unit_id: optionalUuidSchema
+});
+
+export const hrWorkflowAuditQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  page_size: paginatedNumber(20, 100),
+  workflow_id: optionalUuidSchema,
+  action: hrWorkflowAuditActionSchema.optional().or(emptyToUndefined),
+  risk_level: hrWorkflowAuditRiskLevelSchema.optional().or(emptyToUndefined),
+  actor_user_id: optionalUuidSchema,
+  unit_id: optionalUuidSchema,
+  from: optionalDateSchema,
+  to: optionalDateSchema
 });
 
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {

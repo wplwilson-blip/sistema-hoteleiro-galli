@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HR_PERMISSIONS, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
+import { buildWorkflowAuditState, loadWorkflowAuditSnapshot, recordWorkflowAuditLog } from "@/lib/hr/workflow-audit";
 import {
   HR_WORKFLOW_SELECT,
   loadWorkflowEmployees,
@@ -237,6 +238,34 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (!result.ok) {
       throw mapWorkflowRpcError(result, "Nao foi possivel cancelar o workflow.");
+    }
+
+    const auditSnapshot = await loadWorkflowAuditSnapshot({
+      supabase: context.supabase,
+      workflowId: result.workflow_id ?? workflow.id
+    });
+    const workflowForAudit = auditSnapshot.workflow ?? workflow;
+
+    if (result.idempotency?.replayed !== true) {
+      await recordWorkflowAuditLog({
+        context,
+        request,
+        action: "cancel_workflow",
+        workflow: workflowForAudit,
+        previousState: {
+          workflow: buildWorkflowAuditState(workflow)
+        },
+        newState: {
+          workflow: buildWorkflowAuditState(workflowForAudit)
+        },
+        metadata: {
+          idempotency_key: idempotencyKey,
+          idempotency_replayed: false,
+          reason_present: Boolean(payload.reason),
+          notes_present: Boolean(payload.notes),
+          source: "api"
+        }
+      });
     }
 
     return NextResponse.json({

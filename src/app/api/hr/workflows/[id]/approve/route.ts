@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HR_PERMISSIONS, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
 import {
+  buildWorkflowAuditState,
+  buildWorkflowStepAuditState,
+  loadWorkflowAuditSnapshot,
+  recordWorkflowAuditLog
+} from "@/lib/hr/workflow-audit";
+import {
   HR_WORKFLOW_SELECT,
   loadWorkflowEmployees,
   loadWorkflowSteps,
@@ -277,6 +283,37 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     if (!result.ok) {
       throw mapWorkflowRpcError(result, "Nao foi possivel aprovar a etapa.");
+    }
+
+    const auditSnapshot = await loadWorkflowAuditSnapshot({
+      supabase: context.supabase,
+      workflowId: result.workflow_id ?? workflow.id,
+      stepId: step.id
+    });
+    const workflowForAudit = auditSnapshot.workflow ?? workflow;
+
+    if (result.idempotency?.replayed !== true) {
+      await recordWorkflowAuditLog({
+        context,
+        request,
+        action: "approve_step",
+        workflow: workflowForAudit,
+        step,
+        previousState: {
+          workflow: buildWorkflowAuditState(workflow),
+          step: buildWorkflowStepAuditState(step)
+        },
+        newState: {
+          workflow: buildWorkflowAuditState(workflowForAudit),
+          step: buildWorkflowStepAuditState(auditSnapshot.step ?? step)
+        },
+        metadata: {
+          idempotency_key: idempotencyKey,
+          idempotency_replayed: false,
+          notes_present: Boolean(payload.notes),
+          source: "api"
+        }
+      });
     }
 
     return NextResponse.json({

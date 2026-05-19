@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HR_PERMISSIONS, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
+import { buildWorkflowAuditState, loadWorkflowAuditSnapshot, recordWorkflowAuditLog } from "@/lib/hr/workflow-audit";
 import {
   HR_WORKFLOW_SELECT,
   escapeIlikePattern,
@@ -329,6 +330,34 @@ export async function POST(request: Request) {
 
     if (!result.workflow_id) {
       workflowMutationError("INTERNAL_ERROR", "A engine nao retornou o workflow criado.", 500);
+    }
+
+    const auditSnapshot = await loadWorkflowAuditSnapshot({
+      supabase: context.supabase,
+      workflowId: result.workflow_id
+    });
+    const workflowForAudit = auditSnapshot.workflow;
+
+    if (!workflowForAudit) {
+      workflowMutationError("INTERNAL_ERROR", "Workflow criado, mas nao foi possivel localizar o snapshot de auditoria.", 500);
+    }
+
+    if (result.idempotency?.replayed !== true) {
+      await recordWorkflowAuditLog({
+        context,
+        request,
+        action: "create_workflow",
+        workflow: workflowForAudit,
+        previousState: null,
+        newState: {
+          workflow: buildWorkflowAuditState(workflowForAudit)
+        },
+        metadata: {
+          idempotency_key: idempotencyKey,
+          idempotency_replayed: false,
+          source: "api"
+        }
+      });
     }
 
     const workflow = await loadWorkflowDetailPayload(context, result.workflow_id);
