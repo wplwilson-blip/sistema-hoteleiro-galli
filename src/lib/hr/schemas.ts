@@ -44,6 +44,10 @@ export const hrWorkflowStatusSchema = z.enum([
   "rejected"
 ]);
 
+export const hrWorkflowNotificationStatusSchema = z.enum(["pending", "scheduled", "sent", "read", "failed", "cancelled"]);
+
+export const hrWorkflowNotificationChannelSchema = z.enum(["in_app", "email", "whatsapp"]);
+
 export const employeeFunctionalEventTypeSchema = z.enum([
   "employee_created",
   "employee_basic_updated",
@@ -148,6 +152,11 @@ export const hrWorkflowListQuerySchema = z.object({
     .max(120, "Busca muito longa.")
     .optional()
     .or(emptyToUndefined)
+});
+
+export const hrWorkflowNotificationsQuerySchema = z.object({
+  status: hrWorkflowNotificationStatusSchema.optional().or(emptyToUndefined),
+  channel: hrWorkflowNotificationChannelSchema.optional().or(emptyToUndefined)
 });
 
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {
