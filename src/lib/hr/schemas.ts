@@ -78,6 +78,19 @@ export const hrWorkflowTemplateTypeSchema = z.enum([
 
 export const hrWorkflowDelegationStepTypeSchema = z.enum(["task", "approval", "review", "document", "notification", "escalation"]);
 
+export const hrBackgroundJobTypeSchema = z.enum([
+  "sla_scan",
+  "escalation_scan",
+  "notification_dispatch",
+  "audit_cleanup",
+  "analytics_refresh",
+  "dashboard_refresh"
+]);
+
+export const hrBackgroundJobStatusSchema = z.enum(["pending", "scheduled", "running", "completed", "failed", "cancelled", "retrying"]);
+
+export const hrBackgroundJobPrioritySchema = z.enum(["low", "normal", "high", "critical"]);
+
 export const employeeFunctionalEventTypeSchema = z.enum([
   "employee_created",
   "employee_basic_updated",
@@ -268,6 +281,40 @@ export const hrWorkflowDelegationCreateSchema = z
 export const hrWorkflowDelegationRevokeSchema = z.object({
   reason: safeDelegationTextSchema
 });
+
+const safeBackgroundJobTextSchema = z
+  .string()
+  .trim()
+  .max(500, "Texto muito longo.")
+  .refine(
+    (value) => !/(cpf|rg|salary|medical|cid|storage_path|signed_url|document_number)/i.test(value),
+    "Texto contem campo sensivel nao permitido."
+  );
+
+export const hrBackgroundJobsQuerySchema = z.object({
+  unit_id: optionalUuidSchema,
+  job_type: hrBackgroundJobTypeSchema.optional().or(emptyToUndefined),
+  status: hrBackgroundJobStatusSchema.optional().or(emptyToUndefined),
+  priority: hrBackgroundJobPrioritySchema.optional().or(emptyToUndefined),
+  from: optionalDateSchema,
+  to: optionalDateSchema
+});
+
+export const hrBackgroundJobCreateSchema = z
+  .object({
+    unit_id: z.string().uuid("Unidade invalida."),
+    job_type: hrBackgroundJobTypeSchema,
+    priority: hrBackgroundJobPrioritySchema.optional().default("normal"),
+    status: z.enum(["pending", "scheduled"]).optional().default("pending"),
+    payload: z.record(z.unknown()).optional(),
+    scheduled_at: optionalDateTimeSchema,
+    correlation_id: safeBackgroundJobTextSchema.optional().or(emptyToUndefined),
+    max_attempts: z.coerce.number().int().min(1).max(10).optional().default(3)
+  })
+  .refine((value) => value.status !== "scheduled" || Boolean(value.scheduled_at), {
+    message: "scheduled_at e obrigatorio para jobs agendados.",
+    path: ["scheduled_at"]
+  });
 
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {
   const url = new URL(request.url);
