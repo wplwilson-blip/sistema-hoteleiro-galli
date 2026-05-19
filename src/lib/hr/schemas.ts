@@ -76,6 +76,8 @@ export const hrWorkflowTemplateTypeSchema = z.enum([
   "document_request"
 ]);
 
+export const hrWorkflowDelegationStepTypeSchema = z.enum(["task", "approval", "review", "document", "notification", "escalation"]);
+
 export const employeeFunctionalEventTypeSchema = z.enum([
   "employee_created",
   "employee_basic_updated",
@@ -106,6 +108,13 @@ const optionalDateSchema = z
   .string()
   .trim()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Use datas no formato YYYY-MM-DD.")
+  .optional()
+  .or(emptyToUndefined);
+
+const optionalDateTimeSchema = z
+  .string()
+  .trim()
+  .datetime({ message: "Use data e hora em formato ISO.", offset: true })
   .optional()
   .or(emptyToUndefined);
 
@@ -216,6 +225,48 @@ export const hrWorkflowTemplatesQuerySchema = z.object({
   workflow_type: hrWorkflowTemplateTypeSchema.optional().or(emptyToUndefined),
   is_active: optionalBooleanSchema,
   include_system: optionalBooleanSchema
+});
+
+export const hrWorkflowDelegationsQuerySchema = z.object({
+  unit_id: optionalUuidSchema,
+  delegator_user_id: optionalUuidSchema,
+  delegate_user_id: optionalUuidSchema,
+  workflow_type: hrWorkflowTypeSchema.optional().or(emptyToUndefined),
+  is_active: optionalBooleanSchema
+});
+
+const safeDelegationTextSchema = z
+  .string()
+  .trim()
+  .min(3, "Informe uma justificativa.")
+  .max(500, "Texto muito longo.")
+  .refine(
+    (value) => !/(cpf|rg|salary|medical|cid|file_path|storage_path|signed_url|document_number)/i.test(value),
+    "Texto contem campo sensivel nao permitido."
+  );
+
+export const hrWorkflowDelegationCreateSchema = z
+  .object({
+    unit_id: z.string().uuid("Unidade invalida."),
+    delegator_user_id: z.string().uuid("Delegador invalido."),
+    delegate_user_id: z.string().uuid("Delegado invalido."),
+    workflow_type: hrWorkflowTypeSchema.optional().or(emptyToUndefined),
+    step_type: hrWorkflowDelegationStepTypeSchema.optional().or(emptyToUndefined),
+    starts_at: z.string().trim().datetime({ message: "Use data e hora em formato ISO.", offset: true }),
+    ends_at: optionalDateTimeSchema,
+    reason: safeDelegationTextSchema
+  })
+  .refine((value) => value.delegator_user_id !== value.delegate_user_id, {
+    message: "Delegado nao pode ser o proprio delegador.",
+    path: ["delegate_user_id"]
+  })
+  .refine((value) => !value.ends_at || value.ends_at >= value.starts_at, {
+    message: "Fim da vigencia deve ser maior ou igual ao inicio.",
+    path: ["ends_at"]
+  });
+
+export const hrWorkflowDelegationRevokeSchema = z.object({
+  reason: safeDelegationTextSchema
 });
 
 export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, schema: T): z.infer<T> {

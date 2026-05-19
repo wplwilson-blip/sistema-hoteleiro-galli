@@ -654,12 +654,13 @@ export async function applyApproveStepRpc(input: {
   idempotencyKey: string;
   requestHash: string;
   payload: Record<string, JsonValue>;
+  actorUserId?: string;
 }) {
   const { data, error } = await input.supabase.rpc("hr_workflow_apply_action", {
     p_action: "approve_step",
     p_organization_id: input.organizationId,
     p_unit_id: input.unitId,
-    p_actor_user_id: input.context.session.user.id,
+    p_actor_user_id: input.actorUserId ?? input.context.session.user.id,
     p_idempotency_key: input.idempotencyKey,
     p_request_hash: input.requestHash,
     p_payload: input.payload,
@@ -684,12 +685,13 @@ export async function applyRejectStepRpc(input: {
   idempotencyKey: string;
   requestHash: string;
   payload: Record<string, JsonValue>;
+  actorUserId?: string;
 }) {
   const { data, error } = await input.supabase.rpc("hr_workflow_apply_action", {
     p_action: "reject_step",
     p_organization_id: input.organizationId,
     p_unit_id: input.unitId,
-    p_actor_user_id: input.context.session.user.id,
+    p_actor_user_id: input.actorUserId ?? input.context.session.user.id,
     p_idempotency_key: input.idempotencyKey,
     p_request_hash: input.requestHash,
     p_payload: input.payload,
@@ -714,12 +716,13 @@ export async function applyReturnStepRpc(input: {
   idempotencyKey: string;
   requestHash: string;
   payload: Record<string, JsonValue>;
+  actorUserId?: string;
 }) {
   const { data, error } = await input.supabase.rpc("hr_workflow_apply_action", {
     p_action: "return_step",
     p_organization_id: input.organizationId,
     p_unit_id: input.unitId,
-    p_actor_user_id: input.context.session.user.id,
+    p_actor_user_id: input.actorUserId ?? input.context.session.user.id,
     p_idempotency_key: input.idempotencyKey,
     p_request_hash: input.requestHash,
     p_payload: input.payload,

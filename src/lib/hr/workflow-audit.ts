@@ -126,6 +126,10 @@ const safeMetadataKeys = new Set([
   "step_status",
   "reason_present",
   "notes_present",
+  "delegation_id",
+  "delegated_action",
+  "delegator_user_id",
+  "delegate_user_id",
   "source",
   "request_method",
   "request_path"

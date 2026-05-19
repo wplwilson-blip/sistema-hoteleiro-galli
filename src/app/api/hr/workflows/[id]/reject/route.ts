@@ -14,6 +14,7 @@ import {
   type HrWorkflowRow,
   type HrWorkflowStepRow
 } from "@/lib/hr/workflow-data";
+import { resolveActiveWorkflowDelegation, type HrWorkflowDelegationRow } from "@/lib/hr/workflow-delegations";
 import {
   HrWorkflowMutationError,
   applyRejectStepRpc,
@@ -164,11 +165,13 @@ function assertWorkflowCanReject(workflow: HrWorkflowRow) {
     workflowMutationError("WORKFLOW_STATUS_INVALID", "Workflow nao esta ativo para rejeicao de etapa.", 409);
   }
 }
-function assertStepCanReject(input: {
+async function assertStepCanReject(input: {
+  context: HrRequestContext;
+  workflow: HrWorkflowRow;
   step: HrWorkflowStepRow;
   steps: HrWorkflowStepRow[];
   actorUserId: string;
-}) {
+}): Promise<HrWorkflowDelegationRow | null> {
   if (input.step.status !== "waiting_approval") {
     workflowMutationError("STEP_STATUS_INVALID", "Etapa nao esta aguardando aprovacao.", 409);
   }
@@ -181,9 +184,22 @@ function assertStepCanReject(input: {
     workflowMutationError("STEP_OUT_OF_ORDER", "Rejeite a etapa pendente anterior antes desta etapa.", 409);
   }
 
-  if (input.step.assigned_to_user_id && input.step.assigned_to_user_id !== input.actorUserId) {
+  if (!input.step.assigned_to_user_id || input.step.assigned_to_user_id === input.actorUserId) {
+    return null;
+  }
+
+  const delegation = await resolveActiveWorkflowDelegation({
+    supabase: input.context.supabase,
+    workflow: input.workflow,
+    step: input.step,
+    delegateUserId: input.actorUserId
+  });
+
+  if (!delegation) {
     workflowMutationError("STEP_NOT_ASSIGNED_TO_ACTOR", "Etapa atribuida a outro responsavel.", 403);
   }
+
+  return delegation;
 }
 
 async function loadWorkflowDetailPayload(context: HrRequestContext, workflowId: string) {
@@ -263,7 +279,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
       workflowMutationError("WORKFLOW_STEP_NOT_FOUND", "Etapa nao encontrada.", 404);
     }
 
-    assertStepCanReject({
+    const delegation = await assertStepCanReject({
+      context,
+      workflow,
       step,
       steps,
       actorUserId: context.session.user.id
@@ -278,7 +296,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
       stepId: step.id,
       idempotencyKey,
       requestHash,
-      payload: rpcPayload
+      payload: rpcPayload,
+      actorUserId: delegation?.delegator_user_id
     });
 
     if (!result.ok) {
@@ -312,6 +331,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
           idempotency_replayed: false,
           reason_present: Boolean(payload.reason),
           notes_present: Boolean(payload.notes),
+          delegation_id: delegation?.id,
+          delegated_action: Boolean(delegation),
+          delegator_user_id: delegation?.delegator_user_id,
+          delegate_user_id: delegation?.delegate_user_id,
           source: "api"
         }
       });
