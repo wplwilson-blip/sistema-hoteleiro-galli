@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bell,
@@ -14,7 +14,12 @@ import {
   LayoutDashboard,
   ListChecks,
   Lock,
+  Loader2,
+  RotateCcw,
   ShieldAlert,
+  SquareCheckBig,
+  SquareX,
+  Trash2,
   UserRound
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -76,6 +81,15 @@ type WorkflowDetail = {
   current_step_id: string | null;
   sla: WorkflowSla | null;
   escalation: WorkflowEscalation | null;
+  allowed_actions?: {
+    view?: boolean;
+    viewSensitive?: boolean;
+    execute?: boolean;
+    approve?: boolean;
+    reject?: boolean;
+    return?: boolean;
+    cancel?: boolean;
+  };
   created_at: string;
   updated_at: string;
 };
@@ -152,6 +166,16 @@ type WorkflowNotification = {
 type NotificationsResponse = {
   data: WorkflowNotification[];
 };
+
+type WorkflowMutationResponse = {
+  data: WorkflowDetail;
+  idempotency?: {
+    status?: string;
+    replayed?: boolean;
+  };
+};
+
+type WorkflowActionKind = "execute" | "approve" | "reject" | "return" | "cancel";
 
 const workflowTypeLabels: Record<string, string> = {
   admission: "Admissao",
@@ -232,10 +256,53 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? "Nao foi possivel carregar os dados de RH.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar os dados de RH.");
   }
 
   return payload as T;
+}
+
+function createIdempotencyKey(action: WorkflowActionKind, workflowId: string) {
+  const randomPart = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `hr-${action}-${workflowId}-${randomPart}`;
+}
+
+async function postWorkflowAction(input: {
+  workflowId: string;
+  action: WorkflowActionKind;
+  stepId?: string;
+  reason?: string;
+  notes?: string;
+}) {
+  const endpointByAction: Record<WorkflowActionKind, string> = {
+    execute: "execute",
+    approve: "approve",
+    reject: "reject",
+    return: "return",
+    cancel: "cancel"
+  };
+  const payload: Record<string, string> = {};
+
+  if (input.stepId) payload.step_id = input.stepId;
+  if (input.reason?.trim()) payload.reason = input.reason.trim();
+  if (input.notes?.trim()) payload.notes = input.notes.trim();
+
+  const response = await fetch(`/api/hr/workflows/${input.workflowId}/${endpointByAction[input.action]}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "Idempotency-Key": createIdempotencyKey(input.action, input.workflowId)
+    },
+    body: JSON.stringify(payload)
+  });
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(body?.message ?? body?.error?.message ?? "Nao foi possivel executar a acao do workflow.");
+  }
+
+  return body as WorkflowMutationResponse;
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -532,6 +599,224 @@ function NotificationsPanel({ notifications, isLoading, error }: { notifications
   );
 }
 
+function WorkflowActionPanel({
+  workflow,
+  currentStep,
+  onSuccess
+}: {
+  workflow: WorkflowDetail;
+  currentStep: WorkflowStep | null;
+  onSuccess: (message: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [selectedAction, setSelectedAction] = useState<WorkflowActionKind | null>(null);
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: postWorkflowAction,
+    onSuccess: async (response, variables) => {
+      const replayed = response.idempotency?.replayed ? " Requisicao idempotente reaproveitada." : "";
+      const message = `${actionLabelsForUi[variables.action].success}${replayed}`;
+      setFeedback(message);
+      setLocalError(null);
+      setSelectedAction(null);
+      setReason("");
+      setNotes("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["hr", "workflow-detail", workflow.id] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "workflow-detail", workflow.id, "timeline"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "workflow-detail", workflow.id, "audit"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "workflow-detail", workflow.id, "notifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "workflow-inbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "operational-dashboard"] })
+      ]);
+      onSuccess(message);
+    },
+    onError: (error) => {
+      setFeedback(null);
+      setLocalError(error instanceof Error ? error.message : "Nao foi possivel executar a acao.");
+    }
+  });
+
+  const allowed = workflow.allowed_actions ?? {};
+  const allowedActions = [
+    allowed.execute ? "execute" : null,
+    allowed.approve ? "approve" : null,
+    allowed.reject ? "reject" : null,
+    allowed.return ? "return" : null,
+    allowed.cancel ? "cancel" : null
+  ].filter((action): action is WorkflowActionKind => Boolean(action));
+  const selectedActionMeta = selectedAction ? actionLabelsForUi[selectedAction] : null;
+  const SelectedActionIcon = selectedActionMeta?.icon;
+  const requiresReason = selectedAction === "reject" || selectedAction === "return" || selectedAction === "cancel";
+  const requiresStep = selectedAction === "execute" || selectedAction === "approve" || selectedAction === "reject" || selectedAction === "return";
+  const reasonIsValid = !requiresReason || reason.trim().length >= 3;
+  const stepIsValid = !requiresStep || Boolean(currentStep?.id);
+  const canSubmit = Boolean(selectedAction && reasonIsValid && stepIsValid && !mutation.isPending);
+
+  function submitSelectedAction() {
+    if (!selectedAction || !canSubmit) return;
+
+    mutation.mutate({
+      workflowId: workflow.id,
+      action: selectedAction,
+      stepId: requiresStep ? currentStep?.id : undefined,
+      reason,
+      notes
+    });
+  }
+
+  return (
+    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <SectionHeader title="Acoes operacionais" description="Acoes reais com idempotencia. O backend continua sendo a autoridade final." icon={SquareCheckBig} />
+
+      {!allowedActions.length ? (
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Nenhuma acao operacional foi liberada pelo backend para este workflow no estado atual.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {allowedActions.map((action) => {
+              const meta = actionLabelsForUi[action];
+              const Icon = meta.icon;
+
+              return (
+                <Button
+                  key={action}
+                  type="button"
+                  variant={meta.variant}
+                  size="sm"
+                  onClick={() => {
+                    setSelectedAction(action);
+                    setFeedback(null);
+                    setLocalError(null);
+                  }}
+                  disabled={mutation.isPending}
+                >
+                  <Icon className="h-4 w-4" />
+                  {meta.label}
+                </Button>
+              );
+            })}
+          </div>
+
+          {selectedAction && selectedActionMeta ? (
+            <div className="rounded-md border bg-background p-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{selectedActionMeta.confirmTitle}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{selectedActionMeta.confirmDescription}</p>
+                  {requiresStep ? <p className="mt-1 text-xs text-muted-foreground">Etapa alvo: {currentStep?.name ?? "sem etapa atual"}</p> : null}
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedAction(null)} disabled={mutation.isPending}>
+                  Fechar
+                </Button>
+              </div>
+
+              {requiresReason ? (
+                <label className="mt-3 block space-y-1 text-xs font-medium text-muted-foreground">
+                  Motivo
+                  <textarea
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Informe o motivo administrativo"
+                    disabled={mutation.isPending}
+                  />
+                </label>
+              ) : null}
+
+              <label className="mt-3 block space-y-1 text-xs font-medium text-muted-foreground">
+                Observacao opcional
+                <textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Sem dados sensiveis; use apenas contexto operacional necessario"
+                  disabled={mutation.isPending}
+                />
+              </label>
+
+              {!stepIsValid ? <ErrorMessage message="Nao ha etapa atual disponivel para esta acao." /> : null}
+              {requiresReason && !reasonIsValid ? <p className="mt-2 text-xs text-muted-foreground">Informe ao menos 3 caracteres no motivo.</p> : null}
+
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setSelectedAction(null)} disabled={mutation.isPending}>
+                  Cancelar
+                </Button>
+                <Button type="button" variant={selectedActionMeta.variant} size="sm" onClick={submitSelectedAction} disabled={!canSubmit}>
+                  {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : SelectedActionIcon ? <SelectedActionIcon className="h-4 w-4" /> : null}
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {feedback ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback}</div> : null}
+      {localError ? <div className="mt-3"><ErrorMessage message={localError} /></div> : null}
+    </Card>
+  );
+}
+
+const actionLabelsForUi: Record<
+  WorkflowActionKind,
+  {
+    label: string;
+    success: string;
+    confirmTitle: string;
+    confirmDescription: string;
+    icon: typeof SquareCheckBig;
+    variant: "default" | "outline" | "danger";
+  }
+> = {
+  execute: {
+    label: "Executar etapa",
+    success: "Etapa executada com sucesso.",
+    confirmTitle: "Confirmar execucao da etapa",
+    confirmDescription: "A etapa atual sera executada pelo motor de workflow.",
+    icon: SquareCheckBig,
+    variant: "default"
+  },
+  approve: {
+    label: "Aprovar",
+    success: "Etapa aprovada com sucesso.",
+    confirmTitle: "Confirmar aprovacao",
+    confirmDescription: "A aprovacao sera registrada com auditoria e timeline.",
+    icon: CheckCircle2,
+    variant: "default"
+  },
+  reject: {
+    label: "Rejeitar",
+    success: "Etapa rejeitada com sucesso.",
+    confirmTitle: "Confirmar rejeicao",
+    confirmDescription: "A rejeicao exige motivo e sera registrada na auditoria.",
+    icon: SquareX,
+    variant: "danger"
+  },
+  return: {
+    label: "Devolver",
+    success: "Etapa devolvida com sucesso.",
+    confirmTitle: "Confirmar devolucao",
+    confirmDescription: "A devolucao exige motivo para rastreabilidade.",
+    icon: RotateCcw,
+    variant: "outline"
+  },
+  cancel: {
+    label: "Cancelar workflow",
+    success: "Workflow cancelado com sucesso.",
+    confirmTitle: "Confirmar cancelamento do workflow",
+    confirmDescription: "Cancelamento encerra o workflow e exige motivo administrativo.",
+    icon: Trash2,
+    variant: "danger"
+  }
+};
+
 export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   const detailQuery = useQuery({
     queryKey: ["hr", "workflow-detail", workflowId],
@@ -634,6 +919,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
           </div>
         ) : null}
       </Card>
+
+      <WorkflowActionPanel workflow={workflow} currentStep={currentStep} onSuccess={() => undefined} />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         <SlaPanel sla={workflow.sla} />
