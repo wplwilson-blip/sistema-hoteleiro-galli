@@ -6,6 +6,7 @@ import {
   type HrWorkflowRow,
   type HrWorkflowStepRow
 } from "@/lib/hr/workflow-data";
+import { getStepEscalationState, getWorkflowEscalationState } from "@/lib/hr/workflow-escalation";
 import { computeStepSla, computeWorkflowSla } from "@/lib/hr/workflow-sla";
 import { isWorkflowTypeSensitive, type HrWorkflowType } from "@/lib/hr/workflow-types";
 
@@ -204,6 +205,7 @@ export function mapWorkflowStep(input: {
     assigned_to: step.assigned_to_user_id,
     completed_at: step.completed_at,
     sla: computeStepSla(step),
+    escalation: getStepEscalationState(step),
     redacted: isRedacted
   };
 }
@@ -231,6 +233,7 @@ export function redactWorkflowListItem(input: {
     }),
     is_sensitive: workflowIsSensitive,
     sla: computeWorkflowSla(input.workflow),
+    escalation: getWorkflowEscalationState(input.workflow),
     created_at: input.workflow.created_at,
     updated_at: input.workflow.updated_at,
     allowed_actions: buildWorkflowAllowedActions(input.canViewSensitive)
@@ -268,6 +271,7 @@ export function redactWorkflowDetail(input: {
     ),
     current_step_id: currentStep?.id ?? null,
     sla: computeWorkflowSla(input.workflow),
+    escalation: getWorkflowEscalationState(input.workflow),
     allowed_actions: buildWorkflowAllowedActions(input.canViewSensitive),
     created_at: input.workflow.created_at,
     updated_at: input.workflow.updated_at
