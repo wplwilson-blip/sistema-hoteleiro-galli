@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRight,
   BarChart3,
   Bell,
   Building2,
@@ -13,6 +14,7 @@ import {
   ClipboardList,
   FileClock,
   Gauge,
+  Inbox,
   ShieldAlert,
   UserRound
 } from "lucide-react";
@@ -388,9 +390,15 @@ function WorkflowList({
                     {workflow.escalation?.level ? <span>Escalonamento nivel {workflow.escalation.level}</span> : null}
                   </div>
                 </div>
-                <div className="shrink-0 text-left text-xs text-muted-foreground lg:text-right">
+                <div className="shrink-0 space-y-2 text-left text-xs text-muted-foreground lg:text-right">
                   <p>Atualizado em</p>
                   <p className="font-medium text-foreground">{formatDateTime(workflow.updated_at)}</p>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/rh/workflows/${workflow.id}`}>
+                      Ver detalhe
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
                 </div>
               </div>
             </article>
@@ -542,12 +550,20 @@ export function HrOperationalDashboardClient() {
               Painel somente leitura. Acoes operacionais serao tratadas nas proximas etapas da fase 8A.
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/rh/employees">
-              <UserRound className="h-4 w-4" />
-              Colaboradores
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm">
+              <Link href="/rh/inbox">
+                <Inbox className="h-4 w-4" />
+                Abrir Inbox
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/employees">
+                <UserRound className="h-4 w-4" />
+                Colaboradores
+              </Link>
+            </Button>
+          </div>
         </div>
       </Card>
 

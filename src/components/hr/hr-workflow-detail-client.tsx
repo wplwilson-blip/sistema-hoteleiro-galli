@@ -11,6 +11,7 @@ import {
   ClipboardList,
   FileClock,
   History,
+  LayoutDashboard,
   ListChecks,
   Lock,
   ShieldAlert,
@@ -446,7 +447,7 @@ function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; 
       {events.length ? (
         <div className="space-y-3">
           {events.map((event) => (
-            <article key={event.id} className="rounded-md border bg-background p-3">
+            <article key={event.id} className="rounded-md border border-l-4 border-l-primary/50 bg-background p-3">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -569,9 +570,16 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
   return (
     <div className="space-y-5">
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur lg:sticky lg:top-0 lg:z-10">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Link href="/rh" className="font-medium text-primary hover:underline">RH</Link>
+              <span>/</span>
+              <Link href="/rh/inbox" className="font-medium text-primary hover:underline">Inbox</Link>
+              <span>/</span>
+              <span>Dossie operacional</span>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="break-words text-lg font-semibold text-foreground">{workflowTypeLabel(workflow.workflow_type)}</h2>
               <StatusBadge status={statusTone(workflow.status)} label={workflowStatusLabel(workflow.status)} />
@@ -586,12 +594,20 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
               <span>Atualizado em {formatDateTime(workflow.updated_at)}</span>
             </div>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/rh/inbox">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar para Inbox
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh">
+                <LayoutDashboard className="h-4 w-4" />
+                Dashboard
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/rh/inbox">
+                <ArrowLeft className="h-4 w-4" />
+                Voltar para Inbox
+              </Link>
+            </Button>
+          </div>
         </div>
       </Card>
 

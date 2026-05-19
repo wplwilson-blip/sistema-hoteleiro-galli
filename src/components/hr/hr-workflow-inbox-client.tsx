@@ -451,7 +451,7 @@ export function HrWorkflowInboxClient() {
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar resumo da inbox."} /> : null}
       {!userId ? <ErrorMessage message="Filtro Minhas tarefas indisponivel: usuario da sessao sem identificador UUID valido para o endpoint." /> : null}
 
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur lg:sticky lg:top-0 lg:z-10">
         <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -550,7 +550,7 @@ export function HrWorkflowInboxClient() {
 
           <div className="max-w-full overflow-x-auto">
             <table className="w-full min-w-[1280px] text-left text-sm">
-              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
+              <thead className="sticky top-0 z-10 border-b bg-muted text-xs uppercase text-muted-foreground shadow-sm">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Workflow</th>
                   <th className="px-4 py-3 font-semibold">Unidade</th>
@@ -571,7 +571,7 @@ export function HrWorkflowInboxClient() {
                   const escalationLevel = workflow.current_step?.escalation?.level ?? workflow.escalation?.level ?? 0;
 
                   return (
-                    <tr key={workflow.id} className={cn("align-top transition-colors hover:bg-muted/30", isCritical(workflow) && "bg-amber-50/30")}>
+                    <tr key={workflow.id} className={cn("align-top transition-colors hover:bg-muted/30", isCritical(workflow) && "border-l-4 border-l-amber-400 bg-amber-50/30")}>
                       <td className="px-4 py-3">
                         <div className="max-w-48 space-y-1.5">
                           <p className="break-words font-medium text-foreground">{workflowTypeLabel(workflow.workflow_type)}</p>
@@ -620,7 +620,7 @@ export function HrWorkflowInboxClient() {
                       <td className="px-4 py-3 text-right">
                         <Button asChild variant="outline" size="sm">
                           <Link href={`/rh/workflows/${workflow.id}`}>
-                            Ver detalhe
+                            Abrir
                             <ArrowRight className="h-4 w-4" />
                           </Link>
                         </Button>
