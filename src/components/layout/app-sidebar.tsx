@@ -15,6 +15,7 @@ import {
   FileText,
   FileWarning,
   IdCard,
+  Inbox,
   Landmark,
   LayoutDashboard,
   ShieldCheck,
@@ -77,6 +78,7 @@ const menuGroups: SidebarGroup[] = [
     icon: Users,
     items: [
       { label: "Dashboard", href: "/rh", icon: LayoutDashboard, match: "exact" },
+      { label: "Inbox", href: "/rh/inbox", icon: Inbox },
       { label: "Colaboradores", href: "/rh/employees", icon: UserRound }
     ]
   },
