@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -614,6 +614,11 @@ function WorkflowActionPanel({
   const [notes, setNotes] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [lockedAfterSuccess, setLockedAfterSuccess] = useState(false);
+
+  useEffect(() => {
+    setLockedAfterSuccess(false);
+  }, [workflow.status, workflow.updated_at, workflow.current_step_id]);
 
   const mutation = useMutation({
     mutationFn: postWorkflowAction,
@@ -625,6 +630,7 @@ function WorkflowActionPanel({
       setSelectedAction(null);
       setReason("");
       setNotes("");
+      setLockedAfterSuccess(true);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["hr", "workflow-detail", workflow.id] }),
         queryClient.invalidateQueries({ queryKey: ["hr", "workflow-detail", workflow.id, "timeline"] }),
@@ -655,7 +661,7 @@ function WorkflowActionPanel({
   const requiresStep = selectedAction === "execute" || selectedAction === "approve" || selectedAction === "reject" || selectedAction === "return";
   const reasonIsValid = !requiresReason || reason.trim().length >= 3;
   const stepIsValid = !requiresStep || Boolean(currentStep?.id);
-  const canSubmit = Boolean(selectedAction && reasonIsValid && stepIsValid && !mutation.isPending);
+  const canSubmit = Boolean(selectedAction && reasonIsValid && stepIsValid && !mutation.isPending && !lockedAfterSuccess);
 
   function submitSelectedAction() {
     if (!selectedAction || !canSubmit) return;
@@ -695,7 +701,7 @@ function WorkflowActionPanel({
                     setFeedback(null);
                     setLocalError(null);
                   }}
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || lockedAfterSuccess}
                 >
                   <Icon className="h-4 w-4" />
                   {meta.label}
@@ -758,7 +764,7 @@ function WorkflowActionPanel({
         </div>
       )}
 
-      {feedback ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback}</div> : null}
+      {feedback ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback} Atualizando os dados do workflow.</div> : null}
       {localError ? <div className="mt-3"><ErrorMessage message={localError} /></div> : null}
     </Card>
   );
