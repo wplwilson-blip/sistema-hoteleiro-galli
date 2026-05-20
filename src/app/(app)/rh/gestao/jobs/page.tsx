@@ -4,7 +4,7 @@ import { HrBackgroundJobsClient } from "@/components/hr/hr-background-jobs-clien
 export default function RhJobsPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Monitoramento de Jobs RH" description="Acompanhamento read-only dos jobs background de RH." />
+      <PageTitle title="Processamentos RH" description="Monitoramento de rotinas automáticas e processamentos internos do RH." />
       <HrBackgroundJobsClient />
     </div>
   );

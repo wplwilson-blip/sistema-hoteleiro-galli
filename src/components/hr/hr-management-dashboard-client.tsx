@@ -133,7 +133,7 @@ export function HrManagementDashboardClient() {
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm"><Link href="/rh/inbox"><Inbox className="h-4 w-4" />Inbox</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/auditoria">Auditoria</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/jobs">Jobs</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/jobs">Processamentos</Link></Button>
           </div>
         </div>
       </Card>
@@ -149,8 +149,8 @@ export function HrManagementDashboardClient() {
         <StatCard title="SLA vencendo" value={String(dashboard?.sla?.warning ?? 0)} icon={CalendarClock} tone={(dashboard?.sla?.warning ?? 0) ? "warning" : "neutral"} />
         <StatCard title="Tempo medio" value={formatMinutes(analytics?.time?.average_completion_minutes)} icon={BriefcaseBusiness} />
         <StatCard title="Escalations" value={String((dashboard?.escalation?.eligible ?? 0) + (dashboard?.escalation?.overdue ?? 0))} icon={ShieldAlert} tone={(dashboard?.escalation?.overdue ?? 0) ? "danger" : "warning"} />
-        <StatCard title="Jobs pendentes" value={String(pendingJobs)} icon={CalendarClock} tone={pendingJobs ? "warning" : "neutral"} />
-        <StatCard title="Jobs falhos" value={String(failedJobs + (dashboard?.notifications?.failed ?? 0))} icon={AlertTriangle} tone={failedJobs ? "danger" : "neutral"} />
+        <StatCard title="Processamentos pendentes" value={String(pendingJobs)} icon={CalendarClock} tone={pendingJobs ? "warning" : "neutral"} />
+        <StatCard title="Processamentos falhos" value={String(failedJobs + (dashboard?.notifications?.failed ?? 0))} icon={AlertTriangle} tone={failedJobs ? "danger" : "neutral"} />
       </div>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-3">
@@ -172,7 +172,7 @@ export function HrManagementDashboardClient() {
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <StatusBadge status={(dashboard?.steps?.overdue ?? 0) ? "danger" : "success"} label={`Etapas vencidas: ${dashboard?.steps?.overdue ?? 0}`} />
             <StatusBadge status={(dashboard?.steps?.returned ?? 0) ? "warning" : "success"} label={`Etapas devolvidas: ${dashboard?.steps?.returned ?? 0}`} />
-            <StatusBadge status={failedJobs ? "danger" : "success"} label={`Jobs falhos: ${failedJobs}`} />
+            <StatusBadge status={failedJobs ? "danger" : "success"} label={`Processamentos falhos: ${failedJobs}`} />
             <StatusBadge status={(dashboard?.notifications?.failed ?? 0) ? "warning" : "success"} label={`Notificacoes falhas: ${dashboard?.notifications?.failed ?? 0}`} />
           </div>
         </Card>

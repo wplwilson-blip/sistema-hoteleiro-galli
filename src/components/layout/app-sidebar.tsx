@@ -81,7 +81,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Inbox", href: "/rh/inbox", icon: Inbox },
       { label: "Gestao", href: "/rh/gestao", icon: BarChart3, match: "exact" },
       { label: "Auditoria", href: "/rh/gestao/auditoria", icon: FileText },
-      { label: "Jobs", href: "/rh/gestao/jobs", icon: ClipboardList },
+      { label: "Processamentos", href: "/rh/gestao/jobs", icon: ClipboardList },
       { label: "Colaboradores", href: "/rh/employees", icon: UserRound }
     ]
   },

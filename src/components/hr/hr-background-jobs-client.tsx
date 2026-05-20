@@ -41,7 +41,7 @@ const priorities = ["low", "normal", "high", "critical"];
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar jobs.");
+  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar processamentos.");
   return payload as T;
 }
 
@@ -112,11 +112,11 @@ export function HrBackgroundJobsClient() {
     <div className="space-y-5">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros de jobs</h2></div>
+          <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros de processamentos</h2></div>
           <div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><Link href="/rh/gestao">Gestao</Link></Button>{hasFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}><X className="h-4 w-4" />Limpar</Button> : null}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <Field label="Buscar" className="xl:col-span-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Job, status, erro ou workflow" /></div></Field>
+          <Field label="Buscar" className="xl:col-span-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Processamento, status, erro ou workflow" /></div></Field>
           <Field label="Status"><SelectField value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option>{statuses.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
           <Field label="Tipo"><SelectField value={type} onChange={(event) => setType(event.target.value)}><option value="">Todos</option>{jobTypes.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
           <Field label="Prioridade"><SelectField value={priority} onChange={(event) => setPriority(event.target.value)}><option value="">Todas</option>{priorities.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
@@ -125,16 +125,16 @@ export function HrBackgroundJobsClient() {
         </div>
       </Card>
 
-      {jobsQuery.isLoading ? <LoadingTable label="Carregando jobs de RH..." /> : null}
-      {jobsQuery.error ? <ErrorMessage message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "Erro ao carregar jobs."} /> : null}
-      {!jobsQuery.isLoading && !jobsQuery.error && !filteredJobs.length ? <EmptyState title="Nenhum job encontrado" description="Ajuste os filtros ou confirme se existem jobs de RH registrados." /> : null}
+      {jobsQuery.isLoading ? <LoadingTable label="Carregando processamentos de RH..." /> : null}
+      {jobsQuery.error ? <ErrorMessage message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "Erro ao carregar processamentos."} /> : null}
+      {!jobsQuery.isLoading && !jobsQuery.error && !filteredJobs.length ? <EmptyState title="Nenhum processamento encontrado" description="Ajuste os filtros ou confirme se existem processamentos de RH registrados." /> : null}
 
       {filteredJobs.length ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-          <div className="border-b p-4"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Jobs background</h2></div><p className="text-xs text-muted-foreground">Somente leitura. Reprocessamento manual nao faz parte desta sprint.</p></div>
+          <div className="border-b p-4"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Processamentos internos</h2></div><p className="text-xs text-muted-foreground">Somente leitura. Reprocessamento manual nao faz parte desta sprint.</p></div>
           <div className="max-w-full overflow-x-auto">
             <table className="w-full min-w-[1320px] text-left text-sm">
-              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Job</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prioridade</th><th className="px-4 py-3">Tentativas</th><th className="px-4 py-3">Proximo processamento</th><th className="px-4 py-3">Inicio/Fim</th><th className="px-4 py-3">Erro</th><th className="px-4 py-3">Workflow</th><th className="px-4 py-3">Atualizacao</th></tr></thead>
+              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Processamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prioridade</th><th className="px-4 py-3">Tentativas</th><th className="px-4 py-3">Proximo processamento</th><th className="px-4 py-3">Inicio/Fim</th><th className="px-4 py-3">Erro</th><th className="px-4 py-3">Workflow</th><th className="px-4 py-3">Atualizacao</th></tr></thead>
               <tbody className="divide-y">{filteredJobs.map((job) => <tr key={job.id} className="align-top hover:bg-muted/30"><td className="px-4 py-3"><p className="font-medium">{job.job_type}</p><p className="text-xs text-muted-foreground">{job.id}</p></td><td className="px-4 py-3"><StatusBadge status={statusTone(job.status)} label={job.status} /></td><td className="px-4 py-3"><StatusBadge status={job.priority === "critical" || job.priority === "high" ? "warning" : "visual"} label={job.priority} /></td><td className="px-4 py-3">{job.attempts}/{job.max_attempts}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(job.scheduled_at)}</td><td className="px-4 py-3 text-muted-foreground"><p>Inicio: {formatDateTime(job.started_at)}</p><p>Fim: {formatDateTime(job.finished_at ?? job.failed_at)}</p></td><td className="px-4 py-3"><p className="max-w-56 break-words text-muted-foreground">{job.failure_reason ?? "-"}</p></td><td className="px-4 py-3 text-muted-foreground">{safePayloadLabel(job.payload)}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(job.updated_at)}</td></tr>)}</tbody>
             </table>
           </div>
