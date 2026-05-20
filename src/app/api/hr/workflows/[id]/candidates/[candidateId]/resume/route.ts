@@ -136,11 +136,22 @@ export async function POST(request: Request, { params }: RouteParams) {
       return response;
     }
 
-    const formData = await request.formData();
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("multipart/form-data")) {
+      return hrWorkflowApiError("INVALID_CONTENT_TYPE", "Envie o curriculo como multipart/form-data.", 415);
+    }
+
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (error) {
+      logHrApiError("candidate_resume.form_data_parse_failed", error instanceof Error ? error : { message: "multipart parse failed" });
+      return hrWorkflowApiError("INVALID_PAYLOAD", "Nao foi possivel ler o arquivo enviado. Tente anexar novamente.", 422);
+    }
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return hrWorkflowApiError("INVALID_PAYLOAD", "Selecione um curriculo para enviar.", 422);
+      return hrWorkflowApiError("INVALID_PAYLOAD", "Campo file ausente. Selecione um curriculo para enviar.", 422);
     }
 
     const validationMessage = validateResumeFile(file);
@@ -163,7 +174,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     if (uploadError) {
       logHrApiError("candidate_resume.upload_failed", uploadError);
-      return hrWorkflowApiError("INTERNAL_ERROR", "Nao foi possivel enviar o curriculo. Verifique o bucket privado attachments.", 500);
+      return hrWorkflowApiError("STORAGE_UPLOAD_FAILED", "Nao foi possivel enviar o curriculo para o armazenamento seguro.", 500);
     }
 
     const { data, error } = await context.supabase
@@ -194,7 +205,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     if (error) {
       logHrApiError("candidate_resume.create_failed", error);
       await context.supabase.storage.from(ATTACHMENTS_BUCKET).remove([filePath]);
-      return hrWorkflowApiError("INTERNAL_ERROR", "Nao foi possivel registrar o curriculo.", 500);
+      return hrWorkflowApiError("ATTACHMENT_RECORD_FAILED", "Arquivo enviado, mas nao foi possivel registrar o curriculo.", 500);
     }
 
     const archiveResult = await context.supabase

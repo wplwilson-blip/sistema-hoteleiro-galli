@@ -5,7 +5,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
 import { ErrorMessage } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
-import { requestJson } from "@/components/hr/hr-candidate-shared";
 
 const MAX_RESUME_SIZE_BYTES = 5 * 1024 * 1024;
 const allowedMimeTypes = ["application/pdf", "image/jpeg", "image/png"];
@@ -17,6 +16,23 @@ function validateFile(file: File) {
   if (!allowedExtensions.includes(extension)) return "Tipo invalido. Envie PDF, JPG, JPEG ou PNG.";
   if (file.type && !allowedMimeTypes.includes(file.type)) return "Tipo invalido. Envie PDF, JPG, JPEG ou PNG.";
   return "";
+}
+
+async function uploadResume(url: string, file: File) {
+  const formData = new FormData();
+  formData.set("file", file);
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel enviar o curriculo.");
+  }
+
+  return payload;
 }
 
 export function HrCandidateResumeUpload({
@@ -34,12 +50,7 @@ export function HrCandidateResumeUpload({
   const [localError, setLocalError] = useState("");
   const mutation = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.set("file", file);
-      return requestJson(`/api/hr/workflows/${workflowId}/candidates/${candidateId}/resume`, {
-        method: "POST",
-        body: formData
-      });
+      return uploadResume(`/api/hr/workflows/${workflowId}/candidates/${candidateId}/resume`, file);
     },
     onSuccess: () => {
       setLocalError("");
