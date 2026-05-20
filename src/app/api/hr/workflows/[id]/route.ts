@@ -40,6 +40,62 @@ function actorCanUseStep(step: HrWorkflowStepRow | null, actorUserId: string) {
   return Boolean(step && (!step.assigned_to_user_id || step.assigned_to_user_id === actorUserId));
 }
 
+function metadataString(metadata: Record<string, unknown> | null | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function loadWorkflowReadableContext(input: {
+  context: NonNullable<Awaited<ReturnType<typeof requireHrWorkflowPermission>>["context"]>;
+  workflow: HrWorkflowRow;
+}) {
+  const managerUserId = metadataString(input.workflow.metadata, "manager_user_id");
+  const [unitResult, managerResult] = await Promise.all([
+    input.context.supabase
+      .from("units")
+      .select("id, code, name")
+      .eq("id", input.workflow.unit_id)
+      .eq("organization_id", input.workflow.organization_id)
+      .is("deleted_at", null)
+      .limit(1),
+    managerUserId
+      ? input.context.supabase
+          .from("app_users")
+          .select("id, display_name, username")
+          .eq("id", managerUserId)
+          .is("deleted_at", null)
+          .limit(1)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  if (unitResult.error) {
+    logHrApiError("workflows.detail_unit_lookup_failed", unitResult.error);
+  }
+
+  if (managerResult.error) {
+    logHrApiError("workflows.detail_manager_lookup_failed", managerResult.error);
+  }
+
+  const unit = unitResult.data?.[0] ?? null;
+  const manager = managerResult.data?.[0] ?? null;
+
+  return {
+    unit: unit
+      ? {
+          id: unit.id,
+          code: unit.code,
+          name: unit.name
+        }
+      : null,
+    manager_user: manager
+      ? {
+          id: manager.id,
+          name: manager.display_name ?? manager.username ?? null
+        }
+      : null
+  };
+}
+
 async function buildDetailAllowedActions(input: {
   workflow: HrWorkflowRow;
   steps: HrWorkflowStepRow[];
@@ -102,9 +158,10 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     assertWorkflowUnitScope(context, workflow.unit_id);
 
     const sensitiveAccess = await getWorkflowPermissionAccess(context, HR_PERMISSIONS.workflowsSensitiveView);
-    const [stepsByWorkflow, employeesById] = await Promise.all([
+    const [stepsByWorkflow, employeesById, readableContext] = await Promise.all([
       loadWorkflowSteps(context.supabase, [workflow.id]),
-      loadWorkflowEmployees(context.supabase, workflow.employee_id ? [workflow.employee_id] : [])
+      loadWorkflowEmployees(context.supabase, workflow.employee_id ? [workflow.employee_id] : []),
+      loadWorkflowReadableContext({ context, workflow })
     ]);
     const steps = stepsByWorkflow.get(workflow.id) ?? [];
     const detail = redactWorkflowDetail({
@@ -117,6 +174,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     return NextResponse.json({
       data: {
         ...detail,
+        ...readableContext,
         allowed_actions: {
           ...detail.allowed_actions,
           ...(await buildDetailAllowedActions({ workflow, steps, context }))

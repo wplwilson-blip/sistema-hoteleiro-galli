@@ -75,6 +75,15 @@ type WorkflowDetail = {
   id: string;
   organization_id: string;
   unit_id: string;
+  unit?: {
+    id: string;
+    code: string | null;
+    name: string | null;
+  } | null;
+  manager_user?: {
+    id: string;
+    name: string | null;
+  } | null;
   workflow_type: string;
   status: string;
   is_sensitive: boolean;
@@ -448,6 +457,10 @@ function safeEntries(record: Record<string, unknown> | null | undefined, limit =
   return Object.entries(record ?? {}).slice(0, limit);
 }
 
+function technicalEntries(record: Record<string, unknown> | null | undefined) {
+  return Object.entries(record ?? {}).filter(([, value]) => value !== undefined);
+}
+
 function InfoTile({ label, value, icon: Icon }: { label: string; value: string; icon: typeof ClipboardList }) {
   return (
     <div className="rounded-md border bg-background p-3">
@@ -472,6 +485,12 @@ function SectionHeader({ title, description, icon: Icon }: { title: string; desc
   );
 }
 
+function unitDisplayName(workflow: WorkflowDetail) {
+  if (workflow.unit?.name) return workflow.unit.name;
+  if (workflow.unit?.code) return workflow.unit.code;
+  return shortIdentifier(workflow.unit_id);
+}
+
 function SlaPanel({ sla }: { sla: WorkflowSla | null | undefined }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -490,17 +509,25 @@ function SlaPanel({ sla }: { sla: WorkflowSla | null | undefined }) {
 }
 
 function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown> }) {
-  const entries = safeEntries(metadata, 12);
+  const entries = technicalEntries(metadata);
   if (!entries.length) return null;
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Metadados tecnicos" description="Dados de apoio do workflow, mantidos abaixo da operacao principal." icon={Lock} />
-      <div className="flex flex-wrap gap-1.5">
-        {entries.map(([key, value]) => (
-          <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
-        ))}
-      </div>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-start gap-2">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <span>
+            <span className="block text-sm font-semibold text-foreground">Informacoes tecnicas</span>
+            <span className="block text-xs text-muted-foreground">Dados de apoio do workflow, ocultos por padrao para a operacao.</span>
+          </span>
+        </summary>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {entries.map(([key, value]) => (
+            <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
+          ))}
+        </div>
+      </details>
     </Card>
   );
 }
@@ -513,6 +540,7 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
   const urgency = metadataText(metadata, "urgency");
   const requestedStartDate = metadataText(metadata, "requested_start_date");
   const managerUserId = metadataText(metadata, "manager_user_id");
+  const managerName = workflow.manager_user?.name || (managerUserId ? "Registrado no workflow" : "Nao informado");
   const reason = metadataText(metadata, "reason");
   const justification = metadataText(metadata, "justification");
   const notes = metadataText(metadata, "notes");
@@ -533,8 +561,8 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
         <InfoTile label="Quantidade" value={quantity} icon={UsersRound} />
         <InfoTile label="Urgencia" value={urgencyLabel(urgency)} icon={ShieldAlert} />
         <InfoTile label="Data desejada" value={formatDate(requestedStartDate)} icon={CalendarClock} />
-        <InfoTile label="Gestor solicitante" value={managerUserId ? "Registrado no workflow" : "Nao informado"} icon={UserRound} />
-        <InfoTile label="Unidade" value={shortIdentifier(workflow.unit_id)} icon={ListChecks} />
+        <InfoTile label="Gestor solicitante" value={managerName} icon={UserRound} />
+        <InfoTile label="Unidade" value={unitDisplayName(workflow)} icon={ListChecks} />
         <InfoTile label="SLA" value={slaLabel(workflow.sla)} icon={FileClock} />
       </div>
 
@@ -652,16 +680,22 @@ function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; 
                     {event.is_sensitive ? <StatusBadge status="warning" label="Sensivel" /> : null}
                   </div>
                   <p className="break-words text-sm text-muted-foreground">{event.summary}</p>
-                  <p className="text-xs text-muted-foreground">Ator: {event.actor_name || event.actor_user_id || "Nao informado"}</p>
+                  <p className="text-xs text-muted-foreground">Ator: {event.actor_name || (event.actor_user_id ? "Usuario registrado" : "Nao informado")}</p>
                 </div>
                 <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
               </div>
-              {safeEntries(event.payload, 4).length ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {safeEntries(event.payload, 4).map(([key, value]) => (
-                    <StatusBadge key={key} status="visual" label={`${key}: ${stringifySafeValue(value)}`} />
-                  ))}
-                </div>
+              {technicalEntries(event.payload).length ? (
+                <details className="mt-3 rounded-md border bg-muted/20 p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos do evento</summary>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {technicalEntries(event.payload).map(([key, value]) => (
+                      <StatusBadge key={key} status="visual" label={`${key}: ${stringifySafeValue(value)}`} />
+                    ))}
+                    {event.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${event.actor_user_id}`} /> : null}
+                    {event.step_id ? <StatusBadge status="visual" label={`step_id: ${event.step_id}`} /> : null}
+                    <StatusBadge status="visual" label={`workflow_id: ${event.workflow_id}`} />
+                  </div>
+                </details>
               ) : null}
             </article>
           ))}
@@ -690,10 +724,21 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
                     <StatusBadge status={riskTone(log.risk_level)} label={log.risk_level} />
                     <StatusBadge status="visual" label={log.entity_type} />
                   </div>
-                  <p className="break-words text-xs text-muted-foreground">Usuario: {log.actor_user_id ?? "Nao informado"} | Request: {log.request_id ?? "-"}</p>
+                  <p className="break-words text-xs text-muted-foreground">Usuario: {log.actor_user_id ? "Usuario registrado" : "Nao informado"}</p>
                 </div>
                 <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
               </div>
+              <details className="mt-3 rounded-md border bg-muted/20 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos da auditoria</summary>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {log.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${log.actor_user_id}`} /> : null}
+                  {log.workflow_id ? <StatusBadge status="visual" label={`workflow_id: ${log.workflow_id}`} /> : null}
+                  {log.step_id ? <StatusBadge status="visual" label={`step_id: ${log.step_id}`} /> : null}
+                  {log.event_id ? <StatusBadge status="visual" label={`event_id: ${log.event_id}`} /> : null}
+                  {log.request_id ? <StatusBadge status="visual" label={`request_id: ${log.request_id}`} /> : null}
+                  {log.correlation_id ? <StatusBadge status="visual" label={`correlation_id: ${log.correlation_id}`} /> : null}
+                </div>
+              </details>
             </article>
           ))}
         </div>
@@ -1010,7 +1055,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
               {workflow.is_sensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>Unidade: {isJobOpening ? shortIdentifier(workflow.unit_id) : workflow.unit_id}</span>
+              <span>Unidade: {isJobOpening ? unitDisplayName(workflow) : workflow.unit?.name ?? workflow.unit_id}</span>
               <span>Colaborador: {isJobOpening ? "Nao aplicavel" : workflow.employee?.name ?? "Nao vinculado"}</span>
               {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
               <span>Criado em {formatDateTime(workflow.created_at)}</span>
