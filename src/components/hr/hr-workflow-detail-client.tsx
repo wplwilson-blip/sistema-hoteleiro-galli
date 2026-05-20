@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bell,
+  BriefcaseBusiness,
+  Building2,
   CalendarClock,
   CheckCircle2,
   ClipboardList,
@@ -20,6 +22,7 @@ import {
   SquareCheckBig,
   SquareX,
   Trash2,
+  UsersRound,
   UserRound
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -320,6 +323,21 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) return `${dateOnlyMatch[3]}/${dateOnlyMatch[2]}/${dateOnlyMatch[1]}`;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit"
+  });
+}
+
 function formatDueDate(value: string | null | undefined) {
   return value ? formatDateTime(value) : "Sem vencimento";
 }
@@ -390,6 +408,42 @@ function stringifySafeValue(value: unknown) {
   return "Valor estruturado";
 }
 
+function metadataText(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string" && value.trim().toLowerCase() === "redacted") return "Redigido";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function formatQuantity(value: string) {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity) || quantity <= 0) return value || "-";
+  return quantity === 1 ? "1 vaga" : `${quantity} vagas`;
+}
+
+function shortIdentifier(value: string | null | undefined) {
+  if (!value) return "-";
+  return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
+}
+
+const urgencyLabels: Record<string, string> = {
+  low: "Baixa",
+  normal: "Normal",
+  high: "Alta",
+  critical: "Critica"
+};
+
+function urgencyLabel(value: string) {
+  return urgencyLabels[value] ?? (value || "-");
+}
+
+function priorityTone(priority: string): StatusTone {
+  if (priority === "critical") return "danger";
+  if (priority === "high") return "warning";
+  return "visual";
+}
+
 function safeEntries(record: Record<string, unknown> | null | undefined, limit = 6) {
   return Object.entries(record ?? {}).slice(0, limit);
 }
@@ -431,6 +485,81 @@ function SlaPanel({ sla }: { sla: WorkflowSla | null | undefined }) {
         <StatusBadge status={slaTone(sla?.status)} label={slaLabel(sla)} />
         {sla?.breached_at ? <StatusBadge status="danger" label={`Violado em ${formatDateTime(sla.breached_at)}`} /> : null}
       </div>
+    </Card>
+  );
+}
+
+function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown> }) {
+  const entries = safeEntries(metadata, 12);
+  if (!entries.length) return null;
+
+  return (
+    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <SectionHeader title="Metadados tecnicos" description="Dados de apoio do workflow, mantidos abaixo da operacao principal." icon={Lock} />
+      <div className="flex flex-wrap gap-1.5">
+        {entries.map(([key, value]) => (
+          <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
+  const metadata = workflow.metadata ?? {};
+  const department = metadataText(metadata, "department") || "Nao informado";
+  const jobPosition = metadataText(metadata, "job_position") || "Nao informado";
+  const quantity = formatQuantity(metadataText(metadata, "requested_quantity"));
+  const urgency = metadataText(metadata, "urgency");
+  const requestedStartDate = metadataText(metadata, "requested_start_date");
+  const managerUserId = metadataText(metadata, "manager_user_id");
+  const reason = metadataText(metadata, "reason");
+  const justification = metadataText(metadata, "justification");
+  const notes = metadataText(metadata, "notes");
+
+  return (
+    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <SectionHeader title="Painel da solicitacao de vaga" description="Dados principais para RH e gestores acompanharem a abertura da vaga." icon={BriefcaseBusiness} />
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge status={priorityTone(urgency)} label={`Urgencia: ${urgencyLabel(urgency)}`} />
+          <StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} />
+        </div>
+      </div>
+
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <InfoTile label="Departamento" value={department} icon={Building2} />
+        <InfoTile label="Cargo" value={jobPosition} icon={BriefcaseBusiness} />
+        <InfoTile label="Quantidade" value={quantity} icon={UsersRound} />
+        <InfoTile label="Urgencia" value={urgencyLabel(urgency)} icon={ShieldAlert} />
+        <InfoTile label="Data desejada" value={formatDate(requestedStartDate)} icon={CalendarClock} />
+        <InfoTile label="Gestor solicitante" value={managerUserId ? "Registrado no workflow" : "Nao informado"} icon={UserRound} />
+        <InfoTile label="Unidade" value={shortIdentifier(workflow.unit_id)} icon={ListChecks} />
+        <InfoTile label="SLA" value={slaLabel(workflow.sla)} icon={FileClock} />
+      </div>
+
+      {reason || justification || notes ? (
+        <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-3">
+          {reason ? (
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Motivo da vaga</p>
+              <p className="mt-2 break-words text-sm text-foreground">{reason}</p>
+            </div>
+          ) : null}
+          {justification ? (
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Justificativa</p>
+              <p className="mt-2 break-words text-sm text-foreground">{justification}</p>
+            </div>
+          ) : null}
+          {notes ? (
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Observacoes operacionais</p>
+              <p className="mt-2 break-words text-sm text-foreground">{notes}</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -860,6 +989,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
     return <EmptyState title="Workflow nao encontrado" description="O workflow nao existe ou esta fora das unidades permitidas para o seu perfil." />;
   }
 
+  const isJobOpening = workflow.workflow_type === "job_opening";
+
   return (
     <div className="space-y-5">
       <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur lg:sticky lg:top-0 lg:z-10">
@@ -879,8 +1010,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
               {workflow.is_sensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>Unidade: {workflow.unit_id}</span>
-              <span>Colaborador: {workflow.employee?.name ?? "Nao vinculado"}</span>
+              <span>Unidade: {isJobOpening ? shortIdentifier(workflow.unit_id) : workflow.unit_id}</span>
+              <span>Colaborador: {isJobOpening ? "Nao aplicavel" : workflow.employee?.name ?? "Nao vinculado"}</span>
               {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
               <span>Criado em {formatDateTime(workflow.created_at)}</span>
               <span>Atualizado em {formatDateTime(workflow.updated_at)}</span>
@@ -903,36 +1034,44 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         </div>
       </Card>
 
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <SectionHeader title="Resumo operacional" description="Dados principais retornados pelo endpoint redigido de detalhe." icon={ClipboardList} />
-        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <InfoTile label="Tipo" value={workflowTypeLabel(workflow.workflow_type)} icon={ClipboardList} />
-          <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />
-          <InfoTile label="Unidade" value={workflow.unit_id} icon={ListChecks} />
-          <InfoTile label="Colaborador" value={workflow.employee?.name ?? "Nao vinculado"} icon={UserRound} />
-          <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
-          <InfoTile label="Responsavel atual" value={currentStep?.assigned_to ?? "Nao informado"} icon={UserRound} />
-          <InfoTile label="Criado em" value={formatDateTime(workflow.created_at)} icon={CalendarClock} />
-          <InfoTile label="Atualizado em" value={formatDateTime(workflow.updated_at)} icon={History} />
-        </div>
-        {safeEntries(workflow.metadata).length ? (
-          <div className="mt-4 rounded-md border bg-background p-3">
-            <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Metadados seguros</p>
-            <div className="flex flex-wrap gap-1.5">
-              {safeEntries(workflow.metadata).map(([key, value]) => (
-                <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
-              ))}
-            </div>
+      {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
+
+      {!isJobOpening ? (
+        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <SectionHeader title="Resumo operacional" description="Dados principais retornados pelo endpoint redigido de detalhe." icon={ClipboardList} />
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <InfoTile label="Tipo" value={workflowTypeLabel(workflow.workflow_type)} icon={ClipboardList} />
+            <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />
+            <InfoTile label="Unidade" value={workflow.unit_id} icon={ListChecks} />
+            <InfoTile label="Colaborador" value={workflow.employee?.name ?? "Nao vinculado"} icon={UserRound} />
+            <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
+            <InfoTile label="Responsavel atual" value={currentStep?.assigned_to ?? "Nao informado"} icon={UserRound} />
+            <InfoTile label="Criado em" value={formatDateTime(workflow.created_at)} icon={CalendarClock} />
+            <InfoTile label="Atualizado em" value={formatDateTime(workflow.updated_at)} icon={History} />
           </div>
-        ) : null}
-      </Card>
+          {safeEntries(workflow.metadata).length ? (
+            <div className="mt-4 rounded-md border bg-background p-3">
+              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Metadados seguros</p>
+              <div className="flex flex-wrap gap-1.5">
+                {safeEntries(workflow.metadata).map(([key, value]) => (
+                  <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
 
       <WorkflowActionPanel workflow={workflow} currentStep={currentStep} onSuccess={() => undefined} />
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-        <SlaPanel sla={workflow.sla} />
+      {isJobOpening ? (
         <EscalationPanel escalation={workflow.escalation} />
-      </div>
+      ) : (
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+          <SlaPanel sla={workflow.sla} />
+          <EscalationPanel escalation={workflow.escalation} />
+        </div>
+      )}
 
       <StepsPanel workflow={workflow} />
 
@@ -948,6 +1087,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         isLoading={auditQuery.isLoading}
         error={auditQuery.error}
       />
+
+      {isJobOpening ? <TechnicalMetadataPanel metadata={workflow.metadata} /> : null}
 
       <NotificationsPanel
         notifications={notificationsQuery.data?.data ?? []}
