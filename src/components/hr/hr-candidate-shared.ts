@@ -19,6 +19,17 @@ export type Candidate = {
   updated_at: string;
 };
 
+export type CandidateAdmissionConversion = {
+  id: string;
+  candidate_id: string;
+  source_job_opening_workflow_id: string;
+  admission_workflow_id: string | null;
+  status: "processing" | "completed" | "failed";
+  converted_at: string | null;
+  converted_by: string | null;
+  created_at: string;
+};
+
 export type CandidateSummary = {
   total: number;
   triagem: number;

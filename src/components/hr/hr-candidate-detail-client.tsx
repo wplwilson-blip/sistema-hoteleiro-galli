@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input";
 import { HrInterviewFormClient } from "@/components/hr/hr-interview-form-client";
 import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card";
 import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
+import { HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
 import {
   type Candidate,
+  type CandidateAdmissionConversion,
   type CandidateInterview,
   type CandidateStatus,
   candidateStatusLabel,
@@ -29,6 +31,7 @@ type CandidateDetailResponse = {
   data: {
     candidate: Candidate;
     interviews: CandidateInterview[];
+    admission_conversion: CandidateAdmissionConversion | null;
     workflow: {
       id: string;
       title: string;
@@ -77,6 +80,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
 
   const candidate = query.data?.data.candidate ?? null;
   const interviews = query.data?.data.interviews ?? emptyInterviews;
+  const admissionConversion = query.data?.data.admission_conversion ?? null;
 
   useEffect(() => {
     if (candidate) {
@@ -222,6 +226,8 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       </div>
 
       <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} />
+
+      <HrCandidateAdmissionConversionCard workflowId={workflowId} candidate={candidate} admissionConversion={admissionConversion} />
 
       <HrInterviewFormClient workflowId={workflowId} candidateId={candidateId} />
 

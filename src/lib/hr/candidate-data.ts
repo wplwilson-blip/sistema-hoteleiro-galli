@@ -29,6 +29,7 @@ export type JobOpeningWorkflowForCandidate = {
   workflow_type: string;
   title: string;
   status: string;
+  metadata: Record<string, unknown>;
 };
 
 export type HrJobCandidateRow = {
@@ -73,6 +74,17 @@ export type HrCandidateInterviewRow = {
     display_name: string | null;
     username: string | null;
   } | null;
+};
+
+export type HrCandidateAdmissionConversionRow = {
+  id: string;
+  candidate_id: string;
+  source_job_opening_workflow_id: string;
+  admission_workflow_id: string | null;
+  status: "processing" | "completed" | "failed";
+  converted_at: string | null;
+  converted_by: string | null;
+  created_at: string;
 };
 
 export const candidateListQuerySchema = z.object({
@@ -142,7 +154,7 @@ export function parseSearchParams<T extends z.ZodTypeAny>(request: Request, sche
 export async function loadJobOpeningWorkflow(context: HrRequestContext, workflowId: string) {
   const { data, error } = await context.supabase
     .from("hr_workflows")
-    .select("id, organization_id, unit_id, workflow_type, title, status")
+    .select("id, organization_id, unit_id, workflow_type, title, status, metadata")
     .eq("id", workflowId)
     .eq("workflow_type", "job_opening")
     .is("deleted_at", null)
@@ -199,6 +211,24 @@ export async function loadCandidateInterviews(context: HrRequestContext, workflo
       interviewer: Array.isArray(interview.interviewer) ? interview.interviewer[0] ?? null : interview.interviewer ?? null
     })
   );
+}
+
+export async function loadCandidateAdmissionConversion(context: HrRequestContext, workflowId: string, candidateId: string) {
+  const { data, error } = await context.supabase
+    .from("hr_candidate_admission_conversions")
+    .select("id, candidate_id, source_job_opening_workflow_id, admission_workflow_id, status, converted_at, converted_by, created_at")
+    .eq("source_job_opening_workflow_id", workflowId)
+    .eq("candidate_id", candidateId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    logHrApiError("candidates.admission_conversion_lookup_failed", error);
+    throw new Error("Nao foi possivel carregar o vinculo de admissao.");
+  }
+
+  return (data?.[0] as HrCandidateAdmissionConversionRow | undefined) ?? null;
 }
 
 export async function getCandidateSensitiveAccess(context: HrRequestContext): Promise<HrPermissionAccess> {

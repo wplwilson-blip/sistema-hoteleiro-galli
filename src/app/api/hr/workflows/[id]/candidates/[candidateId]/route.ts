@@ -5,6 +5,7 @@ import {
   assertCandidateLgpdText,
   candidateSelect,
   getCandidateSensitiveAccess,
+  loadCandidateAdmissionConversion,
   loadCandidateForWorkflow,
   loadCandidateInterviews,
   loadJobOpeningWorkflow,
@@ -40,8 +41,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
       return hrWorkflowApiError("CANDIDATE_NOT_FOUND", "Candidato nao encontrado.", 404);
     }
 
-    const [interviews, sensitiveAccess] = await Promise.all([
+    const [interviews, admissionConversion, sensitiveAccess] = await Promise.all([
       loadCandidateInterviews(context, workflow.id, candidate.id),
+      loadCandidateAdmissionConversion(context, workflow.id, candidate.id),
       getCandidateSensitiveAccess(context)
     ]);
     const showPhone = sensitiveAccess.isSuperAdmin || sensitiveAccess.accessibleUnitIds.includes(workflow.unit_id);
@@ -50,6 +52,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
       data: {
         candidate: redactCandidate(candidate, showPhone),
         interviews,
+        admission_conversion: admissionConversion,
         workflow: {
           id: workflow.id,
           title: workflow.title,

@@ -71,9 +71,13 @@ function metadataSchema<T extends z.ZodRawShape>(shape: T) {
 const workflowMetadataSchemas = {
   admission: metadataSchema({
     admission_date: optionalDate(),
+    candidate_name: optionalText(140),
+    source_candidate_id: optionalUuid(),
+    source_job_opening_workflow_id: optionalUuid(),
     job_position: optionalText(160),
     department: optionalText(160),
     contract_type: optionalText(80),
+    requesting_manager: optionalText(160),
     notes: optionalText(500)
   }),
   termination: metadataSchema({
