@@ -60,8 +60,33 @@ type WorkflowMutationUnitRow = {
   organization_id: string;
 };
 
+type WorkflowListUnitRow = {
+  id: string;
+  code: string | null;
+  name: string | null;
+};
+
 function workflowMutationError(code: string, message: string, status: number): never {
   throw new HrWorkflowMutationError(code, message, status);
+}
+
+async function loadWorkflowListUnits(context: HrRequestContext, unitIds: string[]) {
+  if (!unitIds.length) {
+    return new Map<string, WorkflowListUnitRow>();
+  }
+
+  const { data, error } = await context.supabase
+    .from("units")
+    .select("id, code, name")
+    .in("id", unitIds)
+    .is("deleted_at", null);
+
+  if (error) {
+    logHrApiError("workflows.list_units_lookup_failed", error);
+    return new Map<string, WorkflowListUnitRow>();
+  }
+
+  return new Map(((data ?? []) as WorkflowListUnitRow[]).map((unit) => [unit.id, unit]));
 }
 
 async function resolveCreateWorkflowTarget(context: HrRequestContext, payload: CreateWorkflowInput) {
@@ -251,20 +276,33 @@ export async function GET(request: Request) {
     const workflows = (data ?? []) as HrWorkflowRow[];
     const workflowIds = workflows.map((workflow) => workflow.id);
     const employeeIds = uniqueIds(workflows.map((workflow) => workflow.employee_id));
-    const [stepsByWorkflow, employeesById] = await Promise.all([
+    const unitIds = uniqueIds(workflows.map((workflow) => workflow.unit_id));
+    const [stepsByWorkflow, employeesById, unitsById] = await Promise.all([
       loadWorkflowSteps(context.supabase, workflowIds),
-      loadWorkflowEmployees(context.supabase, employeeIds)
+      loadWorkflowEmployees(context.supabase, employeeIds),
+      loadWorkflowListUnits(context, unitIds)
     ]);
 
     return NextResponse.json({
-      data: workflows.map((workflow) =>
-        redactWorkflowListItem({
-          workflow,
-          employee: workflow.employee_id ? employeesById.get(workflow.employee_id) ?? null : null,
-          steps: stepsByWorkflow.get(workflow.id) ?? [],
-          canViewSensitive: canAccessSensitiveWorkflowUnit(sensitiveAccess, workflow.unit_id)
-        })
-      ),
+      data: workflows.map((workflow) => {
+        const unit = unitsById.get(workflow.unit_id) ?? null;
+
+        return {
+          ...redactWorkflowListItem({
+            workflow,
+            employee: workflow.employee_id ? employeesById.get(workflow.employee_id) ?? null : null,
+            steps: stepsByWorkflow.get(workflow.id) ?? [],
+            canViewSensitive: canAccessSensitiveWorkflowUnit(sensitiveAccess, workflow.unit_id)
+          }),
+          unit: unit
+            ? {
+                id: unit.id,
+                code: unit.code,
+                name: unit.name
+              }
+            : null
+        };
+      }),
       pagination: {
         page: query.page,
         page_size: query.page_size,

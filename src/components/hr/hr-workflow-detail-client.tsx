@@ -235,17 +235,17 @@ const slaStatusLabels: Record<string, string> = {
 };
 
 const eventTypeLabels: Record<string, string> = {
-  workflow_created: "Workflow criado",
-  workflow_opened: "Workflow aberto",
-  workflow_assigned: "Workflow atribuido",
+  workflow_created: "Processo criado",
+  workflow_opened: "Processo aberto",
+  workflow_assigned: "Processo atribuido",
   workflow_status_changed: "Status alterado",
   workflow_due_date_changed: "Prazo alterado",
   workflow_submitted_for_approval: "Enviado para aprovacao",
-  workflow_approved: "Workflow aprovado",
-  workflow_returned: "Workflow devolvido",
-  workflow_rejected: "Workflow rejeitado",
-  workflow_completed: "Workflow concluido",
-  workflow_cancelled: "Workflow cancelado",
+  workflow_approved: "Processo aprovado",
+  workflow_returned: "Processo devolvido",
+  workflow_rejected: "Processo rejeitado",
+  workflow_completed: "Processo concluido",
+  workflow_cancelled: "Processo cancelado",
   step_started: "Etapa iniciada",
   step_completed: "Etapa concluida",
   step_rejected: "Etapa rejeitada",
@@ -256,12 +256,12 @@ const eventTypeLabels: Record<string, string> = {
 };
 
 const actionLabels: Record<string, string> = {
-  create_workflow: "Criacao do workflow",
+  create_workflow: "Criacao do processo",
   execute_step: "Execucao de etapa",
   approve_step: "Aprovacao de etapa",
   reject_step: "Rejeicao de etapa",
   return_step: "Devolucao de etapa",
-  cancel_workflow: "Cancelamento do workflow"
+  cancel_workflow: "Cancelamento do processo"
 };
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -312,7 +312,7 @@ async function postWorkflowAction(input: {
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(body?.message ?? body?.error?.message ?? "Nao foi possivel executar a acao do workflow.");
+    throw new Error(body?.message ?? body?.error?.message ?? "Nao foi possivel executar a acao do processo.");
   }
 
   return body as WorkflowMutationResponse;
@@ -453,10 +453,6 @@ function priorityTone(priority: string): StatusTone {
   return "visual";
 }
 
-function safeEntries(record: Record<string, unknown> | null | undefined, limit = 6) {
-  return Object.entries(record ?? {}).slice(0, limit);
-}
-
 function technicalEntries(record: Record<string, unknown> | null | undefined) {
   return Object.entries(record ?? {}).filter(([, value]) => value !== undefined);
 }
@@ -488,13 +484,13 @@ function SectionHeader({ title, description, icon: Icon }: { title: string; desc
 function unitDisplayName(workflow: WorkflowDetail) {
   if (workflow.unit?.name) return workflow.unit.name;
   if (workflow.unit?.code) return workflow.unit.code;
-  return shortIdentifier(workflow.unit_id);
+  return "Unidade registrada";
 }
 
 function SlaPanel({ sla }: { sla: WorkflowSla | null | undefined }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="SLA" description="Leitura operacional do prazo principal do workflow." icon={CalendarClock} />
+      <SectionHeader title="SLA" description="Leitura operacional do prazo principal do processo." icon={CalendarClock} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Status" value={slaLabel(sla)} icon={CalendarClock} />
         <InfoTile label="Vencimento" value={formatDueDate(sla?.due_at)} icon={FileClock} />
@@ -519,7 +515,7 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <span>
             <span className="block text-sm font-semibold text-foreground">Informacoes tecnicas</span>
-            <span className="block text-xs text-muted-foreground">Dados de apoio do workflow, ocultos por padrao para a operacao.</span>
+            <span className="block text-xs text-muted-foreground">Dados de apoio do processo, ocultos por padrao para a operacao.</span>
           </span>
         </summary>
         <div className="mt-4 flex flex-wrap gap-1.5">
@@ -597,14 +593,14 @@ function EscalationPanel({ escalation }: { escalation: WorkflowEscalation | null
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Escalation" description="Estado read-only de escalonamento calculado pela fundacao RH." icon={ShieldAlert} />
+      <SectionHeader title="Escalonamento" description="Acompanhamento de atrasos e prioridades calculadas pelo RH." icon={ShieldAlert} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Estado" value={isEscalated ? "Escalado ou elegivel" : "Nao escalado"} icon={ShieldAlert} />
         <InfoTile label="Nivel" value={escalation?.level ? `Nivel ${escalation.level}` : "-"} icon={ListChecks} />
         <InfoTile label="Ocorrencias" value={String(escalation?.count ?? 0)} icon={History} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <StatusBadge status={escalation?.overdue ? "danger" : isEscalated ? "warning" : "visual"} label={escalation?.label ?? (isEscalated ? "Escalation ativo" : "Sem escalation")} />
+        <StatusBadge status={escalation?.overdue ? "danger" : isEscalated ? "warning" : "visual"} label={escalation?.label ?? (isEscalated ? "Escalonamento ativo" : "Sem escalonamento")} />
       </div>
     </Card>
   );
@@ -616,7 +612,7 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
   return (
     <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="p-4">
-        <SectionHeader title="Etapas do workflow" description="Sequencia read-only das etapas redigidas pelo backend." icon={ListChecks} />
+        <SectionHeader title="Etapas do processo" description="Sequencia operacional das etapas protegidas pelo sistema." icon={ListChecks} />
       </div>
       {workflow.steps.length ? (
         <div className="max-w-full overflow-x-auto">
@@ -655,7 +651,7 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
         </div>
       ) : (
         <div className="p-4 pt-0">
-          <EmptyState title="Sem etapas disponiveis" description="O endpoint nao retornou etapas para este workflow." />
+          <EmptyState title="Sem etapas disponiveis" description="O sistema nao retornou etapas para este processo." />
         </div>
       )}
     </Card>
@@ -665,42 +661,48 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
 function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; isLoading: boolean; error: unknown }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Timeline" description="Eventos do workflow com payload seguro e redigido." icon={History} />
-      {isLoading ? <LoadingTable label="Carregando timeline do workflow..." /> : null}
-      {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar timeline."} /> : null}
-      {!isLoading && !error && !events.length ? <EmptyState title="Timeline vazia" description="Nenhum evento ativo foi retornado para este workflow." /> : null}
-      {events.length ? (
-        <div className="space-y-3">
-          {events.map((event) => (
-            <article key={event.id} className="rounded-md border border-l-4 border-l-primary/50 bg-background p-3">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-foreground">{eventTypeLabel(event.event_type)}</p>
-                    {event.is_sensitive ? <StatusBadge status="warning" label="Sensivel" /> : null}
+      <details>
+        <summary className="cursor-pointer list-none">
+          <SectionHeader title="Historico do workflow" description="Eventos registrados automaticamente pelo sistema." icon={History} />
+        </summary>
+        <div className="mt-4">
+          {isLoading ? <LoadingTable label="Carregando historico do processo..." /> : null}
+          {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar historico."} /> : null}
+          {!isLoading && !error && !events.length ? <EmptyState title="Historico vazio" description="Nenhum evento ativo foi retornado para este processo." /> : null}
+          {events.length ? (
+            <div className="space-y-3">
+              {events.map((event) => (
+                <article key={event.id} className="rounded-md border border-l-4 border-l-primary/50 bg-background p-3">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-foreground">{eventTypeLabel(event.event_type)}</p>
+                        {event.is_sensitive ? <StatusBadge status="warning" label="Sensivel" /> : null}
+                      </div>
+                      <p className="break-words text-sm text-muted-foreground">{event.summary}</p>
+                      <p className="text-xs text-muted-foreground">Ator: {event.actor_name || (event.actor_user_id ? "Usuario registrado" : "Nao informado")}</p>
+                    </div>
+                    <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
                   </div>
-                  <p className="break-words text-sm text-muted-foreground">{event.summary}</p>
-                  <p className="text-xs text-muted-foreground">Ator: {event.actor_name || (event.actor_user_id ? "Usuario registrado" : "Nao informado")}</p>
-                </div>
-                <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
-              </div>
-              {technicalEntries(event.payload).length ? (
-                <details className="mt-3 rounded-md border bg-muted/20 p-3">
-                  <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos do evento</summary>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {technicalEntries(event.payload).map(([key, value]) => (
-                      <StatusBadge key={key} status="visual" label={`${key}: ${stringifySafeValue(value)}`} />
-                    ))}
-                    {event.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${event.actor_user_id}`} /> : null}
-                    {event.step_id ? <StatusBadge status="visual" label={`step_id: ${event.step_id}`} /> : null}
-                    <StatusBadge status="visual" label={`workflow_id: ${event.workflow_id}`} />
-                  </div>
-                </details>
-              ) : null}
-            </article>
-          ))}
+                  {technicalEntries(event.payload).length ? (
+                    <details className="mt-3 rounded-md border bg-muted/20 p-3">
+                      <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos do evento</summary>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {technicalEntries(event.payload).map(([key, value]) => (
+                          <StatusBadge key={key} status="visual" label={`${key}: ${stringifySafeValue(value)}`} />
+                        ))}
+                        {event.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${event.actor_user_id}`} /> : null}
+                        {event.step_id ? <StatusBadge status="visual" label={`step_id: ${event.step_id}`} /> : null}
+                        <StatusBadge status="visual" label={`workflow_id: ${event.workflow_id}`} />
+                      </div>
+                    </details>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </details>
     </Card>
   );
 }
@@ -708,41 +710,47 @@ function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; 
 function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total: number; isLoading: boolean; error: unknown }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Auditoria" description="Registros read-only de auditoria filtrados por workflow." icon={Lock} />
-      {isLoading ? <LoadingTable label="Carregando auditoria do workflow..." /> : null}
-      {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar auditoria."} /> : null}
-      {!isLoading && !error && !logs.length ? <EmptyState title="Auditoria sem registros" description="Nenhum registro de auditoria foi retornado para este workflow." /> : null}
-      {logs.length ? (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Exibindo {logs.length} de {total} registros.</p>
-          {logs.map((log) => (
-            <article key={log.id} className="rounded-md border bg-background p-3">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-foreground">{actionLabel(log.action)}</p>
-                    <StatusBadge status={riskTone(log.risk_level)} label={log.risk_level} />
-                    <StatusBadge status="visual" label={log.entity_type} />
+      <details>
+        <summary className="cursor-pointer list-none">
+          <SectionHeader title="Auditoria tecnica" description="Registros internos para rastreabilidade e compliance." icon={Lock} />
+        </summary>
+        <div className="mt-4">
+          {isLoading ? <LoadingTable label="Carregando auditoria do processo..." /> : null}
+          {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar auditoria."} /> : null}
+          {!isLoading && !error && !logs.length ? <EmptyState title="Auditoria sem registros" description="Nenhum registro de auditoria foi retornado para este processo." /> : null}
+          {logs.length ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Exibindo {logs.length} de {total} registros.</p>
+              {logs.map((log) => (
+                <article key={log.id} className="rounded-md border bg-background p-3">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-foreground">{actionLabel(log.action)}</p>
+                        <StatusBadge status={riskTone(log.risk_level)} label={log.risk_level} />
+                        <StatusBadge status="visual" label={log.entity_type} />
+                      </div>
+                      <p className="break-words text-xs text-muted-foreground">Usuario: {log.actor_user_id ? "Usuario registrado" : "Nao informado"}</p>
+                    </div>
+                    <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
                   </div>
-                  <p className="break-words text-xs text-muted-foreground">Usuario: {log.actor_user_id ? "Usuario registrado" : "Nao informado"}</p>
-                </div>
-                <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
-              </div>
-              <details className="mt-3 rounded-md border bg-muted/20 p-3">
-                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos da auditoria</summary>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {log.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${log.actor_user_id}`} /> : null}
-                  {log.workflow_id ? <StatusBadge status="visual" label={`workflow_id: ${log.workflow_id}`} /> : null}
-                  {log.step_id ? <StatusBadge status="visual" label={`step_id: ${log.step_id}`} /> : null}
-                  {log.event_id ? <StatusBadge status="visual" label={`event_id: ${log.event_id}`} /> : null}
-                  {log.request_id ? <StatusBadge status="visual" label={`request_id: ${log.request_id}`} /> : null}
-                  {log.correlation_id ? <StatusBadge status="visual" label={`correlation_id: ${log.correlation_id}`} /> : null}
-                </div>
-              </details>
-            </article>
-          ))}
+                  <details className="mt-3 rounded-md border bg-muted/20 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos da auditoria</summary>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {log.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${log.actor_user_id}`} /> : null}
+                      {log.workflow_id ? <StatusBadge status="visual" label={`workflow_id: ${log.workflow_id}`} /> : null}
+                      {log.step_id ? <StatusBadge status="visual" label={`step_id: ${log.step_id}`} /> : null}
+                      {log.event_id ? <StatusBadge status="visual" label={`event_id: ${log.event_id}`} /> : null}
+                      {log.request_id ? <StatusBadge status="visual" label={`request_id: ${log.request_id}`} /> : null}
+                      {log.correlation_id ? <StatusBadge status="visual" label={`correlation_id: ${log.correlation_id}`} /> : null}
+                    </div>
+                  </details>
+                </article>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </details>
     </Card>
   );
 }
@@ -750,10 +758,10 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
 function NotificationsPanel({ notifications, isLoading, error }: { notifications: WorkflowNotification[]; isLoading: boolean; error: unknown }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Notificacoes" description="Notificacoes relacionadas ao workflow, quando disponiveis." icon={Bell} />
-      {isLoading ? <LoadingTable label="Carregando notificacoes do workflow..." /> : null}
+      <SectionHeader title="Notificacoes" description="Notificacoes relacionadas ao processo, quando disponiveis." icon={Bell} />
+      {isLoading ? <LoadingTable label="Carregando notificacoes do processo..." /> : null}
       {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar notificacoes."} /> : null}
-      {!isLoading && !error && !notifications.length ? <EmptyState title="Sem notificacoes" description="Nenhuma notificacao foi retornada para este workflow." /> : null}
+      {!isLoading && !error && !notifications.length ? <EmptyState title="Sem notificacoes" description="Nenhuma notificacao foi retornada para este processo." /> : null}
       {notifications.length ? (
         <div className="grid min-w-0 gap-3 xl:grid-cols-2">
           {notifications.map((notification) => (
@@ -852,11 +860,11 @@ function WorkflowActionPanel({
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Acoes operacionais" description="Acoes reais com idempotencia. O backend continua sendo a autoridade final." icon={SquareCheckBig} />
+      <SectionHeader title="Acoes operacionais" description="Acoes registradas com seguranca. O sistema continua sendo a autoridade final." icon={SquareCheckBig} />
 
       {!allowedActions.length ? (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          Nenhuma acao operacional foi liberada pelo backend para este workflow no estado atual.
+          Nenhuma acao operacional foi liberada pelo sistema para este processo no estado atual.
         </div>
       ) : (
         <div className="space-y-4">
@@ -939,7 +947,7 @@ function WorkflowActionPanel({
         </div>
       )}
 
-      {feedback ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback} Atualizando os dados do workflow.</div> : null}
+      {feedback ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback} Atualizando os dados do processo.</div> : null}
       {localError ? <div className="mt-3"><ErrorMessage message={localError} /></div> : null}
     </Card>
   );
@@ -960,7 +968,7 @@ const actionLabelsForUi: Record<
     label: "Executar etapa",
     success: "Etapa executada com sucesso.",
     confirmTitle: "Confirmar execucao da etapa",
-    confirmDescription: "A etapa atual sera executada pelo motor de workflow.",
+    confirmDescription: "A etapa atual sera executada pelo fluxo do processo.",
     icon: SquareCheckBig,
     variant: "default"
   },
@@ -968,7 +976,7 @@ const actionLabelsForUi: Record<
     label: "Aprovar",
     success: "Etapa aprovada com sucesso.",
     confirmTitle: "Confirmar aprovacao",
-    confirmDescription: "A aprovacao sera registrada com auditoria e timeline.",
+    confirmDescription: "A aprovacao sera registrada com auditoria e historico.",
     icon: CheckCircle2,
     variant: "default"
   },
@@ -989,10 +997,10 @@ const actionLabelsForUi: Record<
     variant: "outline"
   },
   cancel: {
-    label: "Cancelar workflow",
-    success: "Workflow cancelado com sucesso.",
-    confirmTitle: "Confirmar cancelamento do workflow",
-    confirmDescription: "Cancelamento encerra o workflow e exige motivo administrativo.",
+    label: "Cancelar processo",
+    success: "Processo cancelado com sucesso.",
+    confirmTitle: "Confirmar cancelamento do processo",
+    confirmDescription: "Cancelamento encerra o processo e exige motivo administrativo.",
     icon: Trash2,
     variant: "danger"
   }
@@ -1023,15 +1031,15 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   const currentStep = useMemo(() => workflow?.steps.find((step) => step.id === workflow.current_step_id) ?? null, [workflow]);
 
   if (detailQuery.isLoading) {
-    return <LoadingTable label="Carregando detalhe do workflow RH..." />;
+    return <LoadingTable label="Carregando detalhe do processo RH..." />;
   }
 
   if (detailQuery.error) {
-    return <ErrorMessage message={detailQuery.error instanceof Error ? detailQuery.error.message : "Erro ao carregar workflow de RH."} />;
+    return <ErrorMessage message={detailQuery.error instanceof Error ? detailQuery.error.message : "Erro ao carregar processo de RH."} />;
   }
 
   if (!workflow) {
-    return <EmptyState title="Workflow nao encontrado" description="O workflow nao existe ou esta fora das unidades permitidas para o seu perfil." />;
+    return <EmptyState title="Processo nao encontrado" description="O processo nao existe ou esta fora das unidades permitidas para o seu perfil." />;
   }
 
   const isJobOpening = workflow.workflow_type === "job_opening";
@@ -1055,7 +1063,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
               {workflow.is_sensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>Unidade: {isJobOpening ? unitDisplayName(workflow) : workflow.unit?.name ?? workflow.unit_id}</span>
+              <span>Unidade: {unitDisplayName(workflow)}</span>
               <span>Colaborador: {isJobOpening ? "Nao aplicavel" : workflow.employee?.name ?? "Nao vinculado"}</span>
               {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
               <span>Criado em {formatDateTime(workflow.created_at)}</span>
@@ -1087,23 +1095,13 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
           <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <InfoTile label="Tipo" value={workflowTypeLabel(workflow.workflow_type)} icon={ClipboardList} />
             <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />
-            <InfoTile label="Unidade" value={workflow.unit_id} icon={ListChecks} />
+            <InfoTile label="Unidade" value={unitDisplayName(workflow)} icon={ListChecks} />
             <InfoTile label="Colaborador" value={workflow.employee?.name ?? "Nao vinculado"} icon={UserRound} />
             <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
             <InfoTile label="Responsavel atual" value={currentStep?.assigned_to ?? "Nao informado"} icon={UserRound} />
             <InfoTile label="Criado em" value={formatDateTime(workflow.created_at)} icon={CalendarClock} />
             <InfoTile label="Atualizado em" value={formatDateTime(workflow.updated_at)} icon={History} />
           </div>
-          {safeEntries(workflow.metadata).length ? (
-            <div className="mt-4 rounded-md border bg-background p-3">
-              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Metadados seguros</p>
-              <div className="flex flex-wrap gap-1.5">
-                {safeEntries(workflow.metadata).map(([key, value]) => (
-                  <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
-                ))}
-              </div>
-            </div>
-          ) : null}
         </Card>
       ) : null}
 
@@ -1133,7 +1131,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         error={auditQuery.error}
       />
 
-      {isJobOpening ? <TechnicalMetadataPanel metadata={workflow.metadata} /> : null}
+      <TechnicalMetadataPanel metadata={workflow.metadata} />
 
       <NotificationsPanel
         notifications={notificationsQuery.data?.data ?? []}

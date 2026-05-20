@@ -71,6 +71,11 @@ type WorkflowStep = {
 type WorkflowListItem = {
   id: string;
   unit_id: string;
+  unit?: {
+    id: string;
+    code: string | null;
+    name: string | null;
+  } | null;
   workflow_type: string;
   status: string;
   employee: WorkflowEmployee;
@@ -259,6 +264,12 @@ function slaLabel(sla: WorkflowSla | null | undefined) {
   return slaStatusLabels[status] ?? sla?.label ?? "SLA nao informado";
 }
 
+function unitDisplayName(workflow: WorkflowListItem) {
+  if (workflow.unit?.name) return workflow.unit.name;
+  if (workflow.unit?.code) return workflow.unit.code;
+  return "Unidade registrada";
+}
+
 function getSlaStatus(workflow: WorkflowListItem) {
   return workflow.current_step?.sla?.status ?? workflow.sla?.status ?? null;
 }
@@ -300,7 +311,7 @@ function includesText(workflow: WorkflowListItem, search: string) {
   return [
     workflowTypeLabel(workflow.workflow_type),
     workflowStatusLabel(workflow.status),
-    workflow.unit_id,
+    unitDisplayName(workflow),
     workflow.employee?.name,
     workflow.current_step?.name,
     stepStatusLabel(workflow.current_step?.status),
@@ -436,7 +447,7 @@ export function HrWorkflowInboxClient() {
               <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
               {dashboard?.generated_at ? <StatusBadge status="visual" label={`Metricas atualizadas em ${formatDateTime(dashboard.generated_at)}`} /> : null}
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">Inbox somente leitura. Acoes operacionais entram em sprint propria com idempotencia.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Fila de processos de RH para acompanhamento operacional.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status="visual" label={`Exibindo ${filteredWorkflows.length} de ${totalInbox}`} />
@@ -475,7 +486,7 @@ export function HrWorkflowInboxClient() {
               <Filter className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold text-foreground">Filtros operacionais</h2>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Filtros aplicados sobre workflows acessiveis e dados ja redigidos pelo backend.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Filtros aplicados sobre processos acessiveis e dados ja protegidos pelo sistema.</p>
           </div>
           {hasFilters ? (
             <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
@@ -547,7 +558,7 @@ export function HrWorkflowInboxClient() {
       {workflowsQuery.error ? <ErrorMessage message={workflowsQuery.error instanceof Error ? workflowsQuery.error.message : "Erro ao carregar inbox operacional."} /> : null}
 
       {!workflowsQuery.isLoading && !workflowsQuery.error && !filteredWorkflows.length ? (
-        <EmptyState title="Nenhum workflow encontrado" description="Ajuste os filtros ou confirme se existem workflows de RH dentro das unidades permitidas para o seu perfil." />
+        <EmptyState title="Nenhum processo encontrado" description="Ajuste os filtros ou confirme se existem processos de RH dentro das unidades permitidas para o seu perfil." />
       ) : null}
 
       {filteredWorkflows.length ? (
@@ -561,15 +572,15 @@ export function HrWorkflowInboxClient() {
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">Ordenacao: SLA vencido, SLA vencendo, escalados, criticos e atualizados recentemente.</p>
               </div>
-              <p className="text-xs text-muted-foreground">Limite de leitura: ate 100 workflows por consulta.</p>
+              <p className="text-xs text-muted-foreground">Limite de leitura: ate 100 processos por consulta.</p>
             </div>
           </div>
 
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[1280px] text-left text-sm">
+            <table className="w-full min-w-[1320px] text-left text-sm">
               <thead className="sticky top-0 z-10 border-b bg-muted text-xs uppercase text-muted-foreground shadow-sm">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Workflow</th>
+                  <th className="px-4 py-3 font-semibold">Processo</th>
                   <th className="px-4 py-3 font-semibold">Unidade</th>
                   <th className="px-4 py-3 font-semibold">Colaborador</th>
                   <th className="px-4 py-3 font-semibold">Etapa atual</th>
@@ -577,9 +588,9 @@ export function HrWorkflowInboxClient() {
                   <th className="px-4 py-3 font-semibold">SLA</th>
                   <th className="px-4 py-3 font-semibold">Vencimento</th>
                   <th className="px-4 py-3 font-semibold">Atraso</th>
-                  <th className="px-4 py-3 font-semibold">Escalation</th>
+                  <th className="px-4 py-3 font-semibold">Escalonamento</th>
                   <th className="px-4 py-3 font-semibold">Datas</th>
-                  <th className="px-4 py-3 text-right font-semibold">Detalhe</th>
+                  <th className="w-28 px-4 py-3 text-right font-semibold">Detalhe</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -599,7 +610,7 @@ export function HrWorkflowInboxClient() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="max-w-36 break-words text-muted-foreground">{workflow.unit_id}</p>
+                        <p className="max-w-44 break-words text-muted-foreground">{unitDisplayName(workflow)}</p>
                       </td>
                       <td className="px-4 py-3">
                         <div className="max-w-44 space-y-1">
@@ -614,7 +625,7 @@ export function HrWorkflowInboxClient() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="max-w-36 break-words text-muted-foreground">{workflow.current_step?.assigned_to ?? "Nao informado"}</p>
+                        <p className="max-w-36 break-words text-muted-foreground">{workflow.current_step?.assigned_to ? "Usuario registrado" : "Nao informado"}</p>
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={slaTone(sla?.status)} label={slaLabel(sla)} />
@@ -634,8 +645,8 @@ export function HrWorkflowInboxClient() {
                           <p>Atualizado: {formatDateTime(workflow.updated_at)}</p>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button asChild variant="outline" size="sm">
+                      <td className="w-28 px-4 py-3 text-right">
+                        <Button asChild variant="outline" size="sm" className="whitespace-nowrap">
                           <Link href={`/rh/workflows/${workflow.id}`}>
                             Abrir
                             <ArrowRight className="h-4 w-4" />
