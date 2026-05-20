@@ -8,6 +8,7 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
+  BriefcaseBusiness,
   Building2,
   CalendarClock,
   CheckCircle2,
@@ -182,7 +183,8 @@ const workflowTypeLabels: Record<string, string> = {
   absence: "Ausencia ou afastamento",
   warning: "Advertencia",
   equipment_delivery: "Entrega de equipamento",
-  general_note: "Nota administrativa"
+  general_note: "Nota administrativa",
+  job_opening: "Solicitacao de vaga"
 };
 
 const workflowStatusLabels: Record<string, string> = {
@@ -552,6 +554,12 @@ export function HrOperationalDashboardClient() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/vagas/nova">
+                <BriefcaseBusiness className="h-4 w-4" />
+                Nova Vaga
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm">
               <Link href="/rh/admissoes/nova">
                 <UserPlus className="h-4 w-4" />

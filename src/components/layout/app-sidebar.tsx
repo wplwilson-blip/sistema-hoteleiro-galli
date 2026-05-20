@@ -79,6 +79,7 @@ const menuGroups: SidebarGroup[] = [
     items: [
       { label: "Dashboard", href: "/rh", icon: LayoutDashboard, match: "exact" },
       { label: "Inbox", href: "/rh/inbox", icon: Inbox },
+      { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
       { label: "Gestao", href: "/rh/gestao", icon: BarChart3, match: "exact" },
       { label: "Auditoria", href: "/rh/gestao/auditoria", icon: FileText },
       { label: "Processamentos", href: "/rh/gestao/jobs", icon: ClipboardList },

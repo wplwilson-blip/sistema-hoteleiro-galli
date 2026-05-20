@@ -75,7 +75,8 @@ function workflowTypeLabel(type: string) {
     absence: "Ausencia ou afastamento",
     warning: "Advertencia",
     equipment_delivery: "Entrega de equipamento",
-    general_note: "Nota administrativa"
+    general_note: "Nota administrativa",
+    job_opening: "Solicitacao de vaga"
   };
   return labels[type] ?? type;
 }

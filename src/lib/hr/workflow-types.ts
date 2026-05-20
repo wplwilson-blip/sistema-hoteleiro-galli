@@ -9,7 +9,8 @@ export const HR_WORKFLOW_TYPES = [
   "absence",
   "warning",
   "equipment_delivery",
-  "general_note"
+  "general_note",
+  "job_opening"
 ] as const;
 
 export type HrWorkflowType = (typeof HR_WORKFLOW_TYPES)[number];
@@ -114,7 +115,8 @@ export const HR_WORKFLOW_TYPE_CONFIGS: HrWorkflowTypeConfig[] = [
     requires_employee: true,
     supports_functional_event: false
   },
-  { type: "general_note", label: "Nota administrativa", is_sensitive: false, enabled: true, requires_employee: false, supports_functional_event: false }
+  { type: "general_note", label: "Nota administrativa", is_sensitive: false, enabled: true, requires_employee: false, supports_functional_event: false },
+  { type: "job_opening", label: "Solicitacao de vaga", is_sensitive: false, enabled: true, requires_employee: false, supports_functional_event: false }
 ];
 
 export function isWorkflowTypeSensitive(type: HrWorkflowType) {

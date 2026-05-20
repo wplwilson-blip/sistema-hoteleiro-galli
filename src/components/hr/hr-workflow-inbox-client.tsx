@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BellRing,
+  BriefcaseBusiness,
   CalendarClock,
   ClipboardList,
   Filter,
@@ -127,7 +128,8 @@ const workflowTypeOptions = [
   { value: "absence", label: "Ausencia ou afastamento" },
   { value: "warning", label: "Advertencia" },
   { value: "equipment_delivery", label: "Entrega de equipamento" },
-  { value: "general_note", label: "Nota administrativa" }
+  { value: "general_note", label: "Nota administrativa" },
+  { value: "job_opening", label: "Solicitacao de vaga" }
 ];
 
 const workflowStatusOptions = [
@@ -438,6 +440,12 @@ export function HrWorkflowInboxClient() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status="visual" label={`Exibindo ${filteredWorkflows.length} de ${totalInbox}`} />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/vagas/nova">
+                <BriefcaseBusiness className="h-4 w-4" />
+                Nova Vaga
+              </Link>
+            </Button>
             <Button asChild size="sm">
               <Link href="/rh/admissoes/nova">
                 <UserPlus className="h-4 w-4" />

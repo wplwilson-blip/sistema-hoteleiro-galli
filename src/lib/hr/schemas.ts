@@ -30,7 +30,8 @@ export const hrWorkflowTypeSchema = z.enum([
   "absence",
   "warning",
   "equipment_delivery",
-  "general_note"
+  "general_note",
+  "job_opening"
 ]);
 
 export const hrWorkflowStatusSchema = z.enum([
@@ -71,6 +72,7 @@ export const hrWorkflowTemplateTypeSchema = z.enum([
   "warning",
   "equipment_delivery",
   "general_note",
+  "job_opening",
   "vacation_request",
   "salary_increase",
   "document_request"

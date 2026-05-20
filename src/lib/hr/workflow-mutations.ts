@@ -143,6 +143,19 @@ const workflowMetadataSchemas = {
     note_category: optionalText(120),
     summary: optionalText(500),
     requires_follow_up: optionalBoolean()
+  }),
+  job_opening: metadataSchema({
+    department: optionalText(160),
+    department_id: optionalUuid(),
+    job_position: optionalText(160),
+    job_position_id: optionalUuid(),
+    requested_quantity: z.preprocess((value) => (value === "" || value === null ? undefined : value), z.number().int().min(1).max(100).optional()),
+    urgency: optionalText(40),
+    reason: optionalText(120),
+    requested_start_date: optionalDate(),
+    manager_user_id: optionalUuid(),
+    justification: optionalText(800),
+    notes: optionalText(500)
   })
 } satisfies Record<HrWorkflowType, z.ZodType<Record<string, unknown>>>;
 
@@ -476,7 +489,7 @@ export function parseCancelWorkflowPayload(raw: unknown) {
 }
 
 export function assertCreateWorkflowEmployeeRequirement(input: Pick<CreateWorkflowInput, "workflow_type" | "employee_id">) {
-  if (!input.employee_id && !["admission", "training", "general_note"].includes(input.workflow_type)) {
+  if (!input.employee_id && !["admission", "training", "general_note", "job_opening"].includes(input.workflow_type)) {
     throw new HrWorkflowMutationError("WORKFLOW_EMPLOYEE_REQUIRED", "Colaborador obrigatorio para este tipo de workflow.", 422);
   }
 }

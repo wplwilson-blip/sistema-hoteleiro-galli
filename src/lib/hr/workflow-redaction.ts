@@ -90,6 +90,19 @@ const metadataSchemas: Record<HrWorkflowType, MetadataField[]> = {
     { key: "note_category" },
     { key: "summary", sensitive: true },
     { key: "requires_follow_up" }
+  ],
+  job_opening: [
+    { key: "department" },
+    { key: "department_id" },
+    { key: "job_position" },
+    { key: "job_position_id" },
+    { key: "requested_quantity" },
+    { key: "urgency" },
+    { key: "reason" },
+    { key: "requested_start_date" },
+    { key: "manager_user_id" },
+    { key: "justification", sensitive: true },
+    { key: "notes", sensitive: true }
   ]
 };
 
