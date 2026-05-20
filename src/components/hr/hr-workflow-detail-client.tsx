@@ -22,6 +22,7 @@ import {
   SquareCheckBig,
   SquareX,
   Trash2,
+  UserPlus,
   UsersRound,
   UserRound
 } from "lucide-react";
@@ -177,6 +178,16 @@ type WorkflowNotification = {
 
 type NotificationsResponse = {
   data: WorkflowNotification[];
+};
+
+type CandidateSummaryResponse = {
+  summary: {
+    total: number;
+    triagem: number;
+    entrevista: number;
+    aprovado: number;
+    reprovado: number;
+  };
 };
 
 type WorkflowMutationResponse = {
@@ -582,6 +593,53 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
               <p className="mt-2 break-words text-sm text-foreground">{notes}</p>
             </div>
           ) : null}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function CandidateSummaryPanel({
+  workflowId,
+  summary,
+  isLoading,
+  error
+}: {
+  workflowId: string;
+  summary: CandidateSummaryResponse["summary"] | null;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const values = summary ?? { total: 0, triagem: 0, entrevista: 0, aprovado: 0, reprovado: 0 };
+
+  return (
+    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <SectionHeader title="Candidatos" description="Acompanhamento leve da vaga, sem ranking automatico ou decisao por sistema." icon={UsersRound} />
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/rh/vagas/${workflowId}/candidatos`}>
+              <UsersRound className="h-4 w-4" />
+              Candidatos
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href={`/rh/vagas/${workflowId}/candidatos/novo`}>
+              <UserPlus className="h-4 w-4" />
+              Novo Candidato
+            </Link>
+          </Button>
+        </div>
+      </div>
+      {isLoading ? <LoadingTable label="Carregando resumo de candidatos..." /> : null}
+      {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar resumo de candidatos."} /> : null}
+      {!isLoading && !error ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <InfoTile label="Total" value={String(values.total)} icon={UsersRound} />
+          <InfoTile label="Em triagem" value={String(values.triagem)} icon={ClipboardList} />
+          <InfoTile label="Em entrevista" value={String(values.entrevista)} icon={CalendarClock} />
+          <InfoTile label="Aprovados" value={String(values.aprovado)} icon={CheckCircle2} />
+          <InfoTile label="Reprovados" value={String(values.reprovado)} icon={SquareX} />
         </div>
       ) : null}
     </Card>
@@ -1029,6 +1087,11 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
   const workflow = detailQuery.data?.data ?? null;
   const currentStep = useMemo(() => workflow?.steps.find((step) => step.id === workflow.current_step_id) ?? null, [workflow]);
+  const candidateSummaryQuery = useQuery({
+    queryKey: ["hr", "job-opening-candidates-summary", workflowId],
+    queryFn: async () => requestJson<CandidateSummaryResponse>(`/api/hr/workflows/${workflowId}/candidates?page_size=1`),
+    enabled: workflow?.workflow_type === "job_opening"
+  });
 
   if (detailQuery.isLoading) {
     return <LoadingTable label="Carregando detalhe do processo RH..." />;
@@ -1088,6 +1151,14 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       </Card>
 
       {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
+      {isJobOpening ? (
+        <CandidateSummaryPanel
+          workflowId={workflow.id}
+          summary={candidateSummaryQuery.data?.summary ?? null}
+          isLoading={candidateSummaryQuery.isLoading}
+          error={candidateSummaryQuery.error}
+        />
+      ) : null}
 
       {!isJobOpening ? (
         <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">

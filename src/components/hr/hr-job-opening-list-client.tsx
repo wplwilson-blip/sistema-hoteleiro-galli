@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Filter, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Filter, Search, UserPlus, UsersRound, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -38,6 +38,11 @@ type WorkflowStep = {
 type JobOpeningWorkflow = {
   id: string;
   unit_id: string;
+  unit?: {
+    id: string;
+    code: string | null;
+    name: string | null;
+  } | null;
   status: string;
   priority: string;
   current_step: WorkflowStep | null;
@@ -132,6 +137,12 @@ function slaLabel(sla: WorkflowSla | null | undefined) {
   return labels[sla.status] ?? sla.status;
 }
 
+function unitDisplayName(workflow: JobOpeningWorkflow) {
+  if (workflow.unit?.name) return workflow.unit.name;
+  if (workflow.unit?.code) return workflow.unit.code;
+  return "Unidade registrada";
+}
+
 export function HrJobOpeningListClient() {
   const { activeUnit } = useAppStore();
   const activeUnitId = isUuid(activeUnit?.id) ? activeUnit.id : undefined;
@@ -147,7 +158,7 @@ export function HrJobOpeningListClient() {
     const term = search.trim().toLowerCase();
     if (!term) return workflows;
     return workflows.filter((workflow) =>
-      [workflow.id, workflow.unit_id, workflow.status, workflow.priority, workflow.current_step?.name, workflow.current_step?.assigned_to]
+      [workflow.id, unitDisplayName(workflow), workflow.status, workflow.priority, workflow.current_step?.name, workflow.current_step?.assigned_to]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -178,7 +189,7 @@ export function HrJobOpeningListClient() {
               <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
               <StatusBadge status="visual" label={`Exibindo ${filteredWorkflows.length} de ${workflowsQuery.data?.pagination.total ?? filteredWorkflows.length}`} />
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">Solicitacoes formais de vaga. Candidatos e entrevistas entram na proxima sprint.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Solicitacoes formais de vaga com candidatos e entrevistas vinculados ao processo.</p>
           </div>
           <Button asChild size="sm">
             <Link href="/rh/vagas/nova">
@@ -239,7 +250,7 @@ export function HrJobOpeningListClient() {
       {filteredWorkflows.length ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-left text-sm">
+            <table className="w-full min-w-[1320px] text-left text-sm">
               <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Vaga</th>
@@ -260,15 +271,29 @@ export function HrJobOpeningListClient() {
                     <td className="px-4 py-3"><StatusBadge status={priorityTone(workflow.priority)} label={priorityLabels[workflow.priority] ?? workflow.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} /></td>
                     <td className="px-4 py-3"><p>{workflow.current_step?.name ?? "Sem etapa atual"}</p><p className="text-xs text-muted-foreground">{workflow.current_step?.assigned_to ?? "Responsavel nao informado"}</p></td>
-                    <td className="px-4 py-3 text-muted-foreground">{workflow.unit_id}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{unitDisplayName(workflow)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateTime(workflow.updated_at)}</td>
                     <td className="px-4 py-3 text-right">
-                      <Button asChild variant="outline" size="sm">
-                        <Link href={`/rh/workflows/${workflow.id}`}>
-                          Ver detalhe
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button asChild variant="outline" size="sm" className="whitespace-nowrap">
+                          <Link href={`/rh/vagas/${workflow.id}/candidatos`}>
+                            <UsersRound className="h-4 w-4" />
+                            Candidatos
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline" size="sm" className="whitespace-nowrap">
+                          <Link href={`/rh/vagas/${workflow.id}/candidatos/novo`}>
+                            <UserPlus className="h-4 w-4" />
+                            Novo
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline" size="sm" className="whitespace-nowrap">
+                          <Link href={`/rh/workflows/${workflow.id}`}>
+                            Ver
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
