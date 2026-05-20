@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 
 type StatusBadgeProps = {
   status: "visual" | "warning" | "danger" | "success" | "info";
-  label: string;
+  label?: string | null;
 };
 
 const statusClasses = {
@@ -14,7 +14,8 @@ const statusClasses = {
 };
 
 export function StatusBadge({ status, label }: StatusBadgeProps) {
-  const approvalScope = label.startsWith("Aguardando aprovação da ") ? label.replace("Aguardando aprovação da ", "") : null;
+  const safeLabel = label ?? status ?? "Sem status";
+  const approvalScope = safeLabel.startsWith("Aguardando aprovação da ") ? safeLabel.replace("Aguardando aprovação da ", "") : null;
 
   return (
     <span className={cn("inline-flex max-w-full items-center rounded-md px-2 py-1 text-xs font-medium leading-snug whitespace-normal break-words", statusClasses[status])}>
@@ -24,7 +25,7 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
           <span className="font-semibold">{approvalScope}</span>
         </span>
       ) : (
-        label
+        safeLabel
       )}
     </span>
   );
