@@ -16,6 +16,7 @@ import {
   Gauge,
   Inbox,
   ShieldAlert,
+  UserPlus,
   UserRound
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -551,6 +552,12 @@ export function HrOperationalDashboardClient() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/admissoes/nova">
+                <UserPlus className="h-4 w-4" />
+                Nova Admissao
+              </Link>
+            </Button>
             <Button asChild size="sm">
               <Link href="/rh/inbox">
                 <Inbox className="h-4 w-4" />

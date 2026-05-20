@@ -14,6 +14,7 @@ import {
   Search,
   ShieldAlert,
   TimerReset,
+  UserPlus,
   UserRound,
   X
 } from "lucide-react";
@@ -435,7 +436,15 @@ export function HrWorkflowInboxClient() {
             </div>
             <p className="mt-2 text-sm text-muted-foreground">Inbox somente leitura. Acoes operacionais entram em sprint propria com idempotencia.</p>
           </div>
-          <StatusBadge status="visual" label={`Exibindo ${filteredWorkflows.length} de ${totalInbox}`} />
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status="visual" label={`Exibindo ${filteredWorkflows.length} de ${totalInbox}`} />
+            <Button asChild size="sm">
+              <Link href="/rh/admissoes/nova">
+                <UserPlus className="h-4 w-4" />
+                Nova Admissao
+              </Link>
+            </Button>
+          </div>
         </div>
       </Card>
 
