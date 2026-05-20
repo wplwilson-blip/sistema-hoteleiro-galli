@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { HrInterviewFormClient } from "@/components/hr/hr-interview-form-client";
 import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card";
+import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
 import {
   type Candidate,
   type CandidateInterview,
@@ -223,6 +224,8 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} />
 
       <HrInterviewFormClient workflowId={workflowId} candidateId={candidateId} />
+
+      <HrCandidateScorecardClient workflowId={workflowId} candidateId={candidateId} interviews={interviews} />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
