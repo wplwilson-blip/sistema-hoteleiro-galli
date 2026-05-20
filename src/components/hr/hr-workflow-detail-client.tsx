@@ -391,6 +391,23 @@ function eventTypeLabel(type: string) {
   return eventTypeLabels[type] ?? type;
 }
 
+function operationalEventLabel(type: string, workflowType?: string) {
+  if (workflowType !== "admission") return eventTypeLabel(type);
+
+  const admissionLabels: Record<string, string> = {
+    workflow_created: "Processo admissional criado",
+    workflow_opened: "Checklist admissional aberto",
+    step_started: "Etapa admissional iniciada",
+    step_completed: "Etapa admissional concluida",
+    workflow_approved: "Validacao registrada",
+    workflow_returned: "Processo devolvido para ajuste",
+    workflow_completed: "Admissao concluida",
+    workflow_cancelled: "Admissao cancelada"
+  };
+
+  return admissionLabels[type] ?? eventTypeLabel(type);
+}
+
 function actionLabel(action: string) {
   return actionLabels[action] ?? action;
 }
@@ -419,7 +436,7 @@ function riskTone(risk: string): StatusTone {
 
 function slaLabel(sla: WorkflowSla | null | undefined) {
   const status = sla?.status ?? "";
-  return slaStatusLabels[status] ?? sla?.label ?? "SLA nao informado";
+  return slaStatusLabels[status] ?? sla?.label ?? "Prazo nao informado";
 }
 
 function stringifySafeValue(value: unknown) {
@@ -468,6 +485,36 @@ function technicalEntries(record: Record<string, unknown> | null | undefined) {
   return Object.entries(record ?? {}).filter(([, value]) => value !== undefined);
 }
 
+function admissionCandidateName(workflow: WorkflowDetail) {
+  return metadataText(workflow.metadata, "candidate_name") || workflow.employee?.name || "Candidato registrado";
+}
+
+function admissionJobPosition(workflow: WorkflowDetail) {
+  return metadataText(workflow.metadata, "job_position") || "Cargo a confirmar";
+}
+
+function admissionDepartment(workflow: WorkflowDetail) {
+  return metadataText(workflow.metadata, "department") || "Departamento a confirmar";
+}
+
+function admissionDate(workflow: WorkflowDetail) {
+  return metadataText(workflow.metadata, "admission_date");
+}
+
+function workflowProgress(steps: WorkflowStep[]) {
+  if (!steps.length) return 0;
+  return Math.round((steps.filter((step) => step.status === "completed").length / steps.length) * 100);
+}
+
+function stepHelperText(step: WorkflowStep | null) {
+  if (!step) return "Nenhuma etapa ativa no momento.";
+  if (step.status === "waiting_approval") return "Aguardando validacao humana.";
+  if (step.status === "returned") return "Etapa devolvida para ajuste.";
+  if (step.status === "in_progress") return "Aguardando execucao pelo responsavel.";
+  if (step.status === "pending") return "Etapa ainda nao iniciada.";
+  return "Etapa registrada no processo.";
+}
+
 function InfoTile({ label, value, icon: Icon }: { label: string; value: string; icon: typeof ClipboardList }) {
   return (
     <div className="rounded-md border bg-background p-3">
@@ -501,11 +548,11 @@ function unitDisplayName(workflow: WorkflowDetail) {
 function SlaPanel({ sla }: { sla: WorkflowSla | null | undefined }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="SLA" description="Leitura operacional do prazo principal do processo." icon={CalendarClock} />
+      <SectionHeader title="Prazo para conclusao" description="Situacao operacional do prazo principal do processo." icon={CalendarClock} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Status" value={slaLabel(sla)} icon={CalendarClock} />
         <InfoTile label="Vencimento" value={formatDueDate(sla?.due_at)} icon={FileClock} />
-        <InfoTile label="Referencia" value={formatRelativeSla(sla)} icon={History} />
+        <InfoTile label="Prazo restante" value={formatRelativeSla(sla)} icon={History} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <StatusBadge status={slaTone(sla?.status)} label={slaLabel(sla)} />
@@ -525,8 +572,8 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
         <summary className="flex cursor-pointer list-none items-start gap-2">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <span>
-            <span className="block text-sm font-semibold text-foreground">Informacoes tecnicas</span>
-            <span className="block text-xs text-muted-foreground">Dados de apoio do processo, ocultos por padrao para a operacao.</span>
+            <span className="block text-sm font-semibold text-foreground">Informacoes internas do processo</span>
+            <span className="block text-xs text-muted-foreground">Dados internos de apoio, ocultos por padrao para a operacao.</span>
           </span>
         </summary>
         <div className="mt-4 flex flex-wrap gap-1.5">
@@ -651,15 +698,112 @@ function EscalationPanel({ escalation }: { escalation: WorkflowEscalation | null
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Escalonamento" description="Acompanhamento de atrasos e prioridades calculadas pelo RH." icon={ShieldAlert} />
+      <SectionHeader title="Prioridade e atrasos" description="Acompanhamento do prazo e de alertas operacionais." icon={ShieldAlert} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-        <InfoTile label="Estado" value={isEscalated ? "Escalado ou elegivel" : "Nao escalado"} icon={ShieldAlert} />
+        <InfoTile label="Estado" value={isEscalated ? "Requer acompanhamento" : "Sem alerta"} icon={ShieldAlert} />
         <InfoTile label="Nivel" value={escalation?.level ? `Nivel ${escalation.level}` : "-"} icon={ListChecks} />
         <InfoTile label="Ocorrencias" value={String(escalation?.count ?? 0)} icon={History} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <StatusBadge status={escalation?.overdue ? "danger" : isEscalated ? "warning" : "visual"} label={escalation?.label ?? (isEscalated ? "Escalonamento ativo" : "Sem escalonamento")} />
+        <StatusBadge status={escalation?.overdue ? "danger" : isEscalated ? "warning" : "visual"} label={escalation?.label ?? (isEscalated ? "Acompanhar prazo" : "Sem alerta de prazo")} />
       </div>
+    </Card>
+  );
+}
+
+function AdmissionSummaryPanel({ workflow, currentStep }: { workflow: WorkflowDetail; currentStep: WorkflowStep | null }) {
+  const progress = workflowProgress(workflow.steps);
+
+  return (
+    <Card className="min-w-0 border-border/80 bg-muted/10 p-4 shadow-sm shadow-primary/5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={statusTone(workflow.status)} label={workflowStatusLabel(workflow.status)} />
+            <StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} />
+            <StatusBadge status="visual" label={`${progress}% do checklist`} />
+          </div>
+          <h2 className="mt-3 break-words text-xl font-semibold text-foreground">Admissao de {admissionCandidateName(workflow)}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {admissionJobPosition(workflow)} | {admissionDepartment(workflow)} | {unitDisplayName(workflow)}
+          </p>
+        </div>
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:w-[430px]">
+          <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
+          <InfoTile label="Prazo" value={formatRelativeSla(workflow.sla)} icon={CalendarClock} />
+          <InfoTile label="Data prevista" value={formatDate(admissionDate(workflow))} icon={FileClock} />
+          <InfoTile label="Responsavel" value={currentStep?.assigned_to ?? "Nao informado"} icon={UserRound} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function AdmissionNextStepCard({ currentStep }: { currentStep: WorkflowStep | null }) {
+  return (
+    <Card className="min-w-0 border-primary/30 bg-primary/5 p-4 shadow-sm shadow-primary/10">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-2">
+            <SquareCheckBig className="h-5 w-5 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">Proxima etapa</h2>
+          </div>
+          <p className="break-words text-xl font-semibold text-foreground">{currentStep?.name ?? "Nenhuma etapa ativa"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{stepHelperText(currentStep)}</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:w-[360px]">
+          <InfoTile label="Status" value={currentStep ? stepStatusLabel(currentStep.status) : "-"} icon={CheckCircle2} />
+          <InfoTile label="Prazo" value={currentStep?.sla?.due_at ? formatRelativeSla(currentStep.sla) : "Sem prazo"} icon={CalendarClock} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function AdmissionChecklistPanel({ workflow }: { workflow: WorkflowDetail }) {
+  const currentStepId = workflow.current_step_id;
+
+  return (
+    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <SectionHeader title="Checklist admissional" description="Etapas operacionais para acompanhar a admissao ate o cadastro funcional futuro." icon={ListChecks} />
+      {workflow.steps.length ? (
+        <div className="space-y-3">
+          {workflow.steps.map((step) => {
+            const isCurrent = step.id === currentStepId;
+            const isDone = step.status === "completed";
+
+            return (
+              <article key={step.id} className={cn("rounded-md border bg-background p-3", isCurrent && "border-primary/40 bg-primary/5")}>
+                <div className="flex gap-3">
+                  <div className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold", isDone ? "border-emerald-300 bg-emerald-50 text-emerald-700" : isCurrent ? "border-primary bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                    {isDone ? <CheckCircle2 className="h-4 w-4" /> : step.sequence}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-semibold text-foreground">{step.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{stepHelperText(step)}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {isCurrent ? <StatusBadge status="info" label="Etapa atual" /> : null}
+                        <StatusBadge status={statusTone(step.status)} label={stepStatusLabel(step.status)} />
+                        <StatusBadge status={slaTone(step.sla?.status)} label={slaLabel(step.sla)} />
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <p>Responsavel: {step.assigned_to ?? "Nao informado"}</p>
+                      <p>Prazo: {step.sla?.due_at ? formatRelativeSla(step.sla) : "Sem prazo"}</p>
+                      <p>Conclusao: {formatDateTime(step.completed_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState title="Sem checklist" description="O sistema nao retornou etapas para esta admissao." />
+      )}
     </Card>
   );
 }
@@ -716,12 +860,28 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
   );
 }
 
-function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; isLoading: boolean; error: unknown }) {
+function TimelinePanel({
+  events,
+  isLoading,
+  error,
+  workflowType
+}: {
+  events: TimelineEvent[];
+  isLoading: boolean;
+  error: unknown;
+  workflowType?: string;
+}) {
+  const isAdmission = workflowType === "admission";
+
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
       <details>
         <summary className="cursor-pointer list-none">
-          <SectionHeader title="Historico do workflow" description="Eventos registrados automaticamente pelo sistema." icon={History} />
+          <SectionHeader
+            title={isAdmission ? "Historico operacional" : "Historico do processo"}
+            description={isAdmission ? "Movimentacoes registradas durante a admissao." : "Eventos registrados automaticamente pelo sistema."}
+            icon={History}
+          />
         </summary>
         <div className="mt-4">
           {isLoading ? <LoadingTable label="Carregando historico do processo..." /> : null}
@@ -734,7 +894,7 @@ function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; 
                   <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-foreground">{eventTypeLabel(event.event_type)}</p>
+                        <p className="font-semibold text-foreground">{operationalEventLabel(event.event_type, workflowType)}</p>
                         {event.is_sensitive ? <StatusBadge status="warning" label="Sensivel" /> : null}
                       </div>
                       <p className="break-words text-sm text-muted-foreground">{event.summary}</p>
@@ -767,10 +927,10 @@ function TimelinePanel({ events, isLoading, error }: { events: TimelineEvent[]; 
 
 function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total: number; isLoading: boolean; error: unknown }) {
   return (
-    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+    <Card className="min-w-0 border-border/60 bg-muted/10 p-4 shadow-sm shadow-primary/5">
       <details>
         <summary className="cursor-pointer list-none">
-          <SectionHeader title="Auditoria tecnica" description="Registros internos para rastreabilidade e compliance." icon={Lock} />
+          <SectionHeader title="Auditoria tecnica" description="Registros internos para rastreabilidade e compliance, recolhidos por padrao." icon={Lock} />
         </summary>
         <div className="mt-4">
           {isLoading ? <LoadingTable label="Carregando auditoria do processo..." /> : null}
@@ -1106,6 +1266,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   }
 
   const isJobOpening = workflow.workflow_type === "job_opening";
+  const isAdmission = workflow.workflow_type === "admission";
 
   return (
     <div className="space-y-5">
@@ -1120,14 +1281,14 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
               <span>Dossie operacional</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="break-words text-lg font-semibold text-foreground">{workflowTypeLabel(workflow.workflow_type)}</h2>
+              <h2 className="break-words text-lg font-semibold text-foreground">{isAdmission ? "Processo admissional" : workflowTypeLabel(workflow.workflow_type)}</h2>
               <StatusBadge status={statusTone(workflow.status)} label={workflowStatusLabel(workflow.status)} />
               <StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} />
               {workflow.is_sensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>Unidade: {unitDisplayName(workflow)}</span>
-              <span>Colaborador: {isJobOpening ? "Nao aplicavel" : workflow.employee?.name ?? "Nao vinculado"}</span>
+              <span>{isAdmission ? `Candidato: ${admissionCandidateName(workflow)}` : `Colaborador: ${isJobOpening ? "Nao aplicavel" : workflow.employee?.name ?? "Nao vinculado"}`}</span>
               {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
               <span>Criado em {formatDateTime(workflow.created_at)}</span>
               <span>Atualizado em {formatDateTime(workflow.updated_at)}</span>
@@ -1150,6 +1311,13 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         </div>
       </Card>
 
+      {isAdmission ? (
+        <>
+          <AdmissionSummaryPanel workflow={workflow} currentStep={currentStep} />
+          <AdmissionNextStepCard currentStep={currentStep} />
+        </>
+      ) : null}
+
       {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
       {isJobOpening ? (
         <CandidateSummaryPanel
@@ -1160,7 +1328,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         />
       ) : null}
 
-      {!isJobOpening ? (
+      {!isJobOpening && !isAdmission ? (
         <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
           <SectionHeader title="Resumo operacional" description="Dados principais retornados pelo endpoint redigido de detalhe." icon={ClipboardList} />
           <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1180,6 +1348,11 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
       {isJobOpening ? (
         <EscalationPanel escalation={workflow.escalation} />
+      ) : isAdmission ? (
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+          <SlaPanel sla={workflow.sla} />
+          <EscalationPanel escalation={workflow.escalation} />
+        </div>
       ) : (
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           <SlaPanel sla={workflow.sla} />
@@ -1187,12 +1360,13 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         </div>
       )}
 
-      <StepsPanel workflow={workflow} />
+      {isAdmission ? <AdmissionChecklistPanel workflow={workflow} /> : <StepsPanel workflow={workflow} />}
 
       <TimelinePanel
         events={timelineQuery.data?.data ?? []}
         isLoading={timelineQuery.isLoading}
         error={timelineQuery.error}
+        workflowType={workflow.workflow_type}
       />
 
       <AuditPanel
