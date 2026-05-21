@@ -131,7 +131,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload as T;
@@ -216,7 +216,7 @@ export function HrJobOpeningCreateClient() {
     if (compactText(form.justification).length < 10) return "Informe uma justificativa operacional.";
     if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Roteiro de vaga ativo com etapas nao encontrado.";
     if (forbiddenTextPattern.test(`${form.justification} ${form.notes}`)) {
-      return "Nao informe salario, beneficios, documentos, dados bancarios ou dados medicos.";
+      return "Não informe salário, benefícios, documentos, dados bancários ou dados médicos.";
     }
     return "";
   }
@@ -287,7 +287,7 @@ export function HrJobOpeningCreateClient() {
       ]);
       router.push(`/rh/workflows/${result.data.id}`);
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Nao foi possivel abrir a vaga.")
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível abrir a vaga.")
   });
 
   function updateForm<K extends keyof JobOpeningForm>(key: K, value: JobOpeningForm[K]) {
@@ -321,7 +321,7 @@ export function HrJobOpeningCreateClient() {
         </div>
       </Card>
 
-      {lookupError ? <ErrorMessage message={lookupError instanceof Error ? lookupError.message : "Nao foi possivel carregar dados auxiliares."} /> : null}
+      {lookupError ? <ErrorMessage message={lookupError instanceof Error ? lookupError.message : "Não foi possível carregar dados auxiliares."} /> : null}
       {error ? <ErrorMessage message={error} /> : null}
 
       <form
@@ -379,10 +379,10 @@ export function HrJobOpeningCreateClient() {
               <Input type="date" value={form.requestedStartDate} onChange={(event) => updateForm("requestedStartDate", event.target.value)} disabled={createMutation.isPending} required />
             </Field>
             <Field label="Justificativa" className="md:col-span-2">
-              <TextArea value={form.justification} onChange={(event) => updateForm("justification", event.target.value)} maxLength={800} placeholder="Explique a necessidade operacional da vaga. Nao informe salario, beneficios ou dados pessoais." disabled={createMutation.isPending} required />
+              <TextArea value={form.justification} onChange={(event) => updateForm("justification", event.target.value)} maxLength={800} placeholder="Explique a necessidade operacional da vaga. Não informe salário, benefícios ou dados pessoais." disabled={createMutation.isPending} required />
             </Field>
             <Field label="Observacoes operacionais" className="md:col-span-2">
-              <TextArea value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} maxLength={500} placeholder="Opcional. Nao informe dados sensiveis ou informacoes de candidatos." disabled={createMutation.isPending} />
+              <TextArea value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} maxLength={500} placeholder="Opcional. Não informe dados sensíveis ou informações de candidatos." disabled={createMutation.isPending} />
             </Field>
           </div>
         </Card>
@@ -424,7 +424,7 @@ export function HrJobOpeningCreateClient() {
               <h2 className="text-sm font-semibold">Escopo e LGPD</h2>
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>Nao informe salario, beneficios, dados pessoais de candidatos, documentos, anexos ou dados medicos.</p>
+              <p>Não informe salário, benefícios, dados pessoais de candidatos, documentos, anexos ou dados médicos.</p>
               <p>A solicitacao fica registrada para acompanhamento do RH, com candidatos e entrevistas vinculados ao processo quando necessario.</p>
             </div>
           </Card>

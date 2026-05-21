@@ -44,7 +44,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar os dados de RH.");
+  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível carregar os dados de RH.");
   return payload as T;
 }
 
@@ -65,7 +65,7 @@ function topEntries(values: Record<string, number> | undefined, limit = 6) {
 
 function workflowTypeLabel(type: string) {
   const labels: Record<string, string> = {
-    admission: "Admissao",
+    admission: "Admissão",
     termination: "Desligamento",
     transfer: "Transferencia",
     promotion: "Promocao",

@@ -123,7 +123,7 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.message ?? "Nao foi possivel carregar os dados de RH.");
+    throw new Error(payload?.message ?? "Não foi possível carregar os dados de RH.");
   }
 
   return payload as T;
@@ -255,7 +255,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "summary" as const, label: "Resumo", enabled: true },
         { value: "sensitive" as const, label: "Dados sensiveis", enabled: canViewSensitive },
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
-        { value: "history" as const, label: "Historico", enabled: canViewHistory }
+        { value: "history" as const, label: "Histórico", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
     [canViewDocuments, canViewHistory, canViewSensitive]
   );
@@ -291,7 +291,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
             Voltar
           </Link>
         </Button>
-        <ErrorMessage message={detailQuery.error instanceof Error ? detailQuery.error.message : "Nao foi possivel carregar o colaborador."} />
+        <ErrorMessage message={detailQuery.error instanceof Error ? detailQuery.error.message : "Não foi possível carregar o colaborador."} />
       </div>
     );
   }
@@ -322,7 +322,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         <div className="flex flex-wrap gap-2">
           <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Dados sensiveis permitidos" : "Dados sensiveis ocultos"} />
           <StatusBadge status={canViewDocuments ? "success" : "visual"} label={canViewDocuments ? "Documentos liberados" : "Documentos restritos"} />
-          <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Historico liberado" : "Historico restrito"} />
+          <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Histórico liberado" : "Histórico restrito"} />
         </div>
       </div>
 
@@ -400,7 +400,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
             {documentsQuery.isLoading ? <LoadingTable label="Carregando documentos do colaborador..." /> : null}
             {documentsQuery.error ? (
               <div className="p-4">
-                <ErrorMessage message={documentsQuery.error instanceof Error ? documentsQuery.error.message : "Nao foi possivel carregar documentos."} />
+                <ErrorMessage message={documentsQuery.error instanceof Error ? documentsQuery.error.message : "Não foi possível carregar documentos."} />
               </div>
             ) : null}
             {!documentsQuery.isLoading && documentsQuery.data && !documentsQuery.data.data.length ? (
@@ -463,19 +463,19 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <History className="h-4 w-4 text-primary" />
-                  <h3 className="text-base font-semibold">Historico funcional</h3>
+                  <h3 className="text-base font-semibold">Histórico funcional</h3>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Historico funcional sem dados sensiveis por padrao.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Histórico funcional sem dados sensíveis por padrão.</p>
               </div>
               <StatusBadge
                 status={canViewSensitiveHistory ? "info" : "visual"}
-                label={canViewSensitiveHistory ? "Historico sensivel permitido" : "Historico redigido"}
+                label={canViewSensitiveHistory ? "Histórico sensível permitido" : "Histórico redigido"}
               />
             </div>
 
             {historyQuery.isLoading ? <LoadingTable label="Carregando historico funcional..." /> : null}
             {historyQuery.error ? (
-              <ErrorMessage message={historyQuery.error instanceof Error ? historyQuery.error.message : "Nao foi possivel carregar historico."} />
+              <ErrorMessage message={historyQuery.error instanceof Error ? historyQuery.error.message : "Não foi possível carregar histórico."} />
             ) : null}
             {!historyQuery.isLoading && historyQuery.data && !historyQuery.data.data.length ? (
               <EmptyState title="Nenhum evento funcional encontrado" description="Ainda nao existem eventos funcionais registrados para este colaborador." />
@@ -532,7 +532,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
             ) : null}
           </Card>
         ) : (
-          <RestrictedState title="Historico restrito" description="Seu perfil nao possui permissao para consultar historico funcional deste colaborador." />
+          <RestrictedState title="Histórico restrito" description="Seu perfil não possui permissão para consultar histórico funcional deste colaborador." />
         )
       ) : null}
 

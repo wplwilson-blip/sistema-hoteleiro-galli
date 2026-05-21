@@ -70,7 +70,7 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
               <StatusBadge status="visual" label="Processo leve" />
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Cadastre apenas dados operacionais de contato. Nao registre documentos, dados discriminatorios ou informacoes sensiveis.
+              Cadastre apenas dados operacionais de contato. Não registre documentos, dados discriminatórios ou informações sensíveis.
             </p>
           </div>
           <Button asChild variant="outline" size="sm">
@@ -92,7 +92,7 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
               <Input value={form.phone} onChange={(event) => updateForm({ phone: event.target.value })} required minLength={6} maxLength={30} />
             </Field>
             <Field label="Origem">
-              <Input value={form.source} onChange={(event) => updateForm({ source: event.target.value })} required minLength={2} maxLength={80} placeholder="Indicado, curriculo entregue, rede social..." />
+              <Input value={form.source} onChange={(event) => updateForm({ source: event.target.value })} required minLength={2} maxLength={80} placeholder="Indicado, currículo entregue, rede social..." />
             </Field>
             <Field label="Status inicial">
               <SelectField value={form.status} onChange={(event) => updateForm({ status: event.target.value as CandidateStatus })}>
@@ -105,7 +105,7 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
             </Field>
           </div>
           <Field label="Observacoes">
-            <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={1000} placeholder="Contexto operacional breve, sem dados sensiveis." />
+            <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={1000} placeholder="Contexto operacional breve, sem dados sensíveis." />
           </Field>
 
           <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -113,7 +113,7 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
             O cadastro nao cria colaborador, admissao, ranking ou decisao automatica. A decisao continua humana.
           </div>
 
-          {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel cadastrar o candidato."} /> : null}
+          {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível cadastrar o candidato."} /> : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Button asChild variant="outline">

@@ -134,7 +134,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload as T;
@@ -283,7 +283,7 @@ export function HrAdmissionCreateClient() {
 
       const payload = {
         workflow_type: "admission",
-        title: `Admissao - ${selectedPosition?.name ?? "Cargo pretendido"}`,
+        title: `Admissão - ${selectedPosition?.name ?? "Cargo pretendido"}`,
         description,
         employee_id: null,
         unit_id: form.unitId,
@@ -317,7 +317,7 @@ export function HrAdmissionCreateClient() {
       router.push(`/rh/workflows/${result.data.id}`);
     },
     onError: (mutationError) => {
-      setError(mutationError instanceof Error ? mutationError.message : "Nao foi possivel abrir a admissao.");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível abrir a admissão.");
     }
   });
 
@@ -371,7 +371,7 @@ export function HrAdmissionCreateClient() {
         </div>
       </Card>
 
-      {lookupError ? <ErrorMessage message={lookupError instanceof Error ? lookupError.message : "Nao foi possivel carregar dados auxiliares."} /> : null}
+      {lookupError ? <ErrorMessage message={lookupError instanceof Error ? lookupError.message : "Não foi possível carregar dados auxiliares."} /> : null}
       {error ? <ErrorMessage message={error} /> : null}
 
       <form
@@ -492,7 +492,7 @@ export function HrAdmissionCreateClient() {
                 value={form.notes}
                 onChange={(event) => updateForm("notes", event.target.value)}
                 maxLength={500}
-                placeholder="Somente orientacoes operacionais. Nao informe CPF, RG, salario, dados bancarios ou dados medicos."
+                placeholder="Somente orientações operacionais. Não informe CPF, RG, salário, dados bancários ou dados médicos."
                 disabled={createMutation.isPending}
               />
             </Field>
@@ -541,7 +541,7 @@ export function HrAdmissionCreateClient() {
               <h2 className="text-sm font-semibold">LGPD e escopo</h2>
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>Nao informe documentos, salario, dados bancarios, endereco completo, dados medicos, foto ou assinatura.</p>
+              <p>Não informe documentos, salário, dados bancários, endereço completo, dados médicos, foto ou assinatura.</p>
               <p>O colaborador nao sera criado automaticamente nesta etapa.</p>
               <p>Dados complementares de cargo, departamento e gestor permanecem limitados ao escopo administrativo desta etapa.</p>
             </div>

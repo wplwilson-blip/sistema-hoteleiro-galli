@@ -4,7 +4,7 @@ import { HrManagementDashboardClient } from "@/components/hr/hr-management-dashb
 export default function RhGestaoPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Gestao RH" description="Visao gerencial dos processos, prazos, gargalos e saude operacional do RH." />
+      <PageTitle title="Gestão RH" description="Visão gerencial dos processos, prazos, gargalos e saúde operacional do RH." />
       <HrManagementDashboardClient />
     </div>
   );

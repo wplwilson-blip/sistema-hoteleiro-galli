@@ -41,7 +41,7 @@ const priorities = ["low", "normal", "high", "critical"];
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar processamentos.");
+  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível carregar processamentos.");
   return payload as T;
 }
 
@@ -148,7 +148,7 @@ export function HrBackgroundJobsClient() {
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros de processamentos</h2></div>
-          <div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><Link href="/rh/gestao">Gestao</Link></Button>{hasFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}><X className="h-4 w-4" />Limpar</Button> : null}</div>
+          <div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><Link href="/rh/gestao">Gestão</Link></Button>{hasFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}><X className="h-4 w-4" />Limpar</Button> : null}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Field label="Buscar" className="xl:col-span-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rotina, status, erro ou processo" /></div></Field>

@@ -89,9 +89,9 @@ export function HrInterviewFormClient({ workflowId, candidateId }: { workflowId:
           <Field label="Data da entrevista">
             <Input type="datetime-local" value={form.interview_at} onChange={(event) => updateForm({ interview_at: event.target.value })} required />
           </Field>
-          <ScoreField label="Comunicacao" value={form.communication_score} onChange={(value) => updateForm({ communication_score: value })} />
+          <ScoreField label="Comunicação" value={form.communication_score} onChange={(value) => updateForm({ communication_score: value })} />
           <ScoreField label="Postura" value={form.posture_score} onChange={(value) => updateForm({ posture_score: value })} />
-          <ScoreField label="Experiencia" value={form.experience_score} onChange={(value) => updateForm({ experience_score: value })} />
+          <ScoreField label="Experiência" value={form.experience_score} onChange={(value) => updateForm({ experience_score: value })} />
           <ScoreField label="Disponibilidade" value={form.availability_score} onChange={(value) => updateForm({ availability_score: value })} />
           <ScoreField label="Perfil hotelaria" value={form.hospitality_profile_score} onChange={(value) => updateForm({ hospitality_profile_score: value })} />
           <Field label="Parecer final">
@@ -107,7 +107,7 @@ export function HrInterviewFormClient({ workflowId, candidateId }: { workflowId:
         <Field label="Observacoes">
           <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={2000} placeholder="Parecer humano e contexto operacional, sem dados sensiveis." />
         </Field>
-        {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel registrar a entrevista."} /> : null}
+        {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível registrar a entrevista."} /> : null}
         {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
         <div className="flex justify-end">
           <Button type="submit" disabled={mutation.isPending}>

@@ -154,7 +154,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Nota manual</th>
                   <th className="px-4 py-3">Atualizacao</th>
-                  <th className="w-48 px-4 py-3 text-right">Acoes</th>
+                  <th className="w-48 px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -168,7 +168,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
                     <td className="px-4 py-3">
                       <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{candidate.manual_score ?? "Nao informado"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{candidate.manual_score ?? "Não informado"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateTime(candidate.updated_at)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">

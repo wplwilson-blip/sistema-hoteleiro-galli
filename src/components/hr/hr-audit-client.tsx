@@ -37,7 +37,7 @@ const risks = ["low", "medium", "high", "critical"];
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar auditoria.");
+  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível carregar auditoria.");
   return payload as T;
 }
 
@@ -61,7 +61,7 @@ function actionLabel(action: string) {
   const labels: Record<string, string> = {
     create_workflow: "Criacao",
     execute_step: "Execucao de etapa",
-    approve_step: "Aprovacao",
+    approve_step: "Aprovação",
     reject_step: "Rejeicao",
     return_step: "Devolucao",
     cancel_workflow: "Cancelamento"
@@ -89,7 +89,7 @@ function entityLabel(entity: string) {
   const labels: Record<string, string> = {
     workflow: "Processo",
     step: "Etapa",
-    event: "Historico",
+    event: "Histórico",
     notification: "Notificacao"
   };
   return labels[entity] ?? entity;
@@ -134,7 +134,7 @@ export function HrAuditClient() {
             <h2 className="text-sm font-semibold">Filtros de auditoria</h2>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao">Gestao</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao">Gestão</Link></Button>
             {hasFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}><X className="h-4 w-4" />Limpar</Button> : null}
           </div>
         </div>
@@ -159,8 +159,8 @@ export function HrAuditClient() {
           <div className="border-b p-4"><h2 className="text-sm font-semibold">Registros de auditoria</h2><p className="text-xs text-muted-foreground">Exibindo {filteredRows.length} de {auditQuery.data?.pagination.total ?? filteredRows.length}</p></div>
           <div className="max-w-full overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Acao</th><th className="px-4 py-3">Risco</th><th className="px-4 py-3">Usuario</th><th className="px-4 py-3">Registro</th><th className="px-4 py-3">Rastreio</th></tr></thead>
-              <tbody className="divide-y">{filteredRows.map((row) => <tr key={row.id} className="hover:bg-muted/30"><td className="px-4 py-3">{formatDateTime(row.created_at)}</td><td className="px-4 py-3"><StatusBadge status="info" label={actionLabel(row.action)} /></td><td className="px-4 py-3"><StatusBadge status={riskTone(row.risk_level)} label={riskLabel(row.risk_level)} /></td><td className="px-4 py-3 text-muted-foreground">{row.actor_user_id ? "Usuario registrado" : "Nao informado"}</td><td className="px-4 py-3">{entityLabel(row.entity_type)}</td><td className="px-4 py-3 text-muted-foreground"><details><summary className="cursor-pointer text-xs font-semibold">Ver rastreio tecnico</summary><div className="mt-2 flex flex-wrap gap-1.5"><StatusBadge status="visual" label={`unidade: ${row.unit_id}`} />{row.workflow_id ? <StatusBadge status="visual" label={`processo: ${row.workflow_id}`} /> : null}{row.step_id ? <StatusBadge status="visual" label={`etapa: ${row.step_id}`} /> : null}{row.request_id ? <StatusBadge status="visual" label={`rastreio: ${row.request_id}`} /> : null}{row.correlation_id ? <StatusBadge status="visual" label={`correlacao: ${row.correlation_id}`} /> : null}</div></details></td></tr>)}</tbody>
+              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Ação</th><th className="px-4 py-3">Risco</th><th className="px-4 py-3">Usuário</th><th className="px-4 py-3">Registro</th><th className="px-4 py-3">Rastreio</th></tr></thead>
+              <tbody className="divide-y">{filteredRows.map((row) => <tr key={row.id} className="hover:bg-muted/30"><td className="px-4 py-3">{formatDateTime(row.created_at)}</td><td className="px-4 py-3"><StatusBadge status="info" label={actionLabel(row.action)} /></td><td className="px-4 py-3"><StatusBadge status={riskTone(row.risk_level)} label={riskLabel(row.risk_level)} /></td><td className="px-4 py-3 text-muted-foreground">{row.actor_user_id ? "Usuário registrado" : "Não informado"}</td><td className="px-4 py-3">{entityLabel(row.entity_type)}</td><td className="px-4 py-3 text-muted-foreground"><details><summary className="cursor-pointer text-xs font-semibold">Ver rastreio técnico</summary><div className="mt-2 flex flex-wrap gap-1.5"><StatusBadge status="visual" label={`unidade: ${row.unit_id}`} />{row.workflow_id ? <StatusBadge status="visual" label={`processo: ${row.workflow_id}`} /> : null}{row.step_id ? <StatusBadge status="visual" label={`etapa: ${row.step_id}`} /> : null}{row.request_id ? <StatusBadge status="visual" label={`rastreio: ${row.request_id}`} /> : null}{row.correlation_id ? <StatusBadge status="visual" label={`correlação: ${row.correlation_id}`} /> : null}</div></details></td></tr>)}</tbody>
             </table>
           </div>
         </Card>

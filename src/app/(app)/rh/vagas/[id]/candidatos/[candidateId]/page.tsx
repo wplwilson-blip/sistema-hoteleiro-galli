@@ -4,7 +4,7 @@ import { HrCandidateDetailClient } from "@/components/hr/hr-candidate-detail-cli
 export default function RhCandidatoDetalhePage({ params }: { params: { id: string; candidateId: string } }) {
   return (
     <div className="space-y-6">
-      <PageTitle title="Detalhe do Candidato" description="Situacao, entrevistas, avaliacao manual e parecer humano do candidato." />
+      <PageTitle title="Detalhe do Candidato" description="Situação, entrevistas, avaliação manual e parecer humano do candidato." />
       <HrCandidateDetailClient workflowId={params.id} candidateId={params.candidateId} />
     </div>
   );

@@ -173,7 +173,7 @@ const emptyWorkflows: WorkflowListItem[] = [];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const workflowTypeLabels: Record<string, string> = {
-  admission: "Admissao",
+  admission: "Admissão",
   termination: "Desligamento",
   transfer: "Transferencia",
   promotion: "Promocao",
@@ -222,7 +222,7 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? "Nao foi possivel carregar os dados de RH.");
+    throw new Error(payload?.message ?? "Não foi possível carregar os dados de RH.");
   }
 
   return payload as T;
@@ -340,7 +340,7 @@ function MetricFallback({ label }: { label: string }) {
         <div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
           <p className="mt-2 text-3xl font-semibold text-foreground">0</p>
-          <p className="mt-1 text-xs text-muted-foreground">Nao disponivel</p>
+          <p className="mt-1 text-xs text-muted-foreground">Não disponível</p>
         </div>
         <div className="flex h-11 w-11 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <Gauge className="h-5 w-5" />
@@ -384,13 +384,13 @@ function WorkflowList({
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>Unidade: cadastrada no processo</span>
-                    <span>Colaborador: {workflow.employee?.name ?? "Nao vinculado"}</span>
+                    <span>Colaborador: {workflow.employee?.name ?? "Não vinculado"}</span>
                     {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>Etapa: {workflow.current_step?.name ?? "Sem etapa atual"}</span>
                     {workflow.current_step ? <span>Status da etapa: {stepStatusLabel(workflow.current_step.status)}</span> : null}
-                    {workflow.escalation?.level ? <span>Atencao de prazo nivel {workflow.escalation.level}</span> : null}
+                    {workflow.escalation?.level ? <span>Atenção de prazo nível {workflow.escalation.level}</span> : null}
                   </div>
                 </div>
                 <div className="shrink-0 space-y-2 text-left text-xs text-muted-foreground lg:text-right">
@@ -441,7 +441,7 @@ function AnalyticsQuickPanel({ analytics }: { analytics: AnalyticsResponse["data
           <p className="mt-1 text-xl font-semibold">{analytics?.volume?.backlog_current ?? analytics?.volume?.active_workflows ?? 0}</p>
         </div>
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Tempo medio de conclusao</p>
+          <p className="text-xs text-muted-foreground">Tempo médio de conclusão</p>
           <p className="mt-1 text-xl font-semibold">{formatMinutes(analytics?.time?.average_completion_minutes)}</p>
         </div>
         <div className="rounded-md border bg-background p-3">
@@ -550,7 +550,7 @@ export function HrOperationalDashboardClient() {
               {metrics?.generated_at ? <StatusBadge status="visual" label={`Atualizado em ${formatDateTime(metrics.generated_at)}`} /> : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Painel somente leitura. Acoes operacionais serao tratadas nas proximas etapas da fase 8A.
+              Painel somente leitura. Ações operacionais serão tratadas nas próximas etapas da fase 8A.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -563,7 +563,7 @@ export function HrOperationalDashboardClient() {
             <Button asChild variant="outline" size="sm">
               <Link href="/rh/admissoes/nova">
                 <UserPlus className="h-4 w-4" />
-                Nova Admissao
+                Nova Admissão
               </Link>
             </Button>
             <Button asChild size="sm">
@@ -607,7 +607,7 @@ export function HrOperationalDashboardClient() {
       </div>
 
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar metricas do dashboard."} /> : null}
-      {!userId ? <ErrorMessage message="Nao foi possivel calcular minhas pendencias com os dados da sessao atual." /> : null}
+      {!userId ? <ErrorMessage message="Não foi possível calcular minhas pendências com os dados da sessão atual." /> : null}
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-3">
@@ -633,7 +633,7 @@ export function HrOperationalDashboardClient() {
               description="Priorizacao por prazo vencido, prazo vencendo, alertas e situacoes que pedem decisao."
               workflows={criticalWorkflows}
               emptyTitle="Nenhum processo em atencao"
-              emptyDescription="Nao ha processos recentes com sinais criticos nos filtros atuais."
+              emptyDescription="Não há processos recentes com sinais críticos nos filtros atuais."
             />
           ) : null}
         </div>

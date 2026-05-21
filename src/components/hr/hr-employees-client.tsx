@@ -67,7 +67,7 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.message ?? "Nao foi possivel carregar os dados de RH.");
+    throw new Error(payload?.message ?? "Não foi possível carregar os dados de RH.");
   }
 
   return payload as T;
@@ -310,7 +310,7 @@ export function HrEmployeesClient() {
                   <th className="px-4 py-3 font-semibold">Unidade</th>
                   <th className="px-4 py-3 font-semibold">Departamento</th>
                   <th className="px-4 py-3 font-semibold">Cargo</th>
-                  <th className="px-4 py-3 font-semibold">Admissao</th>
+                  <th className="px-4 py-3 font-semibold">Admissão</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Documentos</th>
                   <th className="px-4 py-3 text-right font-semibold">Acao</th>

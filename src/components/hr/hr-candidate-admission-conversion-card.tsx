@@ -71,8 +71,8 @@ export function HrCandidateAdmissionConversionCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <UserPlus className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Admissao</h2>
-            {admissionWorkflowId ? <StatusBadge status="success" label="Admissao gerada" /> : <StatusBadge status="visual" label="Decisao humana" />}
+            <h2 className="text-sm font-semibold">Admissão</h2>
+            {admissionWorkflowId ? <StatusBadge status="success" label="Admissão gerada" /> : <StatusBadge status="visual" label="Decisão humana" />}
           </div>
           {admissionWorkflowId ? (
             <p className="mt-2 text-sm text-muted-foreground">Este candidato ja possui um processo de admissao vinculado.</p>
@@ -106,10 +106,10 @@ export function HrCandidateAdmissionConversionCard({
 
       <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        A conversao nao copia telefone, curriculo, roteiro de avaliacao ou pareceres completos para a admissao.
+        A conversão não copia telefone, currículo, roteiro de avaliação ou pareceres completos para a admissão.
       </div>
 
-      {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel gerar a admissao."} /> : null}
+      {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível gerar a admissão."} /> : null}
     </Card>
   );
 }

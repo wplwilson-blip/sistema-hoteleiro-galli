@@ -178,7 +178,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             <InfoTile label="Nome" value={candidate.full_name} />
             <InfoTile label="Origem" value={candidate.source} />
             <InfoTile label="Telefone" value={candidate.phone ?? "Restrito"} icon={Phone} />
-            <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Nao informado" : String(candidate.manual_score)} icon={Star} />
+            <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Não informado" : String(candidate.manual_score)} icon={Star} />
           </div>
           {candidate.phone_redacted ? (
             <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissao. Consulte apenas quando necessario para contato operacional.</p>
@@ -211,9 +211,9 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             </Field>
             <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              Nota e parecer sao manuais. O sistema nao aprova, reprova nem ranqueia automaticamente.
+              Nota e parecer são manuais. O sistema não aprova, reprova nem ranqueia automaticamente.
             </div>
-            {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel atualizar o candidato."} /> : null}
+            {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível atualizar o candidato."} /> : null}
             {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
             <div className="flex justify-end">
               <Button type="submit" disabled={mutation.isPending}>
@@ -244,16 +244,16 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
               <article key={interview.id} className="rounded-md border bg-background p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={interview.final_opinion === "nao_recomendado" ? "danger" : interview.final_opinion === "recomendado" ? "success" : "warning"} label={interviewOpinionLabel(interview.final_opinion)} />
-                  <StatusBadge status="visual" label={`Media das avaliacoes ${averageScore(interview)}`} />
+                  <StatusBadge status="visual" label={`Média das avaliações ${averageScore(interview)}`} />
                 </div>
                 <p className="mt-2 text-sm font-medium text-foreground">{formatDateTime(interview.interview_at)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Entrevistador: {interview.interviewer?.display_name || interview.interviewer?.username || "Usuario registrado"}
+                  Entrevistador: {interview.interviewer?.display_name || interview.interviewer?.username || "Usuário registrado"}
                 </p>
                 <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                  <p>Comunicacao: {interview.communication_score}</p>
+                  <p>Comunicação: {interview.communication_score}</p>
                   <p>Postura: {interview.posture_score}</p>
-                  <p>Experiencia: {interview.experience_score}</p>
+                  <p>Experiência: {interview.experience_score}</p>
                   <p>Disponibilidade: {interview.availability_score}</p>
                   <p>Perfil hotelaria: {interview.hospitality_profile_score}</p>
                 </div>
@@ -269,7 +269,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <History className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Historico simples</h2>
+          <h2 className="text-sm font-semibold">Histórico simples</h2>
         </div>
         <div className="space-y-2">
           {historyItems.map((item) => (

@@ -70,7 +70,7 @@ export const candidateStatusOptions: Array<{ value: CandidateStatus; label: stri
 export const interviewOpinionOptions: Array<{ value: InterviewOpinion; label: string }> = [
   { value: "recomendado", label: "Recomendado" },
   { value: "parcialmente_recomendado", label: "Parcialmente recomendado" },
-  { value: "nao_recomendado", label: "Nao recomendado" }
+  { value: "nao_recomendado", label: "Não recomendado" }
 ];
 
 export function candidateStatusLabel(status: string) {
@@ -107,7 +107,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel concluir a operacao.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível concluir a operação.");
   }
 
   return payload as T;

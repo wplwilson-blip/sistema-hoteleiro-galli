@@ -201,7 +201,7 @@ type WorkflowMutationResponse = {
 type WorkflowActionKind = "execute" | "approve" | "reject" | "return" | "cancel";
 
 const workflowTypeLabels: Record<string, string> = {
-  admission: "Admissao",
+  admission: "Admissão",
   termination: "Desligamento",
   transfer: "Transferencia",
   promotion: "Promocao",
@@ -269,7 +269,7 @@ const eventTypeLabels: Record<string, string> = {
 const actionLabels: Record<string, string> = {
   create_workflow: "Criacao do processo",
   execute_step: "Execucao de etapa",
-  approve_step: "Aprovacao de etapa",
+  approve_step: "Aprovação de etapa",
   reject_step: "Rejeicao de etapa",
   return_step: "Devolucao de etapa",
   cancel_workflow: "Cancelamento do processo"
@@ -280,7 +280,7 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar os dados de RH.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível carregar os dados de RH.");
   }
 
   return payload as T;
@@ -323,7 +323,7 @@ async function postWorkflowAction(input: {
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(body?.message ?? body?.error?.message ?? "Nao foi possivel executar a acao do processo.");
+    throw new Error(body?.message ?? body?.error?.message ?? "Não foi possível executar a ação do processo.");
   }
 
   return body as WorkflowMutationResponse;
@@ -399,10 +399,10 @@ function operationalEventLabel(type: string, workflowType?: string) {
     workflow_opened: "Checklist admissional aberto",
     step_started: "Etapa admissional iniciada",
     step_completed: "Etapa admissional concluida",
-    workflow_approved: "Validacao registrada",
+    workflow_approved: "Validação registrada",
     workflow_returned: "Processo devolvido para ajuste",
-    workflow_completed: "Admissao concluida",
-    workflow_cancelled: "Admissao cancelada"
+    workflow_completed: "Admissão concluída",
+    workflow_cancelled: "Admissão cancelada"
   };
 
   return admissionLabels[type] ?? eventTypeLabel(type);
@@ -448,7 +448,7 @@ function entityLabel(entity: string) {
   const labels: Record<string, string> = {
     workflow: "Processo",
     step: "Etapa",
-    event: "Historico",
+    event: "Histórico",
     notification: "Notificacao"
   };
   return labels[entity] ?? entity;
@@ -584,7 +584,7 @@ function unitDisplayName(workflow: WorkflowDetail) {
 function SlaPanel({ sla }: { sla: WorkflowSla | null | undefined }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Prazo para conclusao" description="Situacao operacional do prazo principal do processo." icon={CalendarClock} />
+      <SectionHeader title="Prazo para conclusão" description="Situação operacional do prazo principal do processo." icon={CalendarClock} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Status" value={slaLabel(sla)} icon={CalendarClock} />
         <InfoTile label="Vencimento" value={formatDueDate(sla?.due_at)} icon={FileClock} />
@@ -624,13 +624,13 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
 
 function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
   const metadata = workflow.metadata ?? {};
-  const department = metadataText(metadata, "department") || "Nao informado";
-  const jobPosition = metadataText(metadata, "job_position") || "Nao informado";
+  const department = metadataText(metadata, "department") || "Não informado";
+  const jobPosition = metadataText(metadata, "job_position") || "Não informado";
   const quantity = formatQuantity(metadataText(metadata, "requested_quantity"));
   const urgency = metadataText(metadata, "urgency");
   const requestedStartDate = metadataText(metadata, "requested_start_date");
   const managerUserId = metadataText(metadata, "manager_user_id");
-  const managerName = workflow.manager_user?.name || (managerUserId ? "Gestor registrado" : "Nao informado");
+  const managerName = workflow.manager_user?.name || (managerUserId ? "Gestor registrado" : "Não informado");
   const reason = metadataText(metadata, "reason");
   const justification = metadataText(metadata, "justification");
   const notes = metadataText(metadata, "notes");
@@ -737,7 +737,7 @@ function EscalationPanel({ escalation }: { escalation: WorkflowEscalation | null
       <SectionHeader title="Prioridade e atrasos" description="Acompanhamento do prazo e dos sinais que pedem atencao." icon={ShieldAlert} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Estado" value={isEscalated ? "Requer acompanhamento" : "Sem alerta"} icon={ShieldAlert} />
-        <InfoTile label="Atencao" value={escalation?.level ? `Nivel ${escalation.level}` : "-"} icon={ListChecks} />
+        <InfoTile label="Atenção" value={escalation?.level ? `Nível ${escalation.level}` : "-"} icon={ListChecks} />
         <InfoTile label="Ocorrencias" value={String(escalation?.count ?? 0)} icon={History} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -759,7 +759,7 @@ function AdmissionSummaryPanel({ workflow, currentStep }: { workflow: WorkflowDe
             <StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} />
             <StatusBadge status="visual" label={`${progress}% do checklist`} />
           </div>
-          <h2 className="mt-3 break-words text-xl font-semibold text-foreground">Admissao de {admissionCandidateName(workflow)}</h2>
+          <h2 className="mt-3 break-words text-xl font-semibold text-foreground">Admissão de {admissionCandidateName(workflow)}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {admissionJobPosition(workflow)} | {admissionDepartment(workflow)} | {unitDisplayName(workflow)}
           </p>
@@ -768,7 +768,7 @@ function AdmissionSummaryPanel({ workflow, currentStep }: { workflow: WorkflowDe
           <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
           <InfoTile label="Prazo" value={formatRelativeSla(workflow.sla)} icon={CalendarClock} />
           <InfoTile label="Data prevista" value={formatDate(admissionDate(workflow))} icon={FileClock} />
-          <InfoTile label="Responsavel" value={currentStep?.assigned_to ?? "Nao informado"} icon={UserRound} />
+          <InfoTile label="Responsável" value={currentStep?.assigned_to ?? "Não informado"} icon={UserRound} />
         </div>
       </div>
     </Card>
@@ -827,7 +827,7 @@ function AdmissionChecklistPanel({ workflow }: { workflow: WorkflowDetail }) {
                       </div>
                     </div>
                     <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                      <p>Responsavel: {step.assigned_to ?? "Nao informado"}</p>
+                      <p>Responsável: {step.assigned_to ?? "Não informado"}</p>
                       <p>Prazo: {step.sla?.due_at ? formatRelativeSla(step.sla) : "Sem prazo"}</p>
                       <p>Conclusao: {formatDateTime(step.completed_at)}</p>
                     </div>
@@ -879,7 +879,7 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
                     </div>
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={statusTone(step.status)} label={stepStatusLabel(step.status)} /></td>
-                  <td className="px-4 py-3 text-muted-foreground">{step.assigned_to ?? "Nao informado"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{step.assigned_to ?? "Não informado"}</td>
                   <td className="px-4 py-3"><StatusBadge status={slaTone(step.sla?.status)} label={slaLabel(step.sla)} /></td>
                   <td className="px-4 py-3 text-muted-foreground">{formatDateTime(step.completed_at)}</td>
                 </tr>
@@ -914,7 +914,7 @@ function TimelinePanel({
       <details>
         <summary className="cursor-pointer list-none">
           <SectionHeader
-            title={isAdmission ? "Historico operacional" : "Historico do processo"}
+            title={isAdmission ? "Histórico operacional" : "Histórico do processo"}
             description={isAdmission ? "Movimentacoes registradas durante a admissao." : "Movimentacoes registradas durante o processo."}
             icon={History}
           />
@@ -922,7 +922,7 @@ function TimelinePanel({
         <div className="mt-4">
           {isLoading ? <LoadingTable label="Carregando historico do processo..." /> : null}
           {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar historico."} /> : null}
-          {!isLoading && !error && !events.length ? <EmptyState title="Historico vazio" description="Nenhum evento ativo foi retornado para este processo." /> : null}
+          {!isLoading && !error && !events.length ? <EmptyState title="Histórico vazio" description="Nenhum evento ativo foi retornado para este processo." /> : null}
           {events.length ? (
             <div className="space-y-3">
               {events.map((event) => (
@@ -934,7 +934,7 @@ function TimelinePanel({
                         {event.is_sensitive ? <StatusBadge status="warning" label="Sensivel" /> : null}
                       </div>
                       <p className="break-words text-sm text-muted-foreground">{event.summary}</p>
-                      <p className="text-xs text-muted-foreground">Ator: {event.actor_name || (event.actor_user_id ? "Usuario registrado" : "Nao informado")}</p>
+                      <p className="text-xs text-muted-foreground">Ator: {event.actor_name || (event.actor_user_id ? "Usuário registrado" : "Não informado")}</p>
                     </div>
                     <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
                   </div>
@@ -984,7 +984,7 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
                         <StatusBadge status={riskTone(log.risk_level)} label={riskLabel(log.risk_level)} />
                         <StatusBadge status="visual" label={entityLabel(log.entity_type)} />
                       </div>
-                      <p className="break-words text-xs text-muted-foreground">Usuario: {log.actor_user_id ? "Usuario registrado" : "Nao informado"}</p>
+                      <p className="break-words text-xs text-muted-foreground">Usuário: {log.actor_user_id ? "Usuário registrado" : "Não informado"}</p>
                     </div>
                     <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
                   </div>
@@ -1080,7 +1080,7 @@ function WorkflowActionPanel({
     },
     onError: (error) => {
       setFeedback(null);
-      setLocalError(error instanceof Error ? error.message : "Nao foi possivel executar a acao.");
+      setLocalError(error instanceof Error ? error.message : "Não foi possível executar a ação.");
     }
   });
 
@@ -1114,7 +1114,7 @@ function WorkflowActionPanel({
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Acoes operacionais" description="Acoes registradas com seguranca para dar continuidade ao processo." icon={SquareCheckBig} />
+      <SectionHeader title="Ações operacionais" description="Ações registradas com segurança para dar continuidade ao processo." icon={SquareCheckBig} />
 
       {!allowedActions.length ? (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
@@ -1184,7 +1184,7 @@ function WorkflowActionPanel({
                 />
               </label>
 
-              {!stepIsValid ? <ErrorMessage message="Nao ha etapa atual disponivel para esta acao." /> : null}
+              {!stepIsValid ? <ErrorMessage message="Não há etapa atual disponível para esta ação." /> : null}
               {requiresReason && !reasonIsValid ? <p className="mt-2 text-xs text-muted-foreground">Informe ao menos 3 caracteres no motivo.</p> : null}
 
               <div className="mt-3 flex flex-wrap justify-end gap-2">
@@ -1221,7 +1221,7 @@ const actionLabelsForUi: Record<
   execute: {
     label: "Concluir etapa",
     success: "Etapa concluida com sucesso.",
-    confirmTitle: "Confirmar conclusao da etapa",
+    confirmTitle: "Confirmar conclusão da etapa",
     confirmDescription: "A etapa atual sera concluida no fluxo operacional.",
     icon: SquareCheckBig,
     variant: "default"
@@ -1324,7 +1324,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>Unidade: {unitDisplayName(workflow)}</span>
-              <span>{isAdmission ? `Candidato: ${admissionCandidateName(workflow)}` : `Colaborador: ${isJobOpening ? "Nao aplicavel" : workflow.employee?.name ?? "Nao vinculado"}`}</span>
+              <span>{isAdmission ? `Candidato: ${admissionCandidateName(workflow)}` : `Colaborador: ${isJobOpening ? "Não aplicável" : workflow.employee?.name ?? "Não vinculado"}`}</span>
               {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
               <span>Criado em {formatDateTime(workflow.created_at)}</span>
               <span>Atualizado em {formatDateTime(workflow.updated_at)}</span>
@@ -1371,9 +1371,9 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             <InfoTile label="Tipo" value={workflowTypeLabel(workflow.workflow_type)} icon={ClipboardList} />
             <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />
             <InfoTile label="Unidade" value={unitDisplayName(workflow)} icon={ListChecks} />
-            <InfoTile label="Colaborador" value={workflow.employee?.name ?? "Nao vinculado"} icon={UserRound} />
+            <InfoTile label="Colaborador" value={workflow.employee?.name ?? "Não vinculado"} icon={UserRound} />
             <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
-            <InfoTile label="Responsavel atual" value={currentStep?.assigned_to ?? "Nao informado"} icon={UserRound} />
+            <InfoTile label="Responsável atual" value={currentStep?.assigned_to ?? "Não informado"} icon={UserRound} />
             <InfoTile label="Criado em" value={formatDateTime(workflow.created_at)} icon={CalendarClock} />
             <InfoTile label="Atualizado em" value={formatDateTime(workflow.updated_at)} icon={History} />
           </div>

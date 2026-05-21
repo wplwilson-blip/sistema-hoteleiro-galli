@@ -4,7 +4,7 @@ import { HrAdmissionCreateClient } from "@/components/hr/hr-admission-create-cli
 export default function RhNovaAdmissaoPage() {
   return (
     <div className="space-y-6">
-      <PageTitle title="Nova Admissao" description="Abertura administrativa de admissao, sem cadastro automatico de colaborador." />
+      <PageTitle title="Nova Admissão" description="Abertura administrativa de admissão, sem cadastro automático de colaborador." />
       <HrAdmissionCreateClient />
     </div>
   );

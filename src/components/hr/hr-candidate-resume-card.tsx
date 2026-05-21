@@ -63,18 +63,18 @@ export function HrCandidateResumeCard({ workflowId, candidateId }: { workflowId:
         <HrCandidateResumeUpload
           workflowId={workflowId}
           candidateId={candidateId}
-          label={resume ? "Substituir" : "Anexar curriculo"}
+          label={resume ? "Substituir" : "Anexar currículo"}
           onUploaded={() => {
             void queryClient.invalidateQueries({ queryKey });
           }}
         />
       </div>
 
-      {resumeQuery.isLoading ? <LoadingTable label="Carregando curriculo..." /> : null}
-      {resumeQuery.error ? <ErrorMessage message={resumeQuery.error instanceof Error ? resumeQuery.error.message : "Erro ao carregar curriculo."} /> : null}
+      {resumeQuery.isLoading ? <LoadingTable label="Carregando currículo..." /> : null}
+      {resumeQuery.error ? <ErrorMessage message={resumeQuery.error instanceof Error ? resumeQuery.error.message : "Erro ao carregar currículo."} /> : null}
 
       {!resumeQuery.isLoading && !resumeQuery.error && !resume ? (
-        <EmptyState title="Sem curriculo" description="Anexe PDF, JPG, JPEG ou PNG com ate 5 MB quando houver arquivo do candidato." />
+        <EmptyState title="Sem currículo" description="Anexe PDF, JPG, JPEG ou PNG com até 5 MB quando houver arquivo do candidato." />
       ) : null}
 
       {resume ? (
@@ -107,7 +107,7 @@ export function HrCandidateResumeCard({ workflowId, candidateId }: { workflowId:
               Remover
             </Button>
           </div>
-          {deleteMutation.error ? <div className="mt-3"><ErrorMessage message={deleteMutation.error instanceof Error ? deleteMutation.error.message : "Nao foi possivel remover o curriculo."} /></div> : null}
+          {deleteMutation.error ? <div className="mt-3"><ErrorMessage message={deleteMutation.error instanceof Error ? deleteMutation.error.message : "Não foi possível remover o currículo."} /></div> : null}
         </div>
       ) : null}
     </Card>

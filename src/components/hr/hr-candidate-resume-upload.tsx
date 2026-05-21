@@ -29,7 +29,7 @@ async function uploadResume(url: string, file: File) {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel enviar o curriculo.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível enviar o currículo.");
   }
 
   return payload;
@@ -38,7 +38,7 @@ async function uploadResume(url: string, file: File) {
 export function HrCandidateResumeUpload({
   workflowId,
   candidateId,
-  label = "Anexar curriculo",
+  label = "Anexar currículo",
   onUploaded
 }: {
   workflowId: string;
@@ -86,7 +86,7 @@ export function HrCandidateResumeUpload({
         {mutation.isPending ? "Enviando..." : label}
       </Button>
       {localError ? <ErrorMessage message={localError} /> : null}
-      {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel enviar o curriculo."} /> : null}
+      {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível enviar o currículo."} /> : null}
     </div>
   );
 }

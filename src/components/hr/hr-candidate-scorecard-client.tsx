@@ -178,7 +178,7 @@ export function HrCandidateScorecardClient({
   const mutation = useMutation({
     mutationFn: async () => {
       if (!selectedInterview || !selectedTemplate) {
-        throw new Error("Selecione uma entrevista e um roteiro de avaliacao.");
+        throw new Error("Selecione uma entrevista e um roteiro de avaliação.");
       }
 
       return requestJson(`/api/hr/workflows/${workflowId}/candidates/${candidateId}/scorecards`, {
@@ -199,7 +199,7 @@ export function HrCandidateScorecardClient({
       });
     },
     onSuccess: async () => {
-      setSavedMessage("Roteiro de avaliacao salvo. A decisao permanece humana.");
+      setSavedMessage("Roteiro de avaliação salvo. A decisão permanece humana.");
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-scorecards", workflowId, candidateId] });
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-detail", workflowId, candidateId] });
     }
@@ -240,19 +240,19 @@ export function HrCandidateScorecardClient({
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Roteiro de avaliacao da entrevista</h2>
+        <h2 className="text-sm font-semibold">Roteiro de avaliação da entrevista</h2>
         </div>
-        <EmptyState title="Sem entrevista para avaliar" description="Registre uma entrevista antes de preencher o roteiro de avaliacao." />
+        <EmptyState title="Sem entrevista para avaliar" description="Registre uma entrevista antes de preencher o roteiro de avaliação." />
       </Card>
     );
   }
 
   if (query.isLoading) {
-    return <LoadingTable label="Carregando roteiros de avaliacao..." />;
+    return <LoadingTable label="Carregando roteiros de avaliação..." />;
   }
 
   if (query.error) {
-    return <ErrorMessage message={query.error instanceof Error ? query.error.message : "Erro ao carregar roteiros de avaliacao."} />;
+    return <ErrorMessage message={query.error instanceof Error ? query.error.message : "Erro ao carregar roteiros de avaliação."} />;
   }
 
   if (!templates.length) {
@@ -260,9 +260,9 @@ export function HrCandidateScorecardClient({
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Roteiro de avaliacao da entrevista</h2>
+          <h2 className="text-sm font-semibold">Roteiro de avaliação da entrevista</h2>
         </div>
-        <EmptyState title="Sem modelos ativos" description="Nao ha roteiros de avaliacao ativos para esta unidade." />
+        <EmptyState title="Sem modelos ativos" description="Não há roteiros de avaliação ativos para esta unidade." />
       </Card>
     );
   }
@@ -273,7 +273,7 @@ export function HrCandidateScorecardClient({
         <div>
           <div className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Roteiro de avaliacao da entrevista</h2>
+            <h2 className="text-sm font-semibold">Roteiro de avaliação da entrevista</h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">Notas estruturadas de 1 a 5, calculadas apenas para apoio operacional.</p>
         </div>
@@ -360,7 +360,7 @@ export function HrCandidateScorecardClient({
                   </div>
                 ))
               ) : (
-                <p className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">Preencha as notas para calcular a avaliacao.</p>
+                <p className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">Preencha as notas para calcular a avaliação.</p>
               )}
             </div>
             <Field label="Parecer final humano">
@@ -377,17 +377,17 @@ export function HrCandidateScorecardClient({
             </Field>
             <div className="flex items-start gap-2 rounded-md border bg-background p-3 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              A nota nao aprova, reprova, ranqueia ou substitui avaliacao humana.
+              A nota não aprova, reprova, ranqueia ou substitui avaliação humana.
             </div>
           </aside>
         </div>
 
-        {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar o roteiro de avaliacao."} /> : null}
+        {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível salvar o roteiro de avaliação."} /> : null}
         {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
         <div className="flex justify-end">
           <Button type="submit" disabled={mutation.isPending}>
             <Save className="h-4 w-4" />
-            Salvar avaliacao
+            Salvar avaliação
           </Button>
         </div>
       </form>

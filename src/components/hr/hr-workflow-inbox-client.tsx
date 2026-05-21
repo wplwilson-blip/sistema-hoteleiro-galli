@@ -123,7 +123,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const emptyWorkflows: WorkflowListItem[] = [];
 
 const workflowTypeOptions = [
-  { value: "admission", label: "Admissao" },
+  { value: "admission", label: "Admissão" },
   { value: "termination", label: "Desligamento" },
   { value: "transfer", label: "Transferencia" },
   { value: "promotion", label: "Promocao" },
@@ -175,7 +175,7 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? "Nao foi possivel carregar os dados de RH.");
+    throw new Error(payload?.message ?? "Não foi possível carregar os dados de RH.");
   }
 
   return payload as T;
@@ -460,7 +460,7 @@ export function HrWorkflowInboxClient() {
             <Button asChild size="sm">
               <Link href="/rh/admissoes/nova">
                 <UserPlus className="h-4 w-4" />
-                Nova Admissao
+                Nova Admissão
               </Link>
             </Button>
           </div>
@@ -472,7 +472,7 @@ export function HrWorkflowInboxClient() {
         <StatCard title="Minhas tarefas" value={String(myTasksTotal)} icon={UserRound} tone={myTasksTotal ? "warning" : "neutral"} />
         <StatCard title="Prazos vencidos" value={String(overdueTotal)} icon={AlertTriangle} tone={overdueTotal ? "danger" : "neutral"} />
         <StatCard title="Prazos vencendo" value={String(warningTotal)} icon={CalendarClock} tone={warningTotal ? "warning" : "neutral"} />
-        <StatCard title="Atencao necessaria" value={String(escalatedTotal)} icon={ShieldAlert} tone={escalatedTotal ? "danger" : "neutral"} />
+        <StatCard title="Atenção necessária" value={String(escalatedTotal)} icon={ShieldAlert} tone={escalatedTotal ? "danger" : "neutral"} />
         <StatCard title="Em andamento" value={String(inProgressTotal)} icon={TimerReset} tone={inProgressTotal ? "info" : "neutral"} />
       </div>
 
@@ -614,7 +614,7 @@ export function HrWorkflowInboxClient() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="max-w-44 space-y-1">
-                          <p className="break-words font-medium text-foreground">{workflow.employee?.name ?? "Nao vinculado"}</p>
+                          <p className="break-words font-medium text-foreground">{workflow.employee?.name ?? "Não vinculado"}</p>
                           {workflow.employee?.redacted ? <StatusBadge status="visual" label="Redigido" /> : null}
                         </div>
                       </td>
@@ -625,7 +625,7 @@ export function HrWorkflowInboxClient() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="max-w-36 break-words text-muted-foreground">{workflow.current_step?.assigned_to ? "Usuario registrado" : "Nao informado"}</p>
+                        <p className="max-w-36 break-words text-muted-foreground">{workflow.current_step?.assigned_to ? "Usuário registrado" : "Não informado"}</p>
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={slaTone(sla?.status)} label={slaLabel(sla)} />
@@ -634,9 +634,9 @@ export function HrWorkflowInboxClient() {
                       <td className="px-4 py-3 text-muted-foreground">{formatDelay(sla)}</td>
                       <td className="px-4 py-3">
                         {isEscalated(workflow) ? (
-                          <StatusBadge status={workflow.escalation?.overdue || workflow.current_step?.escalation?.overdue ? "danger" : "warning"} label={escalationLevel ? `Atencao nivel ${escalationLevel}` : "Atencao necessaria"} />
+                          <StatusBadge status={workflow.escalation?.overdue || workflow.current_step?.escalation?.overdue ? "danger" : "warning"} label={escalationLevel ? `Atenção nível ${escalationLevel}` : "Atenção necessária"} />
                         ) : (
-                          <StatusBadge status="visual" label="Nao" />
+                          <StatusBadge status="visual" label="Não" />
                         )}
                       </td>
                       <td className="px-4 py-3">

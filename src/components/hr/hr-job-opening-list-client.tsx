@@ -93,7 +93,7 @@ function buildUrl(path: string, params: Record<string, string | number | undefin
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel carregar vagas.");
+  if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível carregar vagas.");
   return payload as T;
 }
 
