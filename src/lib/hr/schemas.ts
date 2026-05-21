@@ -17,6 +17,15 @@ export const employeeDocumentStatusSchema = z.enum([
   "waived"
 ]);
 
+export const hrDocumentPendingTypeSchema = z.enum([
+  "missing_required",
+  "pending",
+  "awaiting_review",
+  "rejected",
+  "expired",
+  "expiring_soon"
+]);
+
 export const employeeFunctionalEventStatusSchema = z.enum(["active", "cancelled", "corrected"]);
 
 export const hrWorkflowTypeSchema = z.enum([
@@ -174,6 +183,23 @@ export const hrEmployeeDocumentsQuerySchema = z.object({
   status: employeeDocumentStatusSchema.optional().or(emptyToUndefined),
   documentTypeId: optionalUuidSchema,
   includeSensitive: optionalBooleanSchema
+});
+
+export const hrDocumentPendenciesQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema,
+  employeeId: optionalUuidSchema,
+  type: hrDocumentPendingTypeSchema.optional().or(emptyToUndefined),
+  status: employeeDocumentStatusSchema.optional().or(emptyToUndefined),
+  dueFrom: optionalDateSchema,
+  dueTo: optionalDateSchema
+});
+
+export const hrDocumentPendenciesSummaryQuerySchema = z.object({
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema
 });
 
 export const hrEmployeeHistoryQuerySchema = z.object({

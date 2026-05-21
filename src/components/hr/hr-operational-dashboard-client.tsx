@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   ClipboardList,
   FileClock,
+  FileWarning,
   Gauge,
   Inbox,
   ShieldAlert,
@@ -166,6 +167,19 @@ type AnalyticsResponse = {
       steps_returned?: number;
       steps_overdue?: number;
     };
+  };
+};
+
+type DocumentPendenciesSummaryResponse = {
+  ok: true;
+  data: {
+    total: number;
+    missingRequired: number;
+    pending: number;
+    awaitingReview: number;
+    rejected: number;
+    expired: number;
+    expiringSoon: number;
   };
 };
 
@@ -489,6 +503,7 @@ export function HrOperationalDashboardClient() {
 
   const dashboardUrl = buildUrl("/api/hr/dashboard", { unit_id: activeUnitId });
   const analyticsUrl = buildUrl("/api/hr/analytics", { unit_id: activeUnitId });
+  const documentPendenciesUrl = buildUrl("/api/hr/document-pendencies/summary", { unitId: activeUnitId });
   const recentUrl = buildUrl("/api/hr/workflows", { page: 1, page_size: 8, unit_id: activeUnitId });
   const criticalUrl = buildUrl("/api/hr/workflows", { page: 1, page_size: 30, unit_id: activeUnitId });
   const myTasksUrl = buildUrl("/api/hr/workflows", {
@@ -506,6 +521,11 @@ export function HrOperationalDashboardClient() {
   const analyticsQuery = useQuery({
     queryKey: ["hr", "operational-dashboard", "analytics", activeUnitId],
     queryFn: async () => requestJson<AnalyticsResponse>(analyticsUrl)
+  });
+
+  const documentPendenciesQuery = useQuery({
+    queryKey: ["hr", "operational-dashboard", "document-pendencies", activeUnitId],
+    queryFn: async () => requestJson<DocumentPendenciesSummaryResponse>(documentPendenciesUrl)
   });
 
   const recentQuery = useQuery({
@@ -539,6 +559,7 @@ export function HrOperationalDashboardClient() {
   const isInitialLoading = dashboardQuery.isLoading && recentQuery.isLoading && analyticsQuery.isLoading;
   const criticalCount = metrics ? metrics.sla.overdue + metrics.sla.warning + metrics.escalation.overdue : criticalWorkflows.length;
   const myTasksTotal = userId ? myTasksQuery.data?.pagination.total ?? myTasks.length : 0;
+  const documentPendencies = documentPendenciesQuery.data?.data;
 
   return (
     <div className="space-y-5">
@@ -570,6 +591,12 @@ export function HrOperationalDashboardClient() {
               <Link href="/rh/inbox">
                 <Inbox className="h-4 w-4" />
                 Abrir fila
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/pendencias-documentais">
+                <FileWarning className="h-4 w-4" />
+                Pendências documentais
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm">
@@ -608,6 +635,49 @@ export function HrOperationalDashboardClient() {
 
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar metricas do dashboard."} /> : null}
       {!userId ? <ErrorMessage message="Não foi possível calcular minhas pendências com os dados da sessão atual." /> : null}
+
+      {documentPendenciesQuery.error ? (
+        <ErrorMessage message={documentPendenciesQuery.error instanceof Error ? documentPendenciesQuery.error.message : "Erro ao carregar pendências documentais."} />
+      ) : null}
+
+      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FileWarning className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Documentos do RH</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Sinais rápidos do dossiê documental dos colaboradores.</p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/rh/pendencias-documentais">
+              Abrir fila documental
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+        {documentPendenciesQuery.isLoading ? <LoadingTable label="Carregando pendências documentais..." /> : null}
+        {!documentPendenciesQuery.isLoading && !documentPendenciesQuery.error ? (
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className={cn("rounded-md border bg-background p-3", (documentPendencies?.total ?? 0) > 0 && "border-amber-200 bg-amber-50/60")}>
+              <p className="text-xs text-muted-foreground">Documentos pendentes</p>
+              <p className="mt-1 text-xl font-semibold">{documentPendencies?.total ?? 0}</p>
+            </div>
+            <div className={cn("rounded-md border bg-background p-3", (documentPendencies?.expired ?? 0) > 0 && "border-red-200 bg-red-50/60")}>
+              <p className="text-xs text-muted-foreground">Vencidos</p>
+              <p className="mt-1 text-xl font-semibold">{documentPendencies?.expired ?? 0}</p>
+            </div>
+            <div className={cn("rounded-md border bg-background p-3", (documentPendencies?.expiringSoon ?? 0) > 0 && "border-amber-200 bg-amber-50/60")}>
+              <p className="text-xs text-muted-foreground">Vencendo em breve</p>
+              <p className="mt-1 text-xl font-semibold">{documentPendencies?.expiringSoon ?? 0}</p>
+            </div>
+            <div className={cn("rounded-md border bg-background p-3", (documentPendencies?.awaitingReview ?? 0) > 0 && "border-blue-200 bg-blue-50/60")}>
+              <p className="text-xs text-muted-foreground">Aguardando conferência</p>
+              <p className="mt-1 text-xl font-semibold">{documentPendencies?.awaitingReview ?? 0}</p>
+            </div>
+          </div>
+        ) : null}
+      </Card>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-3">
