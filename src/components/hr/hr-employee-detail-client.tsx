@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { HrEmployeeDocumentsCard } from "@/components/hr/hr-employee-documents-card";
 import { cn } from "@/lib/utils";
 
 type RelatedMeta = {
@@ -46,7 +47,9 @@ type HrEmployeeDetail = {
 type HrEmployeePermissions = {
   canViewSensitive?: boolean;
   canViewDocuments?: boolean;
+  canManageDocuments?: boolean;
   canViewSensitiveDocuments?: boolean;
+  canVerifyDocuments?: boolean;
   canViewHistory?: boolean;
   canViewSensitiveHistory?: boolean;
 };
@@ -55,33 +58,6 @@ type HrEmployeeDetailResponse = {
   ok: true;
   data: HrEmployeeDetail;
   permissions: HrEmployeePermissions;
-};
-
-type HrEmployeeDocument = {
-  id: string;
-  documentTypeId: string;
-  documentType: {
-    id: string;
-    code: string;
-    name: string;
-    category: string;
-  } | null;
-  status: string;
-  validUntil: string;
-  isSensitive: boolean;
-  visibilityScope: string;
-  hasCurrentAttachment: boolean;
-  createdAt: string;
-  updatedAt: string;
-  redacted: boolean;
-};
-
-type HrDocumentsResponse = {
-  ok: true;
-  data: HrEmployeeDocument[];
-  permissions: {
-    canViewSensitiveDocuments?: boolean;
-  };
 };
 
 type HrFunctionalEvent = {
@@ -179,28 +155,6 @@ function recordStatusTone(status: HrEmployeeDetail["status"]) {
   return status === "active" ? "success" : "visual";
 }
 
-function documentStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    pending: "Pendente",
-    received: "Recebido",
-    under_review: "Em analise",
-    approved: "Aprovado",
-    rejected: "Rejeitado",
-    expired: "Vencido",
-    replaced: "Substituido",
-    waived: "Dispensado"
-  };
-
-  return labels[status] ?? status;
-}
-
-function documentStatusTone(status: string) {
-  if (status === "approved" || status === "received") return "success" as const;
-  if (status === "expired" || status === "rejected") return "danger" as const;
-  if (status === "pending" || status === "under_review") return "warning" as const;
-  return "visual" as const;
-}
-
 function eventSeverityTone(severity: string) {
   if (severity === "critical") return "danger" as const;
   if (severity === "warning") return "warning" as const;
@@ -245,7 +199,9 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   const permissions = detailQuery.data?.permissions ?? {};
   const canViewSensitive = Boolean(permissions.canViewSensitive);
   const canViewDocuments = Boolean(permissions.canViewDocuments);
+  const canManageDocuments = Boolean(permissions.canManageDocuments);
   const canViewSensitiveDocuments = Boolean(permissions.canViewSensitiveDocuments);
+  const canVerifyDocuments = Boolean(permissions.canVerifyDocuments);
   const canViewHistory = Boolean(permissions.canViewHistory);
   const canViewSensitiveHistory = Boolean(permissions.canViewSensitiveHistory);
 
@@ -265,12 +221,6 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
       setActiveTab("summary");
     }
   }, [activeTab, tabs]);
-
-  const documentsQuery = useQuery({
-    queryKey: ["hr", "employees", employeeId, "documents"],
-    queryFn: async () => requestJson<HrDocumentsResponse>(`/api/hr/employees/${employeeId}/documents`),
-    enabled: Boolean(employee && canViewDocuments && activeTab === "documents")
-  });
 
   const historyQuery = useQuery({
     queryKey: ["hr", "employees", employeeId, "history", historyPage],
@@ -383,74 +333,12 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
 
       {activeTab === "documents" ? (
         canViewDocuments ? (
-          <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-            <div className="border-b p-4">
-              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-base font-semibold">Documentos logicos</h3>
-                  <p className="text-xs text-muted-foreground">Metadados documentais por tipo, status e vencimento.</p>
-                </div>
-                <StatusBadge
-                  status={canViewSensitiveDocuments ? "info" : "visual"}
-                  label={canViewSensitiveDocuments ? "Sensivel documental permitido" : "Metadados seguros"}
-                />
-              </div>
-            </div>
-
-            {documentsQuery.isLoading ? <LoadingTable label="Carregando documentos do colaborador..." /> : null}
-            {documentsQuery.error ? (
-              <div className="p-4">
-                <ErrorMessage message={documentsQuery.error instanceof Error ? documentsQuery.error.message : "Não foi possível carregar documentos."} />
-              </div>
-            ) : null}
-            {!documentsQuery.isLoading && documentsQuery.data && !documentsQuery.data.data.length ? (
-              <div className="p-4">
-                <EmptyState title="Nenhum documento logico encontrado" description="Ainda nao existem documentos de RH cadastrados para este colaborador." />
-              </div>
-            ) : null}
-            {documentsQuery.data?.data.length ? (
-              <div className="max-w-full overflow-x-auto">
-                <table className="w-full min-w-[920px] text-left text-sm">
-                  <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Tipo</th>
-                      <th className="px-4 py-3 font-semibold">Categoria</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Vencimento</th>
-                      <th className="px-4 py-3 font-semibold">Sensibilidade</th>
-                      <th className="px-4 py-3 font-semibold">Anexo</th>
-                      <th className="px-4 py-3 font-semibold">Atualizado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {documentsQuery.data.data.map((document) => (
-                      <tr key={document.id} className="hover:bg-muted/35">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-foreground">{document.documentType?.name ?? "Tipo nao informado"}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">{document.documentType?.code ?? document.documentTypeId}</p>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{document.documentType?.category ?? "-"}</td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={documentStatusTone(document.status)} label={documentStatusLabel(document.status)} />
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{formatDate(document.validUntil)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1.5">
-                            <StatusBadge status={document.isSensitive ? "warning" : "visual"} label={document.isSensitive ? "Restrito" : "Normal"} />
-                            {document.redacted ? <StatusBadge status="visual" label="Redigido" /> : null}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={document.hasCurrentAttachment ? "info" : "visual"} label={document.hasCurrentAttachment ? "Possui anexo" : "Sem anexo"} />
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{formatDateTime(document.updatedAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </Card>
+          <HrEmployeeDocumentsCard
+            employeeId={employeeId}
+            canViewSensitiveDocuments={canViewSensitiveDocuments}
+            canManageDocuments={canManageDocuments}
+            canVerifyDocuments={canVerifyDocuments}
+          />
         ) : (
           <RestrictedState title="Documentos restritos" description="Seu perfil nao possui permissao para consultar documentos de RH deste colaborador." />
         )

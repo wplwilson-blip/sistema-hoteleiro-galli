@@ -206,7 +206,9 @@ export function redactEmployeeDocument(input: {
           id: input.documentType.id,
           code: input.documentType.code,
           name: input.documentType.name,
-          category: input.documentType.category
+          category: input.documentType.category,
+          isRequired: input.documentType.is_required,
+          requiresValidUntil: input.documentType.requires_valid_until
         }
       : null,
     status: input.document.status,

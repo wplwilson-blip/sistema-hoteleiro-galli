@@ -22,12 +22,23 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   try {
     const { id } = hrIdParamSchema.parse(params);
     const employee = await assertCanAccessHrEmployee(context, id);
-    const [relations, canViewSensitive, canViewDocuments, canViewSensitiveDocuments, canViewHistory, canViewSensitiveHistory] =
+    const [
+      relations,
+      canViewSensitive,
+      canViewDocuments,
+      canManageDocuments,
+      canViewSensitiveDocuments,
+      canVerifyDocuments,
+      canViewHistory,
+      canViewSensitiveHistory
+    ] =
       await Promise.all([
         loadEmployeeRelations(context.supabase, [employee]),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.employeesSensitiveView, employee.unit_id),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.documentsView, employee.unit_id),
+        userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.documentsManage, employee.unit_id),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.documentsSensitiveView, employee.unit_id),
+        userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.documentsVerify, employee.unit_id),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.historyView, employee.unit_id),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.historySensitiveView, employee.unit_id)
       ]);
@@ -38,7 +49,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       permissions: {
         canViewSensitive,
         canViewDocuments,
+        canManageDocuments,
         canViewSensitiveDocuments,
+        canVerifyDocuments,
         canViewHistory,
         canViewSensitiveHistory
       }
