@@ -178,7 +178,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             <InfoTile label="Nome" value={candidate.full_name} />
             <InfoTile label="Origem" value={candidate.source} />
             <InfoTile label="Telefone" value={candidate.phone ?? "Restrito"} icon={Phone} />
-            <InfoTile label="Score manual" value={candidate.manual_score === null ? "Nao informado" : String(candidate.manual_score)} icon={Star} />
+            <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Nao informado" : String(candidate.manual_score)} icon={Star} />
           </div>
           {candidate.phone_redacted ? (
             <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissao. Consulte apenas quando necessario para contato operacional.</p>
@@ -200,7 +200,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
                 ))}
               </SelectField>
             </Field>
-            <Field label="Score manual">
+            <Field label="Nota manual">
               <Input type="number" min={0} max={100} value={form.manual_score} onChange={(event) => updateForm({ manual_score: event.target.value })} placeholder="0 a 100" />
             </Field>
             <Field label="Parecer humano">
@@ -211,7 +211,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             </Field>
             <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              Score e parecer sao manuais. O sistema nao aprova, reprova nem ranqueia automaticamente.
+              Nota e parecer sao manuais. O sistema nao aprova, reprova nem ranqueia automaticamente.
             </div>
             {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel atualizar o candidato."} /> : null}
             {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
@@ -244,7 +244,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
               <article key={interview.id} className="rounded-md border bg-background p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={interview.final_opinion === "nao_recomendado" ? "danger" : interview.final_opinion === "recomendado" ? "success" : "warning"} label={interviewOpinionLabel(interview.final_opinion)} />
-                  <StatusBadge status="visual" label={`Media manual ${averageScore(interview)}`} />
+                  <StatusBadge status="visual" label={`Media das avaliacoes ${averageScore(interview)}`} />
                 </div>
                 <p className="mt-2 text-sm font-medium text-foreground">{formatDateTime(interview.interview_at)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">

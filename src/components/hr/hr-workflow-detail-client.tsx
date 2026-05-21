@@ -594,7 +594,7 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
   const urgency = metadataText(metadata, "urgency");
   const requestedStartDate = metadataText(metadata, "requested_start_date");
   const managerUserId = metadataText(metadata, "manager_user_id");
-  const managerName = workflow.manager_user?.name || (managerUserId ? "Registrado no workflow" : "Nao informado");
+  const managerName = workflow.manager_user?.name || (managerUserId ? "Gestor registrado" : "Nao informado");
   const reason = metadataText(metadata, "reason");
   const justification = metadataText(metadata, "justification");
   const notes = metadataText(metadata, "notes");
@@ -617,7 +617,7 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
         <InfoTile label="Data desejada" value={formatDate(requestedStartDate)} icon={CalendarClock} />
         <InfoTile label="Gestor solicitante" value={managerName} icon={UserRound} />
         <InfoTile label="Unidade" value={unitDisplayName(workflow)} icon={ListChecks} />
-        <InfoTile label="SLA" value={slaLabel(workflow.sla)} icon={FileClock} />
+        <InfoTile label="Prazo" value={slaLabel(workflow.sla)} icon={FileClock} />
       </div>
 
       {reason || justification || notes ? (
@@ -698,10 +698,10 @@ function EscalationPanel({ escalation }: { escalation: WorkflowEscalation | null
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Prioridade e atrasos" description="Acompanhamento do prazo e de alertas operacionais." icon={ShieldAlert} />
+      <SectionHeader title="Prioridade e atrasos" description="Acompanhamento do prazo e dos sinais que pedem atencao." icon={ShieldAlert} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Estado" value={isEscalated ? "Requer acompanhamento" : "Sem alerta"} icon={ShieldAlert} />
-        <InfoTile label="Nivel" value={escalation?.level ? `Nivel ${escalation.level}` : "-"} icon={ListChecks} />
+        <InfoTile label="Atencao" value={escalation?.level ? `Nivel ${escalation.level}` : "-"} icon={ListChecks} />
         <InfoTile label="Ocorrencias" value={String(escalation?.count ?? 0)} icon={History} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -825,7 +825,7 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
                 <th className="px-4 py-3 font-semibold">Etapa</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Responsavel</th>
-                <th className="px-4 py-3 font-semibold">SLA</th>
+                <th className="px-4 py-3 font-semibold">Prazo</th>
                 <th className="px-4 py-3 font-semibold">Conclusao</th>
               </tr>
             </thead>
@@ -879,7 +879,7 @@ function TimelinePanel({
         <summary className="cursor-pointer list-none">
           <SectionHeader
             title={isAdmission ? "Historico operacional" : "Historico do processo"}
-            description={isAdmission ? "Movimentacoes registradas durante a admissao." : "Eventos registrados automaticamente pelo sistema."}
+            description={isAdmission ? "Movimentacoes registradas durante a admissao." : "Movimentacoes registradas durante o processo."}
             icon={History}
           />
         </summary>
@@ -904,7 +904,7 @@ function TimelinePanel({
                   </div>
                   {technicalEntries(event.payload).length ? (
                     <details className="mt-3 rounded-md border bg-muted/20 p-3">
-                      <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos do evento</summary>
+                      <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio tecnico do evento</summary>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {technicalEntries(event.payload).map(([key, value]) => (
                           <StatusBadge key={key} status="visual" label={`${key}: ${stringifySafeValue(value)}`} />
@@ -930,7 +930,7 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
     <Card className="min-w-0 border-border/60 bg-muted/10 p-4 shadow-sm shadow-primary/5">
       <details>
         <summary className="cursor-pointer list-none">
-          <SectionHeader title="Auditoria tecnica" description="Registros internos para rastreabilidade e compliance, recolhidos por padrao." icon={Lock} />
+          <SectionHeader title="Auditoria e rastreabilidade" description="Registros internos recolhidos por padrao para preservar a leitura operacional." icon={Lock} />
         </summary>
         <div className="mt-4">
           {isLoading ? <LoadingTable label="Carregando auditoria do processo..." /> : null}
@@ -953,7 +953,7 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
                     <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
                   </div>
                   <details className="mt-3 rounded-md border bg-muted/20 p-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Dados tecnicos da auditoria</summary>
+                    <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio tecnico da auditoria</summary>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {log.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${log.actor_user_id}`} /> : null}
                       {log.workflow_id ? <StatusBadge status="visual" label={`workflow_id: ${log.workflow_id}`} /> : null}
@@ -976,7 +976,7 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
 function NotificationsPanel({ notifications, isLoading, error }: { notifications: WorkflowNotification[]; isLoading: boolean; error: unknown }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Notificacoes" description="Notificacoes relacionadas ao processo, quando disponiveis." icon={Bell} />
+      <SectionHeader title="Notificacoes" description="Avisos relacionados ao processo, quando disponiveis." icon={Bell} />
       {isLoading ? <LoadingTable label="Carregando notificacoes do processo..." /> : null}
       {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar notificacoes."} /> : null}
       {!isLoading && !error && !notifications.length ? <EmptyState title="Sem notificacoes" description="Nenhuma notificacao foi retornada para este processo." /> : null}
@@ -1024,7 +1024,7 @@ function WorkflowActionPanel({
   const mutation = useMutation({
     mutationFn: postWorkflowAction,
     onSuccess: async (response, variables) => {
-      const replayed = response.idempotency?.replayed ? " Requisicao idempotente reaproveitada." : "";
+      const replayed = response.idempotency?.replayed ? " A acao ja havia sido registrada e foi reaproveitada com seguranca." : "";
       const message = `${actionLabelsForUi[variables.action].success}${replayed}`;
       setFeedback(message);
       setLocalError(null);
@@ -1078,7 +1078,7 @@ function WorkflowActionPanel({
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Acoes operacionais" description="Acoes registradas com seguranca. O sistema continua sendo a autoridade final." icon={SquareCheckBig} />
+      <SectionHeader title="Acoes operacionais" description="Acoes registradas com seguranca para dar continuidade ao processo." icon={SquareCheckBig} />
 
       {!allowedActions.length ? (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
@@ -1183,10 +1183,10 @@ const actionLabelsForUi: Record<
   }
 > = {
   execute: {
-    label: "Executar etapa",
-    success: "Etapa executada com sucesso.",
-    confirmTitle: "Confirmar execucao da etapa",
-    confirmDescription: "A etapa atual sera executada pelo fluxo do processo.",
+    label: "Concluir etapa",
+    success: "Etapa concluida com sucesso.",
+    confirmTitle: "Confirmar conclusao da etapa",
+    confirmDescription: "A etapa atual sera concluida no fluxo operacional.",
     icon: SquareCheckBig,
     variant: "default"
   },
@@ -1276,9 +1276,9 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Link href="/rh" className="font-medium text-primary hover:underline">RH</Link>
               <span>/</span>
-              <Link href="/rh/inbox" className="font-medium text-primary hover:underline">Inbox</Link>
+              <Link href="/rh/inbox" className="font-medium text-primary hover:underline">Fila de RH</Link>
               <span>/</span>
-              <span>Dossie operacional</span>
+              <span>Resumo operacional</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="break-words text-lg font-semibold text-foreground">{isAdmission ? "Processo admissional" : workflowTypeLabel(workflow.workflow_type)}</h2>
@@ -1298,13 +1298,13 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             <Button asChild variant="outline" size="sm">
               <Link href="/rh">
                 <LayoutDashboard className="h-4 w-4" />
-                Dashboard
+                Painel
               </Link>
             </Button>
             <Button asChild size="sm">
               <Link href="/rh/inbox">
                 <ArrowLeft className="h-4 w-4" />
-                Voltar para Inbox
+                Voltar para fila
               </Link>
             </Button>
           </div>
@@ -1330,7 +1330,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
       {!isJobOpening && !isAdmission ? (
         <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-          <SectionHeader title="Resumo operacional" description="Dados principais retornados pelo endpoint redigido de detalhe." icon={ClipboardList} />
+          <SectionHeader title="Resumo operacional" description="Dados principais do processo para acompanhamento do RH." icon={ClipboardList} />
           <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <InfoTile label="Tipo" value={workflowTypeLabel(workflow.workflow_type)} icon={ClipboardList} />
             <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />

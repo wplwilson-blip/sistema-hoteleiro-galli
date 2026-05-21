@@ -5,8 +5,8 @@ export default function RhWorkflowDetailPage({ params }: { params: { id: string 
   return (
     <div className="space-y-6">
       <PageTitle
-        title="Detalhe do Workflow RH"
-        description="Dossie operacional read-only com etapas, SLA, escalation, timeline e auditoria."
+        title="Detalhe do Processo de RH"
+        description="Resumo operacional com etapas, prazos, historico e registros de auditoria."
       />
       <HrWorkflowDetailClient workflowId={params.id} />
     </div>

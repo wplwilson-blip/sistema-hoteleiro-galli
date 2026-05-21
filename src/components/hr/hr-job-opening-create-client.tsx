@@ -289,9 +289,9 @@ export function HrJobOpeningCreateClient() {
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status="info" label="Workflow formal" />
-              <StatusBadge status="visual" label="Sem candidatos nesta sprint" />
-              {selectedTemplate ? <StatusBadge status="success" label={`Template: ${selectedTemplate.name}`} /> : null}
+              <StatusBadge status="info" label="Solicitacao formal" />
+              <StatusBadge status="visual" label="Candidatos vinculados depois da abertura" />
+              {selectedTemplate ? <StatusBadge status="success" label={`Roteiro: ${selectedTemplate.name}`} /> : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               A vaga sera aberta para aprovacao e acompanhamento operacional. Candidatos, entrevistas e scorecards entram em etapas futuras.
@@ -376,7 +376,7 @@ export function HrJobOpeningCreateClient() {
           <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
             <div className="mb-3 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Template da vaga</h2>
+              <h2 className="text-sm font-semibold">Etapas previstas</h2>
             </div>
             {templatesQuery.isLoading ? (
               <div className="flex items-center rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
@@ -389,7 +389,7 @@ export function HrJobOpeningCreateClient() {
                 {(selectedTemplate.steps ?? []).slice().sort((left, right) => left.order_index - right.order_index).map((step) => (
                   <div key={step.step_key} className="rounded-md border bg-background px-3 py-2 text-sm">
                     <p className="font-medium">{step.name}</p>
-                    <p className="text-xs text-muted-foreground">{step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}{step.default_sla_minutes ? ` · SLA ${step.default_sla_minutes} min` : ""}</p>
+                    <p className="text-xs text-muted-foreground">{step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}{step.default_sla_minutes ? ` · prazo previsto ${step.default_sla_minutes} min` : ""}</p>
                   </div>
                 ))}
               </div>
@@ -407,7 +407,7 @@ export function HrJobOpeningCreateClient() {
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>Nao informe salario, beneficios, dados pessoais de candidatos, documentos, anexos ou dados medicos.</p>
-              <p>Esta sprint cria apenas a solicitacao formal da vaga. Candidatos e entrevistas ficam para RH-9.2C.</p>
+              <p>A solicitacao fica registrada para acompanhamento do RH, com candidatos e entrevistas vinculados ao processo quando necessario.</p>
             </div>
           </Card>
 

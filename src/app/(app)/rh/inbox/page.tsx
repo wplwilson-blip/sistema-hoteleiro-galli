@@ -5,8 +5,8 @@ export default function RhInboxPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        title="Inbox Operacional RH"
-        description="Fila diaria de workflows, SLAs e pendencias do RH administrativo."
+        title="Fila de RH"
+        description="Processos de RH que precisam de acompanhamento, decisao ou ajuste operacional."
       />
       <HrWorkflowInboxClient />
     </div>

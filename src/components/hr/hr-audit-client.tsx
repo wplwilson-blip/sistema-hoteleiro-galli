@@ -75,6 +75,26 @@ function riskTone(risk: string) {
   return "visual" as const;
 }
 
+function riskLabel(risk: string) {
+  const labels: Record<string, string> = {
+    low: "Baixo",
+    medium: "Medio",
+    high: "Alto",
+    critical: "Critico"
+  };
+  return labels[risk] ?? risk;
+}
+
+function entityLabel(entity: string) {
+  const labels: Record<string, string> = {
+    workflow: "Processo",
+    step: "Etapa",
+    event: "Historico",
+    notification: "Notificacao"
+  };
+  return labels[entity] ?? entity;
+}
+
 export function HrAuditClient() {
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("");
@@ -120,27 +140,27 @@ export function HrAuditClient() {
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Field label="Buscar" className="xl:col-span-2">
-            <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Acao, ator, request ou workflow" /></div>
+            <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Acao, usuario, processo ou rastreio" /></div>
           </Field>
           <Field label="Acao"><SelectField value={action} onChange={(event) => setAction(event.target.value)}><option value="">Todas</option>{actions.map((item) => <option key={item} value={item}>{actionLabel(item)}</option>)}</SelectField></Field>
-          <Field label="Risco"><SelectField value={risk} onChange={(event) => setRisk(event.target.value)}><option value="">Todos</option>{risks.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
+          <Field label="Risco"><SelectField value={risk} onChange={(event) => setRisk(event.target.value)}><option value="">Todos</option>{risks.map((item) => <option key={item} value={item}>{riskLabel(item)}</option>)}</SelectField></Field>
           <Field label="De"><Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
           <Field label="Ate"><Input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
-          <Field label="Workflow ID" className="xl:col-span-2"><Input value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} placeholder="UUID do workflow" /></Field>
+          <Field label="Processo" className="xl:col-span-2"><Input value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} placeholder="Codigo tecnico, quando necessario" /></Field>
         </div>
       </Card>
 
       {auditQuery.isLoading ? <LoadingTable label="Carregando auditoria RH..." /> : null}
       {auditQuery.error ? <ErrorMessage message={auditQuery.error instanceof Error ? auditQuery.error.message : "Erro ao carregar auditoria."} /> : null}
-      {!auditQuery.isLoading && !auditQuery.error && !filteredRows.length ? <EmptyState title="Nenhum registro encontrado" description="Ajuste os filtros ou valide se existem eventos auditaveis no periodo." /> : null}
+      {!auditQuery.isLoading && !auditQuery.error && !filteredRows.length ? <EmptyState title="Nenhum registro encontrado" description="Ajuste os filtros ou confirme se houve movimentacoes no periodo." /> : null}
 
       {filteredRows.length ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-          <div className="border-b p-4"><h2 className="text-sm font-semibold">Eventos auditaveis</h2><p className="text-xs text-muted-foreground">Exibindo {filteredRows.length} de {auditQuery.data?.pagination.total ?? filteredRows.length}</p></div>
+          <div className="border-b p-4"><h2 className="text-sm font-semibold">Registros de auditoria</h2><p className="text-xs text-muted-foreground">Exibindo {filteredRows.length} de {auditQuery.data?.pagination.total ?? filteredRows.length}</p></div>
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-left text-sm">
-              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Acao</th><th className="px-4 py-3">Risco</th><th className="px-4 py-3">Ator</th><th className="px-4 py-3">Entidade</th><th className="px-4 py-3">Unidade</th><th className="px-4 py-3">Workflow</th><th className="px-4 py-3">Request</th></tr></thead>
-              <tbody className="divide-y">{filteredRows.map((row) => <tr key={row.id} className="hover:bg-muted/30"><td className="px-4 py-3">{formatDateTime(row.created_at)}</td><td className="px-4 py-3"><StatusBadge status="info" label={actionLabel(row.action)} /></td><td className="px-4 py-3"><StatusBadge status={riskTone(row.risk_level)} label={row.risk_level} /></td><td className="px-4 py-3 text-muted-foreground">{row.actor_user_id ?? "-"}</td><td className="px-4 py-3">{row.entity_type}</td><td className="px-4 py-3 text-muted-foreground">{row.unit_id}</td><td className="px-4 py-3 text-muted-foreground">{row.workflow_id ?? "-"}</td><td className="px-4 py-3 text-muted-foreground">{row.request_id ?? "-"}</td></tr>)}</tbody>
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Acao</th><th className="px-4 py-3">Risco</th><th className="px-4 py-3">Usuario</th><th className="px-4 py-3">Registro</th><th className="px-4 py-3">Rastreio</th></tr></thead>
+              <tbody className="divide-y">{filteredRows.map((row) => <tr key={row.id} className="hover:bg-muted/30"><td className="px-4 py-3">{formatDateTime(row.created_at)}</td><td className="px-4 py-3"><StatusBadge status="info" label={actionLabel(row.action)} /></td><td className="px-4 py-3"><StatusBadge status={riskTone(row.risk_level)} label={riskLabel(row.risk_level)} /></td><td className="px-4 py-3 text-muted-foreground">{row.actor_user_id ? "Usuario registrado" : "Nao informado"}</td><td className="px-4 py-3">{entityLabel(row.entity_type)}</td><td className="px-4 py-3 text-muted-foreground"><details><summary className="cursor-pointer text-xs font-semibold">Ver rastreio tecnico</summary><div className="mt-2 flex flex-wrap gap-1.5"><StatusBadge status="visual" label={`unidade: ${row.unit_id}`} />{row.workflow_id ? <StatusBadge status="visual" label={`processo: ${row.workflow_id}`} /> : null}{row.step_id ? <StatusBadge status="visual" label={`etapa: ${row.step_id}`} /> : null}{row.request_id ? <StatusBadge status="visual" label={`rastreio: ${row.request_id}`} /> : null}{row.correlation_id ? <StatusBadge status="visual" label={`correlacao: ${row.correlation_id}`} /> : null}</div></details></td></tr>)}</tbody>
             </table>
           </div>
         </Card>

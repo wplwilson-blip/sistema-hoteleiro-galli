@@ -240,15 +240,15 @@ export function HrCandidateScorecardClient({
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Scorecard da entrevista</h2>
+        <h2 className="text-sm font-semibold">Roteiro de avaliacao da entrevista</h2>
         </div>
-        <EmptyState title="Sem entrevista para avaliar" description="Registre uma entrevista antes de preencher o scorecard estruturado." />
+        <EmptyState title="Sem entrevista para avaliar" description="Registre uma entrevista antes de preencher o roteiro de avaliacao." />
       </Card>
     );
   }
 
   if (query.isLoading) {
-    return <LoadingTable label="Carregando scorecards..." />;
+    return <LoadingTable label="Carregando roteiros de avaliacao..." />;
   }
 
   if (query.error) {
@@ -260,9 +260,9 @@ export function HrCandidateScorecardClient({
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Scorecard da entrevista</h2>
+          <h2 className="text-sm font-semibold">Roteiro de avaliacao da entrevista</h2>
         </div>
-        <EmptyState title="Sem modelos ativos" description="Nao ha modelos de scorecard ativos para esta unidade." />
+        <EmptyState title="Sem modelos ativos" description="Nao ha roteiros de avaliacao ativos para esta unidade." />
       </Card>
     );
   }
@@ -273,9 +273,9 @@ export function HrCandidateScorecardClient({
         <div>
           <div className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Scorecard da entrevista</h2>
+            <h2 className="text-sm font-semibold">Roteiro de avaliacao da entrevista</h2>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Notas estruturadas de 1 a 5, com score calculado apenas para apoio operacional.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Notas estruturadas de 1 a 5, calculadas apenas para apoio operacional.</p>
         </div>
         {existingScorecard ? <StatusBadge status="success" label={`Salvo em ${formatDateTime(existingScorecard.evaluated_at)}`} /> : null}
       </div>
@@ -348,7 +348,7 @@ export function HrCandidateScorecardClient({
               <h3 className="text-sm font-semibold">Resultado</h3>
             </div>
             <div className="rounded-md border bg-background p-3">
-              <p className="text-xs text-muted-foreground">Score total</p>
+              <p className="text-xs text-muted-foreground">Nota final</p>
               <p className="mt-1 text-2xl font-semibold text-foreground">{liveScore.total === null ? "-" : liveScore.total.toFixed(2)}</p>
             </div>
             <div className="space-y-2">
@@ -360,7 +360,7 @@ export function HrCandidateScorecardClient({
                   </div>
                 ))
               ) : (
-                <p className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">Preencha as notas para calcular o score.</p>
+                <p className="rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">Preencha as notas para calcular a avaliacao.</p>
               )}
             </div>
             <Field label="Parecer final humano">

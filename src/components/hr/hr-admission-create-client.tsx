@@ -314,7 +314,7 @@ export function HrAdmissionCreateClient() {
     if (!form.expectedStartDate) return "Informe a data prevista de inicio.";
     if (!form.managerUserId || !selectedManager) return "Informe o gestor solicitante.";
     if (!form.contractType) return "Informe o tipo de contratacao.";
-    if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Template admission ativo com etapas nao encontrado.";
+    if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Roteiro de admissao ativo com etapas nao encontrado.";
     if (form.notes && forbiddenNotesPattern.test(form.notes)) {
       return "As observacoes nao devem conter CPF, RG, salario, dados bancarios ou dados medicos.";
     }
@@ -337,19 +337,19 @@ export function HrAdmissionCreateClient() {
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status="info" label="Workflow formal" />
+              <StatusBadge status="info" label="Processo formal" />
               <StatusBadge status="visual" label="Sem criar colaborador automaticamente" />
-              {selectedTemplate ? <StatusBadge status="success" label={`Template: ${selectedTemplate.name}`} /> : null}
+              {selectedTemplate ? <StatusBadge status="success" label={`Roteiro: ${selectedTemplate.name}`} /> : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              A admissao sera aberta como workflow de RH, sem folha, ponto, salario, documentos digitalizados ou cadastro automatico de colaborador.
+              A admissao sera aberta como processo de RH, sem folha, ponto, salario, documentos digitalizados ou cadastro automatico de colaborador.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
               <Link href="/rh/inbox">
                 <ArrowLeft className="h-4 w-4" />
-                Voltar para Inbox
+                Voltar para fila
               </Link>
             </Button>
           </div>
@@ -488,12 +488,12 @@ export function HrAdmissionCreateClient() {
           <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
             <div className="mb-3 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Checklist do template</h2>
+              <h2 className="text-sm font-semibold">Roteiro da admissao</h2>
             </div>
             {templatesQuery.isLoading ? (
               <div className="flex items-center rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
-                Carregando template admission...
+                Carregando roteiro da admissao...
               </div>
             ) : selectedTemplate ? (
               <div className="space-y-2">
@@ -507,7 +507,7 @@ export function HrAdmissionCreateClient() {
                         <p className="font-medium">{step.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}
-                          {step.default_sla_minutes ? ` · SLA ${step.default_sla_minutes} min` : ""}
+                          {step.default_sla_minutes ? ` · prazo previsto ${step.default_sla_minutes} min` : ""}
                         </p>
                       </div>
                     ))}
@@ -515,7 +515,7 @@ export function HrAdmissionCreateClient() {
               </div>
             ) : (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Template admission ativo com etapas nao encontrado. A abertura fica bloqueada para nao inventar checklist.
+                Roteiro de admissao ativo com etapas nao encontrado. A abertura fica bloqueada para preservar o processo correto.
               </div>
             )}
           </Card>
@@ -528,7 +528,7 @@ export function HrAdmissionCreateClient() {
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>Nao informe documentos, salario, dados bancarios, endereco completo, dados medicos, foto ou assinatura.</p>
               <p>O colaborador nao sera criado automaticamente nesta etapa.</p>
-              <p>Campos extras como ID do cargo, ID do departamento e gestor ficam fora da metadata ate o backend aceitar esses campos.</p>
+              <p>Dados complementares de cargo, departamento e gestor permanecem limitados ao escopo administrativo desta etapa.</p>
             </div>
           </Card>
 
@@ -544,7 +544,7 @@ export function HrAdmissionCreateClient() {
 
           <div className="flex items-start gap-2 rounded-md border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <p>A criacao usa o endpoint existente de workflows com chave de idempotencia e bloqueio visual contra duplo submit.</p>
+            <p>A criacao usa protecao contra envio duplicado e mantem o cadastro de colaborador fora desta etapa.</p>
           </div>
         </div>
       </form>

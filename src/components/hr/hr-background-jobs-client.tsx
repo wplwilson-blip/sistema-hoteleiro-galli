@@ -73,9 +73,44 @@ function statusTone(status: string) {
 function safePayloadLabel(payload: Record<string, unknown>) {
   const workflowId = payload.workflow_id;
   const summary = payload.summary;
-  if (typeof workflowId === "string") return `Workflow: ${workflowId}`;
+  if (typeof workflowId === "string") return "Processo relacionado";
   if (typeof summary === "string") return summary;
   return "-";
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: "Pendente",
+    scheduled: "Agendado",
+    running: "Em execucao",
+    completed: "Concluido",
+    failed: "Falhou",
+    cancelled: "Cancelado",
+    retrying: "Tentando novamente"
+  };
+  return labels[status] ?? status;
+}
+
+function priorityLabel(priority: string) {
+  const labels: Record<string, string> = {
+    low: "Baixa",
+    normal: "Normal",
+    high: "Alta",
+    critical: "Critica"
+  };
+  return labels[priority] ?? priority;
+}
+
+function jobTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    sla_scan: "Verificacao de prazos",
+    escalation_scan: "Alertas de prazo",
+    notification_dispatch: "Envio de notificacoes",
+    audit_cleanup: "Organizacao de auditoria",
+    analytics_refresh: "Atualizacao de indicadores",
+    dashboard_refresh: "Atualizacao do painel"
+  };
+  return labels[type] ?? type;
 }
 
 export function HrBackgroundJobsClient() {
@@ -116,26 +151,26 @@ export function HrBackgroundJobsClient() {
           <div className="flex flex-wrap gap-2"><Button asChild variant="outline" size="sm"><Link href="/rh/gestao">Gestao</Link></Button>{hasFilters ? <Button type="button" variant="outline" size="sm" onClick={clearFilters}><X className="h-4 w-4" />Limpar</Button> : null}</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <Field label="Buscar" className="xl:col-span-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Processamento, status, erro ou workflow" /></div></Field>
-          <Field label="Status"><SelectField value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option>{statuses.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
-          <Field label="Tipo"><SelectField value={type} onChange={(event) => setType(event.target.value)}><option value="">Todos</option>{jobTypes.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
-          <Field label="Prioridade"><SelectField value={priority} onChange={(event) => setPriority(event.target.value)}><option value="">Todas</option>{priorities.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field>
+          <Field label="Buscar" className="xl:col-span-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rotina, status, erro ou processo" /></div></Field>
+          <Field label="Status"><SelectField value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option>{statuses.map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}</SelectField></Field>
+          <Field label="Tipo"><SelectField value={type} onChange={(event) => setType(event.target.value)}><option value="">Todos</option>{jobTypes.map((item) => <option key={item} value={item}>{jobTypeLabel(item)}</option>)}</SelectField></Field>
+          <Field label="Prioridade"><SelectField value={priority} onChange={(event) => setPriority(event.target.value)}><option value="">Todas</option>{priorities.map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}</SelectField></Field>
           <Field label="De"><Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></Field>
           <Field label="Ate"><Input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></Field>
         </div>
       </Card>
 
-      {jobsQuery.isLoading ? <LoadingTable label="Carregando processamentos de RH..." /> : null}
-      {jobsQuery.error ? <ErrorMessage message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "Erro ao carregar processamentos."} /> : null}
-      {!jobsQuery.isLoading && !jobsQuery.error && !filteredJobs.length ? <EmptyState title="Nenhum processamento encontrado" description="Ajuste os filtros ou confirme se existem processamentos de RH registrados." /> : null}
+      {jobsQuery.isLoading ? <LoadingTable label="Carregando rotinas do RH..." /> : null}
+      {jobsQuery.error ? <ErrorMessage message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "Erro ao carregar rotinas do RH."} /> : null}
+      {!jobsQuery.isLoading && !jobsQuery.error && !filteredJobs.length ? <EmptyState title="Nenhuma rotina encontrada" description="Ajuste os filtros ou confirme se existem rotinas de RH registradas." /> : null}
 
       {filteredJobs.length ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-          <div className="border-b p-4"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Processamentos internos</h2></div><p className="text-xs text-muted-foreground">Somente leitura. Reprocessamento manual nao faz parte desta sprint.</p></div>
+          <div className="border-b p-4"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Rotinas internas</h2></div><p className="text-xs text-muted-foreground">Somente leitura. Reprocessamento manual nao esta disponivel nesta tela.</p></div>
           <div className="max-w-full overflow-x-auto">
             <table className="w-full min-w-[1320px] text-left text-sm">
-              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Processamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prioridade</th><th className="px-4 py-3">Tentativas</th><th className="px-4 py-3">Proximo processamento</th><th className="px-4 py-3">Inicio/Fim</th><th className="px-4 py-3">Erro</th><th className="px-4 py-3">Workflow</th><th className="px-4 py-3">Atualizacao</th></tr></thead>
-              <tbody className="divide-y">{filteredJobs.map((job) => <tr key={job.id} className="align-top hover:bg-muted/30"><td className="px-4 py-3"><p className="font-medium">{job.job_type}</p><p className="text-xs text-muted-foreground">{job.id}</p></td><td className="px-4 py-3"><StatusBadge status={statusTone(job.status)} label={job.status} /></td><td className="px-4 py-3"><StatusBadge status={job.priority === "critical" || job.priority === "high" ? "warning" : "visual"} label={job.priority} /></td><td className="px-4 py-3">{job.attempts}/{job.max_attempts}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(job.scheduled_at)}</td><td className="px-4 py-3 text-muted-foreground"><p>Inicio: {formatDateTime(job.started_at)}</p><p>Fim: {formatDateTime(job.finished_at ?? job.failed_at)}</p></td><td className="px-4 py-3"><p className="max-w-56 break-words text-muted-foreground">{job.failure_reason ?? "-"}</p></td><td className="px-4 py-3 text-muted-foreground">{safePayloadLabel(job.payload)}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(job.updated_at)}</td></tr>)}</tbody>
+              <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Rotina</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prioridade</th><th className="px-4 py-3">Tentativas</th><th className="px-4 py-3">Proxima execucao</th><th className="px-4 py-3">Inicio/Fim</th><th className="px-4 py-3">Erro</th><th className="px-4 py-3">Contexto</th><th className="px-4 py-3">Atualizacao</th></tr></thead>
+              <tbody className="divide-y">{filteredJobs.map((job) => <tr key={job.id} className="align-top hover:bg-muted/30"><td className="px-4 py-3"><p className="font-medium">{jobTypeLabel(job.job_type)}</p><details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">Rastreio tecnico</summary><p>{job.id}</p>{job.correlation_id ? <p>{job.correlation_id}</p> : null}</details></td><td className="px-4 py-3"><StatusBadge status={statusTone(job.status)} label={statusLabel(job.status)} /></td><td className="px-4 py-3"><StatusBadge status={job.priority === "critical" || job.priority === "high" ? "warning" : "visual"} label={priorityLabel(job.priority)} /></td><td className="px-4 py-3">{job.attempts}/{job.max_attempts}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(job.scheduled_at)}</td><td className="px-4 py-3 text-muted-foreground"><p>Inicio: {formatDateTime(job.started_at)}</p><p>Fim: {formatDateTime(job.finished_at ?? job.failed_at)}</p></td><td className="px-4 py-3"><p className="max-w-56 break-words text-muted-foreground">{job.failure_reason ?? "-"}</p></td><td className="px-4 py-3 text-muted-foreground">{safePayloadLabel(job.payload)}</td><td className="px-4 py-3 text-muted-foreground">{formatDateTime(job.updated_at)}</td></tr>)}</tbody>
             </table>
           </div>
         </Card>

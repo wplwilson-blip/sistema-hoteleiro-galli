@@ -106,7 +106,7 @@ export function HrCandidateAdmissionConversionCard({
 
       <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        A conversao nao copia telefone, curriculo, scorecard ou pareceres completos para a admissao.
+        A conversao nao copia telefone, curriculo, roteiro de avaliacao ou pareceres completos para a admissao.
       </div>
 
       {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel gerar a admissao."} /> : null}

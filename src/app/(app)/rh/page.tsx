@@ -5,8 +5,8 @@ export default function RhPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        title="RH Operacional"
-        description="Visao de pendencias, workflows e SLAs para acompanhamento diario do RH administrativo."
+        title="Painel do RH"
+        description="Visao das pendencias, prazos e decisoes do RH administrativo para a rotina diaria."
       />
       <HrOperationalDashboardClient />
     </div>

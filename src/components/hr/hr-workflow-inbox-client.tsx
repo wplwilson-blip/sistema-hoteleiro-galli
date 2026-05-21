@@ -261,7 +261,7 @@ function slaTone(status: string | null | undefined): StatusTone {
 
 function slaLabel(sla: WorkflowSla | null | undefined) {
   const status = sla?.status ?? "";
-  return slaStatusLabels[status] ?? sla?.label ?? "SLA nao informado";
+  return slaStatusLabels[status] ?? sla?.label ?? "Prazo nao informado";
 }
 
 function unitDisplayName(workflow: WorkflowListItem) {
@@ -447,7 +447,7 @@ export function HrWorkflowInboxClient() {
               <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
               {dashboard?.generated_at ? <StatusBadge status="visual" label={`Metricas atualizadas em ${formatDateTime(dashboard.generated_at)}`} /> : null}
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">Fila de processos de RH para acompanhamento operacional.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Fila de processos de RH para acompanhamento, decisao e ajustes da rotina.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status="visual" label={`Exibindo ${filteredWorkflows.length} de ${totalInbox}`} />
@@ -468,16 +468,16 @@ export function HrWorkflowInboxClient() {
       </Card>
 
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <StatCard title="Total na Inbox" value={String(totalInbox)} icon={ClipboardList} tone={totalInbox ? "info" : "neutral"} />
+        <StatCard title="Total na fila" value={String(totalInbox)} icon={ClipboardList} tone={totalInbox ? "info" : "neutral"} />
         <StatCard title="Minhas tarefas" value={String(myTasksTotal)} icon={UserRound} tone={myTasksTotal ? "warning" : "neutral"} />
-        <StatCard title="SLA vencido" value={String(overdueTotal)} icon={AlertTriangle} tone={overdueTotal ? "danger" : "neutral"} />
-        <StatCard title="SLA vencendo" value={String(warningTotal)} icon={CalendarClock} tone={warningTotal ? "warning" : "neutral"} />
-        <StatCard title="Escalados" value={String(escalatedTotal)} icon={ShieldAlert} tone={escalatedTotal ? "danger" : "neutral"} />
+        <StatCard title="Prazos vencidos" value={String(overdueTotal)} icon={AlertTriangle} tone={overdueTotal ? "danger" : "neutral"} />
+        <StatCard title="Prazos vencendo" value={String(warningTotal)} icon={CalendarClock} tone={warningTotal ? "warning" : "neutral"} />
+        <StatCard title="Atencao necessaria" value={String(escalatedTotal)} icon={ShieldAlert} tone={escalatedTotal ? "danger" : "neutral"} />
         <StatCard title="Em andamento" value={String(inProgressTotal)} icon={TimerReset} tone={inProgressTotal ? "info" : "neutral"} />
       </div>
 
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar resumo da inbox."} /> : null}
-      {!userId ? <ErrorMessage message="Filtro Minhas tarefas indisponivel: usuario da sessao sem identificador UUID valido para o endpoint." /> : null}
+      {!userId ? <ErrorMessage message="Filtro Minhas tarefas indisponivel com os dados da sessao atual." /> : null}
 
       <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur lg:sticky lg:top-0 lg:z-10">
         <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -528,7 +528,7 @@ export function HrWorkflowInboxClient() {
             </SelectField>
           </Field>
 
-          <Field label="SLA">
+          <Field label="Prazo">
             <SelectField value={slaFilter} onChange={(event) => setSlaFilter(event.target.value as SlaFilter)}>
               <option value="all">Todos</option>
               <option value="overdue">Vencido</option>
@@ -549,13 +549,13 @@ export function HrWorkflowInboxClient() {
           </Button>
           <Button type="button" variant={escalatedOnly ? "default" : "outline"} size="sm" onClick={() => setEscalatedOnly((current) => !current)}>
             <BellRing className="h-4 w-4" />
-            Escalados
+            Atenção necessária
           </Button>
         </div>
       </Card>
 
-      {workflowsQuery.isLoading ? <LoadingTable label="Carregando inbox operacional de RH..." /> : null}
-      {workflowsQuery.error ? <ErrorMessage message={workflowsQuery.error instanceof Error ? workflowsQuery.error.message : "Erro ao carregar inbox operacional."} /> : null}
+      {workflowsQuery.isLoading ? <LoadingTable label="Carregando fila de RH..." /> : null}
+      {workflowsQuery.error ? <ErrorMessage message={workflowsQuery.error instanceof Error ? workflowsQuery.error.message : "Erro ao carregar fila de RH."} /> : null}
 
       {!workflowsQuery.isLoading && !workflowsQuery.error && !filteredWorkflows.length ? (
         <EmptyState title="Nenhum processo encontrado" description="Ajuste os filtros ou confirme se existem processos de RH dentro das unidades permitidas para o seu perfil." />
@@ -570,7 +570,7 @@ export function HrWorkflowInboxClient() {
                   <ListChecks className="h-4 w-4 text-primary" />
                   <h2 className="text-sm font-semibold text-foreground">Fila operacional</h2>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Ordenacao: SLA vencido, SLA vencendo, escalados, criticos e atualizados recentemente.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Ordenacao: prazos vencidos, prazos vencendo, alertas de prazo e atualizacoes recentes.</p>
               </div>
               <p className="text-xs text-muted-foreground">Limite de leitura: ate 100 processos por consulta.</p>
             </div>
@@ -585,10 +585,10 @@ export function HrWorkflowInboxClient() {
                   <th className="px-4 py-3 font-semibold">Colaborador</th>
                   <th className="px-4 py-3 font-semibold">Etapa atual</th>
                   <th className="px-4 py-3 font-semibold">Responsavel</th>
-                  <th className="px-4 py-3 font-semibold">SLA</th>
+                  <th className="px-4 py-3 font-semibold">Prazo</th>
                   <th className="px-4 py-3 font-semibold">Vencimento</th>
                   <th className="px-4 py-3 font-semibold">Atraso</th>
-                  <th className="px-4 py-3 font-semibold">Escalonamento</th>
+                  <th className="px-4 py-3 font-semibold">Atenção</th>
                   <th className="px-4 py-3 font-semibold">Datas</th>
                   <th className="w-28 px-4 py-3 text-right font-semibold">Detalhe</th>
                 </tr>
@@ -634,7 +634,7 @@ export function HrWorkflowInboxClient() {
                       <td className="px-4 py-3 text-muted-foreground">{formatDelay(sla)}</td>
                       <td className="px-4 py-3">
                         {isEscalated(workflow) ? (
-                          <StatusBadge status={workflow.escalation?.overdue || workflow.current_step?.escalation?.overdue ? "danger" : "warning"} label={escalationLevel ? `Nivel ${escalationLevel}` : "Escalado"} />
+                          <StatusBadge status={workflow.escalation?.overdue || workflow.current_step?.escalation?.overdue ? "danger" : "warning"} label={escalationLevel ? `Atencao nivel ${escalationLevel}` : "Atencao necessaria"} />
                         ) : (
                           <StatusBadge status="visual" label="Nao" />
                         )}

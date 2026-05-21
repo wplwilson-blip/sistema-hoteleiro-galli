@@ -101,7 +101,7 @@ function RankingPanel({ title, description, entries, labelFn = (value: string) =
           ))}
         </div>
       ) : (
-        <EmptyState title="Sem dados no periodo" description="O endpoint nao retornou distribuicao suficiente para este bloco." />
+        <EmptyState title="Sem dados no periodo" description="Ainda nao ha dados suficientes para este indicador." />
       )}
     </Card>
   );
@@ -132,7 +132,7 @@ export function HrManagementDashboardClient() {
             {analytics?.generated_at ? <StatusBadge status="visual" label="Analytics atualizado" /> : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild size="sm"><Link href="/rh/inbox"><Inbox className="h-4 w-4" />Inbox</Link></Button>
+            <Button asChild size="sm"><Link href="/rh/inbox"><Inbox className="h-4 w-4" />Fila de RH</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/auditoria">Auditoria</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/jobs">Processamentos</Link></Button>
           </div>
@@ -140,32 +140,32 @@ export function HrManagementDashboardClient() {
       </Card>
 
       {(analyticsQuery.isLoading || dashboardQuery.isLoading) ? <LoadingTable label="Carregando gestao RH..." /> : null}
-      {analyticsQuery.error ? <ErrorMessage message={analyticsQuery.error instanceof Error ? analyticsQuery.error.message : "Erro ao carregar analytics."} /> : null}
-      {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar dashboard."} /> : null}
+      {analyticsQuery.error ? <ErrorMessage message={analyticsQuery.error instanceof Error ? analyticsQuery.error.message : "Erro ao carregar indicadores."} /> : null}
+      {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar painel."} /> : null}
 
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Total de workflows" value={String(analytics?.volume?.total_workflows ?? 0)} icon={ClipboardList} tone="info" />
+        <StatCard title="Processos de RH" value={String(analytics?.volume?.total_workflows ?? 0)} icon={ClipboardList} tone="info" />
         <StatCard title="Em andamento" value={String(analytics?.volume?.active_workflows ?? dashboard?.workflows?.active ?? 0)} icon={TimerReset} tone="info" />
-        <StatCard title="SLA vencido" value={String(dashboard?.sla?.overdue ?? analytics?.sla?.overdue_active ?? 0)} icon={AlertTriangle} tone={(dashboard?.sla?.overdue ?? 0) ? "danger" : "neutral"} />
-        <StatCard title="SLA vencendo" value={String(dashboard?.sla?.warning ?? 0)} icon={CalendarClock} tone={(dashboard?.sla?.warning ?? 0) ? "warning" : "neutral"} />
+        <StatCard title="Prazos vencidos" value={String(dashboard?.sla?.overdue ?? analytics?.sla?.overdue_active ?? 0)} icon={AlertTriangle} tone={(dashboard?.sla?.overdue ?? 0) ? "danger" : "neutral"} />
+        <StatCard title="Prazos vencendo" value={String(dashboard?.sla?.warning ?? 0)} icon={CalendarClock} tone={(dashboard?.sla?.warning ?? 0) ? "warning" : "neutral"} />
         <StatCard title="Tempo medio" value={formatMinutes(analytics?.time?.average_completion_minutes)} icon={BriefcaseBusiness} />
-        <StatCard title="Escalations" value={String((dashboard?.escalation?.eligible ?? 0) + (dashboard?.escalation?.overdue ?? 0))} icon={ShieldAlert} tone={(dashboard?.escalation?.overdue ?? 0) ? "danger" : "warning"} />
+        <StatCard title="Alertas de prazo" value={String((dashboard?.escalation?.eligible ?? 0) + (dashboard?.escalation?.overdue ?? 0))} icon={ShieldAlert} tone={(dashboard?.escalation?.overdue ?? 0) ? "danger" : "warning"} />
         <StatCard title="Processamentos pendentes" value={String(pendingJobs)} icon={CalendarClock} tone={pendingJobs ? "warning" : "neutral"} />
         <StatCard title="Processamentos falhos" value={String(failedJobs + (dashboard?.notifications?.failed ?? 0))} icon={AlertTriangle} tone={failedJobs ? "danger" : "neutral"} />
       </div>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-3">
-        <RankingPanel title="Gargalos por status" description="Status mais recorrentes nos workflows." entries={statusEntries} />
-        <RankingPanel title="Volume por tipo" description="Tipos de workflow com maior volume." entries={typeEntries} labelFn={workflowTypeLabel} />
+        <RankingPanel title="Gargalos por situacao" description="Situacoes mais recorrentes nos processos." entries={statusEntries} />
+        <RankingPanel title="Volume por tipo" description="Tipos de processo com maior volume." entries={typeEntries} labelFn={workflowTypeLabel} />
         <RankingPanel title="Tempo medio por etapa" description="Tempo medio por status de etapa." entries={stepDelayEntries} />
       </div>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <h2 className="text-sm font-semibold">SLA</h2>
+          <h2 className="text-sm font-semibold">Prazos</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {topEntries(analytics?.status?.count_by_sla_status).map(([status, value]) => <StatusBadge key={status} status={status === "overdue" ? "danger" : status === "warning" ? "warning" : "visual"} label={`${status}: ${value}`} />)}
-            {!topEntries(analytics?.status?.count_by_sla_status).length ? <StatusBadge status="visual" label="Sem distribuicao de SLA" /> : null}
+            {!topEntries(analytics?.status?.count_by_sla_status).length ? <StatusBadge status="visual" label="Sem distribuicao de prazos" /> : null}
           </div>
         </Card>
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">

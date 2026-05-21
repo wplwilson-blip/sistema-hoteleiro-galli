@@ -299,7 +299,7 @@ function slaTone(status: string | null | undefined): StatusTone {
 
 function slaLabel(sla: WorkflowSla | null | undefined) {
   const status = sla?.status ?? "";
-  return slaStatusLabels[status] ?? sla?.label ?? "SLA nao informado";
+  return slaStatusLabels[status] ?? sla?.label ?? "Prazo nao informado";
 }
 
 function getWorkflowPriorityScore(workflow: WorkflowListItem) {
@@ -383,14 +383,14 @@ function WorkflowList({
                     {workflow.is_sensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>Unidade: {workflow.unit_id}</span>
+                    <span>Unidade: cadastrada no processo</span>
                     <span>Colaborador: {workflow.employee?.name ?? "Nao vinculado"}</span>
                     {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>Etapa: {workflow.current_step?.name ?? "Sem etapa atual"}</span>
                     {workflow.current_step ? <span>Status da etapa: {stepStatusLabel(workflow.current_step.status)}</span> : null}
-                    {workflow.escalation?.level ? <span>Escalonamento nivel {workflow.escalation.level}</span> : null}
+                    {workflow.escalation?.level ? <span>Atencao de prazo nivel {workflow.escalation.level}</span> : null}
                   </div>
                 </div>
                 <div className="shrink-0 space-y-2 text-left text-xs text-muted-foreground lg:text-right">
@@ -426,14 +426,14 @@ function AnalyticsQuickPanel({ analytics }: { analytics: AnalyticsResponse["data
       <div className="mb-4 flex items-center gap-2">
         <BarChart3 className="h-4 w-4 text-primary" />
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Analytics rapidos</h2>
-          <p className="text-xs text-muted-foreground">Indicadores seguros para acompanhamento operacional.</p>
+          <h2 className="text-sm font-semibold text-foreground">Indicadores do RH</h2>
+          <p className="text-xs text-muted-foreground">Sinais seguros para acompanhamento da rotina.</p>
         </div>
       </div>
 
       <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Total de workflows</p>
+          <p className="text-xs text-muted-foreground">Processos de RH</p>
           <p className="mt-1 text-xl font-semibold">{analytics?.volume?.total_workflows ?? totalFromStatus}</p>
         </div>
         <div className="rounded-md border bg-background p-3">
@@ -569,7 +569,7 @@ export function HrOperationalDashboardClient() {
             <Button asChild size="sm">
               <Link href="/rh/inbox">
                 <Inbox className="h-4 w-4" />
-                Abrir Inbox
+                Abrir fila
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm">
@@ -589,25 +589,25 @@ export function HrOperationalDashboardClient() {
           <>
             <MetricFallback label="Minhas pendencias" />
             <MetricFallback label="Aprovacoes pendentes" />
-            <MetricFallback label="Workflows criticos" />
-            <MetricFallback label="SLA vencendo" />
-            <MetricFallback label="SLA vencido" />
+            <MetricFallback label="Processos em atencao" />
+            <MetricFallback label="Prazos vencendo" />
+            <MetricFallback label="Prazos vencidos" />
             <MetricFallback label="Notificacoes pendentes" />
           </>
         ) : (
           <>
             <StatCard title="Minhas pendencias" value={String(myTasksTotal)} icon={ClipboardList} tone={myTasksTotal ? "warning" : "neutral"} />
             <StatCard title="Aprovacoes pendentes" value={String(metrics?.steps.waiting_approval ?? 0)} icon={CheckCircle2} tone={(metrics?.steps.waiting_approval ?? 0) ? "warning" : "neutral"} />
-            <StatCard title="Workflows criticos" value={String(criticalCount)} icon={ShieldAlert} tone={criticalCount ? "danger" : "neutral"} />
-            <StatCard title="SLA vencendo" value={String(metrics?.sla.warning ?? 0)} icon={CalendarClock} tone={(metrics?.sla.warning ?? 0) ? "warning" : "neutral"} />
-            <StatCard title="SLA vencido" value={String(metrics?.sla.overdue ?? 0)} icon={AlertTriangle} tone={(metrics?.sla.overdue ?? 0) ? "danger" : "neutral"} />
+            <StatCard title="Processos em atencao" value={String(criticalCount)} icon={ShieldAlert} tone={criticalCount ? "danger" : "neutral"} />
+            <StatCard title="Prazos vencendo" value={String(metrics?.sla.warning ?? 0)} icon={CalendarClock} tone={(metrics?.sla.warning ?? 0) ? "warning" : "neutral"} />
+            <StatCard title="Prazos vencidos" value={String(metrics?.sla.overdue ?? 0)} icon={AlertTriangle} tone={(metrics?.sla.overdue ?? 0) ? "danger" : "neutral"} />
             <StatCard title="Notificacoes pendentes" value={String(metrics?.notifications.pending ?? 0)} icon={Bell} tone={(metrics?.notifications.pending ?? 0) ? "info" : "neutral"} />
           </>
         )}
       </div>
 
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar metricas do dashboard."} /> : null}
-      {!userId ? <ErrorMessage message="Nao foi possivel calcular minhas pendencias: usuario da sessao sem identificador UUID valido para o filtro do endpoint." /> : null}
+      {!userId ? <ErrorMessage message="Nao foi possivel calcular minhas pendencias com os dados da sessao atual." /> : null}
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-3">
@@ -616,7 +616,7 @@ export function HrOperationalDashboardClient() {
           {!myTasksQuery.isLoading && !myTasksQuery.error ? (
             <WorkflowList
               title="Minhas tarefas e pendencias"
-              description="Workflows com etapas atribuidas ao usuario atual, sem acoes mutativas nesta sprint."
+              description="Processos com etapas atribuidas ao usuario atual."
               workflows={myTasks}
               emptyTitle="Nenhuma pendencia atribuida"
               emptyDescription="Quando houver etapas atribuidas ao seu usuario, elas aparecerao aqui para acompanhamento."
@@ -625,15 +625,15 @@ export function HrOperationalDashboardClient() {
         </div>
 
         <div className="space-y-3">
-          {criticalQuery.isLoading ? <LoadingTable label="Carregando workflows criticos..." /> : null}
-          {criticalQuery.error ? <ErrorMessage message={criticalQuery.error instanceof Error ? criticalQuery.error.message : "Erro ao carregar workflows criticos."} /> : null}
+          {criticalQuery.isLoading ? <LoadingTable label="Carregando processos em atencao..." /> : null}
+          {criticalQuery.error ? <ErrorMessage message={criticalQuery.error instanceof Error ? criticalQuery.error.message : "Erro ao carregar processos em atencao."} /> : null}
           {!criticalQuery.isLoading && !criticalQuery.error ? (
             <WorkflowList
-              title="Workflows criticos"
-              description="Priorizacao por SLA vencido, SLA vencendo, escalonamento e status de atencao."
+              title="Processos em atencao"
+              description="Priorizacao por prazo vencido, prazo vencendo, alertas e situacoes que pedem decisao."
               workflows={criticalWorkflows}
-              emptyTitle="Nenhum workflow critico"
-              emptyDescription="Nao ha workflows recentes com sinais criticos nos filtros atuais."
+              emptyTitle="Nenhum processo em atencao"
+              emptyDescription="Nao ha processos recentes com sinais criticos nos filtros atuais."
             />
           ) : null}
         </div>
@@ -664,19 +664,19 @@ export function HrOperationalDashboardClient() {
         </div>
       </Card>
 
-      {analyticsQuery.isLoading ? <LoadingTable label="Carregando analytics de RH..." /> : null}
+      {analyticsQuery.isLoading ? <LoadingTable label="Carregando indicadores de RH..." /> : null}
       {analyticsQuery.error ? <ErrorMessage message={analyticsQuery.error instanceof Error ? analyticsQuery.error.message : "Erro ao carregar analytics de RH."} /> : null}
       {!analyticsQuery.isLoading && !analyticsQuery.error ? <AnalyticsQuickPanel analytics={analyticsQuery.data?.data} /> : null}
 
-      {recentQuery.isLoading ? <LoadingTable label="Carregando workflows recentes..." /> : null}
-      {recentQuery.error ? <ErrorMessage message={recentQuery.error instanceof Error ? recentQuery.error.message : "Erro ao carregar workflows recentes."} /> : null}
+      {recentQuery.isLoading ? <LoadingTable label="Carregando processos recentes..." /> : null}
+      {recentQuery.error ? <ErrorMessage message={recentQuery.error instanceof Error ? recentQuery.error.message : "Erro ao carregar processos recentes."} /> : null}
       {!recentQuery.isLoading && !recentQuery.error ? (
         <WorkflowList
-          title="Workflows recentes"
-          description="Ultimos workflows acessiveis no escopo de unidade atual."
+          title="Processos recentes"
+          description="Ultimos processos acessiveis na unidade atual."
           workflows={recentWorkflows}
-          emptyTitle="Nenhum workflow encontrado"
-          emptyDescription="Ainda nao ha workflows de RH nas unidades acessiveis para este usuario."
+          emptyTitle="Nenhum processo encontrado"
+          emptyDescription="Ainda nao ha processos de RH nas unidades acessiveis para este usuario."
         />
       ) : null}
     </div>

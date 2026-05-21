@@ -125,7 +125,7 @@ function slaTone(status: string | null | undefined): StatusTone {
 }
 
 function slaLabel(sla: WorkflowSla | null | undefined) {
-  if (!sla?.status) return "Sem SLA";
+  if (!sla?.status) return "Sem prazo";
   const labels: Record<string, string> = {
     on_time: "No prazo",
     warning: "Vencendo",
@@ -205,8 +205,8 @@ export function HrJobOpeningListClient() {
         <StatCard title="Em aprovacao" value={String(waitingApproval)} icon={CheckCircle2} tone={waitingApproval ? "warning" : "neutral"} />
         <StatCard title="Em recrutamento" value={String(inRecruitment)} icon={ArrowRight} tone={inRecruitment ? "info" : "neutral"} />
         <StatCard title="Encerradas" value={String(closedTotal)} icon={CheckCircle2} tone={closedTotal ? "info" : "neutral"} />
-        <StatCard title="SLA vencendo" value={String(warningTotal)} icon={CalendarClock} tone={warningTotal ? "warning" : "neutral"} />
-        <StatCard title="SLA vencido" value={String(overdueTotal)} icon={AlertTriangle} tone={overdueTotal ? "danger" : "neutral"} />
+        <StatCard title="Prazos vencendo" value={String(warningTotal)} icon={CalendarClock} tone={warningTotal ? "warning" : "neutral"} />
+        <StatCard title="Prazos vencidos" value={String(overdueTotal)} icon={AlertTriangle} tone={overdueTotal ? "danger" : "neutral"} />
       </div>
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -236,7 +236,7 @@ export function HrJobOpeningListClient() {
             </SelectField>
           </Field>
           <Field label="Unidade">
-            <Input value={unitId} onChange={(event) => setUnitId(event.target.value)} placeholder="UUID da unidade" />
+            <Input value={unitId} onChange={(event) => setUnitId(event.target.value)} placeholder="Unidade ativa ou codigo interno" />
           </Field>
         </div>
       </Card>
@@ -256,7 +256,7 @@ export function HrJobOpeningListClient() {
                   <th className="px-4 py-3">Vaga</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Urgencia</th>
-                  <th className="px-4 py-3">SLA</th>
+                  <th className="px-4 py-3">Prazo</th>
                   <th className="px-4 py-3">Etapa atual</th>
                   <th className="px-4 py-3">Unidade</th>
                   <th className="px-4 py-3">Atualizacao</th>
@@ -266,7 +266,7 @@ export function HrJobOpeningListClient() {
               <tbody className="divide-y">
                 {filteredWorkflows.map((workflow) => (
                   <tr key={workflow.id} className="align-top hover:bg-muted/30">
-                    <td className="px-4 py-3"><p className="font-medium">Solicitacao de vaga</p><p className="text-xs text-muted-foreground">{workflow.id}</p></td>
+                    <td className="px-4 py-3"><p className="font-medium">Solicitacao de vaga</p><p className="text-xs text-muted-foreground">Criada em {formatDateTime(workflow.created_at)}</p></td>
                     <td className="px-4 py-3"><StatusBadge status={statusTone(workflow.status)} label={statusLabels[workflow.status] ?? workflow.status} /></td>
                     <td className="px-4 py-3"><StatusBadge status={priorityTone(workflow.priority)} label={priorityLabels[workflow.priority] ?? workflow.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} /></td>

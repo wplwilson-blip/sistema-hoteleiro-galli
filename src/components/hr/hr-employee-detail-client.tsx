@@ -465,7 +465,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
                   <History className="h-4 w-4 text-primary" />
                   <h3 className="text-base font-semibold">Historico funcional</h3>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Timeline sem payload sensivel por padrao.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Historico funcional sem dados sensiveis por padrao.</p>
               </div>
               <StatusBadge
                 status={canViewSensitiveHistory ? "info" : "visual"}

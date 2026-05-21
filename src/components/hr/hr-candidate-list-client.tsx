@@ -152,7 +152,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
                   <th className="px-4 py-3">Candidato</th>
                   <th className="px-4 py-3">Origem</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Score manual</th>
+                  <th className="px-4 py-3">Nota manual</th>
                   <th className="px-4 py-3">Atualizacao</th>
                   <th className="w-48 px-4 py-3 text-right">Acoes</th>
                 </tr>
