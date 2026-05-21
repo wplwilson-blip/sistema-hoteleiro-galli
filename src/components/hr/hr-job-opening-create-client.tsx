@@ -100,6 +100,21 @@ function managerLabel(user: UserOption | undefined) {
   return user.displayName || user.username;
 }
 
+function formatOperationalDeadline(minutes: number | null) {
+  if (!minutes) return null;
+
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return `${days} ${days === 1 ? "dia" : "dias"}`;
+  }
+
+  if (minutes % 60 === 0) {
+    return `${minutes / 60}h`;
+  }
+
+  return `${minutes} min`;
+}
+
 function normalizeStepKey(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9_.-]/g, "_").slice(0, 80);
 }
@@ -199,7 +214,7 @@ export function HrJobOpeningCreateClient() {
     if (!form.managerUserId || !selectedManager) return "Informe o gestor solicitante.";
     if (!form.requestedStartDate) return "Informe a data desejada.";
     if (compactText(form.justification).length < 10) return "Informe uma justificativa operacional.";
-    if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Template job_opening ativo com etapas nao encontrado.";
+    if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Roteiro de vaga ativo com etapas nao encontrado.";
     if (forbiddenTextPattern.test(`${form.justification} ${form.notes}`)) {
       return "Nao informe salario, beneficios, documentos, dados bancarios ou dados medicos.";
     }
@@ -381,7 +396,7 @@ export function HrJobOpeningCreateClient() {
             {templatesQuery.isLoading ? (
               <div className="flex items-center rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
-                Carregando template job_opening...
+                Carregando etapas previstas...
               </div>
             ) : selectedTemplate ? (
               <div className="space-y-2">
@@ -389,13 +404,16 @@ export function HrJobOpeningCreateClient() {
                 {(selectedTemplate.steps ?? []).slice().sort((left, right) => left.order_index - right.order_index).map((step) => (
                   <div key={step.step_key} className="rounded-md border bg-background px-3 py-2 text-sm">
                     <p className="font-medium">{step.name}</p>
-                    <p className="text-xs text-muted-foreground">{step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}{step.default_sla_minutes ? ` · prazo previsto ${step.default_sla_minutes} min` : ""}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}
+                      {formatOperationalDeadline(step.default_sla_minutes) ? ` · prazo previsto ${formatOperationalDeadline(step.default_sla_minutes)}` : ""}
+                    </p>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Template job_opening ativo com etapas nao encontrado. A abertura fica bloqueada para nao inventar fluxo.
+                Roteiro de vaga ativo com etapas nao encontrado. A abertura fica bloqueada para preservar o processo correto.
               </div>
             )}
           </Card>

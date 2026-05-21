@@ -159,6 +159,21 @@ function managerLabel(user: UserOption | undefined) {
   return user.displayName || user.username;
 }
 
+function formatOperationalDeadline(minutes: number | null) {
+  if (!minutes) return null;
+
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return `${days} ${days === 1 ? "dia" : "dias"}`;
+  }
+
+  if (minutes % 60 === 0) {
+    return `${minutes / 60}h`;
+  }
+
+  return `${minutes} min`;
+}
+
 function compactText(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -507,7 +522,7 @@ export function HrAdmissionCreateClient() {
                         <p className="font-medium">{step.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}
-                          {step.default_sla_minutes ? ` · prazo previsto ${step.default_sla_minutes} min` : ""}
+                          {formatOperationalDeadline(step.default_sla_minutes) ? ` · prazo previsto ${formatOperationalDeadline(step.default_sla_minutes)}` : ""}
                         </p>
                       </div>
                     ))}

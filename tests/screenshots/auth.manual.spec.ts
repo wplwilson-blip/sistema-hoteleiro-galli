@@ -1,4 +1,23 @@
 import { expect, test } from "@playwright/test";
+import fs from "node:fs";
+
+test.setTimeout(180_000);
+
+const authStatePath = "playwright/.auth/user.json";
+
+function normalizeStoredCookieValues(path: string) {
+  const state = JSON.parse(fs.readFileSync(path, "utf8")) as {
+    cookies?: Array<{ value?: string }>;
+  };
+
+  for (const cookie of state.cookies ?? []) {
+    if (typeof cookie.value === "string" && cookie.value.startsWith("%")) {
+      cookie.value = decodeURIComponent(cookie.value);
+    }
+  }
+
+  fs.writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
+}
 
 test("salvar sessao autenticada para screenshots", async ({ page, context }) => {
   console.log("");
@@ -21,8 +40,10 @@ test("salvar sessao autenticada para screenshots", async ({ page, context }) => 
   await expect(page.locator("body")).toBeVisible();
 
   await context.storageState({
-    path: "playwright/.auth/user.json"
+    path: authStatePath
   });
+
+  normalizeStoredCookieValues(authStatePath);
 
   console.log("");
   console.log("Sessao salva em playwright/.auth/user.json");
