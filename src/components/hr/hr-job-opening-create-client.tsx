@@ -294,7 +294,7 @@ export function HrJobOpeningCreateClient() {
               {selectedTemplate ? <StatusBadge status="success" label={`Roteiro: ${selectedTemplate.name}`} /> : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              A vaga sera aberta para aprovacao e acompanhamento operacional. Candidatos, entrevistas e scorecards entram em etapas futuras.
+              A vaga sera aberta para aprovacao e acompanhamento operacional. Candidatos e entrevistas podem ser vinculados depois da abertura.
             </p>
           </div>
           <Button asChild variant="outline" size="sm">

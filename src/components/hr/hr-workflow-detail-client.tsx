@@ -434,6 +434,26 @@ function riskTone(risk: string): StatusTone {
   return "visual";
 }
 
+function riskLabel(risk: string) {
+  const labels: Record<string, string> = {
+    low: "Baixo",
+    medium: "Medio",
+    high: "Alto",
+    critical: "Critico"
+  };
+  return labels[risk] ?? risk;
+}
+
+function entityLabel(entity: string) {
+  const labels: Record<string, string> = {
+    workflow: "Processo",
+    step: "Etapa",
+    event: "Historico",
+    notification: "Notificacao"
+  };
+  return labels[entity] ?? entity;
+}
+
 function slaLabel(sla: WorkflowSla | null | undefined) {
   const status = sla?.status ?? "";
   return slaStatusLabels[status] ?? sla?.label ?? "Prazo nao informado";
@@ -443,6 +463,22 @@ function stringifySafeValue(value: unknown) {
   if (value === null || value === undefined) return "-";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
   return "Valor estruturado";
+}
+
+function technicalLabel(key: string) {
+  const labels: Record<string, string> = {
+    actor_user_id: "usuario responsavel",
+    workflow_id: "processo",
+    step_id: "etapa",
+    event_id: "historico",
+    request_id: "rastreio",
+    correlation_id: "correlacao",
+    workflow_type: "tipo de processo",
+    workflow_status: "situacao do processo",
+    from_status: "situacao anterior",
+    to_status: "nova situacao"
+  };
+  return labels[key] ?? key.replace(/_/g, " ");
 }
 
 function metadataText(record: Record<string, unknown> | null | undefined, key: string) {
@@ -578,7 +614,7 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
         </summary>
         <div className="mt-4 flex flex-wrap gap-1.5">
           {entries.map(([key, value]) => (
-            <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${key}: ${stringifySafeValue(value)}`} />
+            <StatusBadge key={key} status={String(value) === "redacted" ? "visual" : "info"} label={`${technicalLabel(key)}: ${stringifySafeValue(value)}`} />
           ))}
         </div>
       </details>
@@ -907,11 +943,11 @@ function TimelinePanel({
                       <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio tecnico do evento</summary>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {technicalEntries(event.payload).map(([key, value]) => (
-                          <StatusBadge key={key} status="visual" label={`${key}: ${stringifySafeValue(value)}`} />
+                          <StatusBadge key={key} status="visual" label={`${technicalLabel(key)}: ${stringifySafeValue(value)}`} />
                         ))}
-                        {event.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${event.actor_user_id}`} /> : null}
-                        {event.step_id ? <StatusBadge status="visual" label={`step_id: ${event.step_id}`} /> : null}
-                        <StatusBadge status="visual" label={`workflow_id: ${event.workflow_id}`} />
+                        {event.actor_user_id ? <StatusBadge status="visual" label={`usuario responsavel: ${event.actor_user_id}`} /> : null}
+                        {event.step_id ? <StatusBadge status="visual" label={`etapa: ${event.step_id}`} /> : null}
+                        <StatusBadge status="visual" label={`processo: ${event.workflow_id}`} />
                       </div>
                     </details>
                   ) : null}
@@ -945,8 +981,8 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-foreground">{actionLabel(log.action)}</p>
-                        <StatusBadge status={riskTone(log.risk_level)} label={log.risk_level} />
-                        <StatusBadge status="visual" label={log.entity_type} />
+                        <StatusBadge status={riskTone(log.risk_level)} label={riskLabel(log.risk_level)} />
+                        <StatusBadge status="visual" label={entityLabel(log.entity_type)} />
                       </div>
                       <p className="break-words text-xs text-muted-foreground">Usuario: {log.actor_user_id ? "Usuario registrado" : "Nao informado"}</p>
                     </div>
@@ -955,12 +991,12 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
                   <details className="mt-3 rounded-md border bg-muted/20 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio tecnico da auditoria</summary>
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {log.actor_user_id ? <StatusBadge status="visual" label={`actor_user_id: ${log.actor_user_id}`} /> : null}
-                      {log.workflow_id ? <StatusBadge status="visual" label={`workflow_id: ${log.workflow_id}`} /> : null}
-                      {log.step_id ? <StatusBadge status="visual" label={`step_id: ${log.step_id}`} /> : null}
-                      {log.event_id ? <StatusBadge status="visual" label={`event_id: ${log.event_id}`} /> : null}
-                      {log.request_id ? <StatusBadge status="visual" label={`request_id: ${log.request_id}`} /> : null}
-                      {log.correlation_id ? <StatusBadge status="visual" label={`correlation_id: ${log.correlation_id}`} /> : null}
+                      {log.actor_user_id ? <StatusBadge status="visual" label={`usuario responsavel: ${log.actor_user_id}`} /> : null}
+                      {log.workflow_id ? <StatusBadge status="visual" label={`processo: ${log.workflow_id}`} /> : null}
+                      {log.step_id ? <StatusBadge status="visual" label={`etapa: ${log.step_id}`} /> : null}
+                      {log.event_id ? <StatusBadge status="visual" label={`historico: ${log.event_id}`} /> : null}
+                      {log.request_id ? <StatusBadge status="visual" label={`rastreio: ${log.request_id}`} /> : null}
+                      {log.correlation_id ? <StatusBadge status="visual" label={`correlacao: ${log.correlation_id}`} /> : null}
                     </div>
                   </details>
                 </article>

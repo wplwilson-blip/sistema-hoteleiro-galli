@@ -178,7 +178,7 @@ export function HrCandidateScorecardClient({
   const mutation = useMutation({
     mutationFn: async () => {
       if (!selectedInterview || !selectedTemplate) {
-        throw new Error("Selecione uma entrevista e um modelo de scorecard.");
+        throw new Error("Selecione uma entrevista e um roteiro de avaliacao.");
       }
 
       return requestJson(`/api/hr/workflows/${workflowId}/candidates/${candidateId}/scorecards`, {
@@ -199,7 +199,7 @@ export function HrCandidateScorecardClient({
       });
     },
     onSuccess: async () => {
-      setSavedMessage("Scorecard salvo. A decisao permanece humana.");
+      setSavedMessage("Roteiro de avaliacao salvo. A decisao permanece humana.");
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-scorecards", workflowId, candidateId] });
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-detail", workflowId, candidateId] });
     }
@@ -252,7 +252,7 @@ export function HrCandidateScorecardClient({
   }
 
   if (query.error) {
-    return <ErrorMessage message={query.error instanceof Error ? query.error.message : "Erro ao carregar scorecards."} />;
+    return <ErrorMessage message={query.error instanceof Error ? query.error.message : "Erro ao carregar roteiros de avaliacao."} />;
   }
 
   if (!templates.length) {
@@ -377,17 +377,17 @@ export function HrCandidateScorecardClient({
             </Field>
             <div className="flex items-start gap-2 rounded-md border bg-background p-3 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              O score nao aprova, reprova, ranqueia ou substitui avaliacao humana.
+              A nota nao aprova, reprova, ranqueia ou substitui avaliacao humana.
             </div>
           </aside>
         </div>
 
-        {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar o scorecard."} /> : null}
+        {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar o roteiro de avaliacao."} /> : null}
         {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
         <div className="flex justify-end">
           <Button type="submit" disabled={mutation.isPending}>
             <Save className="h-4 w-4" />
-            Salvar scorecard
+            Salvar avaliacao
           </Button>
         </div>
       </form>
