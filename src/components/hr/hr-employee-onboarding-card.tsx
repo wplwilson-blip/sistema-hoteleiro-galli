@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ClipboardCheck, FileText, LockKeyhole, PlayCircle, ShieldAlert, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
-import { ErrorMessage, Field, LoadingTable, TextArea } from "@/components/base-cadastros/crud-components";
+import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,18 @@ type HrEmployeeOnboarding = {
 type HrOnboardingResponse = {
   ok: true;
   data: HrEmployeeOnboarding | null;
+  applicablePlans?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    priority: number;
+    specificity: number;
+    scopeLabel: string;
+  }>;
+  emptyState?: {
+    title: string;
+    description: string;
+  };
   permissions: {
     canManageOnboarding?: boolean;
   };
@@ -206,6 +218,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
   const queryClient = useQueryClient();
   const [activeAction, setActiveAction] = useState<ActiveItemAction>(null);
   const [actionNotes, setActionNotes] = useState("");
+  const [selectedPlanId, setSelectedPlanId] = useState("");
 
   const onboardingQuery = useQuery({
     queryKey: ["hr", "employees", employeeId, "onboarding"],
@@ -213,6 +226,8 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
   });
 
   const onboarding = onboardingQuery.data?.data ?? null;
+  const applicablePlans = onboardingQuery.data?.applicablePlans ?? [];
+  const emptyState = onboardingQuery.data?.emptyState;
   const canManageOnboarding = Boolean(onboardingQuery.data?.permissions.canManageOnboarding);
 
   const groupedItems = useMemo(() => {
@@ -236,6 +251,18 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
         queryClient.invalidateQueries({ queryKey: ["hr", "employees", employeeId, "onboarding"] }),
         queryClient.invalidateQueries({ queryKey: ["hr", "employees", employeeId, "history"] })
       ]);
+    }
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async (planId: string) =>
+      requestJson(`/api/hr/employees/${employeeId}/onboarding`, {
+        method: "POST",
+        body: JSON.stringify(planId ? { planId } : {})
+      }),
+    onSuccess: async () => {
+      setSelectedPlanId("");
+      await queryClient.invalidateQueries({ queryKey: ["hr", "employees", employeeId, "onboarding"] });
     }
   });
 
@@ -282,12 +309,74 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
         {actionMutation.error ? (
           <ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel atualizar o item do onboarding."} />
         ) : null}
+        {startMutation.error ? (
+          <ErrorMessage message={startMutation.error instanceof Error ? startMutation.error.message : "Nao foi possivel iniciar o onboarding."} />
+        ) : null}
 
         {!onboardingQuery.isLoading && !onboardingQuery.error && !onboarding ? (
-          <EmptyState
-            title="Onboarding ainda nao iniciado"
-            description="Quando houver um checklist operacional criado para este colaborador, o RH podera acompanhar prazos, responsaveis, itens criticos e liberacao operacional por aqui."
-          />
+          <div className="space-y-4 rounded-md border bg-muted/20 p-4">
+            <EmptyState
+              title={emptyState?.title ?? "Onboarding ainda nao iniciado"}
+              description={
+                emptyState?.description ??
+                "Quando houver um checklist operacional criado para este colaborador, o RH podera acompanhar prazos, responsaveis, itens criticos e liberacao operacional por aqui."
+              }
+            />
+
+            {applicablePlans.length ? (
+              <div className="mx-auto w-full max-w-2xl rounded-md border bg-background p-4">
+                <div className="mb-3">
+                  <h4 className="text-sm font-semibold text-foreground">Plano de onboarding</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Escolha o roteiro operacional que sera copiado para o checklist real deste colaborador.
+                  </p>
+                </div>
+                <Field label="Plano aplicavel">
+                  <SelectField
+                    value={selectedPlanId || (applicablePlans.length === 1 ? applicablePlans[0].id : "")}
+                    onChange={(event) => setSelectedPlanId(event.target.value)}
+                    disabled={!canManageOnboarding || startMutation.isPending}
+                  >
+                    {applicablePlans.length > 1 ? <option value="">Selecione um plano</option> : null}
+                    {applicablePlans.map((plan) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name} - {plan.scopeLabel}
+                      </option>
+                    ))}
+                  </SelectField>
+                </Field>
+                <div className="mt-3 space-y-2">
+                  {applicablePlans.slice(0, 3).map((plan) => (
+                    <div key={plan.id} className="rounded-md border bg-muted/20 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{plan.name}</p>
+                        <StatusBadge status="info" label={plan.scopeLabel} />
+                        <StatusBadge status="visual" label={`Prioridade ${plan.priority}`} />
+                      </div>
+                      {plan.description ? <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{plan.description}</p> : null}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {canManageOnboarding ? (
+                    <Button
+                      type="button"
+                      onClick={() => startMutation.mutate(selectedPlanId || (applicablePlans.length === 1 ? applicablePlans[0].id : ""))}
+                      disabled={startMutation.isPending || (!selectedPlanId && applicablePlans.length !== 1)}
+                    >
+                      <PlayCircle className="h-4 w-4" />
+                      Iniciar onboarding
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-md border bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
+                      <LockKeyhole className="h-4 w-4" />
+                      Inicio restrito ao RH autorizado
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {onboarding ? (
