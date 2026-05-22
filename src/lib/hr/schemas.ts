@@ -202,6 +202,57 @@ export const hrDocumentPendenciesSummaryQuerySchema = z.object({
   departmentId: optionalUuidSchema
 });
 
+const optionalIntegerSchema = (min: number, max: number) =>
+  z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().min(min).max(max).optional()
+  );
+
+const optionalRuleTextSchema = z
+  .string()
+  .trim()
+  .max(1000, "Texto muito longo.")
+  .refine(
+    (value) => !/(cpf|rg|ctps|pis|salary|salario|medical|cid|file_path|storage_path|signed_url|document_number)/i.test(value),
+    "Texto contem dado sensivel nao permitido."
+  )
+  .optional()
+  .or(emptyToUndefined);
+
+export const hrDocumentRulesQuerySchema = z.object({
+  status: hrRecordStatusSchema.optional().or(emptyToUndefined),
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema,
+  jobPositionId: optionalUuidSchema,
+  documentTypeId: optionalUuidSchema,
+  admissionType: z.string().trim().max(60, "Tipo de admissao muito longo.").optional().or(emptyToUndefined)
+});
+
+export const hrDocumentRulePayloadSchema = z.object({
+  organizationId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema,
+  jobPositionId: optionalUuidSchema,
+  admissionType: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_-]{2,60}$/, "Use apenas letras, numeros, hifen ou sublinhado.")
+    .optional()
+    .or(emptyToUndefined),
+  documentTypeId: z.string().uuid("Tipo documental invalido."),
+  isRequired: z.boolean().optional().default(true),
+  dueDaysAfterAdmission: optionalIntegerSchema(0, 3650),
+  recurrenceMonths: optionalIntegerSchema(1, 600),
+  priority: optionalIntegerSchema(0, 10000).default(100),
+  notes: optionalRuleTextSchema,
+  status: hrRecordStatusSchema.optional().default("active")
+});
+
+export const hrDocumentRuleUpdateSchema = hrDocumentRulePayloadSchema.partial().extend({
+  status: hrRecordStatusSchema.optional()
+});
+
 export const hrEmployeeHistoryQuerySchema = z.object({
   page: paginatedNumber(1, 100000),
   pageSize: paginatedNumber(20, 100),

@@ -1,5 +1,6 @@
 import { logHrApiError, type HrEmployeeRow, type HrRequestContext } from "@/lib/hr/api-auth";
 import { getEmployeeRelations, loadEmployeeRelations } from "@/lib/hr/data";
+import { loadActiveHrDocumentRules, resolveRequiredDocumentExpectations } from "@/lib/hr/document-rules";
 import type { EmployeeDocumentRow, HrDocumentTypeRow } from "@/lib/hr/redaction";
 
 export const DOCUMENT_PENDING_TYPES = [
@@ -104,14 +105,6 @@ function diffDays(dateValue: string, today: string) {
 function metaLabel(meta: UnitMeta | DepartmentMeta, fallback: string) {
   if (!meta) return fallback;
   return [meta.code, meta.name].filter(Boolean).join(" - ") || fallback;
-}
-
-function canUseDocumentType(documentType: HrDocumentTypeRow, employee: HrEmployeeRow) {
-  if (documentType.status !== "active") return false;
-  if (documentType.is_system_default && !documentType.organization_id && !documentType.unit_id) return true;
-  if (documentType.unit_id) return documentType.unit_id === employee.unit_id;
-  if (documentType.organization_id) return documentType.organization_id === employee.organization_id;
-  return false;
 }
 
 function classifyDocument(document: EmployeeDocumentRow, today: string, soonLimit: string): HrDocumentPendingType | null {
@@ -224,13 +217,14 @@ function sortPendencies(left: HrDocumentPendingItem, right: HrDocumentPendingIte
 
 export async function loadHrDocumentPendencies(context: HrRequestContext, filters: HrDocumentPendenciesFilters = {}) {
   const employees = await loadEmployees(context, filters);
-  const [relations, documentTypes, documents] = await Promise.all([
+  const [relations, documentTypes, documents, documentRules] = await Promise.all([
     loadEmployeeRelations(context.supabase, employees),
     loadDocumentTypes(context),
     loadDocuments(
       context,
       employees.map((employee) => employee.id)
-    )
+    ),
+    loadActiveHrDocumentRules(context, employees)
   ]);
 
   const today = toDateOnly(new Date());
@@ -278,14 +272,19 @@ export async function loadHrDocumentPendencies(context: HrRequestContext, filter
       if (passesFilters(item, filters)) items.push(item);
     }
 
-    const requiredTypes = documentTypes.filter((type) => type.is_required && canUseDocumentType(type, employee));
+    const requiredExpectations = resolveRequiredDocumentExpectations({
+      employee,
+      documentTypes,
+      rules: documentRules
+    });
     const activeTypeIds = new Set(
       employeeDocuments
         .filter((document) => !["replaced", "waived"].includes(document.status))
         .map((document) => document.document_type_id)
     );
 
-    for (const documentType of requiredTypes) {
+    for (const expectation of requiredExpectations) {
+      const documentType = expectation.documentType;
       if (activeTypeIds.has(documentType.id)) continue;
 
       const pendingType: HrDocumentPendingType = "missing_required";
@@ -303,8 +302,8 @@ export async function loadHrDocumentPendencies(context: HrRequestContext, filter
         pendingLabel: pendingTypeLabels[pendingType],
         status: "missing",
         statusLabel: statusLabels.missing,
-        validUntil: "",
-        daysUntilDue: null,
+        validUntil: expectation.validUntil,
+        daysUntilDue: expectation.validUntil ? diffDays(expectation.validUntil, today) : null,
         isRequired: true,
         isSensitiveRedacted: documentType.is_sensitive_default,
         actionHref: `/rh/employees/${employee.id}`

@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
+  FileCog,
   FileText,
   FileWarning,
   IdCard,
@@ -82,6 +83,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Pendências documentais", href: "/rh/pendencias-documentais", icon: FileWarning },
       { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
       { label: "Gestão", href: "/rh/gestao", icon: BarChart3, match: "exact" },
+      { label: "Regras documentais", href: "/rh/gestao/documentos", icon: FileCog },
       { label: "Auditoria", href: "/rh/gestao/auditoria", icon: FileText },
       { label: "Processamentos", href: "/rh/gestao/jobs", icon: ClipboardList },
       { label: "Colaboradores", href: "/rh/employees", icon: UserRound }
