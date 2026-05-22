@@ -12,6 +12,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const HR_PERMISSIONS = {
   employeesView: "HR:employees.view",
+  employeesManage: "HR:employees.manage",
   employeesSensitiveView: "HR:employees.sensitive.view",
   documentsView: "HR:documents.view",
   documentsManage: "HR:documents.manage",

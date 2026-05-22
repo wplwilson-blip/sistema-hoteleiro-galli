@@ -10,6 +10,7 @@ import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-com
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { HrEmployeeDocumentsCard } from "@/components/hr/hr-employee-documents-card";
+import { HrEmployeeOnboardingCard } from "@/components/hr/hr-employee-onboarding-card";
 import { cn } from "@/lib/utils";
 
 type RelatedMeta = {
@@ -92,7 +93,7 @@ type HrHistoryResponse = {
   };
 };
 
-type DetailTab = "summary" | "sensitive" | "documents" | "history";
+type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "history";
 
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -211,6 +212,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "summary" as const, label: "Resumo", enabled: true },
         { value: "sensitive" as const, label: "Dados sensiveis", enabled: canViewSensitive },
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
+        { value: "onboarding" as const, label: "Onboarding", enabled: true },
         { value: "history" as const, label: "Histórico", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
     [canViewDocuments, canViewHistory, canViewSensitive]
@@ -343,6 +345,8 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <RestrictedState title="Documentos restritos" description="Seu perfil nao possui permissao para consultar documentos de RH deste colaborador." />
         )
       ) : null}
+
+      {activeTab === "onboarding" ? <HrEmployeeOnboardingCard employeeId={employeeId} /> : null}
 
       {activeTab === "history" ? (
         canViewHistory ? (
