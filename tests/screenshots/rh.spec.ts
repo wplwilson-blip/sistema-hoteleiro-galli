@@ -148,20 +148,46 @@ const captureTargets: CaptureTarget[] = [
     title: "Rotinas automaticas",
     fileSlug: "13-rotinas-rh",
     expectedText: /Rotinas|autom.ticas|RH/i
+  },
+  {
+    kind: "static",
+    route: "/rh/onboarding",
+    title: "Onboarding operacional",
+    fileSlug: "14-onboarding-operacional",
+    expectedText: /Onboarding operacional|Fila operacional/i
   }
 ];
+
+const requestedTargets = new Set(
+  (process.env.RH_SCREENSHOT_TARGETS ?? "")
+    .split(",")
+    .map((target) => target.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+const activeCaptureTargets = requestedTargets.size
+  ? captureTargets.filter((target) =>
+      [target.fileSlug, target.kind === "static" ? target.route : target.routeTemplate, target.title]
+        .map((value) => value.toLowerCase())
+        .some((value) => requestedTargets.has(value) || requestedTargets.has(value.replace(/^\d+-/, "")))
+    )
+  : captureTargets;
 
 test.use({
   storageState: fs.existsSync(authStatePath) ? authStatePath : undefined
 });
 
-test.setTimeout(300_000);
+test.setTimeout(900_000);
 
 test.beforeAll(() => {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 
   for (const file of fs.readdirSync(screenshotsDir)) {
-    if (file.endsWith(".png") || file === path.basename(reportPath)) {
+    const shouldDeletePng = requestedTargets.size
+      ? activeCaptureTargets.some((target) => file.endsWith(".png") && file.includes(target.fileSlug))
+      : file.endsWith(".png");
+
+    if (shouldDeletePng || file === path.basename(reportPath)) {
       fs.unlinkSync(path.join(screenshotsDir, file));
     }
   }
@@ -326,51 +352,61 @@ async function findDynamicRoute(page: Page, target: DynamicTarget) {
 }
 
 async function captureTarget(page: Page, target: CaptureTarget, viewportLabel: string, index: number): Promise<CaptureResult> {
-  const route =
-    target.kind === "dynamic"
-      ? await findDynamicRoute(page, target)
-      : { route: target.route, reason: undefined as string | undefined };
+  try {
+    const route =
+      target.kind === "dynamic"
+        ? await findDynamicRoute(page, target)
+        : { route: target.route, reason: undefined as string | undefined };
 
-  if (!route.route) {
+    if (!route.route) {
+      return {
+        title: target.title,
+        route: target.kind === "dynamic" ? target.routeTemplate : target.route,
+        viewport: viewportLabel,
+        captured: false,
+        reason: route.reason
+      };
+    }
+
+    await page.goto(route.route, { waitUntil: "domcontentloaded" });
+    const unavailableReason = await waitForStyledApp(page, target.expectedText);
+
+    if (unavailableReason) {
+      return {
+        title: target.title,
+        route: route.route,
+        viewport: viewportLabel,
+        captured: false,
+        reason: unavailableReason
+      };
+    }
+
+    await maskSensitiveTexts(page);
+
+    const file = `${viewportLabel}-${String(index + 1).padStart(2, "0")}-${target.fileSlug}.png`;
+    const screenshotPath = path.join(screenshotsDir, file);
+
+    await page.screenshot({
+      path: screenshotPath,
+      fullPage: true
+    });
+
+    return {
+      title: target.title,
+      route: route.route,
+      viewport: viewportLabel,
+      captured: true,
+      file
+    };
+  } catch (error) {
     return {
       title: target.title,
       route: target.kind === "dynamic" ? target.routeTemplate : target.route,
       viewport: viewportLabel,
       captured: false,
-      reason: route.reason
+      reason: error instanceof Error ? error.message : "Falha inesperada durante a captura."
     };
   }
-
-  await page.goto(route.route, { waitUntil: "domcontentloaded" });
-  const unavailableReason = await waitForStyledApp(page, target.expectedText);
-
-  if (unavailableReason) {
-    return {
-      title: target.title,
-      route: route.route,
-      viewport: viewportLabel,
-      captured: false,
-      reason: unavailableReason
-    };
-  }
-
-  await maskSensitiveTexts(page);
-
-  const file = `${viewportLabel}-${String(index + 1).padStart(2, "0")}-${target.fileSlug}.png`;
-  const screenshotPath = path.join(screenshotsDir, file);
-
-  await page.screenshot({
-    path: screenshotPath,
-    fullPage: true
-  });
-
-  return {
-    title: target.title,
-    route: route.route,
-    viewport: viewportLabel,
-    captured: true,
-    file
-  };
 }
 
 test("capturar telas principais do modulo de RH", async ({ page }) => {
@@ -379,8 +415,8 @@ test("capturar telas principais do modulo de RH", async ({ page }) => {
   for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
-    for (let index = 0; index < captureTargets.length; index += 1) {
-      results.push(await captureTarget(page, captureTargets[index], viewport.label, index));
+    for (let index = 0; index < activeCaptureTargets.length; index += 1) {
+      results.push(await captureTarget(page, activeCaptureTargets[index], viewport.label, index));
     }
   }
 

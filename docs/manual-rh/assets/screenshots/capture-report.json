@@ -7,88 +7,11 @@
     "file": "1366x768-01-01-painel-rh.png"
   },
   {
-    "title": "Fila de RH",
-    "route": "/rh/inbox",
+    "title": "Onboarding operacional",
+    "route": "/rh/onboarding",
     "viewport": "1366x768",
     "captured": true,
-    "file": "1366x768-02-02-fila-rh.png"
-  },
-  {
-    "title": "Detalhe do processo de RH",
-    "route": "/rh/workflows/be37345b-664a-403e-9bc8-59f68cfe0b34",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-03-03-detalhe-processo-rh.png"
-  },
-  {
-    "title": "Vagas",
-    "route": "/rh/vagas",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-04-04-vagas.png"
-  },
-  {
-    "title": "Nova vaga",
-    "route": "/rh/vagas/nova",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-05-05-nova-vaga.png"
-  },
-  {
-    "title": "Candidatos da vaga",
-    "route": "/rh/vagas/be37345b-664a-403e-9bc8-59f68cfe0b34/candidatos",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-06-06-candidatos-vaga.png"
-  },
-  {
-    "title": "Detalhe do candidato",
-    "route": "/rh/vagas/be37345b-664a-403e-9bc8-59f68cfe0b34/candidatos/9978d32c-adb1-42f2-bb06-01b5fdde059a",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-07-07-detalhe-candidato.png"
-  },
-  {
-    "title": "Nova admissao",
-    "route": "/rh/admissoes/nova",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-08-08-nova-admissao.png"
-  },
-  {
-    "title": "Colaboradores",
-    "route": "/rh/employees",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-09-09-colaboradores.png"
-  },
-  {
-    "title": "Detalhe do colaborador",
-    "route": "/rh/employees/bbbc7f9f-a052-4644-b538-ad84c38b3f97",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-10-10-detalhe-colaborador.png"
-  },
-  {
-    "title": "Gestao RH",
-    "route": "/rh/gestao",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-11-11-gestao-rh.png"
-  },
-  {
-    "title": "Historico e auditoria",
-    "route": "/rh/gestao/auditoria",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-12-12-auditoria-rh.png"
-  },
-  {
-    "title": "Rotinas automaticas",
-    "route": "/rh/gestao/jobs",
-    "viewport": "1366x768",
-    "captured": true,
-    "file": "1366x768-13-13-rotinas-rh.png"
+    "file": "1366x768-02-14-onboarding-operacional.png"
   },
   {
     "title": "Painel do RH",
@@ -98,88 +21,11 @@
     "file": "1440x900-01-01-painel-rh.png"
   },
   {
-    "title": "Fila de RH",
-    "route": "/rh/inbox",
+    "title": "Onboarding operacional",
+    "route": "/rh/onboarding",
     "viewport": "1440x900",
     "captured": true,
-    "file": "1440x900-02-02-fila-rh.png"
-  },
-  {
-    "title": "Detalhe do processo de RH",
-    "route": "/rh/workflows/be37345b-664a-403e-9bc8-59f68cfe0b34",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-03-03-detalhe-processo-rh.png"
-  },
-  {
-    "title": "Vagas",
-    "route": "/rh/vagas",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-04-04-vagas.png"
-  },
-  {
-    "title": "Nova vaga",
-    "route": "/rh/vagas/nova",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-05-05-nova-vaga.png"
-  },
-  {
-    "title": "Candidatos da vaga",
-    "route": "/rh/vagas/be37345b-664a-403e-9bc8-59f68cfe0b34/candidatos",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-06-06-candidatos-vaga.png"
-  },
-  {
-    "title": "Detalhe do candidato",
-    "route": "/rh/vagas/be37345b-664a-403e-9bc8-59f68cfe0b34/candidatos/9978d32c-adb1-42f2-bb06-01b5fdde059a",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-07-07-detalhe-candidato.png"
-  },
-  {
-    "title": "Nova admissao",
-    "route": "/rh/admissoes/nova",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-08-08-nova-admissao.png"
-  },
-  {
-    "title": "Colaboradores",
-    "route": "/rh/employees",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-09-09-colaboradores.png"
-  },
-  {
-    "title": "Detalhe do colaborador",
-    "route": "/rh/employees/bbbc7f9f-a052-4644-b538-ad84c38b3f97",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-10-10-detalhe-colaborador.png"
-  },
-  {
-    "title": "Gestao RH",
-    "route": "/rh/gestao",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-11-11-gestao-rh.png"
-  },
-  {
-    "title": "Historico e auditoria",
-    "route": "/rh/gestao/auditoria",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-12-12-auditoria-rh.png"
-  },
-  {
-    "title": "Rotinas automaticas",
-    "route": "/rh/gestao/jobs",
-    "viewport": "1440x900",
-    "captured": true,
-    "file": "1440x900-13-13-rotinas-rh.png"
+    "file": "1440x900-02-14-onboarding-operacional.png"
   },
   {
     "title": "Painel do RH",
@@ -189,87 +35,10 @@
     "file": "1920x1080-01-01-painel-rh.png"
   },
   {
-    "title": "Fila de RH",
-    "route": "/rh/inbox",
+    "title": "Onboarding operacional",
+    "route": "/rh/onboarding",
     "viewport": "1920x1080",
     "captured": true,
-    "file": "1920x1080-02-02-fila-rh.png"
-  },
-  {
-    "title": "Detalhe do processo de RH",
-    "route": "/rh/workflows/be37345b-664a-403e-9bc8-59f68cfe0b34",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-03-03-detalhe-processo-rh.png"
-  },
-  {
-    "title": "Vagas",
-    "route": "/rh/vagas",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-04-04-vagas.png"
-  },
-  {
-    "title": "Nova vaga",
-    "route": "/rh/vagas/nova",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-05-05-nova-vaga.png"
-  },
-  {
-    "title": "Candidatos da vaga",
-    "route": "/rh/vagas/be37345b-664a-403e-9bc8-59f68cfe0b34/candidatos",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-06-06-candidatos-vaga.png"
-  },
-  {
-    "title": "Detalhe do candidato",
-    "route": "/rh/vagas/be37345b-664a-403e-9bc8-59f68cfe0b34/candidatos/9978d32c-adb1-42f2-bb06-01b5fdde059a",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-07-07-detalhe-candidato.png"
-  },
-  {
-    "title": "Nova admissao",
-    "route": "/rh/admissoes/nova",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-08-08-nova-admissao.png"
-  },
-  {
-    "title": "Colaboradores",
-    "route": "/rh/employees",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-09-09-colaboradores.png"
-  },
-  {
-    "title": "Detalhe do colaborador",
-    "route": "/rh/employees/bbbc7f9f-a052-4644-b538-ad84c38b3f97",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-10-10-detalhe-colaborador.png"
-  },
-  {
-    "title": "Gestao RH",
-    "route": "/rh/gestao",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-11-11-gestao-rh.png"
-  },
-  {
-    "title": "Historico e auditoria",
-    "route": "/rh/gestao/auditoria",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-12-12-auditoria-rh.png"
-  },
-  {
-    "title": "Rotinas automaticas",
-    "route": "/rh/gestao/jobs",
-    "viewport": "1920x1080",
-    "captured": true,
-    "file": "1920x1080-13-13-rotinas-rh.png"
+    "file": "1920x1080-02-14-onboarding-operacional.png"
   }
 ]
