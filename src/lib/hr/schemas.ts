@@ -28,6 +28,32 @@ export const hrDocumentPendingTypeSchema = z.enum([
 
 export const employeeFunctionalEventStatusSchema = z.enum(["active", "cancelled", "corrected"]);
 
+export const hrOnboardingQueueTypeSchema = z.enum([
+  "blocked",
+  "critical",
+  "overdue",
+  "waiting_rh",
+  "waiting_manager",
+  "waiting_ti",
+  "almost_done"
+]);
+
+export const hrOnboardingStatusSchema = z.enum(["not_started", "in_progress", "completed", "cancelled"]);
+
+export const hrOnboardingReleaseStatusSchema = z.enum(["blocked", "partial", "released", "critical_pending"]);
+
+export const hrOnboardingOwnerAreaSchema = z.enum([
+  "RH",
+  "GESTOR",
+  "TI",
+  "GOVERNANCA",
+  "RECEPCAO",
+  "COZINHA",
+  "MANUTENCAO",
+  "AB",
+  "ADMINISTRATIVO"
+]);
+
 export const hrWorkflowTypeSchema = z.enum([
   "admission",
   "termination",
@@ -198,6 +224,30 @@ export const hrDocumentPendenciesQuerySchema = z.object({
 });
 
 export const hrDocumentPendenciesSummaryQuerySchema = z.object({
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema
+});
+
+export const hrOnboardingDashboardQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema,
+  ownerArea: hrOnboardingOwnerAreaSchema.optional().or(emptyToUndefined),
+  status: hrOnboardingStatusSchema.optional().or(emptyToUndefined),
+  releaseStatus: hrOnboardingReleaseStatusSchema.optional().or(emptyToUndefined),
+  queueType: hrOnboardingQueueTypeSchema.optional().or(emptyToUndefined),
+  dueFrom: optionalDateSchema,
+  dueTo: optionalDateSchema,
+  search: z
+    .string()
+    .trim()
+    .max(120, "Busca muito longa.")
+    .optional()
+    .or(emptyToUndefined)
+});
+
+export const hrOnboardingDashboardSummaryQuerySchema = z.object({
   unitId: optionalUuidSchema,
   departmentId: optionalUuidSchema
 });

@@ -12,6 +12,7 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   FileClock,
   FileWarning,
@@ -180,6 +181,20 @@ type DocumentPendenciesSummaryResponse = {
     rejected: number;
     expired: number;
     expiringSoon: number;
+  };
+};
+
+type OnboardingSummaryResponse = {
+  ok: true;
+  data: {
+    totalInProgress: number;
+    blocked: number;
+    critical: number;
+    overdue: number;
+    waitingRh: number;
+    waitingManager: number;
+    waitingTi: number;
+    almostDone: number;
   };
 };
 
@@ -504,6 +519,7 @@ export function HrOperationalDashboardClient() {
   const dashboardUrl = buildUrl("/api/hr/dashboard", { unit_id: activeUnitId });
   const analyticsUrl = buildUrl("/api/hr/analytics", { unit_id: activeUnitId });
   const documentPendenciesUrl = buildUrl("/api/hr/document-pendencies/summary", { unitId: activeUnitId });
+  const onboardingSummaryUrl = buildUrl("/api/hr/onboarding-dashboard/summary", { unitId: activeUnitId });
   const recentUrl = buildUrl("/api/hr/workflows", { page: 1, page_size: 8, unit_id: activeUnitId });
   const criticalUrl = buildUrl("/api/hr/workflows", { page: 1, page_size: 30, unit_id: activeUnitId });
   const myTasksUrl = buildUrl("/api/hr/workflows", {
@@ -526,6 +542,11 @@ export function HrOperationalDashboardClient() {
   const documentPendenciesQuery = useQuery({
     queryKey: ["hr", "operational-dashboard", "document-pendencies", activeUnitId],
     queryFn: async () => requestJson<DocumentPendenciesSummaryResponse>(documentPendenciesUrl)
+  });
+
+  const onboardingSummaryQuery = useQuery({
+    queryKey: ["hr", "operational-dashboard", "onboarding-summary", activeUnitId],
+    queryFn: async () => requestJson<OnboardingSummaryResponse>(onboardingSummaryUrl)
   });
 
   const recentQuery = useQuery({
@@ -560,6 +581,7 @@ export function HrOperationalDashboardClient() {
   const criticalCount = metrics ? metrics.sla.overdue + metrics.sla.warning + metrics.escalation.overdue : criticalWorkflows.length;
   const myTasksTotal = userId ? myTasksQuery.data?.pagination.total ?? myTasks.length : 0;
   const documentPendencies = documentPendenciesQuery.data?.data;
+  const onboardingSummary = onboardingSummaryQuery.data?.data;
 
   return (
     <div className="space-y-5">
@@ -597,6 +619,12 @@ export function HrOperationalDashboardClient() {
               <Link href="/rh/pendencias-documentais">
                 <FileWarning className="h-4 w-4" />
                 Pendências documentais
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/onboarding">
+                <ClipboardCheck className="h-4 w-4" />
+                Onboarding
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm">
@@ -640,6 +668,10 @@ export function HrOperationalDashboardClient() {
         <ErrorMessage message={documentPendenciesQuery.error instanceof Error ? documentPendenciesQuery.error.message : "Erro ao carregar pendências documentais."} />
       ) : null}
 
+      {onboardingSummaryQuery.error ? (
+        <ErrorMessage message={onboardingSummaryQuery.error instanceof Error ? onboardingSummaryQuery.error.message : "Erro ao carregar onboarding operacional."} />
+      ) : null}
+
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -674,6 +706,45 @@ export function HrOperationalDashboardClient() {
             <div className={cn("rounded-md border bg-background p-3", (documentPendencies?.awaitingReview ?? 0) > 0 && "border-blue-200 bg-blue-50/60")}>
               <p className="text-xs text-muted-foreground">Aguardando conferência</p>
               <p className="mt-1 text-xl font-semibold">{documentPendencies?.awaitingReview ?? 0}</p>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Onboarding operacional</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Sinais rápidos de liberação, bloqueios e pendências críticas.</p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/rh/onboarding">
+              Abrir fila de onboarding
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+        {onboardingSummaryQuery.isLoading ? <LoadingTable label="Carregando onboarding operacional..." /> : null}
+        {!onboardingSummaryQuery.isLoading && !onboardingSummaryQuery.error ? (
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className={cn("rounded-md border bg-background p-3", (onboardingSummary?.totalInProgress ?? 0) > 0 && "border-blue-200 bg-blue-50/60")}>
+              <p className="text-xs text-muted-foreground">Em andamento</p>
+              <p className="mt-1 text-xl font-semibold">{onboardingSummary?.totalInProgress ?? 0}</p>
+            </div>
+            <div className={cn("rounded-md border bg-background p-3", (onboardingSummary?.blocked ?? 0) > 0 && "border-red-200 bg-red-50/60")}>
+              <p className="text-xs text-muted-foreground">Bloqueados</p>
+              <p className="mt-1 text-xl font-semibold">{onboardingSummary?.blocked ?? 0}</p>
+            </div>
+            <div className={cn("rounded-md border bg-background p-3", (onboardingSummary?.critical ?? 0) > 0 && "border-red-200 bg-red-50/60")}>
+              <p className="text-xs text-muted-foreground">Críticos</p>
+              <p className="mt-1 text-xl font-semibold">{onboardingSummary?.critical ?? 0}</p>
+            </div>
+            <div className={cn("rounded-md border bg-background p-3", (onboardingSummary?.overdue ?? 0) > 0 && "border-amber-200 bg-amber-50/60")}>
+              <p className="text-xs text-muted-foreground">Atrasados</p>
+              <p className="mt-1 text-xl font-semibold">{onboardingSummary?.overdue ?? 0}</p>
             </div>
           </div>
         ) : null}

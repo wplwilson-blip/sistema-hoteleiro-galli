@@ -81,6 +81,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Dashboard", href: "/rh", icon: LayoutDashboard, match: "exact" },
       { label: "Fila de RH", href: "/rh/inbox", icon: Inbox },
       { label: "Pendências documentais", href: "/rh/pendencias-documentais", icon: FileWarning },
+      { label: "Onboarding operacional", href: "/rh/onboarding", icon: ClipboardCheck },
       { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
       { label: "Gestão", href: "/rh/gestao", icon: BarChart3, match: "exact" },
       { label: "Regras documentais", href: "/rh/gestao/documentos", icon: FileCog },
