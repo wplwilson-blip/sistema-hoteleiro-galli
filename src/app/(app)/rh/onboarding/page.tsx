@@ -5,8 +5,8 @@ export default function RhOnboardingPage() {
   return (
     <div className="space-y-6">
       <PageTitle
-        title="Onboarding operacional"
-        description="Fila para acompanhar liberações, bloqueios, pendências críticas e próximos passos do onboarding dos colaboradores."
+        title="Onboarding"
+        description="Fila operacional para acompanhar liberações, bloqueios, pendências críticas e próximos passos dos colaboradores."
       />
       <HrOnboardingDashboardClient />
     </div>

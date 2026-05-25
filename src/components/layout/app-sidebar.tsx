@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
-  FileCog,
   FileText,
   FileWarning,
   IdCard,
@@ -78,17 +77,13 @@ const menuGroups: SidebarGroup[] = [
     href: "/rh",
     icon: Users,
     items: [
-      { label: "Dashboard", href: "/rh", icon: LayoutDashboard, match: "exact" },
+      { label: "Painel do RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
       { label: "Fila de RH", href: "/rh/inbox", icon: Inbox },
-      { label: "Pendências documentais", href: "/rh/pendencias-documentais", icon: FileWarning },
-      { label: "Onboarding operacional", href: "/rh/onboarding", icon: ClipboardCheck },
-      { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
-      { label: "Gestão", href: "/rh/gestao", icon: BarChart3, match: "exact" },
-      { label: "Regras documentais", href: "/rh/gestao/documentos", icon: FileCog },
-      { label: "Planos de onboarding", href: "/rh/gestao/onboarding", icon: ClipboardCheck },
-      { label: "Auditoria", href: "/rh/gestao/auditoria", icon: FileText },
-      { label: "Processamentos", href: "/rh/gestao/jobs", icon: ClipboardList },
-      { label: "Colaboradores", href: "/rh/employees", icon: UserRound }
+      { label: "Colaboradores", href: "/rh/employees", icon: UserRound },
+      { label: "Vagas e candidatos", href: "/rh/vagas", icon: BriefcaseBusiness },
+      { label: "Documentos", href: "/rh/pendencias-documentais", icon: FileWarning },
+      { label: "Onboarding", href: "/rh/onboarding", icon: ClipboardCheck },
+      { label: "Gestão do RH", href: "/rh/gestao", icon: BarChart3 }
     ]
   },
   {

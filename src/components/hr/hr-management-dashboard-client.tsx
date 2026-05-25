@@ -3,7 +3,21 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BarChart3, BriefcaseBusiness, CalendarClock, ClipboardList, Inbox, ShieldAlert, TimerReset } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  BriefcaseBusiness,
+  CalendarClock,
+  ClipboardCheck,
+  ClipboardList,
+  FileCog,
+  FileText,
+  Inbox,
+  Settings2,
+  ShieldAlert,
+  TimerReset
+} from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -107,6 +121,82 @@ function RankingPanel({ title, description, entries, labelFn = (value: string) =
   );
 }
 
+const managementLinks = [
+  {
+    title: "Indicadores do RH",
+    description: "Acompanhe volume, prazos, gargalos e saúde operacional em uma visão gerencial.",
+    href: "/rh/gestao",
+    icon: BarChart3,
+    badge: "Gestão"
+  },
+  {
+    title: "Histórico e auditoria",
+    description: "Consulte movimentações, registros e trilhas de auditoria dos processos de RH.",
+    href: "/rh/gestao/auditoria",
+    icon: FileText,
+    badge: "Rastreabilidade"
+  },
+  {
+    title: "Rotinas automáticas",
+    description: "Monitore processamentos internos, filas técnicas e falhas que pedem atenção.",
+    href: "/rh/gestao/jobs",
+    icon: TimerReset,
+    badge: "Monitoramento"
+  },
+  {
+    title: "Regras de documentos",
+    description: "Configure obrigatoriedades documentais por unidade, departamento, cargo ou admissão.",
+    href: "/rh/gestao/documentos",
+    icon: FileCog,
+    badge: "Configuração"
+  },
+  {
+    title: "Planos de onboarding",
+    description: "Mantenha checklists padrão para integração e liberação operacional de colaboradores.",
+    href: "/rh/gestao/onboarding",
+    icon: ClipboardCheck,
+    badge: "Configuração"
+  }
+];
+
+function ManagementHubCard({
+  title,
+  description,
+  href,
+  icon: Icon,
+  badge
+}: {
+  title: string;
+  description: string;
+  href: string;
+  icon: typeof BarChart3;
+  badge: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex min-w-0 flex-col justify-between rounded-md border bg-background p-4 shadow-sm shadow-primary/5 transition-colors hover:border-primary/40 hover:bg-muted/30"
+    >
+      <div className="min-w-0 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Icon className="h-5 w-5" />
+          </div>
+          <StatusBadge status="visual" label={badge} />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-2 text-sm font-medium text-primary">
+        Abrir
+        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+      </div>
+    </Link>
+  );
+}
+
 export function HrManagementDashboardClient() {
   const activeUnit = useAppStore((state) => state.activeUnit);
   const activeUnitId = uuidPattern.test(activeUnit?.id ?? "") ? activeUnit.id : undefined;
@@ -126,6 +216,32 @@ export function HrManagementDashboardClient() {
   return (
     <div className="space-y-5">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Centro de gestão do RH</h2>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Use esta área para supervisão, auditoria e configurações. A operação diária fica no menu principal do RH.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/rh">
+              Voltar ao painel
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {managementLinks.map((item) => (
+            <ManagementHubCard key={item.href} {...item} />
+          ))}
+        </div>
+      </Card>
+
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
             <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
@@ -133,8 +249,8 @@ export function HrManagementDashboardClient() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm"><Link href="/rh/inbox"><Inbox className="h-4 w-4" />Fila de RH</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/auditoria">Auditoria</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/jobs">Processamentos</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/auditoria">Histórico e auditoria</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/jobs">Rotinas automáticas</Link></Button>
           </div>
         </div>
       </Card>
