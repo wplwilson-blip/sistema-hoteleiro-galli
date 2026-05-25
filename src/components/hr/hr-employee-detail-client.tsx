@@ -210,7 +210,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
     () =>
       [
         { value: "summary" as const, label: "Resumo", enabled: true },
-        { value: "sensitive" as const, label: "Dados sensiveis", enabled: canViewSensitive },
+        { value: "sensitive" as const, label: "Dados protegidos", enabled: canViewSensitive },
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
         { value: "onboarding" as const, label: "Onboarding", enabled: true },
         { value: "history" as const, label: "Histórico", enabled: canViewHistory }
@@ -272,7 +272,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Dados sensiveis permitidos" : "Dados sensiveis ocultos"} />
+          <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Dados protegidos permitidos" : "Dados protegidos ocultos"} />
           <StatusBadge status={canViewDocuments ? "success" : "visual"} label={canViewDocuments ? "Documentos liberados" : "Documentos restritos"} />
           <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Histórico liberado" : "Histórico restrito"} />
         </div>
@@ -319,7 +319,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <Card className="border-border/80 p-5 shadow-sm shadow-primary/5">
             <div className="mb-4 flex items-center gap-2">
               <Lock className="h-4 w-4 text-primary" />
-              <h3 className="text-base font-semibold">Dados sensiveis</h3>
+              <h3 className="text-base font-semibold">Dados protegidos</h3>
             </div>
             <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <InfoTile label="Documento pessoal" value={employee.sensitive.documentNumber || "-"} icon={ShieldCheck} />
@@ -329,7 +329,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
             </div>
           </Card>
         ) : (
-          <RestrictedState title="Dados restritos" description="Seu perfil nao possui permissao para visualizar dados sensiveis deste colaborador." />
+          <RestrictedState title="Dados restritos" description="Seu perfil não possui permissão para visualizar dados protegidos deste colaborador." />
         )
       ) : null}
 
@@ -355,9 +355,9 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <History className="h-4 w-4 text-primary" />
-                  <h3 className="text-base font-semibold">Histórico funcional</h3>
+                  <h3 className="text-base font-semibold">Histórico administrativo</h3>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Histórico funcional sem dados sensíveis por padrão.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Registros administrativos do colaborador, com dados protegidos redigidos quando necessário.</p>
               </div>
               <StatusBadge
                 status={canViewSensitiveHistory ? "info" : "visual"}
@@ -365,12 +365,12 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
               />
             </div>
 
-            {historyQuery.isLoading ? <LoadingTable label="Carregando historico funcional..." /> : null}
+            {historyQuery.isLoading ? <LoadingTable label="Carregando histórico administrativo..." /> : null}
             {historyQuery.error ? (
               <ErrorMessage message={historyQuery.error instanceof Error ? historyQuery.error.message : "Não foi possível carregar histórico."} />
             ) : null}
             {!historyQuery.isLoading && historyQuery.data && !historyQuery.data.data.length ? (
-              <EmptyState title="Nenhum evento funcional encontrado" description="Ainda nao existem eventos funcionais registrados para este colaborador." />
+              <EmptyState title="Nenhum histórico encontrado" description="Ainda não existem registros administrativos para este colaborador." />
             ) : null}
             {historyQuery.data?.data.length ? (
               <div className="space-y-3">
@@ -388,16 +388,12 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
                       </div>
                       <div className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.eventDate)}</div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span>Tipo: {event.eventType}</span>
-                      <span>Origem: {event.sourceModule}</span>
-                      {event.sourceEntityType ? <span>Entidade: {event.sourceEntityType}</span> : null}
-                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">Registro de acompanhamento administrativo do RH.</p>
                   </article>
                 ))}
                 <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-muted-foreground">
-                    Pagina {historyQuery.data.pagination.page} de {Math.max(historyQuery.data.pagination.totalPages, 1)}
+                    Página {historyQuery.data.pagination.page} de {Math.max(historyQuery.data.pagination.totalPages, 1)}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -416,7 +412,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
                       onClick={() => setHistoryPage((current) => current + 1)}
                       disabled={historyPage >= Math.max(historyQuery.data.pagination.totalPages, 1) || historyQuery.isFetching}
                     >
-                      Proxima
+                      Próxima
                     </Button>
                   </div>
                 </div>

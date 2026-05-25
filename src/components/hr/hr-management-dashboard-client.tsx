@@ -138,7 +138,7 @@ const managementLinks = [
   },
   {
     title: "Rotinas automáticas",
-    description: "Monitore processamentos internos, filas técnicas e falhas que pedem atenção.",
+    description: "Monitore rotinas internas e falhas que pedem atenção administrativa.",
     href: "/rh/gestao/jobs",
     icon: TimerReset,
     badge: "Monitoramento"
@@ -245,7 +245,7 @@ export function HrManagementDashboardClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
             <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
-            {analytics?.generated_at ? <StatusBadge status="visual" label="Analytics atualizado" /> : null}
+            {analytics?.generated_at ? <StatusBadge status="visual" label="Indicadores atualizados" /> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm"><Link href="/rh/inbox"><Inbox className="h-4 w-4" />Fila de RH</Link></Button>
@@ -255,7 +255,7 @@ export function HrManagementDashboardClient() {
         </div>
       </Card>
 
-      {(analyticsQuery.isLoading || dashboardQuery.isLoading) ? <LoadingTable label="Carregando gestao RH..." /> : null}
+      {(analyticsQuery.isLoading || dashboardQuery.isLoading) ? <LoadingTable label="Carregando gestão do RH..." /> : null}
       {analyticsQuery.error ? <ErrorMessage message={analyticsQuery.error instanceof Error ? analyticsQuery.error.message : "Erro ao carregar indicadores."} /> : null}
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar painel."} /> : null}
 
@@ -266,8 +266,8 @@ export function HrManagementDashboardClient() {
         <StatCard title="Prazos vencendo" value={String(dashboard?.sla?.warning ?? 0)} icon={CalendarClock} tone={(dashboard?.sla?.warning ?? 0) ? "warning" : "neutral"} />
         <StatCard title="Tempo medio" value={formatMinutes(analytics?.time?.average_completion_minutes)} icon={BriefcaseBusiness} />
         <StatCard title="Alertas de prazo" value={String((dashboard?.escalation?.eligible ?? 0) + (dashboard?.escalation?.overdue ?? 0))} icon={ShieldAlert} tone={(dashboard?.escalation?.overdue ?? 0) ? "danger" : "warning"} />
-        <StatCard title="Processamentos pendentes" value={String(pendingJobs)} icon={CalendarClock} tone={pendingJobs ? "warning" : "neutral"} />
-        <StatCard title="Processamentos falhos" value={String(failedJobs + (dashboard?.notifications?.failed ?? 0))} icon={AlertTriangle} tone={failedJobs ? "danger" : "neutral"} />
+        <StatCard title="Rotinas pendentes" value={String(pendingJobs)} icon={CalendarClock} tone={pendingJobs ? "warning" : "neutral"} />
+        <StatCard title="Rotinas com falha" value={String(failedJobs + (dashboard?.notifications?.failed ?? 0))} icon={AlertTriangle} tone={failedJobs ? "danger" : "neutral"} />
       </div>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-3">

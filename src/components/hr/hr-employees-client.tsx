@@ -193,11 +193,11 @@ export function HrEmployeesClient() {
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground">Filtros de consulta</h2>
             <p className="text-xs leading-5 text-muted-foreground">
-              A listagem usa somente a API segura de RH e nao retorna documento pessoal, telefone, e-mail pessoal ou desligamento.
+              A consulta respeita permissões de RH e oculta dados protegidos na listagem.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Sensivel permitido no detalhe" : "Listagem basica"} />
+            <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Dados protegidos no detalhe" : "Listagem básica"} />
             {hasFilters() ? (
               <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
                 Limpar
@@ -274,9 +274,9 @@ export function HrEmployeesClient() {
         </div>
       </Card>
 
-      {employeesQuery.isLoading ? <LoadingTable label="Carregando colaboradores de RH..." /> : null}
+      {employeesQuery.isLoading ? <LoadingTable label="Carregando colaboradores..." /> : null}
       {employeesQuery.error ? (
-        <ErrorMessage message={employeesQuery.error instanceof Error ? employeesQuery.error.message : "Erro ao carregar colaboradores de RH."} />
+        <ErrorMessage message={employeesQuery.error instanceof Error ? employeesQuery.error.message : "Erro ao carregar colaboradores."} />
       ) : null}
 
       {!employeesQuery.isLoading && !employees.length ? (

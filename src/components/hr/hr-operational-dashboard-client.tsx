@@ -593,7 +593,7 @@ export function HrOperationalDashboardClient() {
               {metrics?.generated_at ? <StatusBadge status="visual" label={`Atualizado em ${formatDateTime(metrics.generated_at)}`} /> : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Painel somente leitura. Ações operacionais serão tratadas nas próximas etapas da fase 8A.
+              Visão rápida da rotina do RH: filas, documentos, onboarding e processos que pedem atenção.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -618,7 +618,7 @@ export function HrOperationalDashboardClient() {
             <Button asChild variant="outline" size="sm">
               <Link href="/rh/pendencias-documentais">
                 <FileWarning className="h-4 w-4" />
-                Pendências documentais
+                Documentos
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm">
@@ -642,21 +642,21 @@ export function HrOperationalDashboardClient() {
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-6">
         {dashboardQuery.error ? (
           <>
-            <MetricFallback label="Minhas pendencias" />
-            <MetricFallback label="Aprovacoes pendentes" />
-            <MetricFallback label="Processos em atencao" />
+            <MetricFallback label="Minhas pendências" />
+            <MetricFallback label="Aprovações pendentes" />
+            <MetricFallback label="Processos em atenção" />
             <MetricFallback label="Prazos vencendo" />
             <MetricFallback label="Prazos vencidos" />
-            <MetricFallback label="Notificacoes pendentes" />
+            <MetricFallback label="Avisos pendentes" />
           </>
         ) : (
           <>
-            <StatCard title="Minhas pendencias" value={String(myTasksTotal)} icon={ClipboardList} tone={myTasksTotal ? "warning" : "neutral"} />
-            <StatCard title="Aprovacoes pendentes" value={String(metrics?.steps.waiting_approval ?? 0)} icon={CheckCircle2} tone={(metrics?.steps.waiting_approval ?? 0) ? "warning" : "neutral"} />
-            <StatCard title="Processos em atencao" value={String(criticalCount)} icon={ShieldAlert} tone={criticalCount ? "danger" : "neutral"} />
+            <StatCard title="Minhas pendências" value={String(myTasksTotal)} icon={ClipboardList} tone={myTasksTotal ? "warning" : "neutral"} />
+            <StatCard title="Aprovações pendentes" value={String(metrics?.steps.waiting_approval ?? 0)} icon={CheckCircle2} tone={(metrics?.steps.waiting_approval ?? 0) ? "warning" : "neutral"} />
+            <StatCard title="Processos em atenção" value={String(criticalCount)} icon={ShieldAlert} tone={criticalCount ? "danger" : "neutral"} />
             <StatCard title="Prazos vencendo" value={String(metrics?.sla.warning ?? 0)} icon={CalendarClock} tone={(metrics?.sla.warning ?? 0) ? "warning" : "neutral"} />
             <StatCard title="Prazos vencidos" value={String(metrics?.sla.overdue ?? 0)} icon={AlertTriangle} tone={(metrics?.sla.overdue ?? 0) ? "danger" : "neutral"} />
-            <StatCard title="Notificacoes pendentes" value={String(metrics?.notifications.pending ?? 0)} icon={Bell} tone={(metrics?.notifications.pending ?? 0) ? "info" : "neutral"} />
+            <StatCard title="Avisos pendentes" value={String(metrics?.notifications.pending ?? 0)} icon={Bell} tone={(metrics?.notifications.pending ?? 0) ? "info" : "neutral"} />
           </>
         )}
       </div>
@@ -677,9 +677,9 @@ export function HrOperationalDashboardClient() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <FileWarning className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Documentos do RH</h2>
+              <h2 className="text-sm font-semibold text-foreground">Documentos</h2>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Sinais rápidos do dossiê documental dos colaboradores.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Pendências e vencimentos do dossiê documental dos colaboradores.</p>
           </div>
           <Button asChild variant="outline" size="sm">
             <Link href="/rh/pendencias-documentais">
@@ -716,9 +716,9 @@ export function HrOperationalDashboardClient() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <ClipboardCheck className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Onboarding operacional</h2>
+              <h2 className="text-sm font-semibold text-foreground">Onboarding</h2>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Sinais rápidos de liberação, bloqueios e pendências críticas.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Liberações, bloqueios e pendências críticas de integração.</p>
           </div>
           <Button asChild variant="outline" size="sm">
             <Link href="/rh/onboarding">
@@ -795,11 +795,11 @@ export function HrOperationalDashboardClient() {
             <p className="mt-1 text-xl font-semibold">{metrics?.steps.returned ?? 0}</p>
           </div>
           <div className={cn("rounded-md border bg-background p-3", (metrics?.escalation.overdue ?? 0) > 0 && "border-red-200 bg-red-50/60")}>
-            <p className="text-xs text-muted-foreground">Escalonamentos vencidos</p>
+            <p className="text-xs text-muted-foreground">Alertas vencidos</p>
             <p className="mt-1 text-xl font-semibold">{metrics?.escalation.overdue ?? 0}</p>
           </div>
           <div className={cn("rounded-md border bg-background p-3", (metrics?.notifications.failed ?? 0) > 0 && "border-amber-200 bg-amber-50/60")}>
-            <p className="text-xs text-muted-foreground">Notificacoes com falha</p>
+            <p className="text-xs text-muted-foreground">Avisos com falha</p>
             <p className="mt-1 text-xl font-semibold">{metrics?.notifications.failed ?? 0}</p>
           </div>
         </div>

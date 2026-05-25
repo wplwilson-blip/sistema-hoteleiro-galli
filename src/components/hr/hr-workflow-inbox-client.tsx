@@ -454,13 +454,13 @@ export function HrWorkflowInboxClient() {
             <Button asChild variant="outline" size="sm">
               <Link href="/rh/vagas/nova">
                 <BriefcaseBusiness className="h-4 w-4" />
-                Nova Vaga
+                Nova vaga
               </Link>
             </Button>
             <Button asChild size="sm">
               <Link href="/rh/admissoes/nova">
                 <UserPlus className="h-4 w-4" />
-                Nova Admissão
+                Nova admissão
               </Link>
             </Button>
           </div>
@@ -545,7 +545,7 @@ export function HrWorkflowInboxClient() {
           </Button>
           <Button type="button" variant={criticalOnly ? "default" : "outline"} size="sm" onClick={() => setCriticalOnly((current) => !current)}>
             <ShieldAlert className="h-4 w-4" />
-            Criticos
+            Críticos
           </Button>
           <Button type="button" variant={escalatedOnly ? "default" : "outline"} size="sm" onClick={() => setEscalatedOnly((current) => !current)}>
             <BellRing className="h-4 w-4" />
@@ -570,7 +570,7 @@ export function HrWorkflowInboxClient() {
                   <ListChecks className="h-4 w-4 text-primary" />
                   <h2 className="text-sm font-semibold text-foreground">Fila operacional</h2>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Ordenacao: prazos vencidos, prazos vencendo, alertas de prazo e atualizacoes recentes.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Ordenação: prazos vencidos, prazos vencendo, alertas de prazo e atualizações recentes.</p>
               </div>
               <p className="text-xs text-muted-foreground">Limite de leitura: ate 100 processos por consulta.</p>
             </div>
