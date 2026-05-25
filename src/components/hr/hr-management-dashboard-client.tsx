@@ -1,14 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
-  BriefcaseBusiness,
-  CalendarClock,
   ClipboardCheck,
   ClipboardList,
   FileCog,
@@ -18,7 +15,6 @@ import {
   ShieldAlert,
   TimerReset
 } from "lucide-react";
-import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
@@ -29,12 +25,6 @@ import { useAppStore } from "@/store/app-store";
 type AnalyticsResponse = {
   data: {
     volume?: { total_workflows?: number; active_workflows?: number; backlog_current?: number };
-    efficiency?: { completion_rate?: number; rejection_rate?: number; cancellation_rate?: number; return_rate?: number };
-    sla?: { sla_compliance_rate?: number; completed_on_time?: number; completed_late?: number; overdue_active?: number; average_delay_minutes?: number };
-    time?: { average_completion_minutes?: number; median_completion_minutes?: number; average_step_completion_minutes?: number };
-    status?: { count_by_status?: Record<string, number>; count_by_workflow_type?: Record<string, number>; count_by_sla_status?: Record<string, number> };
-    steps?: { steps_waiting_approval?: number; steps_in_progress?: number; steps_returned?: number; steps_overdue?: number; average_step_time_by_status?: Record<string, number> };
-    productivity?: { completed_workflows?: number; completed_steps?: number; active_backlog?: number };
     generated_at?: string;
   };
 };
@@ -53,6 +43,8 @@ type JobsResponse = {
   data: Array<{ id: string; status: string; priority: string; job_type: string }>;
 };
 
+type SignalTone = "visual" | "warning" | "danger" | "success" | "info";
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -66,93 +58,38 @@ function buildUrl(path: string, unitId?: string) {
   return unitId ? `${path}?unit_id=${unitId}` : path;
 }
 
-function formatMinutes(value: number | undefined) {
-  if (!value) return "-";
-  if (value < 60) return `${Math.round(value)} min`;
-  const hours = value / 60;
-  return hours < 24 ? `${hours.toFixed(1).replace(".", ",")} h` : `${(hours / 24).toFixed(1).replace(".", ",")} dias`;
-}
-
-function topEntries(values: Record<string, number> | undefined, limit = 6) {
-  return Object.entries(values ?? {}).sort((left, right) => right[1] - left[1]).slice(0, limit);
-}
-
-function workflowTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    admission: "Admissão",
-    termination: "Desligamento",
-    transfer: "Transferencia",
-    promotion: "Promocao",
-    job_position_change: "Mudanca de cargo",
-    training: "Treinamento",
-    vacation: "Ferias",
-    absence: "Ausencia ou afastamento",
-    warning: "Advertencia",
-    equipment_delivery: "Entrega de equipamento",
-    general_note: "Nota administrativa",
-    job_opening: "Solicitacao de vaga"
-  };
-  return labels[type] ?? type;
-}
-
-function RankingPanel({ title, description, entries, labelFn = (value: string) => value }: { title: string; description: string; entries: Array<[string, number]>; labelFn?: (value: string) => string }) {
-  return (
-    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <div className="mb-3 flex items-center gap-2">
-        <BarChart3 className="h-4 w-4 text-primary" />
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      {entries.length ? (
-        <div className="space-y-2">
-          {entries.map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
-              <span className="break-words font-medium">{labelFn(key)}</span>
-              <span className="font-semibold">{value}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyState title="Sem dados no periodo" description="Ainda nao ha dados suficientes para este indicador." />
-      )}
-    </Card>
-  );
-}
-
 const managementLinks = [
   {
     title: "Indicadores do RH",
-    description: "Acompanhe volume, prazos, gargalos e saúde operacional em uma visão gerencial.",
+    description: "Resumo executivo da operação, prazos e pontos que pedem atenção.",
     href: "/rh/gestao",
     icon: BarChart3,
     badge: "Gestão"
   },
   {
     title: "Histórico e auditoria",
-    description: "Consulte movimentações, registros e trilhas de auditoria dos processos de RH.",
+    description: "Registros e rastreabilidade das rotinas administrativas do RH.",
     href: "/rh/gestao/auditoria",
     icon: FileText,
     badge: "Rastreabilidade"
   },
   {
     title: "Rotinas automáticas",
-    description: "Monitore rotinas internas e falhas que pedem atenção administrativa.",
+    description: "Acompanhe rotinas internas e falhas que precisam de verificação.",
     href: "/rh/gestao/jobs",
     icon: TimerReset,
     badge: "Monitoramento"
   },
   {
     title: "Regras de documentos",
-    description: "Configure obrigatoriedades documentais por unidade, departamento, cargo ou admissão.",
+    description: "Obrigatoriedades documentais por unidade, departamento, cargo ou admissão.",
     href: "/rh/gestao/documentos",
     icon: FileCog,
     badge: "Configuração"
   },
   {
     title: "Planos de onboarding",
-    description: "Mantenha checklists padrão para integração e liberação operacional de colaboradores.",
+    description: "Checklists padrão para integração e liberação operacional.",
     href: "/rh/gestao/onboarding",
     icon: ClipboardCheck,
     badge: "Configuração"
@@ -175,55 +112,116 @@ function ManagementHubCard({
   return (
     <Link
       href={href}
-      className="group flex min-w-0 flex-col justify-between rounded-md border bg-background p-4 shadow-sm shadow-primary/5 transition-colors hover:border-primary/40 hover:bg-muted/30"
+      className="group flex min-w-0 flex-col justify-between rounded-md border bg-background p-3 shadow-sm shadow-primary/5 transition-colors hover:border-primary/40 hover:bg-muted/30"
     >
-      <div className="min-w-0 space-y-3">
+      <div className="min-w-0 space-y-2">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Icon className="h-5 w-5" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Icon className="h-4 w-4" />
           </div>
           <StatusBadge status="visual" label={badge} />
         </div>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
       </div>
-      <div className="mt-4 flex items-center gap-2 text-sm font-medium text-primary">
+      <div className="mt-3 flex items-center gap-2 text-xs font-medium text-primary">
         Abrir
-        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
+  );
+}
+
+function CompactSignal({
+  title,
+  value,
+  description,
+  tone = "visual"
+}: {
+  title: string;
+  value: number;
+  description: string;
+  tone?: SignalTone;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border bg-background px-3 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
+        </div>
+        <StatusBadge status={tone} label={value ? "Acompanhar" : "Ok"} />
+      </div>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+    </div>
   );
 }
 
 export function HrManagementDashboardClient() {
   const activeUnit = useAppStore((state) => state.activeUnit);
   const activeUnitId = uuidPattern.test(activeUnit?.id ?? "") ? activeUnit.id : undefined;
-  const analyticsQuery = useQuery({ queryKey: ["hr", "management", "analytics", activeUnitId], queryFn: async () => requestJson<AnalyticsResponse>(buildUrl("/api/hr/analytics", activeUnitId)) });
-  const dashboardQuery = useQuery({ queryKey: ["hr", "management", "dashboard", activeUnitId], queryFn: async () => requestJson<DashboardResponse>(buildUrl("/api/hr/dashboard", activeUnitId)) });
-  const jobsQuery = useQuery({ queryKey: ["hr", "management", "jobs", activeUnitId], queryFn: async () => requestJson<JobsResponse>(buildUrl("/api/hr/background-jobs", activeUnitId)) });
+  const analyticsQuery = useQuery({
+    queryKey: ["hr", "management", "analytics", activeUnitId],
+    queryFn: async () => requestJson<AnalyticsResponse>(buildUrl("/api/hr/analytics", activeUnitId))
+  });
+  const dashboardQuery = useQuery({
+    queryKey: ["hr", "management", "dashboard", activeUnitId],
+    queryFn: async () => requestJson<DashboardResponse>(buildUrl("/api/hr/dashboard", activeUnitId))
+  });
+  const jobsQuery = useQuery({
+    queryKey: ["hr", "management", "jobs", activeUnitId],
+    queryFn: async () => requestJson<JobsResponse>(buildUrl("/api/hr/background-jobs", activeUnitId))
+  });
 
   const analytics = analyticsQuery.data?.data;
   const dashboard = dashboardQuery.data?.data;
   const jobs = jobsQuery.data?.data ?? [];
   const failedJobs = jobs.filter((job) => job.status === "failed").length;
   const pendingJobs = jobs.filter((job) => job.status === "pending" || job.status === "scheduled" || job.status === "retrying").length;
-  const statusEntries = useMemo(() => topEntries(analytics?.status?.count_by_status), [analytics]);
-  const typeEntries = useMemo(() => topEntries(analytics?.status?.count_by_workflow_type), [analytics]);
-  const stepDelayEntries = useMemo(() => topEntries(analytics?.steps?.average_step_time_by_status), [analytics]);
+  const activeWorkflows = analytics?.volume?.active_workflows ?? dashboard?.workflows?.active ?? 0;
+  const overdueDeadlines = dashboard?.sla?.overdue ?? dashboard?.workflows?.overdue ?? 0;
+  const deadlineAlerts = (dashboard?.escalation?.eligible ?? 0) + (dashboard?.escalation?.overdue ?? 0);
+  const failedRoutines = failedJobs + (dashboard?.notifications?.failed ?? 0);
+  const priorityItems: Array<{ label: string; value: number; tone: SignalTone; href: string }> = [
+    {
+      label: "Etapas atrasadas",
+      value: dashboard?.steps?.overdue ?? 0,
+      tone: (dashboard?.steps?.overdue ?? 0) ? "danger" : "success",
+      href: "/rh/inbox"
+    },
+    {
+      label: "Processos devolvidos",
+      value: dashboard?.steps?.returned ?? 0,
+      tone: (dashboard?.steps?.returned ?? 0) ? "warning" : "success",
+      href: "/rh/inbox"
+    },
+    {
+      label: "Aprovações aguardando decisão",
+      value: dashboard?.steps?.waiting_approval ?? dashboard?.workflows?.waiting_approval ?? 0,
+      tone: (dashboard?.steps?.waiting_approval ?? dashboard?.workflows?.waiting_approval ?? 0) ? "warning" : "success",
+      href: "/rh/inbox"
+    },
+    {
+      label: "Rotinas com falha",
+      value: failedRoutines,
+      tone: failedRoutines ? "danger" : "success",
+      href: "/rh/gestao/jobs"
+    }
+  ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Settings2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Centro de gestão do RH</h2>
+              <h2 className="text-sm font-semibold text-foreground">Gestão do RH</h2>
             </div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Use esta área para supervisão, auditoria e configurações. A operação diária fica no menu principal do RH.
+              Supervisão, auditoria e configurações do RH em uma visão compacta. A operação diária fica no menu principal.
             </p>
           </div>
           <Button asChild variant="outline" size="sm">
@@ -241,10 +239,10 @@ export function HrManagementDashboardClient() {
         </div>
       </Card>
 
-      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+      <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
-            <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
+            <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessíveis"} />
             {analytics?.generated_at ? <StatusBadge status="visual" label="Indicadores atualizados" /> : null}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -259,38 +257,48 @@ export function HrManagementDashboardClient() {
       {analyticsQuery.error ? <ErrorMessage message={analyticsQuery.error instanceof Error ? analyticsQuery.error.message : "Erro ao carregar indicadores."} /> : null}
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar painel."} /> : null}
 
-      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Processos de RH" value={String(analytics?.volume?.total_workflows ?? 0)} icon={ClipboardList} tone="info" />
-        <StatCard title="Em andamento" value={String(analytics?.volume?.active_workflows ?? dashboard?.workflows?.active ?? 0)} icon={TimerReset} tone="info" />
-        <StatCard title="Prazos vencidos" value={String(dashboard?.sla?.overdue ?? analytics?.sla?.overdue_active ?? 0)} icon={AlertTriangle} tone={(dashboard?.sla?.overdue ?? 0) ? "danger" : "neutral"} />
-        <StatCard title="Prazos vencendo" value={String(dashboard?.sla?.warning ?? 0)} icon={CalendarClock} tone={(dashboard?.sla?.warning ?? 0) ? "warning" : "neutral"} />
-        <StatCard title="Tempo medio" value={formatMinutes(analytics?.time?.average_completion_minutes)} icon={BriefcaseBusiness} />
-        <StatCard title="Alertas de prazo" value={String((dashboard?.escalation?.eligible ?? 0) + (dashboard?.escalation?.overdue ?? 0))} icon={ShieldAlert} tone={(dashboard?.escalation?.overdue ?? 0) ? "danger" : "warning"} />
-        <StatCard title="Rotinas pendentes" value={String(pendingJobs)} icon={CalendarClock} tone={pendingJobs ? "warning" : "neutral"} />
-        <StatCard title="Rotinas com falha" value={String(failedJobs + (dashboard?.notifications?.failed ?? 0))} icon={AlertTriangle} tone={failedJobs ? "danger" : "neutral"} />
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard title="Processos em andamento" value={String(activeWorkflows)} icon={TimerReset} tone={activeWorkflows ? "info" : "neutral"} />
+        <StatCard title="Prazos vencidos" value={String(overdueDeadlines)} icon={AlertTriangle} tone={overdueDeadlines ? "danger" : "neutral"} />
+        <StatCard title="Alertas de prazo" value={String(deadlineAlerts)} icon={ShieldAlert} tone={deadlineAlerts ? "warning" : "neutral"} />
+        <StatCard title="Rotinas com falha" value={String(failedRoutines)} icon={AlertTriangle} tone={failedRoutines ? "danger" : "neutral"} />
       </div>
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-3">
-        <RankingPanel title="Gargalos por situacao" description="Situacoes mais recorrentes nos processos." entries={statusEntries} />
-        <RankingPanel title="Volume por tipo" description="Tipos de processo com maior volume." entries={typeEntries} labelFn={workflowTypeLabel} />
-        <RankingPanel title="Tempo medio por etapa" description="Tempo medio por status de etapa." entries={stepDelayEntries} />
-      </div>
-
-      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <h2 className="text-sm font-semibold">Prazos</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {topEntries(analytics?.status?.count_by_sla_status).map(([status, value]) => <StatusBadge key={status} status={status === "overdue" ? "danger" : status === "warning" ? "warning" : "visual"} label={`${status}: ${value}`} />)}
-            {!topEntries(analytics?.status?.count_by_sla_status).length ? <StatusBadge status="visual" label="Sem distribuicao de prazos" /> : null}
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold">Situação operacional</h2>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Leitura rápida para supervisão do RH, sem detalhamento técnico.</p>
+          <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
+            <CompactSignal title="Em andamento" value={activeWorkflows} description="Processos ativos na rotina do RH." tone={activeWorkflows ? "info" : "success"} />
+            <CompactSignal title="Atrasados" value={overdueDeadlines} description="Prazos vencidos que pedem acompanhamento." tone={overdueDeadlines ? "danger" : "success"} />
+            <CompactSignal title="Alertas" value={deadlineAlerts} description="Casos que podem exigir ação de gestão." tone={deadlineAlerts ? "warning" : "success"} />
+            <CompactSignal title="Rotinas com falha" value={failedRoutines} description="Rotinas internas que precisam de verificação." tone={failedRoutines ? "danger" : "success"} />
           </div>
         </Card>
+
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <h2 className="text-sm font-semibold">Saude operacional</h2>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <StatusBadge status={(dashboard?.steps?.overdue ?? 0) ? "danger" : "success"} label={`Etapas vencidas: ${dashboard?.steps?.overdue ?? 0}`} />
-            <StatusBadge status={(dashboard?.steps?.returned ?? 0) ? "warning" : "success"} label={`Etapas devolvidas: ${dashboard?.steps?.returned ?? 0}`} />
-            <StatusBadge status={failedJobs ? "danger" : "success"} label={`Processamentos falhos: ${failedJobs}`} />
-            <StatusBadge status={(dashboard?.notifications?.failed ?? 0) ? "warning" : "success"} label={`Notificacoes falhas: ${dashboard?.notifications?.failed ?? 0}`} />
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold">Pendências prioritárias</h2>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Atalhos para pontos que normalmente exigem decisão ou correção.</p>
+          <div className="mt-3 space-y-2">
+            {priorityItems.map((item) => (
+              <Link key={item.label} href={item.href} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm transition-colors hover:border-primary/40 hover:bg-muted/30">
+                <span className="min-w-0 truncate font-medium">{item.label}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <StatusBadge status={item.tone} label={item.value ? String(item.value) : "Ok"} />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+            <StatusBadge status={pendingJobs ? "warning" : "success"} label={`Rotinas pendentes: ${pendingJobs}`} />
+            <StatusBadge status={(dashboard?.notifications?.pending ?? 0) ? "info" : "success"} label={`Avisos pendentes: ${dashboard?.notifications?.pending ?? 0}`} />
           </div>
         </Card>
       </div>
