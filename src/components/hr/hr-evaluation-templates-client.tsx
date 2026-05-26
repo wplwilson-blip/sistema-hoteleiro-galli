@@ -17,7 +17,8 @@ import {
   Search,
   SlidersHorizontal,
   Star,
-  Trash2
+  Trash2,
+  Wand2
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -25,6 +26,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { hotelGalliEvaluationTemplatePresets, type EvaluationTemplatePreset } from "@/lib/hr/evaluation-template-presets";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 
@@ -357,6 +359,53 @@ function criterionPayload(form: CriterionForm) {
     requiresCommentBelowScore: form.requiresCommentBelowScore,
     commentRequiredScoreThreshold: form.commentRequiredScoreThreshold === "" ? undefined : Number(form.commentRequiredScoreThreshold),
     status: form.status
+  };
+}
+
+function presetTemplatePayload(preset: EvaluationTemplatePreset, unitId?: string) {
+  return {
+    code: preset.code,
+    name: preset.name,
+    description: preset.description,
+    evaluationType: preset.evaluationType,
+    defaultFrequency: preset.defaultFrequency,
+    status: "inactive",
+    unitId,
+    scaleMin: 1,
+    scaleMax: 5,
+    passingScore: preset.passingScore,
+    requiresFeedback: true,
+    requiresEmployeeAcknowledgement: true,
+    isSystemDefault: false
+  };
+}
+
+function presetSectionPayload(section: EvaluationTemplatePreset["sections"][number], sortOrder: number) {
+  return {
+    code: section.code,
+    title: section.title,
+    description: section.description,
+    weight: section.weight ?? 1,
+    sortOrder,
+    appliesToAll: true,
+    isRequired: true,
+    status: "active"
+  };
+}
+
+function presetCriterionPayload(criterionItem: EvaluationTemplatePreset["sections"][number]["criteria"][number], sortOrder: number) {
+  return {
+    code: criterionItem.code,
+    title: criterionItem.title,
+    description: criterionItem.description,
+    expectedBehavior: undefined,
+    weight: criterionItem.weight ?? 1,
+    sortOrder,
+    isRequired: true,
+    isCritical: Boolean(criterionItem.isCritical),
+    requiresCommentBelowScore: Boolean(criterionItem.requiresCommentBelowScore),
+    commentRequiredScoreThreshold: criterionItem.commentRequiredScoreThreshold,
+    status: "active"
   };
 }
 
@@ -838,6 +887,52 @@ export function HrEvaluationTemplatesClient() {
     }
   });
 
+  const createPresetsMutation = useMutation({
+    mutationFn: async () => {
+      const existingResponse = await requestJson<ListResponse<EvaluationTemplate>>("/api/hr/evaluation-templates");
+      const existingCodes = new Set(existingResponse.data.map((template) => template.code.toUpperCase()));
+      const result = { created: 0, skipped: 0, firstCreatedId: "" };
+
+      for (const preset of hotelGalliEvaluationTemplatePresets) {
+        if (existingCodes.has(preset.code.toUpperCase())) {
+          result.skipped += 1;
+          continue;
+        }
+
+        const templateResponse = await requestJson<DetailResponse<EvaluationTemplate>>("/api/hr/evaluation-templates", {
+          method: "POST",
+          body: JSON.stringify(presetTemplatePayload(preset, activeUnitId))
+        });
+
+        result.created += 1;
+        result.firstCreatedId ||= templateResponse.data.id;
+        existingCodes.add(preset.code.toUpperCase());
+
+        for (let sectionIndex = 0; sectionIndex < preset.sections.length; sectionIndex += 1) {
+          const section = preset.sections[sectionIndex];
+          const sectionResponse = await requestJson<DetailResponse<EvaluationSection>>(`/api/hr/evaluation-templates/${templateResponse.data.id}/sections`, {
+            method: "POST",
+            body: JSON.stringify(presetSectionPayload(section, sectionIndex + 1))
+          });
+
+          for (let criterionIndex = 0; criterionIndex < section.criteria.length; criterionIndex += 1) {
+            const criterionItem = section.criteria[criterionIndex];
+            await requestJson(`/api/hr/evaluation-templates/${templateResponse.data.id}/sections/${sectionResponse.data.id}/criteria`, {
+              method: "POST",
+              body: JSON.stringify(presetCriterionPayload(criterionItem, criterionIndex + 1))
+            });
+          }
+        }
+      }
+
+      return result;
+    },
+    onSuccess: async (result) => {
+      if (result.firstCreatedId) setSelectedId(result.firstCreatedId);
+      await refresh(result.firstCreatedId || selectedTemplateId || undefined);
+    }
+  });
+
   function startCreateTemplate() {
     setShowCreate(true);
     setEditingTemplate(false);
@@ -883,7 +978,8 @@ export function HrEvaluationTemplatesClient() {
     createSectionMutation.error ||
     updateSectionMutation.error ||
     createCriterionMutation.error ||
-    updateCriterionMutation.error;
+    updateCriterionMutation.error ||
+    createPresetsMutation.error;
 
   return (
     <div className="space-y-4">
@@ -910,8 +1006,37 @@ export function HrEvaluationTemplatesClient() {
               <Plus className="h-4 w-4" />
               Novo modelo
             </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => createPresetsMutation.mutate()} disabled={createPresetsMutation.isPending}>
+              <Wand2 className="h-4 w-4" />
+              Criar padrao
+            </Button>
           </div>
         </div>
+      </Card>
+
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Wand2 className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Templates padrao Hotel Galli</h2>
+              <StatusBadge status="visual" label={`${hotelGalliEvaluationTemplatePresets.length} modelos`} />
+              <StatusBadge status="warning" label="Criados inativos" />
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Cria modelos reais para experiencia, governanca, recepcao, A&B, manutencao, administrativo e avaliacao operacional. Modelos existentes pelo codigo sao ignorados.
+            </p>
+          </div>
+          <Button type="button" onClick={() => createPresetsMutation.mutate()} disabled={createPresetsMutation.isPending} className="shrink-0">
+            <Wand2 className="h-4 w-4" />
+            {createPresetsMutation.isPending ? "Criando..." : "Criar templates padrao"}
+          </Button>
+        </div>
+        {createPresetsMutation.data ? (
+          <p className="mt-3 rounded-md border bg-background p-3 text-sm text-muted-foreground">
+            Templates criados: {createPresetsMutation.data.created}. Ja existentes ignorados: {createPresetsMutation.data.skipped}. Revise e ative somente os modelos que serao usados.
+          </p>
+        ) : null}
       </Card>
 
       <div className="grid min-w-0 gap-3 md:grid-cols-3">
