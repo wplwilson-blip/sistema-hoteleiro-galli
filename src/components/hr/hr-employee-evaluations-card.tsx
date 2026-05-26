@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Edit3, Save, Star } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Edit3, MessageSquare, Save, Star, Target, TrendingUp } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type EvaluationTemplate = {
   id: string;
@@ -27,6 +28,8 @@ type EvaluationTemplate = {
       expectedBehavior: string;
       weight: number;
       isCritical: boolean;
+      requiresCommentBelowScore: boolean;
+      commentRequiredScoreThreshold: number | null;
     }>;
   }>;
 };
@@ -118,7 +121,105 @@ function formatDate(value: string | null | undefined) {
 
 type ScoreForm = Record<string, { score: string; isNotApplicable: boolean; comment: string }>;
 
-export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }) {
+type TemplateCriterion = NonNullable<EvaluationTemplate["sections"]>[number]["criteria"][number];
+
+function parseScore(value: string) {
+  if (value === "") return null;
+  const score = Number(value);
+  return Number.isFinite(score) ? score : null;
+}
+
+function formatScore(value: number | null | undefined) {
+  return value == null ? "-" : Number(value).toFixed(2).replace(/\.00$/, "");
+}
+
+function commentThreshold(criterion: TemplateCriterion) {
+  if (criterion.commentRequiredScoreThreshold != null) return criterion.commentRequiredScoreThreshold;
+  return criterion.isCritical ? 3 : null;
+}
+
+function needsLowScoreComment(criterion: TemplateCriterion, current: ScoreForm[string]) {
+  if (current.isNotApplicable) return false;
+  const score = parseScore(current.score);
+  const threshold = commentThreshold(criterion);
+  return Boolean(criterion.requiresCommentBelowScore && threshold != null && score != null && score <= threshold && !current.comment.trim());
+}
+
+function resultLabel(score: number | null) {
+  if (score == null) return "Sem nota";
+  if (score >= 4.5) return "Destaque";
+  if (score >= 3.5) return "Adequado";
+  if (score >= 2.5) return "Acompanhar";
+  return "Crítico";
+}
+
+function resultTone(score: number | null) {
+  if (score == null) return "warning" as const;
+  if (score >= 3.5) return "success" as const;
+  if (score >= 2.5) return "warning" as const;
+  return "danger" as const;
+}
+
+function buildScoreSummary(template: EvaluationTemplate | null, scoreForm: ScoreForm) {
+  const criteria = (template?.sections ?? []).flatMap((section) => section.criteria);
+  let filled = 0;
+  let notApplicable = 0;
+  let lowScores = 0;
+  let criticalLowScores = 0;
+  let weightedSum = 0;
+  let weightSum = 0;
+  let simpleSum = 0;
+  let simpleCount = 0;
+  const missingComments: string[] = [];
+
+  for (const criterion of criteria) {
+    const current = scoreForm[criterion.id] ?? { score: "", isNotApplicable: false, comment: "" };
+    const score = parseScore(current.score);
+    if (current.isNotApplicable) {
+      filled += 1;
+      notApplicable += 1;
+      continue;
+    }
+    if (score == null) continue;
+    filled += 1;
+    simpleSum += score;
+    simpleCount += 1;
+    const weight = Math.max(Number(criterion.weight ?? 0), 0);
+    weightedSum += score * weight;
+    weightSum += weight;
+    if (score < 3.5) lowScores += 1;
+    if (criterion.isCritical && score < 3.5) criticalLowScores += 1;
+    if (needsLowScoreComment(criterion, current)) missingComments.push(criterion.title);
+  }
+
+  const weightedScore = weightSum > 0 ? weightedSum / weightSum : simpleCount ? simpleSum / simpleCount : null;
+  const criticalCount = criteria.filter((criterion) => criterion.isCritical).length;
+
+  return {
+    total: criteria.length,
+    filled,
+    notApplicable,
+    criticalCount,
+    lowScores,
+    criticalLowScores,
+    missingComments,
+    weightedScore: weightedScore == null ? null : Number(weightedScore.toFixed(2)),
+    label: resultLabel(weightedScore)
+  };
+}
+
+function buildHistorySummary(evaluations: Evaluation[]) {
+  const scored = evaluations.filter((evaluation) => evaluation.weightedScore != null || evaluation.totalScore != null);
+  const scoreSum = scored.reduce((sum, evaluation) => sum + Number(evaluation.weightedScore ?? evaluation.totalScore ?? 0), 0);
+  return {
+    total: evaluations.length,
+    scored: scored.length,
+    open: evaluations.filter((evaluation) => !["closed", "acknowledged", "cancelled"].includes(evaluation.status)).length,
+    average: scored.length ? Number((scoreSum / scored.length).toFixed(2)) : null
+  };
+}
+
+export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { employeeId: string; onOpenDevelopment?: () => void }) {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
@@ -143,9 +244,10 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
     enabled: showCreate
   });
 
+  const evaluations = useMemo(() => evaluationsQuery.data?.data ?? [], [evaluationsQuery.data?.data]);
   const selectedEvaluation = useMemo(
-    () => evaluationsQuery.data?.data.find((evaluation) => evaluation.id === selectedEvaluationId) ?? evaluationsQuery.data?.data[0] ?? null,
-    [evaluationsQuery.data?.data, selectedEvaluationId]
+    () => evaluations.find((evaluation) => evaluation.id === selectedEvaluationId) ?? evaluations[0] ?? null,
+    [evaluations, selectedEvaluationId]
   );
 
   const detailQuery = useQuery({
@@ -162,6 +264,10 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
 
   const detail = detailQuery.data?.data ?? null;
   const template = templateDetailQuery.data?.data ?? null;
+  const historySummary = useMemo(() => buildHistorySummary(evaluations), [evaluations]);
+  const scoreSummary = useMemo(() => buildScoreSummary(template, scoreForm), [scoreForm, template]);
+  const savedScore = detail?.weightedScore ?? detail?.totalScore ?? null;
+  const displayedScore = scoreSummary.weightedScore ?? savedScore;
 
   useEffect(() => {
     if (!detail || detail.redacted) return;
@@ -216,6 +322,9 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
 
   const scoresMutation = useMutation({
     mutationFn: async () => {
+      if (scoreSummary.missingComments.length) {
+        throw new Error("Preencha o comentário das notas baixas em critérios críticos antes de salvar.");
+      }
       const scores = (template?.sections ?? []).flatMap((section) =>
         section.criteria.map((criterion) => {
           const current = scoreForm[criterion.id] ?? { score: "", isNotApplicable: false, comment: "" };
@@ -341,10 +450,39 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
           />
         ) : null}
 
-        {(evaluationsQuery.data?.data ?? []).length ? (
+        {evaluations.length ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-md border bg-background p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <ClipboardList className="h-4 w-4 text-primary" />
+                Histórico
+              </div>
+              <p className="mt-2 text-2xl font-semibold">{historySummary.total}</p>
+              <p className="text-xs text-muted-foreground">{historySummary.open} em acompanhamento</p>
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Média histórica
+              </div>
+              <p className="mt-2 text-2xl font-semibold">{formatScore(historySummary.average)}</p>
+              <p className="text-xs text-muted-foreground">{historySummary.scored} avaliação(ões) com nota</p>
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <Target className="h-4 w-4 text-primary" />
+                Leitura rápida
+              </div>
+              <p className="mt-2 text-sm font-semibold">{historySummary.average == null ? "Sem média salva" : resultLabel(historySummary.average)}</p>
+              <p className="text-xs text-muted-foreground">A avaliação apoia decisão humana do gestor e do RH.</p>
+            </div>
+          </div>
+        ) : null}
+
+        {evaluations.length ? (
           <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
             <div className="space-y-2">
-              {(evaluationsQuery.data?.data ?? []).map((evaluation) => (
+              {evaluations.map((evaluation) => (
                 <button
                   key={evaluation.id}
                   type="button"
@@ -376,8 +514,63 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
                     <Star className="h-4 w-4 text-primary" />
                     <h4 className="text-sm font-semibold">{detail.templateName || "Avaliacao do colaborador"}</h4>
                     <StatusBadge status={statusTone(detail.status)} label={statusLabel(detail.status)} />
-                    <StatusBadge status="info" label={`Nota ${detail.weightedScore ?? detail.totalScore ?? "-"}`} />
+                    <StatusBadge status={resultTone(displayedScore)} label={`Nota ${formatScore(displayedScore)}`} />
                   </div>
+
+                  {template ? (
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                          Preenchimento
+                        </div>
+                        <p className="mt-2 text-xl font-semibold">
+                          {scoreSummary.filled}/{scoreSummary.total}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{scoreSummary.notApplicable} marcado(s) como N/A</p>
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <Star className="h-4 w-4 text-primary" />
+                          Resultado parcial
+                        </div>
+                        <p className="mt-2 text-xl font-semibold">{formatScore(scoreSummary.weightedScore ?? savedScore)}</p>
+                        <StatusBadge status={resultTone(scoreSummary.weightedScore ?? savedScore)} label={scoreSummary.weightedScore == null ? resultLabel(savedScore) : scoreSummary.label} />
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <AlertTriangle className="h-4 w-4 text-primary" />
+                          Pontos de atenção
+                        </div>
+                        <p className="mt-2 text-xl font-semibold">{scoreSummary.lowScores}</p>
+                        <p className="text-xs text-muted-foreground">{scoreSummary.criticalLowScores} crítico(s) abaixo de 3,5</p>
+                      </div>
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <MessageSquare className="h-4 w-4 text-primary" />
+                          Comentários pendentes
+                        </div>
+                        <p className="mt-2 text-xl font-semibold">{scoreSummary.missingComments.length}</p>
+                        <p className="text-xs text-muted-foreground">Obrigatórios em nota baixa crítica</p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {scoreSummary.missingComments.length ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      Preencha comentário para: {scoreSummary.missingComments.slice(0, 4).join(", ")}
+                      {scoreSummary.missingComments.length > 4 ? "..." : ""}.
+                    </div>
+                  ) : null}
+
+                  {onOpenDevelopment && scoreSummary.lowScores > 0 ? (
+                    <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                      <span>Há pontos de atenção. Depois da devolutiva, o RH pode abrir um PDI vinculado a esta avaliação.</span>
+                      <Button type="button" variant="outline" size="sm" onClick={onOpenDevelopment}>
+                        Criar PDI
+                      </Button>
+                    </div>
+                  ) : null}
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <Field label="Resumo da devolutiva">
@@ -417,11 +610,24 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
                           <div className="mt-3 space-y-3">
                             {section.criteria.map((criterion) => {
                               const current = scoreForm[criterion.id] ?? { score: "", isNotApplicable: false, comment: "" };
+                              const currentScore = parseScore(current.score);
+                              const hasLowScore = !current.isNotApplicable && currentScore != null && currentScore < 3.5;
+                              const missingRequiredComment = needsLowScoreComment(criterion, current);
+                              const threshold = commentThreshold(criterion);
                               return (
-                                <div key={criterion.id} className="rounded-md border bg-background p-3">
+                                <div
+                                  key={criterion.id}
+                                  className={cn(
+                                    "rounded-md border bg-background p-3",
+                                    criterion.isCritical ? "border-amber-300 bg-amber-50/40" : null,
+                                    missingRequiredComment ? "border-destructive bg-destructive/5" : null
+                                  )}
+                                >
                                   <div className="flex flex-wrap items-start gap-2">
                                     <p className="min-w-0 flex-1 break-words text-sm font-medium">{criterion.title}</p>
-                                    {criterion.isCritical ? <StatusBadge status="warning" label="Criterio critico" /> : null}
+                                    {criterion.isCritical ? <StatusBadge status={hasLowScore ? "danger" : "warning"} label="Crítico" /> : null}
+                                    {criterion.weight > 1 ? <StatusBadge status="info" label={`Peso ${criterion.weight}`} /> : null}
+                                    {threshold != null && criterion.requiresCommentBelowScore ? <StatusBadge status="visual" label={`Comentário até nota ${threshold}`} /> : null}
                                   </div>
                                   {criterion.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{criterion.description}</p> : null}
                                   <div className="mt-3 grid gap-3 md:grid-cols-[120px_120px_minmax(0,1fr)]">
@@ -458,6 +664,7 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
                                           setScoreForm((form) => ({ ...form, [criterion.id]: { ...current, comment: event.target.value } }))
                                         }
                                       />
+                                      {missingRequiredComment ? <p className="mt-1 text-xs text-destructive">Comentário obrigatório para esta nota.</p> : null}
                                     </Field>
                                   </div>
                                 </div>
@@ -467,7 +674,7 @@ export function HrEmployeeEvaluationsCard({ employeeId }: { employeeId: string }
                         </div>
                       ))}
                       <div className="flex justify-end">
-                        <Button type="button" onClick={() => scoresMutation.mutate()} disabled={scoresMutation.isPending}>
+                        <Button type="button" onClick={() => scoresMutation.mutate()} disabled={scoresMutation.isPending || scoreSummary.missingComments.length > 0}>
                           <Save className="h-4 w-4" />
                           Salvar notas
                         </Button>

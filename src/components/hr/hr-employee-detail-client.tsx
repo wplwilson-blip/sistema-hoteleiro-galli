@@ -352,7 +352,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
 
       {activeTab === "onboarding" ? <HrEmployeeOnboardingCard employeeId={employeeId} /> : null}
 
-      {activeTab === "evaluations" ? <HrEmployeeEvaluationsCard employeeId={employeeId} /> : null}
+      {activeTab === "evaluations" ? <HrEmployeeEvaluationsCard employeeId={employeeId} onOpenDevelopment={() => setActiveTab("development")} /> : null}
 
       {activeTab === "development" ? <HrEmployeeDevelopmentPlansCard employeeId={employeeId} /> : null}
 
