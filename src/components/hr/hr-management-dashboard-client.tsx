@@ -98,16 +98,16 @@ const managementLinks = [
 ];
 
 managementLinks.push({
-  title: "Modelos de avaliacao",
-  description: "Templates, secoes e criterios para avaliacoes de experiencia e periodicas.",
+  title: "Modelos de avaliação",
+  description: "Configure templates, seções e critérios usados nas avaliações do hotel.",
   href: "/rh/gestao/avaliacoes",
   icon: ListChecks,
-  badge: "Configuracao"
+  badge: "Configuração"
 });
 
 managementLinks.push({
-  title: "Relatorios de avaliacoes",
-  description: "Acompanhamento de status, devolutivas, ciencia, notas de atencao e PDIs.",
+  title: "Relatórios de avaliações",
+  description: "Acompanhe status, devolutivas, ciência, notas de atenção e PDIs vinculados.",
   href: "/rh/gestao/avaliacoes/relatorios",
   icon: ClipboardList,
   badge: "Acompanhamento"

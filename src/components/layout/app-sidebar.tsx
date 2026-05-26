@@ -129,7 +129,8 @@ const menuGroups: SidebarGroup[] = [
 ];
 
 const rhGroup = menuGroups.find((group) => group.href === "/rh");
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliacao", href: "/rh/gestao/avaliacoes", icon: ListChecks });
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks });
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList });
 
 const footerItems: SidebarLink[] = [{ label: "Relatórios", href: "/relatorios", icon: FileText }];
 
