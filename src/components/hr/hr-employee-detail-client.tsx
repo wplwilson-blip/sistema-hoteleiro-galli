@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Building2, CalendarClock, History, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
@@ -97,6 +98,12 @@ type HrHistoryResponse = {
 
 type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "history";
 
+const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "history"];
+
+function isDetailTab(value: string | null): value is DetailTab {
+  return Boolean(value && detailTabs.includes(value as DetailTab));
+}
+
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
@@ -190,8 +197,11 @@ function RestrictedState({ title, description }: { title: string; description: s
 }
 
 export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<DetailTab>("summary");
   const [historyPage, setHistoryPage] = useState(1);
+  const requestedTab = searchParams.get("tab");
+  const initialEvaluationId = searchParams.get("evaluationId");
 
   const detailQuery = useQuery({
     queryKey: ["hr", "employees", employeeId],
@@ -227,6 +237,13 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
       setActiveTab("summary");
     }
   }, [activeTab, tabs]);
+
+  useEffect(() => {
+    if (!isDetailTab(requestedTab)) return;
+    if (tabs.some((tab) => tab.value === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab, tabs]);
 
   const historyQuery = useQuery({
     queryKey: ["hr", "employees", employeeId, "history", historyPage],
@@ -352,7 +369,9 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
 
       {activeTab === "onboarding" ? <HrEmployeeOnboardingCard employeeId={employeeId} /> : null}
 
-      {activeTab === "evaluations" ? <HrEmployeeEvaluationsCard employeeId={employeeId} onOpenDevelopment={() => setActiveTab("development")} /> : null}
+      {activeTab === "evaluations" ? (
+        <HrEmployeeEvaluationsCard employeeId={employeeId} initialEvaluationId={initialEvaluationId} onOpenDevelopment={() => setActiveTab("development")} />
+      ) : null}
 
       {activeTab === "development" ? <HrEmployeeDevelopmentPlansCard employeeId={employeeId} /> : null}
 

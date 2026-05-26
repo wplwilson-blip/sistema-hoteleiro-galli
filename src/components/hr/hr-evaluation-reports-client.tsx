@@ -110,6 +110,10 @@ function buildReportUrl(filters: Record<string, string | boolean | undefined>) {
   return `/api/hr/employee-evaluations/reports${query ? `?${query}` : ""}`;
 }
 
+function employeeEvaluationHref(row: Pick<ReportRow, "employeeId" | "id">) {
+  return `/rh/employees/${row.employeeId}?tab=evaluations&evaluationId=${row.id}`;
+}
+
 export function HrEvaluationReportsClient() {
   const activeUnit = useAppStore((state) => state.activeUnit);
   const activeUnitId = uuidPattern.test(activeUnit?.id ?? "") ? activeUnit.id : "";
@@ -305,7 +309,7 @@ export function HrEvaluationReportsClient() {
                         <Link href={`/rh/employees/${row.employeeId}`}>Abrir colaborador</Link>
                       </Button>
                       <Button asChild variant="outline" size="sm">
-                        <Link href={`/rh/employees/${row.employeeId}`}>Continuar</Link>
+                        <Link href={employeeEvaluationHref(row)}>Abrir avaliação</Link>
                       </Button>
                     </div>
                   </td>

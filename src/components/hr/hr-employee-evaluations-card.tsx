@@ -247,10 +247,18 @@ function buildHistorySummary(evaluations: Evaluation[]) {
   };
 }
 
-export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { employeeId: string; onOpenDevelopment?: () => void }) {
+export function HrEmployeeEvaluationsCard({
+  employeeId,
+  initialEvaluationId,
+  onOpenDevelopment
+}: {
+  employeeId: string;
+  initialEvaluationId?: string | null;
+  onOpenDevelopment?: () => void;
+}) {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
+  const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(initialEvaluationId ?? null);
   const [createForm, setCreateForm] = useState({
     templateId: "",
     periodStart: "",
@@ -298,6 +306,12 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
   const displayedScore = scoreSummary.weightedScore ?? savedScore;
   const isLocked = Boolean(detail && isEvaluationLocked(detail.status));
   const operationalPendencies = useMemo(() => buildOperationalPendencies(scoreSummary, textForm, detail?.status ?? "draft"), [detail?.status, scoreSummary, textForm]);
+
+  useEffect(() => {
+    if (initialEvaluationId) {
+      setSelectedEvaluationId(initialEvaluationId);
+    }
+  }, [initialEvaluationId]);
 
   useEffect(() => {
     if (!detail || detail.redacted) return;
@@ -538,7 +552,10 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                   key={evaluation.id}
                   type="button"
                   onClick={() => selectEvaluation(evaluation)}
-                  className="w-full rounded-md border bg-background p-3 text-left hover:bg-muted/30"
+                  className={cn(
+                    "w-full rounded-md border bg-background p-3 text-left hover:bg-muted/30",
+                    selectedEvaluation?.id === evaluation.id ? "border-primary bg-primary/5 ring-1 ring-primary/20" : null
+                  )}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="min-w-0 flex-1 break-words text-sm font-semibold">{evaluation.templateName || typeLabel(evaluation.evaluationType)}</p>
