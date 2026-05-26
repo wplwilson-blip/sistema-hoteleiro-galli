@@ -10,6 +10,8 @@ import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-com
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { HrEmployeeDocumentsCard } from "@/components/hr/hr-employee-documents-card";
+import { HrEmployeeDevelopmentPlansCard } from "@/components/hr/hr-employee-development-plans-card";
+import { HrEmployeeEvaluationsCard } from "@/components/hr/hr-employee-evaluations-card";
 import { HrEmployeeOnboardingCard } from "@/components/hr/hr-employee-onboarding-card";
 import { cn } from "@/lib/utils";
 
@@ -93,7 +95,7 @@ type HrHistoryResponse = {
   };
 };
 
-type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "history";
+type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "history";
 
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -213,6 +215,8 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "sensitive" as const, label: "Dados protegidos", enabled: canViewSensitive },
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
         { value: "onboarding" as const, label: "Onboarding", enabled: true },
+        { value: "evaluations" as const, label: "Avaliações", enabled: true },
+        { value: "development" as const, label: "Desenvolvimento", enabled: true },
         { value: "history" as const, label: "Histórico", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
     [canViewDocuments, canViewHistory, canViewSensitive]
@@ -347,6 +351,10 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
       ) : null}
 
       {activeTab === "onboarding" ? <HrEmployeeOnboardingCard employeeId={employeeId} /> : null}
+
+      {activeTab === "evaluations" ? <HrEmployeeEvaluationsCard employeeId={employeeId} /> : null}
+
+      {activeTab === "development" ? <HrEmployeeDevelopmentPlansCard employeeId={employeeId} /> : null}
 
       {activeTab === "history" ? (
         canViewHistory ? (
