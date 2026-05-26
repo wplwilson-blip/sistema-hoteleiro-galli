@@ -37,10 +37,25 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       payload.scores.map((score) => score.criterionId)
     );
 
+    const { data: sectionData, error: sectionError } = await context.supabase
+      .from("hr_evaluation_template_sections")
+      .select("id")
+      .eq("template_id", evaluation.template_id)
+      .eq("status", "active")
+      .is("deleted_at", null);
+    if (sectionError) throw sectionError;
+    const templateSectionIds = new Set((sectionData ?? []).map((section) => section.id as string));
+
     const writeRows = payload.scores.map((score) => {
       const criterion = criteria.get(score.criterionId);
       if (!criterion || criterion.section_id !== score.sectionId) {
         throw new Error("Criterio informado nao pertence a secao indicada.");
+      }
+      if (!templateSectionIds.has(criterion.section_id)) {
+        throw new Error("Criterio informado nao pertence ao modelo desta avaliacao.");
+      }
+      if (criterion.status !== "active") {
+        throw new Error("Criterio inativo nao pode receber nota.");
       }
       if (!score.isNotApplicable && (score.score == null || score.score < template.scale_min || score.score > template.scale_max)) {
         throw new Error(`Nota deve ficar entre ${template.scale_min} e ${template.scale_max}.`);
@@ -88,11 +103,18 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       }
     }
 
+    const { data: currentScores, error: currentScoresError } = await context.supabase
+      .from("employee_evaluation_scores")
+      .select("criterion_id, score, is_not_applicable, hr_evaluation_template_criteria(weight)")
+      .eq("evaluation_id", evaluation.id)
+      .is("deleted_at", null);
+    if (currentScoresError) throw currentScoresError;
+
     const totals = calculateEvaluationTotals(
-      writeRows.map((row) => ({
-        score: row.score,
-        isNotApplicable: row.is_not_applicable,
-        weight: Number(criteria.get(row.criterion_id)?.weight ?? 0)
+      (currentScores ?? []).map((row) => ({
+        score: row.score as number | null,
+        isNotApplicable: Boolean(row.is_not_applicable),
+        weight: Number((row.hr_evaluation_template_criteria as { weight?: number | null } | null)?.weight ?? 0)
       }))
     );
     const { data, error } = await context.supabase
