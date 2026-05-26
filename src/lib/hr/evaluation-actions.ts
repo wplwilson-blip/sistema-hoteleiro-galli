@@ -216,6 +216,9 @@ export async function prepareEmployeeEvaluationCreate(context: HrRequestContext,
   const template = await loadEvaluationTemplate(context, payload.templateId);
   if (!template) throw new HrAuthorizationError("Modelo de avaliacao nao encontrado.", 404);
   assertCanAccessEvaluationTemplate(context, template);
+  if (template.status !== "active") {
+    throw new HrAuthorizationError("Apenas modelos ativos podem ser usados para criar avaliacoes.", 422);
+  }
   assertTemplateAppliesToEmployee(template, employee);
 
   return {

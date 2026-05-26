@@ -18,6 +18,7 @@ import {
   Inbox,
   Landmark,
   LayoutDashboard,
+  ListChecks,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
@@ -126,6 +127,9 @@ const menuGroups: SidebarGroup[] = [
     ]
   }
 ];
+
+const rhGroup = menuGroups.find((group) => group.href === "/rh");
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliacao", href: "/rh/gestao/avaliacoes", icon: ListChecks });
 
 const footerItems: SidebarLink[] = [{ label: "Relatórios", href: "/relatorios", icon: FileText }];
 

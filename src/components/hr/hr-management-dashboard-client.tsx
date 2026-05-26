@@ -11,6 +11,7 @@ import {
   FileCog,
   FileText,
   Inbox,
+  ListChecks,
   Settings2,
   ShieldAlert,
   TimerReset
@@ -95,6 +96,14 @@ const managementLinks = [
     badge: "Configuração"
   }
 ];
+
+managementLinks.push({
+  title: "Modelos de avaliacao",
+  description: "Templates, secoes e criterios para avaliacoes de experiencia e periodicas.",
+  href: "/rh/gestao/avaliacoes",
+  icon: ListChecks,
+  badge: "Configuracao"
+});
 
 function ManagementHubCard({
   title,
@@ -232,7 +241,7 @@ export function HrManagementDashboardClient() {
           </Button>
         </div>
 
-        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {managementLinks.map((item) => (
             <ManagementHubCard key={item.href} {...item} />
           ))}
