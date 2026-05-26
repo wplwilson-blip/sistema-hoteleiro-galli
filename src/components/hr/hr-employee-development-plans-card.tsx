@@ -1,14 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, PlusCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ListChecks, PlusCircle, RotateCcw } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type DevelopmentPlan = {
   id: string;
@@ -30,7 +32,9 @@ type DevelopmentPlanItem = {
   description: string;
   actionType: string;
   dueAt: string;
+  responsibleUserId: string | null;
   status: string;
+  completionNotes: string;
   completedAt: string;
 };
 
@@ -94,6 +98,48 @@ function formatDate(value: string | null | undefined) {
   return date.toLocaleDateString("pt-BR");
 }
 
+function isClosedItem(status: string) {
+  return ["completed", "waived", "cancelled"].includes(status);
+}
+
+function isOverdueItem(item: DevelopmentPlanItem) {
+  if (!item.dueAt || isClosedItem(item.status)) return false;
+  return item.dueAt.slice(0, 10) < new Date().toISOString().slice(0, 10);
+}
+
+function daysUntil(value: string | null | undefined) {
+  if (!value) return null;
+  const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+  const due = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(due.getTime())) return null;
+  return Math.ceil((due.getTime() - today.getTime()) / 86400000);
+}
+
+function nextDueLabel(days: number | null) {
+  if (days == null) return "Sem próxima ação";
+  if (days < 0) return `${Math.abs(days)} dia(s) em atraso`;
+  if (days === 0) return "Vence hoje";
+  return `Vence em ${days} dia(s)`;
+}
+
+function buildPlanSummary(items: DevelopmentPlanItem[] = []) {
+  const completed = items.filter((item) => item.status === "completed").length;
+  const open = items.filter((item) => !isClosedItem(item.status)).length;
+  const overdue = items.filter(isOverdueItem).length;
+  const next = items
+    .filter((item) => !isClosedItem(item.status) && item.dueAt)
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
+  return {
+    total: items.length,
+    completed,
+    open,
+    overdue,
+    next,
+    nextInDays: next ? daysUntil(next.dueAt) : null,
+    progress: items.length ? Math.round((completed / items.length) * 100) : 0
+  };
+}
+
 export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: string }) {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
@@ -101,6 +147,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
   const [showItemForm, setShowItemForm] = useState(false);
   const [planForm, setPlanForm] = useState({ title: "", reason: "", dueAt: "", evaluationId: "" });
   const [itemForm, setItemForm] = useState({ title: "", description: "", actionType: "operational_practice", dueAt: "" });
+  const [completionNotes, setCompletionNotes] = useState<Record<string, string>>({});
 
   const plansQuery = useQuery({
     queryKey: ["hr", "development-plans", employeeId],
@@ -122,6 +169,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
   });
 
   const detail = detailQuery.data?.data ?? null;
+  const planSummary = buildPlanSummary(detail?.items ?? []);
 
   function refreshPlans() {
     return Promise.all([
@@ -168,6 +216,21 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
     }
   });
 
+  const updateItemMutation = useMutation({
+    mutationFn: async ({ item, status }: { item: DevelopmentPlanItem; status: "completed" | "in_progress" }) =>
+      requestJson(`/api/hr/development-plans/${detail?.id}/items/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+          completionNotes: status === "completed" ? completionNotes[item.id]?.trim() || "Concluido no acompanhamento do PDI." : undefined
+        })
+      }),
+    onSuccess: async () => {
+      setCompletionNotes({});
+      await refreshPlans();
+    }
+  });
+
   return (
     <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4">
@@ -194,6 +257,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
         {plansQuery.error ? <ErrorMessage message={plansQuery.error instanceof Error ? plansQuery.error.message : "Nao foi possivel carregar PDIs."} /> : null}
         {createMutation.error ? <ErrorMessage message={createMutation.error instanceof Error ? createMutation.error.message : "Nao foi possivel criar PDI."} /> : null}
         {createItemMutation.error ? <ErrorMessage message={createItemMutation.error instanceof Error ? createItemMutation.error.message : "Nao foi possivel criar item do PDI."} /> : null}
+        {updateItemMutation.error ? <ErrorMessage message={updateItemMutation.error instanceof Error ? updateItemMutation.error.message : "Nao foi possivel atualizar item do PDI."} /> : null}
 
         {showCreate ? (
           <form
@@ -270,12 +334,54 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-sm font-semibold">{detail.title}</h4>
                     <StatusBadge status={statusTone(detail.status)} label={statusLabel(detail.status)} />
-                    {detail.evaluationId ? <StatusBadge status="info" label="Vinculado a avaliação" /> : null}
+                    {detail.evaluationId ? <StatusBadge status="info" label="Originado da avaliação" /> : null}
                   </div>
                   {detail.reason ? <p className="break-words text-sm leading-6 text-muted-foreground">{detail.reason}</p> : null}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>Prazo: {formatDate(detail.dueAt)}</span>
                     <span>Revisao: {formatDate(detail.reviewAt)}</span>
+                  </div>
+                  {detail.evaluationId ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/rh/employees/${employeeId}?tab=evaluations&evaluationId=${detail.evaluationId}`}>Abrir avaliação de origem</Link>
+                    </Button>
+                  ) : null}
+
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <ListChecks className="h-4 w-4 text-primary" />
+                        Ações
+                      </div>
+                      <p className="mt-2 text-xl font-semibold">{planSummary.total}</p>
+                      <p className="text-xs text-muted-foreground">{planSummary.open} aberta(s)</p>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                        Conclusão
+                      </div>
+                      <p className="mt-2 text-xl font-semibold">{planSummary.completed}</p>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${planSummary.progress}%` }} />
+                      </div>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <AlertTriangle className="h-4 w-4 text-primary" />
+                        Atrasos
+                      </div>
+                      <p className="mt-2 text-xl font-semibold">{planSummary.overdue}</p>
+                      <p className="text-xs text-muted-foreground">Visível para acompanhamento, sem cobrança automática.</p>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <Clock className="h-4 w-4 text-primary" />
+                        Próxima ação
+                      </div>
+                      <p className="mt-2 text-sm font-semibold">{planSummary.next?.title ?? "Sem ação aberta"}</p>
+                      <p className="text-xs text-muted-foreground">{nextDueLabel(planSummary.nextInDays)}</p>
+                    </div>
                   </div>
 
                   <div className="flex justify-between gap-2 border-t pt-3">
@@ -328,14 +434,40 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
                   {detail.items?.length ? (
                     <div className="space-y-2">
                       {detail.items.map((item) => (
-                        <div key={item.id} className="rounded-md border bg-muted/20 p-3">
+                        <div key={item.id} className={cn("rounded-md border bg-muted/20 p-3", isOverdueItem(item) ? "border-destructive/40 bg-destructive/5" : null)}>
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="min-w-0 flex-1 break-words text-sm font-medium">{item.title}</p>
                             <StatusBadge status={statusTone(item.status)} label={statusLabel(item.status)} />
+                            {isOverdueItem(item) ? <StatusBadge status="danger" label="Atrasado" /> : null}
                             <StatusBadge status="visual" label={actionTypeLabel(item.actionType)} />
                           </div>
                           {item.description ? <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{item.description}</p> : null}
-                          <p className="mt-1 text-xs text-muted-foreground">Prazo: {formatDate(item.dueAt)}</p>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>Prazo: {formatDate(item.dueAt)}</span>
+                            <span>Conclusão: {formatDate(item.completedAt)}</span>
+                            <span>Responsável: {item.responsibleUserId ? "Definido" : "Não informado"}</span>
+                          </div>
+                          {item.completionNotes ? <p className="mt-2 rounded-md border bg-background p-2 text-xs text-muted-foreground">Observação: {item.completionNotes}</p> : null}
+                          {!isClosedItem(item.status) ? (
+                            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                              <Input
+                                value={completionNotes[item.id] ?? ""}
+                                onChange={(event) => setCompletionNotes((current) => ({ ...current, [item.id]: event.target.value }))}
+                                placeholder="Observação simples da conclusão"
+                              />
+                              <Button type="button" size="sm" onClick={() => updateItemMutation.mutate({ item, status: "completed" })} disabled={updateItemMutation.isPending}>
+                                <CheckCircle2 className="h-4 w-4" />
+                                Marcar como concluído
+                              </Button>
+                            </div>
+                          ) : item.status === "completed" ? (
+                            <div className="mt-3 flex justify-end">
+                              <Button type="button" variant="outline" size="sm" onClick={() => updateItemMutation.mutate({ item, status: "in_progress" })} disabled={updateItemMutation.isPending}>
+                                <RotateCcw className="h-4 w-4" />
+                                Reabrir
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>

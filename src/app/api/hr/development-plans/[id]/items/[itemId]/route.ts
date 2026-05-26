@@ -42,7 +42,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       responsibleUserId: pickPayload(payload, "responsibleUserId", existing.responsible_user_id ?? undefined) as string | undefined,
       status: payload.status ?? existing.status,
       completionNotes: pickPayload(payload, "completionNotes", existing.completion_notes ?? undefined) as string | undefined,
-      completedAt: pickPayload(payload, "completedAt", existing.completed_at ?? undefined) as string | undefined
+      completedAt: payload.status && payload.status !== "completed" ? undefined : (pickPayload(payload, "completedAt", existing.completed_at ?? undefined) as string | undefined)
     };
     const { data, error } = await context.supabase
       .from("employee_development_plan_items")
