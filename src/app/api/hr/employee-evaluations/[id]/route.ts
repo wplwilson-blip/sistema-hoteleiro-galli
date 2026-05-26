@@ -8,7 +8,7 @@ import {
   logHrApiError,
   requireHrPermission
 } from "@/lib/hr/api-auth";
-import { loadEmployeeEvaluation, prepareEmployeeEvaluationUpdate } from "@/lib/hr/evaluation-actions";
+import { assertEmployeeEvaluationReadyForStatus, loadEmployeeEvaluation, prepareEmployeeEvaluationUpdate } from "@/lib/hr/evaluation-actions";
 import { employeeEvaluationDetailSelect, employeeEvaluationListSelect, redactEmployeeEvaluation, type EmployeeEvaluationRow } from "@/lib/hr/evaluations";
 import { employeeEvaluationUpdateSchema } from "@/lib/hr/evaluation-validation";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
@@ -51,6 +51,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const { id } = hrIdParamSchema.parse(params);
     const existing = await loadEmployeeEvaluation(context, id, employeeEvaluationListSelect);
     if (!existing) return hrApiError("Avaliacao nao encontrada.", 404);
+    await assertEmployeeEvaluationReadyForStatus(context, existing, payload);
     const updatePayload = prepareEmployeeEvaluationUpdate(existing, payload);
     const { data, error } = await context.supabase
       .from("employee_evaluations")

@@ -27,6 +27,7 @@ type EvaluationTemplate = {
       description: string;
       expectedBehavior: string;
       weight: number;
+      isRequired: boolean;
       isCritical: boolean;
       requiresCommentBelowScore: boolean;
       commentRequiredScoreThreshold: number | null;
@@ -48,10 +49,13 @@ type Evaluation = {
   weightedScore: number | null;
   resultLabel: string;
   resultLevel: string;
+  feedbackDate?: string;
   summary?: string;
   strengths?: string;
   developmentPoints?: string;
   employeeComments?: string;
+  employeeAcknowledgedAt?: string;
+  closedAt?: string;
   redacted: boolean;
   scores?: Array<{
     id: string;
@@ -80,14 +84,18 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     draft: "Rascunho",
     in_progress: "Em andamento",
-    submitted: "Enviada",
+    submitted: "Pronta para devolutiva",
     reviewed: "Revisada",
     feedback_given: "Devolutiva registrada",
-    acknowledged: "Ciencia registrada",
+    acknowledged: "Ciência registrada",
     closed: "Encerrada",
     cancelled: "Cancelada"
   };
@@ -135,14 +143,16 @@ function formatScore(value: number | null | undefined) {
 
 function commentThreshold(criterion: TemplateCriterion) {
   if (criterion.commentRequiredScoreThreshold != null) return criterion.commentRequiredScoreThreshold;
-  return criterion.isCritical ? 3 : null;
+  return null;
 }
 
 function needsLowScoreComment(criterion: TemplateCriterion, current: ScoreForm[string]) {
   if (current.isNotApplicable) return false;
   const score = parseScore(current.score);
   const threshold = commentThreshold(criterion);
-  return Boolean(criterion.requiresCommentBelowScore && threshold != null && score != null && score <= threshold && !current.comment.trim());
+  const requiredByCritical = criterion.isCritical && score != null && score < 3;
+  const requiredByTemplate = Boolean(criterion.requiresCommentBelowScore && threshold != null && score != null && score <= threshold);
+  return Boolean((requiredByCritical || requiredByTemplate) && !current.comment.trim());
 }
 
 function resultLabel(score: number | null) {
@@ -171,6 +181,7 @@ function buildScoreSummary(template: EvaluationTemplate | null, scoreForm: Score
   let simpleSum = 0;
   let simpleCount = 0;
   const missingComments: string[] = [];
+  const missingScores: string[] = [];
 
   for (const criterion of criteria) {
     const current = scoreForm[criterion.id] ?? { score: "", isNotApplicable: false, comment: "" };
@@ -180,7 +191,10 @@ function buildScoreSummary(template: EvaluationTemplate | null, scoreForm: Score
       notApplicable += 1;
       continue;
     }
-    if (score == null) continue;
+    if (score == null) {
+      if (criterion.isRequired !== false) missingScores.push(criterion.title);
+      continue;
+    }
     filled += 1;
     simpleSum += score;
     simpleCount += 1;
@@ -203,9 +217,23 @@ function buildScoreSummary(template: EvaluationTemplate | null, scoreForm: Score
     lowScores,
     criticalLowScores,
     missingComments,
+    missingScores,
     weightedScore: weightedScore == null ? null : Number(weightedScore.toFixed(2)),
     label: resultLabel(weightedScore)
   };
+}
+
+function isEvaluationLocked(status: string) {
+  return ["closed", "cancelled"].includes(status);
+}
+
+function buildOperationalPendencies(scoreSummary: ReturnType<typeof buildScoreSummary>, textForm: { summary: string; feedbackDate: string }, status: string) {
+  const pendencies: string[] = [];
+  if (scoreSummary.missingScores.length) pendencies.push(`Critérios obrigatórios sem nota: ${scoreSummary.missingScores.slice(0, 4).join(", ")}.`);
+  if (scoreSummary.missingComments.length) pendencies.push(`Comentários obrigatórios pendentes: ${scoreSummary.missingComments.slice(0, 4).join(", ")}.`);
+  if (["submitted", "feedback_given", "acknowledged"].includes(status) && !textForm.summary.trim()) pendencies.push("Resumo da devolutiva não preenchido.");
+  if (["submitted", "feedback_given", "acknowledged"].includes(status) && !textForm.feedbackDate) pendencies.push("Data da devolutiva não preenchida.");
+  return pendencies;
 }
 
 function buildHistorySummary(evaluations: Evaluation[]) {
@@ -230,7 +258,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
     evaluationDate: todayIso(),
     status: "draft"
   });
-  const [textForm, setTextForm] = useState({ summary: "", strengths: "", developmentPoints: "", employeeComments: "", status: "draft" });
+  const [textForm, setTextForm] = useState({ summary: "", strengths: "", developmentPoints: "", employeeComments: "", feedbackDate: "", status: "draft" });
   const [scoreForm, setScoreForm] = useState<ScoreForm>({});
 
   const evaluationsQuery = useQuery({
@@ -268,6 +296,8 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
   const scoreSummary = useMemo(() => buildScoreSummary(template, scoreForm), [scoreForm, template]);
   const savedScore = detail?.weightedScore ?? detail?.totalScore ?? null;
   const displayedScore = scoreSummary.weightedScore ?? savedScore;
+  const isLocked = Boolean(detail && isEvaluationLocked(detail.status));
+  const operationalPendencies = useMemo(() => buildOperationalPendencies(scoreSummary, textForm, detail?.status ?? "draft"), [detail?.status, scoreSummary, textForm]);
 
   useEffect(() => {
     if (!detail || detail.redacted) return;
@@ -277,6 +307,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
       strengths: detail.strengths ?? "",
       developmentPoints: detail.developmentPoints ?? "",
       employeeComments: detail.employeeComments ?? "",
+      feedbackDate: detail.feedbackDate ?? "",
       status: detail.status
     });
 
@@ -320,10 +351,22 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
     onSuccess: refreshEvaluations
   });
 
+  const statusMutation = useMutation({
+    mutationFn: async (payload: Partial<typeof textForm> & { status: string; employeeAcknowledgedAt?: string; closedAt?: string }) =>
+      requestJson(`/api/hr/employee-evaluations/${detail?.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...textForm, ...payload })
+      }),
+    onSuccess: refreshEvaluations
+  });
+
   const scoresMutation = useMutation({
     mutationFn: async () => {
       if (scoreSummary.missingComments.length) {
         throw new Error("Preencha o comentário das notas baixas em critérios críticos antes de salvar.");
+      }
+      if (isLocked) {
+        throw new Error("Avaliação encerrada não permite alterar notas.");
       }
       const scores = (template?.sections ?? []).flatMap((section) =>
         section.criteria.map((criterion) => {
@@ -352,6 +395,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
       strengths: evaluation.strengths ?? "",
       developmentPoints: evaluation.developmentPoints ?? "",
       employeeComments: evaluation.employeeComments ?? "",
+      feedbackDate: evaluation.feedbackDate ?? "",
       status: evaluation.status
     });
     const nextScores: ScoreForm = {};
@@ -364,6 +408,12 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
     }
     setScoreForm(nextScores);
   }
+
+  const hasScorePendencies = scoreSummary.missingScores.length > 0 || scoreSummary.missingComments.length > 0;
+  const canMarkReady = Boolean(detail && ["draft", "in_progress"].includes(detail.status) && !hasScorePendencies && !isLocked);
+  const canRegisterFeedback = Boolean(detail && ["submitted", "reviewed"].includes(detail.status) && !hasScorePendencies && textForm.summary.trim());
+  const canRegisterAcknowledgement = Boolean(detail && detail.status === "feedback_given");
+  const canCloseEvaluation = Boolean(detail && detail.status === "acknowledged");
 
   return (
     <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
@@ -391,6 +441,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
         {evaluationsQuery.error ? <ErrorMessage message={evaluationsQuery.error instanceof Error ? evaluationsQuery.error.message : "Não foi possível carregar avaliações."} /> : null}
         {createMutation.error ? <ErrorMessage message={createMutation.error instanceof Error ? createMutation.error.message : "Não foi possível criar avaliação."} /> : null}
         {updateMutation.error ? <ErrorMessage message={updateMutation.error instanceof Error ? updateMutation.error.message : "Não foi possível salvar avaliação."} /> : null}
+        {statusMutation.error ? <ErrorMessage message={statusMutation.error instanceof Error ? statusMutation.error.message : "Não foi possível avançar a avaliação."} /> : null}
         {scoresMutation.error ? <ErrorMessage message={scoresMutation.error instanceof Error ? scoresMutation.error.message : "Não foi possível salvar notas."} /> : null}
 
         {showCreate ? (
@@ -563,6 +614,55 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                     </div>
                   ) : null}
 
+                  {operationalPendencies.length ? (
+                    <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3 text-sm text-amber-900">
+                      <p className="font-medium">Pendências antes de avançar</p>
+                      <ul className="mt-2 list-disc space-y-1 pl-5">
+                        {operationalPendencies.map((pendency) => (
+                          <li key={pendency}>{pendency}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {isLocked ? (
+                    <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                      Avaliação encerrada. As notas e critérios ficam bloqueados para edição operacional; o PDI continua em acompanhamento separado.
+                    </div>
+                  ) : (
+                    <div className="rounded-md border bg-muted/20 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => statusMutation.mutate({ status: "submitted" })} disabled={!canMarkReady || statusMutation.isPending}>
+                          Marcar como pronta
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => statusMutation.mutate({ status: "feedback_given", feedbackDate: textForm.feedbackDate || todayIso() })}
+                          disabled={!canRegisterFeedback || statusMutation.isPending}
+                        >
+                          Registrar devolutiva
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => statusMutation.mutate({ status: "acknowledged", employeeAcknowledgedAt: nowIso() })}
+                          disabled={!canRegisterAcknowledgement || statusMutation.isPending}
+                        >
+                          Registrar ciência
+                        </Button>
+                        <Button type="button" size="sm" onClick={() => statusMutation.mutate({ status: "closed", closedAt: nowIso() })} disabled={!canCloseEvaluation || statusMutation.isPending}>
+                          Concluir avaliação
+                        </Button>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        Ciência significa que o colaborador tomou conhecimento, não que concorda com o conteúdo. Conclusão não gera promoção, punição ou desligamento automático.
+                      </p>
+                    </div>
+                  )}
+
                   {onOpenDevelopment && scoreSummary.lowScores > 0 ? (
                     <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                       <span>Há pontos de atenção. Depois da devolutiva, o RH pode abrir um PDI vinculado a esta avaliação.</span>
@@ -573,15 +673,24 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                   ) : null}
 
                   <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Data da devolutiva">
+                      <Input
+                        type="date"
+                        value={textForm.feedbackDate}
+                        disabled={isLocked}
+                        onChange={(event) => setTextForm((current) => ({ ...current, feedbackDate: event.target.value }))}
+                      />
+                    </Field>
                     <Field label="Resumo da devolutiva">
-                      <TextArea value={textForm.summary} onChange={(event) => setTextForm((current) => ({ ...current, summary: event.target.value }))} maxLength={5000} />
+                      <TextArea value={textForm.summary} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, summary: event.target.value }))} maxLength={5000} />
                     </Field>
                     <Field label="Pontos fortes">
-                      <TextArea value={textForm.strengths} onChange={(event) => setTextForm((current) => ({ ...current, strengths: event.target.value }))} maxLength={5000} />
+                      <TextArea value={textForm.strengths} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, strengths: event.target.value }))} maxLength={5000} />
                     </Field>
                     <Field label="Pontos a desenvolver">
                       <TextArea
                         value={textForm.developmentPoints}
+                        disabled={isLocked}
                         onChange={(event) => setTextForm((current) => ({ ...current, developmentPoints: event.target.value }))}
                         maxLength={5000}
                       />
@@ -589,13 +698,14 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                     <Field label="Comentário do colaborador">
                       <TextArea
                         value={textForm.employeeComments}
+                        disabled={isLocked}
                         onChange={(event) => setTextForm((current) => ({ ...current, employeeComments: event.target.value }))}
                         maxLength={5000}
                       />
                     </Field>
                   </div>
                   <div className="flex justify-end">
-                    <Button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+                    <Button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || isLocked}>
                       <Save className="h-4 w-4" />
                       Salvar devolutiva
                     </Button>
@@ -638,7 +748,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                                         max={template.scaleMax}
                                         step="1"
                                         value={current.score}
-                                        disabled={current.isNotApplicable}
+                                        disabled={current.isNotApplicable || isLocked}
                                         onChange={(event) =>
                                           setScoreForm((form) => ({ ...form, [criterion.id]: { ...current, score: event.target.value } }))
                                         }
@@ -648,6 +758,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                                       <input
                                         type="checkbox"
                                         checked={current.isNotApplicable}
+                                        disabled={isLocked}
                                         onChange={(event) =>
                                           setScoreForm((form) => ({
                                             ...form,
@@ -660,6 +771,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                                     <Field label="Comentário">
                                       <Input
                                         value={current.comment}
+                                        disabled={isLocked}
                                         onChange={(event) =>
                                           setScoreForm((form) => ({ ...form, [criterion.id]: { ...current, comment: event.target.value } }))
                                         }
@@ -674,7 +786,7 @@ export function HrEmployeeEvaluationsCard({ employeeId, onOpenDevelopment }: { e
                         </div>
                       ))}
                       <div className="flex justify-end">
-                        <Button type="button" onClick={() => scoresMutation.mutate()} disabled={scoresMutation.isPending || scoreSummary.missingComments.length > 0}>
+                        <Button type="button" onClick={() => scoresMutation.mutate()} disabled={scoresMutation.isPending || scoreSummary.missingComments.length > 0 || isLocked}>
                           <Save className="h-4 w-4" />
                           Salvar notas
                         </Button>

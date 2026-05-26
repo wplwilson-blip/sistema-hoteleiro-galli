@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleHrRouteError, HR_PERMISSIONS, hrApiError, logHrApiError, requireHrPermission } from "@/lib/hr/api-auth";
 import { calculateCriterionWeightedScore, calculateEvaluationTotals } from "@/lib/hr/evaluation-calculations";
-import { loadCriteriaForScores, loadEmployeeEvaluation } from "@/lib/hr/evaluation-actions";
+import { assertEvaluationScoreComments, loadCriteriaForScores, loadEmployeeEvaluation } from "@/lib/hr/evaluation-actions";
 import { employeeEvaluationDetailSelect, employeeEvaluationListSelect, redactEmployeeEvaluation, type EmployeeEvaluationRow } from "@/lib/hr/evaluations";
 import { employeeEvaluationScoresPayloadSchema } from "@/lib/hr/evaluation-validation";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
@@ -18,6 +18,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const payload = employeeEvaluationScoresPayloadSchema.parse(await request.json());
     const evaluation = await loadEmployeeEvaluation(context, id, employeeEvaluationListSelect);
     if (!evaluation) return hrApiError("Avaliacao nao encontrada.", 404);
+    if (["closed", "cancelled"].includes(evaluation.status)) {
+      return hrApiError("Avaliacao encerrada nao permite alterar notas.", 422);
+    }
 
     const { data: templateData, error: templateError } = await context.supabase
       .from("hr_evaluation_templates")
@@ -42,6 +45,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       if (!score.isNotApplicable && (score.score == null || score.score < template.scale_min || score.score > template.scale_max)) {
         throw new Error(`Nota deve ficar entre ${template.scale_min} e ${template.scale_max}.`);
       }
+      assertEvaluationScoreComments(criteria, [
+        {
+          criterionId: score.criterionId,
+          score: score.score ?? null,
+          isNotApplicable: score.isNotApplicable,
+          comment: score.comment
+        }
+      ]);
 
       return {
         evaluation_id: evaluation.id,

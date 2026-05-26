@@ -269,6 +269,9 @@ export async function loadEmployeeEvaluation(context: HrRequestContext, id: stri
 }
 
 export function prepareEmployeeEvaluationUpdate(existing: EmployeeEvaluationRow, payload: EvaluationUpdatePayload) {
+  if (["closed", "cancelled"].includes(existing.status)) {
+    throw new HrAuthorizationError("Avaliacao encerrada nao permite edicao operacional.", 422);
+  }
   const nextStatus = payload.status ?? existing.status;
   assertEvaluationStatusTransition(existing.status, nextStatus);
   const now = new Date().toISOString();
@@ -297,9 +300,11 @@ export function prepareEmployeeEvaluationUpdate(existing: EmployeeEvaluationRow,
 function assertEvaluationStatusTransition(current: string, next: string) {
   if (current === next) return;
   if (next === "cancelled") return;
-  const order = ["draft", "in_progress", "submitted", "reviewed", "feedback_given", "acknowledged", "closed"];
+  const order = ["draft", "in_progress", "submitted", "feedback_given", "acknowledged", "closed"];
   const currentIndex = order.indexOf(current);
   const nextIndex = order.indexOf(next);
+  const allowedSkips = (current === "draft" && next === "submitted") || (current === "submitted" && next === "reviewed");
+  if ((current === "reviewed" && next === "feedback_given") || allowedSkips) return;
   if (currentIndex === -1 || nextIndex === -1 || nextIndex < currentIndex || nextIndex > currentIndex + 1) {
     throw new HrAuthorizationError("Transicao de status da avaliacao nao permitida nesta etapa.", 422);
   }
@@ -308,7 +313,7 @@ function assertEvaluationStatusTransition(current: string, next: string) {
 export async function loadCriteriaForScores(context: HrRequestContext, criterionIds: string[]) {
   const { data, error } = await context.supabase
     .from("hr_evaluation_template_criteria")
-    .select("id, section_id, weight, status")
+    .select("id, section_id, title, weight, is_required, is_critical, requires_comment_below_score, comment_required_score_threshold, status")
     .in("id", criterionIds)
     .is("deleted_at", null);
 
@@ -318,4 +323,114 @@ export async function loadCriteriaForScores(context: HrRequestContext, criterion
   }
 
   return new Map((data ?? []).map((criterion) => [criterion.id as string, criterion as EvaluationTemplateCriterionRow & { status: string }]));
+}
+
+type ScoreValidationInput = {
+  criterionId: string;
+  score: number | null | undefined;
+  isNotApplicable: boolean;
+  comment?: string | null;
+};
+
+export function requiresEvaluationScoreComment(
+  criterion: Pick<EvaluationTemplateCriterionRow, "is_critical" | "requires_comment_below_score" | "comment_required_score_threshold">,
+  score: number | null | undefined,
+  isNotApplicable: boolean
+) {
+  if (isNotApplicable || score == null) return false;
+  if (criterion.is_critical && score < 3) return true;
+  if (criterion.requires_comment_below_score && criterion.comment_required_score_threshold != null && score <= Number(criterion.comment_required_score_threshold)) {
+    return true;
+  }
+  return false;
+}
+
+export function assertEvaluationScoreComments(criteria: Map<string, EvaluationTemplateCriterionRow>, scores: ScoreValidationInput[]) {
+  const missingComments = scores
+    .filter((score) => {
+      const criterion = criteria.get(score.criterionId);
+      if (!criterion) return false;
+      return requiresEvaluationScoreComment(criterion, score.score, score.isNotApplicable) && !score.comment?.trim();
+    })
+    .map((score) => criteria.get(score.criterionId)?.title ?? "criterio");
+
+  if (missingComments.length) {
+    throw new HrAuthorizationError(`Comentario obrigatorio para nota baixa em: ${missingComments.slice(0, 5).join(", ")}.`, 422);
+  }
+}
+
+export async function assertEmployeeEvaluationReadyForStatus(context: HrRequestContext, evaluation: EmployeeEvaluationRow, payload: EvaluationUpdatePayload) {
+  const nextStatus = payload.status ?? evaluation.status;
+  if (!["submitted", "feedback_given", "acknowledged", "closed"].includes(nextStatus)) return;
+
+  const { data: sections, error: sectionsError } = await context.supabase
+    .from("hr_evaluation_template_sections")
+    .select("id")
+    .eq("template_id", evaluation.template_id)
+    .eq("status", "active")
+    .is("deleted_at", null);
+  if (sectionsError) {
+    logHrApiError("employee_evaluations.sections_validation_failed", sectionsError);
+    throw new Error("Nao foi possivel validar as secoes da avaliacao.");
+  }
+
+  const sectionIds = (sections ?? []).map((section) => section.id as string);
+  if (!sectionIds.length) throw new HrAuthorizationError("Modelo sem secoes ativas para concluir avaliacao.", 422);
+
+  const { data: criteriaRows, error: criteriaError } = await context.supabase
+    .from("hr_evaluation_template_criteria")
+    .select("id, section_id, title, weight, is_required, is_critical, requires_comment_below_score, comment_required_score_threshold, status")
+    .in("section_id", sectionIds)
+    .eq("status", "active")
+    .is("deleted_at", null);
+  if (criteriaError) {
+    logHrApiError("employee_evaluations.criteria_validation_failed", criteriaError);
+    throw new Error("Nao foi possivel validar os criterios da avaliacao.");
+  }
+
+  const criteria = new Map((criteriaRows ?? []).map((criterion) => [criterion.id as string, criterion as EvaluationTemplateCriterionRow]));
+  if (!criteria.size) throw new HrAuthorizationError("Modelo sem criterios ativos para concluir avaliacao.", 422);
+
+  const { data: scoreRows, error: scoreError } = await context.supabase
+    .from("employee_evaluation_scores")
+    .select("criterion_id, score, is_not_applicable, comment")
+    .eq("evaluation_id", evaluation.id)
+    .is("deleted_at", null);
+  if (scoreError) {
+    logHrApiError("employee_evaluations.scores_validation_failed", scoreError);
+    throw new Error("Nao foi possivel validar as notas da avaliacao.");
+  }
+
+  const scoresByCriterion = new Map((scoreRows ?? []).map((score) => [score.criterion_id as string, score]));
+  const missingScores = Array.from(criteria.values())
+    .filter((criterion) => criterion.is_required)
+    .filter((criterion) => {
+      const score = scoresByCriterion.get(criterion.id);
+      return !score || (!score.is_not_applicable && score.score == null);
+    })
+    .map((criterion) => criterion.title);
+  if (missingScores.length) {
+    throw new HrAuthorizationError(`Preencha todos os criterios obrigatorios antes de avancar: ${missingScores.slice(0, 5).join(", ")}.`, 422);
+  }
+
+  assertEvaluationScoreComments(
+    criteria,
+    (scoreRows ?? []).map((score) => ({
+      criterionId: score.criterion_id as string,
+      score: score.score as number | null,
+      isNotApplicable: Boolean(score.is_not_applicable),
+      comment: score.comment as string | null
+    }))
+  );
+
+  const summary = payload.summary?.trim() ?? evaluation.summary?.trim() ?? "";
+  const feedbackDate = payload.feedbackDate ?? evaluation.feedback_date;
+  const acknowledgedAt = payload.employeeAcknowledgedAt ?? evaluation.employee_acknowledged_at;
+
+  if (["feedback_given", "acknowledged", "closed"].includes(nextStatus) && (!summary || !feedbackDate)) {
+    throw new HrAuthorizationError("Registre a data e o resumo da devolutiva antes de avancar.", 422);
+  }
+  if (["closed"].includes(nextStatus) && !acknowledgedAt) {
+    throw new HrAuthorizationError("Registre a ciencia do colaborador antes de concluir a avaliacao.", 422);
+  }
 }
