@@ -274,6 +274,7 @@ export function mapEmployeeEvaluationScore(row: EmployeeEvaluationScoreRow) {
     isNotApplicable: row.is_not_applicable,
     comment: row.comment ?? "",
     evidenceNote: row.evidence_note ?? "",
+    isCritical: Boolean(row.hr_evaluation_template_criteria?.is_critical),
     weightedScore: row.weighted_score,
     createdAt: row.created_at,
     updatedAt: row.updated_at

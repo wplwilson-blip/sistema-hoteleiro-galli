@@ -105,6 +105,14 @@ managementLinks.push({
   badge: "Configuracao"
 });
 
+managementLinks.push({
+  title: "Relatorios de avaliacoes",
+  description: "Acompanhamento de status, devolutivas, ciencia, notas de atencao e PDIs.",
+  href: "/rh/gestao/avaliacoes/relatorios",
+  icon: ClipboardList,
+  badge: "Acompanhamento"
+});
+
 function ManagementHubCard({
   title,
   description,
