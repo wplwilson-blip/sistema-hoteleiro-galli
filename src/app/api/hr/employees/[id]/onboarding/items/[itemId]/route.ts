@@ -88,6 +88,22 @@ function updateForAction(action: z.infer<typeof itemActionSchema>, userId: strin
   };
 }
 
+function validateItemTransition(currentStatus: string, action: z.infer<typeof itemActionSchema>["action"]) {
+  if (action === "complete" && currentStatus !== "in_progress") {
+    return "Inicie o item antes de concluir.";
+  }
+
+  if (action === "start" && currentStatus !== "pending") {
+    return "Somente itens pendentes podem ser iniciados.";
+  }
+
+  if (["completed", "waived", "cancelled"].includes(currentStatus) && action !== "update_notes") {
+    return "Este item ja foi encerrado.";
+  }
+
+  return "";
+}
+
 export async function PATCH(request: Request, { params }: RouteParams) {
   const { context, response } = await requireHrPermission(HR_PERMISSIONS.employeesManage);
 
@@ -122,6 +138,11 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     if (!item) {
       return hrApiError("Item de onboarding nao encontrado para este colaborador.", 404);
+    }
+
+    const transitionError = validateItemTransition(item.status, payload.action);
+    if (transitionError) {
+      return hrApiError(transitionError, 422);
     }
 
     const { data: onboardingData, error: onboardingError } = await context.supabase

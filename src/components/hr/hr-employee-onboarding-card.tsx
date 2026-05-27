@@ -478,7 +478,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                             Iniciar
                           </Button>
                         ) : null}
-                        {!["completed", "waived", "cancelled"].includes(item.status) ? (
+                        {item.status === "in_progress" ? (
                           <>
                             <Button type="button" variant="outline" size="sm" onClick={() => openAction("complete", item)} disabled={actionMutation.isPending}>
                               <CheckCircle2 className="h-4 w-4" />
@@ -494,9 +494,11 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                             </Button>
                           </>
                         ) : null}
-                        <Button type="button" variant="outline" size="sm" onClick={() => openAction("update_notes", item)} disabled={actionMutation.isPending}>
-                          Observacao
-                        </Button>
+                        {item.status !== "pending" ? (
+                          <Button type="button" variant="outline" size="sm" onClick={() => openAction("update_notes", item)} disabled={actionMutation.isPending}>
+                            Observacao
+                          </Button>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 rounded-md border bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
