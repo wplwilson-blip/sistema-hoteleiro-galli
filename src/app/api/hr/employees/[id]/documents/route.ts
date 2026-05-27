@@ -11,6 +11,7 @@ import {
   userHasHrPermissionForUnit,
   type HrRequestContext
 } from "@/lib/hr/api-auth";
+import { ensureAutomaticEmployeeDocumentDossier } from "@/lib/hr/employee-document-dossier-auto";
 import { hrEmployeeDocumentsQuerySchema, hrIdParamSchema, parseSearchParams } from "@/lib/hr/schemas";
 import { redactEmployeeDocument, type EmployeeDocumentRow, type HrDocumentTypeRow } from "@/lib/hr/redaction";
 
@@ -28,6 +29,9 @@ const attachmentSelect =
   "id, organization_id, unit_id, module, entity_type, entity_id, file_name, file_path, file_mime_type, file_size_bytes, storage_bucket, description, is_sensitive, visibility_scope, uploaded_by, status, created_at, updated_at";
 
 const documentActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("ensure_dossier")
+  }),
   z.object({
     action: z.literal("create"),
     documentTypeId: z.string().uuid("Tipo documental invalido."),
@@ -331,6 +335,11 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     if (!employee.organization_id || !employee.unit_id) {
       return hrApiError("Colaborador sem unidade ou organizacao valida para dossie documental.", 422);
+    }
+
+    if (payload.action === "ensure_dossier") {
+      const result = await ensureAutomaticEmployeeDocumentDossier(context.supabase, employee.id, context.session.user.id);
+      return NextResponse.json({ ok: true, data: result });
     }
 
     if (payload.action === "create") {

@@ -244,6 +244,10 @@ export function HrEmployeeDocumentsCard({
     });
   }
 
+  function ensureDossier() {
+    actionMutation.mutate({ action: "ensure_dossier" });
+  }
+
   function startAction(type: NonNullable<ActiveAction>["type"], document: HrEmployeeDocument) {
     setActiveAction({ type, document });
     setActionText(type === "update" ? document.notes ?? "" : "");
@@ -286,10 +290,16 @@ export function HrEmployeeDocumentsCard({
             </p>
           </div>
           {canManageDocuments ? (
-            <Button type="button" size="sm" onClick={() => setShowCreate((current) => !current)}>
-              <FilePlus2 className="h-4 w-4" />
-              Solicitar documento
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={ensureDossier} disabled={actionMutation.isPending}>
+                <FileCheck2 className="h-4 w-4" />
+                Criar dossie padrao
+              </Button>
+              <Button type="button" size="sm" onClick={() => setShowCreate((current) => !current)} disabled={actionMutation.isPending}>
+                <FilePlus2 className="h-4 w-4" />
+                Solicitar documento
+              </Button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -349,10 +359,20 @@ export function HrEmployeeDocumentsCard({
         ) : null}
 
         {!documentsQuery.isLoading && !documentsQuery.error && !documents.length ? (
-          <EmptyState
-            title="Nenhum documento solicitado"
-            description="Abra uma pendência documental para controlar envio, conferência, dispensa e vencimento no prontuário do colaborador."
-          />
+          <div className="space-y-3">
+            <EmptyState
+              title="Nenhuma pendencia documental criada"
+              description="Crie o dossie padrao para acompanhar documentos obrigatorios, envios, conferencias, dispensas e vencimentos do colaborador."
+            />
+            {canManageDocuments ? (
+              <div className="flex justify-center">
+                <Button type="button" onClick={ensureDossier} disabled={actionMutation.isPending}>
+                  <FileCheck2 className="h-4 w-4" />
+                  Criar dossie padrao
+                </Button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {documents.length ? (
