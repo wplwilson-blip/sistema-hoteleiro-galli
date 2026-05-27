@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock, ListChecks, PlusCircle, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleHelp, Clock, ListChecks, PlusCircle, RotateCcw } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -47,6 +47,18 @@ type Evaluation = {
 
 type ListResponse<T> = { ok: true; data: T[] };
 type DetailResponse<T> = { ok: true; data: T };
+
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <CircleHelp className="h-3.5 w-3.5" />
+    </span>
+  );
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -240,6 +252,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
               <ListChecks className="h-4 w-4 text-primary" />
               <h3 className="text-base font-semibold">Desenvolvimento</h3>
               <StatusBadge status="visual" label="PDI não é advertência" />
+              <HelpHint text="Plano simples de ações para desenvolver ou acompanhar pontos combinados." />
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               Use o PDI para combinar ações práticas de melhoria, prazos e acompanhamento. Ele não representa punição disciplinar.

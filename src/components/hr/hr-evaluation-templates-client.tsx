@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   ChevronDown,
+  CircleHelp,
   ClipboardCheck,
   Edit2,
   Eye,
@@ -101,6 +102,18 @@ type DetailResponse<T> = { ok: true; data: T };
 type UnitsResponse = { ok: true; units: OptionRow[] };
 type DepartmentsResponse = { ok: true; departments: OptionRow[] };
 type JobPositionsResponse = { ok: true; positions: OptionRow[] };
+
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <CircleHelp className="h-3.5 w-3.5" />
+    </span>
+  );
+}
 
 type TemplateForm = {
   code: string;
@@ -1002,6 +1015,7 @@ export function HrEvaluationTemplatesClient() {
             <div className="flex flex-wrap items-center gap-2">
               <ClipboardCheck className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Modelos de avaliação</h2>
+              <HelpHint text="Modelo é a base da avaliação. Ele define quais pontos serão avaliados pelo gestor." />
               <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
             </div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -1218,6 +1232,7 @@ export function HrEvaluationTemplatesClient() {
                     <Button type="button" size="sm" onClick={() => updateTemplateMutation.mutate({ status: "active" })}>
                       <Eye className="h-4 w-4" />
                       Ativar
+                      <HelpHint text="Modelo ativo fica disponível para aplicar avaliações nos colaboradores." />
                     </Button>
                   )}
                 </div>
@@ -1232,6 +1247,7 @@ export function HrEvaluationTemplatesClient() {
                   <div className="flex items-center gap-2">
                     <ListChecks className="h-4 w-4 text-primary" />
                     <h2 className="text-sm font-semibold">O que será avaliado</h2>
+                    <HelpHint text="Grupos organizam os itens avaliados. Abra um grupo para revisar os itens." />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">Organize os grupos e itens que aparecem no formulário do gestor.</p>
                 </div>
@@ -1279,6 +1295,7 @@ export function HrEvaluationTemplatesClient() {
                           <StatusBadge status="visual" label={`${section.criteria.length} itens`} />
                           <StatusBadge status="visual" label={`Ordem ${section.sortOrder}`} />
                           <StatusBadge status="visual" label={`Peso ${section.weight}`} />
+                          <HelpHint text="Peso aumenta a importância deste grupo ou item no resultado final." />
                         </div>
                         {section.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{section.description}</p> : null}
                       </button>
@@ -1344,12 +1361,18 @@ export function HrEvaluationTemplatesClient() {
                                     <p className="break-words text-sm font-medium">{criterion.title}</p>
                                     <StatusBadge status={statusTone(criterion.status)} label={statusLabel(criterion.status)} />
                                     {criterion.isRequired ? <StatusBadge status="info" label="Obrigatório" /> : null}
-                                    {criterion.isCritical ? <StatusBadge status="warning" label="Crítico" /> : null}
+                                        {criterion.isCritical ? (
+                                          <>
+                                            <StatusBadge status="warning" label="Crítico" />
+                                            <HelpHint text="Item crítico é um ponto sensível da função. Nota baixa exige atenção e comentário." />
+                                          </>
+                                        ) : null}
                                   </div>
                                   {criterion.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{criterion.description}</p> : null}
                                   <div className="mt-2 flex flex-wrap gap-2">
-                                    <StatusBadge status="visual" label={`Ordem ${criterion.sortOrder}`} />
-                                    <StatusBadge status="visual" label={`Peso ${criterion.weight}`} />
+                                        <StatusBadge status="visual" label={`Ordem ${criterion.sortOrder}`} />
+                                        <StatusBadge status="visual" label={`Peso ${criterion.weight}`} />
+                                        <HelpHint text="Peso aumenta a importância deste grupo ou item no resultado final." />
                                     {criterion.requiresCommentBelowScore ? (
                                       <StatusBadge status="warning" label={`Pedir comentário até nota ${criterion.commentRequiredScoreThreshold ?? "-"}`} />
                                     ) : null}

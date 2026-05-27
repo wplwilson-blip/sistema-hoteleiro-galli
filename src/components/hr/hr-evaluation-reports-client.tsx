@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, ClipboardList, Filter, ListChecks, MessageSquare, Search, ShieldAlert, Target, UserCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, CircleHelp, ClipboardList, Filter, ListChecks, MessageSquare, Search, ShieldAlert, Target, UserCheck } from "lucide-react";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable, SelectField } from "@/components/base-cadastros/crud-components";
@@ -65,6 +65,18 @@ type Template = { id: string; name: string; status: string };
 type TemplateResponse = { ok: true; data: Template[] };
 type UnitResponse = { ok: true; units: Array<{ id: string; name: string; code: string }> };
 type DepartmentResponse = { ok: true; departments: Array<{ id: string; name: string; code: string; unitId: string }> };
+
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <CircleHelp className="h-3.5 w-3.5" />
+    </span>
+  );
+}
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -166,6 +178,7 @@ export function HrEvaluationReportsClient() {
               <ClipboardList className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Relatório operacional</h2>
               <StatusBadge status="visual" label="Sem ranking" />
+              <HelpHint text="A média ajuda o acompanhamento. Não deve ser usada como ranking." />
             </div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               Acompanhe pendências, devolutivas, ciência, notas de atenção e PDIs vinculados. Média é apoio de acompanhamento, não competição.
@@ -240,6 +253,7 @@ export function HrEvaluationReportsClient() {
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={filters.lowScoreOnly} onChange={(event) => updateFilter("lowScoreOnly", event.target.checked)} />
               Nota de atenção
+              <HelpHint text="Avaliação com nota baixa ou ponto crítico que merece acompanhamento do RH ou gestor." />
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={filters.pdiOnly} onChange={(event) => updateFilter("pdiOnly", event.target.checked)} />
@@ -265,7 +279,12 @@ export function HrEvaluationReportsClient() {
                 <th className="px-3 py-2 font-medium">Unidade / setor</th>
                 <th className="px-3 py-2 font-medium">Modelo</th>
                 <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Média</th>
+                <th className="px-3 py-2 font-medium">
+                  <span className="inline-flex items-center gap-1">
+                    Média
+                    <HelpHint text="A média ajuda o acompanhamento. Não deve ser usada como ranking." />
+                  </span>
+                </th>
                 <th className="px-3 py-2 font-medium">Datas</th>
                 <th className="px-3 py-2 font-medium">Atenção</th>
                 <th className="px-3 py-2 font-medium">Ações</th>
@@ -298,7 +317,12 @@ export function HrEvaluationReportsClient() {
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-1">
                       {row.criticalLowScoreCount ? <StatusBadge status="danger" label={`${row.criticalLowScoreCount} crítico(s) baixo`} /> : null}
-                      {row.lowScoreCount ? <StatusBadge status="warning" label={`${row.lowScoreCount} nota(s) baixa(s)`} /> : null}
+                      {row.lowScoreCount ? (
+                        <span className="inline-flex items-center gap-1">
+                          <StatusBadge status="warning" label={`${row.lowScoreCount} nota(s) baixa(s)`} />
+                          <HelpHint text="Avaliação com nota baixa ou ponto crítico que merece acompanhamento do RH ou gestor." />
+                        </span>
+                      ) : null}
                       {row.hasPdi ? <StatusBadge status="info" label={`${row.openPdiCount || row.pdiCount} PDI`} /> : null}
                       {!row.criticalLowScoreCount && !row.lowScoreCount && !row.hasPdi ? <StatusBadge status="success" label="Sem alerta" /> : null}
                     </div>
