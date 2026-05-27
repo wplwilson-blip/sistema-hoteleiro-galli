@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ClipboardList, Edit3, MessageSquare, Save, Star, Target, TrendingUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleHelp, ClipboardList, Edit3, MessageSquare, Save, Star, Target, TrendingUp } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -69,6 +70,58 @@ type Evaluation = {
 
 type ListResponse<T> = { ok: true; data: T[] };
 type DetailResponse<T> = { ok: true; data: T };
+
+function HelpHint({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <CircleHelp className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+function FlowStep({
+  step,
+  title,
+  description,
+  state = "pending",
+  children
+}: {
+  step: number;
+  title: string;
+  description: string;
+  state?: "current" | "done" | "pending" | "locked";
+  children: ReactNode;
+}) {
+  const toneClass =
+    state === "current"
+      ? "border-primary/40 bg-primary/5"
+      : state === "done"
+        ? "border-emerald-300 bg-emerald-50/50"
+        : state === "locked"
+          ? "bg-muted/20 opacity-80"
+          : "bg-background";
+
+  return (
+    <div className={cn("rounded-md border p-4", toneClass)}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{step}</span>
+            <h5 className="text-sm font-semibold">{title}</h5>
+            {state === "done" ? <StatusBadge status="success" label="Concluído" /> : null}
+            {state === "current" ? <StatusBadge status="info" label="Agora" /> : null}
+          </div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="mt-3">{children}</div>
+    </div>
+  );
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -428,6 +481,20 @@ export function HrEmployeeEvaluationsCard({
   const canRegisterFeedback = Boolean(detail && ["submitted", "reviewed"].includes(detail.status) && !hasScorePendencies && textForm.summary.trim());
   const canRegisterAcknowledgement = Boolean(detail && detail.status === "feedback_given");
   const canCloseEvaluation = Boolean(detail && detail.status === "acknowledged");
+  const scoresDone = Boolean(detail && !hasScorePendencies && scoreSummary.total > 0);
+  const feedbackDone = Boolean(detail?.status && ["feedback_given", "acknowledged", "closed"].includes(detail.status));
+  const acknowledgementDone = Boolean(detail?.status && ["acknowledged", "closed"].includes(detail.status));
+  const closedDone = Boolean(detail?.status === "closed");
+  const nextStepText = (() => {
+    if (!detail) return "Selecione uma avaliação para continuar.";
+    if (isLocked) return "Avaliação concluída. As notas ficam bloqueadas e o PDI segue separado.";
+    if (hasScorePendencies) return "Preencha as notas obrigatórias e salve as notas antes de avançar.";
+    if (["draft", "in_progress"].includes(detail.status)) return "Marque a avaliação como pronta para devolutiva.";
+    if (detail.status === "submitted" || detail.status === "reviewed") return "Registre a devolutiva com data e resumo da conversa.";
+    if (detail.status === "feedback_given") return "Registre a ciência do colaborador. Ciência não significa concordância.";
+    if (detail.status === "acknowledged") return "Conclua a avaliação para encerrar o ciclo e bloquear edição operacional.";
+    return "Revise o status da avaliação antes de avançar.";
+  })();
 
   return (
     <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
@@ -642,95 +709,20 @@ export function HrEmployeeEvaluationsCard({
                     </div>
                   ) : null}
 
-                  {isLocked ? (
-                    <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                      Avaliação encerrada. As notas e critérios ficam bloqueados para edição operacional; o PDI continua em acompanhamento separado.
-                    </div>
-                  ) : (
-                    <div className="rounded-md border bg-muted/20 p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => statusMutation.mutate({ status: "submitted" })} disabled={!canMarkReady || statusMutation.isPending}>
-                          Marcar como pronta
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => statusMutation.mutate({ status: "feedback_given", feedbackDate: textForm.feedbackDate || todayIso() })}
-                          disabled={!canRegisterFeedback || statusMutation.isPending}
-                        >
-                          Registrar devolutiva
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => statusMutation.mutate({ status: "acknowledged", employeeAcknowledgedAt: nowIso() })}
-                          disabled={!canRegisterAcknowledgement || statusMutation.isPending}
-                        >
-                          Registrar ciência
-                        </Button>
-                        <Button type="button" size="sm" onClick={() => statusMutation.mutate({ status: "closed", closedAt: nowIso() })} disabled={!canCloseEvaluation || statusMutation.isPending}>
-                          Concluir avaliação
-                        </Button>
-                      </div>
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        Ciência significa que o colaborador tomou conhecimento, não que concorda com o conteúdo. Conclusão não gera promoção, punição ou desligamento automático.
-                      </p>
-                    </div>
-                  )}
-
-                  {onOpenDevelopment && scoreSummary.lowScores > 0 ? (
-                    <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                      <span>Há pontos de atenção. Depois da devolutiva, o RH pode abrir um PDI vinculado a esta avaliação.</span>
-                      <Button type="button" variant="outline" size="sm" onClick={onOpenDevelopment}>
-                        Criar PDI
-                      </Button>
-                    </div>
-                  ) : null}
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="Data da devolutiva">
-                      <Input
-                        type="date"
-                        value={textForm.feedbackDate}
-                        disabled={isLocked}
-                        onChange={(event) => setTextForm((current) => ({ ...current, feedbackDate: event.target.value }))}
-                      />
-                    </Field>
-                    <Field label="Resumo da devolutiva">
-                      <TextArea value={textForm.summary} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, summary: event.target.value }))} maxLength={5000} />
-                    </Field>
-                    <Field label="Pontos fortes">
-                      <TextArea value={textForm.strengths} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, strengths: event.target.value }))} maxLength={5000} />
-                    </Field>
-                    <Field label="Pontos a desenvolver">
-                      <TextArea
-                        value={textForm.developmentPoints}
-                        disabled={isLocked}
-                        onChange={(event) => setTextForm((current) => ({ ...current, developmentPoints: event.target.value }))}
-                        maxLength={5000}
-                      />
-                    </Field>
-                    <Field label="Comentário do colaborador">
-                      <TextArea
-                        value={textForm.employeeComments}
-                        disabled={isLocked}
-                        onChange={(event) => setTextForm((current) => ({ ...current, employeeComments: event.target.value }))}
-                        maxLength={5000}
-                      />
-                    </Field>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || isLocked}>
-                      <Save className="h-4 w-4" />
-                      Salvar devolutiva
-                    </Button>
+                  <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+                    <p className="text-xs font-semibold text-primary">Próximo passo</p>
+                    <p className="mt-1 text-sm leading-6 text-foreground">{nextStepText}</p>
                   </div>
 
-                  {templateDetailQuery.isLoading ? <LoadingTable label="Carregando critérios..." /> : null}
-                  {template?.sections?.length ? (
-                    <div className="space-y-3">
+                  <FlowStep
+                    step={1}
+                    title="Preencher notas"
+                    description="Salve notas e comentários. Salvar notas não conclui a avaliação."
+                    state={isLocked || scoresDone ? "done" : "current"}
+                  >
+                    {templateDetailQuery.isLoading ? <LoadingTable label="Carregando critérios..." /> : null}
+                    {template?.sections?.length ? (
+                      <div className="space-y-3">
                       {template.sections.map((section) => (
                         <div key={section.id} className="rounded-md border bg-muted/20 p-3">
                           <h5 className="text-sm font-semibold">{section.title}</h5>
@@ -753,6 +745,7 @@ export function HrEmployeeEvaluationsCard({
                                   <div className="flex flex-wrap items-start gap-2">
                                     <p className="min-w-0 flex-1 break-words text-sm font-medium">{criterion.title}</p>
                                     {criterion.isCritical ? <StatusBadge status={hasLowScore ? "danger" : "warning"} label="Crítico" /> : null}
+                                    {criterion.isCritical ? <HelpHint text="Item crítico é um ponto sensível da função. Nota baixa exige atenção e comentário." /> : null}
                                     {criterion.weight > 1 ? <StatusBadge status="info" label={`Peso ${criterion.weight}`} /> : null}
                                     {threshold != null && criterion.requiresCommentBelowScore ? <StatusBadge status="visual" label={`Comentário até nota ${threshold}`} /> : null}
                                   </div>
@@ -784,6 +777,7 @@ export function HrEmployeeEvaluationsCard({
                                         }
                                       />
                                       N/A
+                                      <HelpHint text="Use N/A quando este item não se aplica ao colaborador nesta avaliação." />
                                     </label>
                                     <Field label="Comentário">
                                       <Input
@@ -802,12 +796,111 @@ export function HrEmployeeEvaluationsCard({
                           </div>
                         </div>
                       ))}
-                      <div className="flex justify-end">
-                        <Button type="button" onClick={() => scoresMutation.mutate()} disabled={scoresMutation.isPending || scoreSummary.missingComments.length > 0 || isLocked}>
+                      <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">Use este botão apenas para gravar notas e comentários. A avaliação continua aberta.</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" onClick={() => scoresMutation.mutate()} disabled={scoresMutation.isPending || scoreSummary.missingComments.length > 0 || isLocked}>
+                            <Save className="h-4 w-4" />
+                            Salvar notas
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => statusMutation.mutate({ status: "submitted" })} disabled={!canMarkReady || statusMutation.isPending}>
+                            Marcar pronta para devolutiva
+                          </Button>
+                        </div>
+                      </div>
+                      </div>
+                    ) : null}
+                  </FlowStep>
+
+                  <FlowStep
+                    step={2}
+                    title="Registrar devolutiva"
+                    description="Registre a conversa com o colaborador. Salvar devolutiva grava o texto; registrar devolutiva avança o status."
+                    state={feedbackDone || isLocked ? "done" : scoresDone ? "current" : "pending"}
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field label="Data da devolutiva">
+                        <Input type="date" value={textForm.feedbackDate} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, feedbackDate: event.target.value }))} />
+                      </Field>
+                      <Field label="Resumo da devolutiva">
+                        <TextArea value={textForm.summary} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, summary: event.target.value }))} maxLength={5000} />
+                      </Field>
+                      <Field label="Pontos fortes">
+                        <TextArea value={textForm.strengths} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, strengths: event.target.value }))} maxLength={5000} />
+                      </Field>
+                      <Field label="Pontos a desenvolver">
+                        <TextArea value={textForm.developmentPoints} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, developmentPoints: event.target.value }))} maxLength={5000} />
+                      </Field>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-muted-foreground">Devolutiva é a conversa registrada entre gestor e colaborador sobre o resultado.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || isLocked}>
                           <Save className="h-4 w-4" />
-                          Salvar notas
+                          Salvar devolutiva
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => statusMutation.mutate({ status: "feedback_given", feedbackDate: textForm.feedbackDate || todayIso() })}
+                          disabled={!canRegisterFeedback || statusMutation.isPending}
+                        >
+                          Registrar devolutiva
+                          <HelpHint text="Conversa registrada entre gestor e colaborador sobre o resultado da avaliação." />
                         </Button>
                       </div>
+                    </div>
+                  </FlowStep>
+
+                  <FlowStep
+                    step={3}
+                    title="Registrar ciência"
+                    description="Registre que o colaborador tomou conhecimento. Ciência não significa concordância."
+                    state={acknowledgementDone || isLocked ? "done" : feedbackDone ? "current" : "pending"}
+                  >
+                    <Field label="Comentário do colaborador">
+                      <TextArea value={textForm.employeeComments} disabled={isLocked} onChange={(event) => setTextForm((current) => ({ ...current, employeeComments: event.target.value }))} maxLength={5000} />
+                    </Field>
+                    <div className="mt-3 flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-muted-foreground">A observação do colaborador é opcional. Ela registra contexto, não altera automaticamente o resultado.</p>
+                      <Button
+                        type="button"
+                        onClick={() => statusMutation.mutate({ status: "acknowledged", employeeAcknowledgedAt: nowIso() })}
+                        disabled={!canRegisterAcknowledgement || statusMutation.isPending}
+                      >
+                        Registrar ciência
+                        <HelpHint text="Indica que o colaborador tomou conhecimento. Não significa concordância." />
+                      </Button>
+                    </div>
+                  </FlowStep>
+
+                  <FlowStep
+                    step={4}
+                    title="Concluir avaliação"
+                    description="Ação final. Depois de concluir, notas e critérios ficam bloqueados para edição operacional."
+                    state={closedDone ? "done" : acknowledgementDone ? "current" : "locked"}
+                  >
+                    {isLocked ? (
+                      <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        Avaliação encerrada. As notas e critérios ficam bloqueados para edição operacional; o PDI continua em acompanhamento separado.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          Conclusão não gera promoção, punição ou desligamento automático. Ela apenas encerra o ciclo desta avaliação.
+                        </p>
+                        <Button type="button" variant="outline" onClick={() => statusMutation.mutate({ status: "closed", closedAt: nowIso() })} disabled={!canCloseEvaluation || statusMutation.isPending}>
+                          Concluir avaliação
+                        </Button>
+                      </div>
+                    )}
+                  </FlowStep>
+
+                  {onOpenDevelopment && scoreSummary.lowScores > 0 ? (
+                    <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                      <span>Há pontos de atenção. Depois da devolutiva, o RH pode abrir um PDI vinculado a esta avaliação.</span>
+                      <Button type="button" variant="outline" size="sm" onClick={onOpenDevelopment}>
+                        Criar PDI
+                      </Button>
                     </div>
                   ) : null}
                 </div>
