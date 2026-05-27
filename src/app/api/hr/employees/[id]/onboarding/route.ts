@@ -11,6 +11,7 @@ import {
   type HrRequestContext
 } from "@/lib/hr/api-auth";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
+import { ensureAutomaticEmployeeOnboarding } from "@/lib/hr/employee-onboarding-auto";
 
 type RouteParams = { params: { id: string } };
 
@@ -324,10 +325,10 @@ export async function GET(_request: Request, { params }: RouteParams) {
         data: null,
         applicablePlans: applicablePlans.map(mapPlan),
         emptyState: {
-          title: applicablePlans.length ? "Onboarding ainda nao iniciado" : "Nenhum plano de onboarding aplicavel encontrado",
+          title: applicablePlans.length ? "Onboarding ainda nao iniciado" : "Onboarding ainda nao iniciado",
           description: applicablePlans.length
             ? "Selecione um plano operacional para criar o checklist deste colaborador."
-            : "Crie um plano de onboarding compativel com a unidade, departamento ou cargo deste colaborador antes de iniciar."
+            : "Inicie o checklist padrao do hotel para acompanhar documentos, liberacoes e pendencias operacionais."
         },
         permissions: { canManageOnboarding }
       });
@@ -425,7 +426,11 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     const applicablePlans = await loadApplicablePlans(context, employee);
     if (!applicablePlans.length) {
-      return hrApiError("Nenhum plano de onboarding aplicavel encontrado para este colaborador.", 404);
+      const result = await ensureAutomaticEmployeeOnboarding(context.supabase, employee.id, context.session.user.id);
+      if (!result.created) {
+        return hrApiError("Nao foi possivel iniciar o onboarding padrao deste colaborador.", 422);
+      }
+      return NextResponse.json({ ok: true, data: { id: result.onboardingId } }, { status: 201 });
     }
 
     const selectedPlan = payload.planId ? applicablePlans.find((plan) => plan.id === payload.planId) ?? null : applicablePlans.length === 1 ? applicablePlans[0] : null;

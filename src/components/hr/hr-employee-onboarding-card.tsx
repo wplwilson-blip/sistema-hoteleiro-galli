@@ -375,6 +375,19 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                   )}
                 </div>
               </div>
+            ) : canManageOnboarding ? (
+              <div className="mx-auto w-full max-w-2xl rounded-md border bg-background p-4">
+                <h4 className="text-sm font-semibold text-foreground">Checklist padrão do hotel</h4>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Nenhum plano específico foi encontrado para este cargo ou setor. Inicie o checklist padrão para acompanhar documentos, uniforme, acessos, orientações e liberação operacional.
+                </p>
+                <div className="mt-4 flex justify-end">
+                  <Button type="button" onClick={() => startMutation.mutate("")} disabled={startMutation.isPending}>
+                    <PlayCircle className="h-4 w-4" />
+                    Iniciar checklist padrão
+                  </Button>
+                </div>
+              </div>
             ) : null}
           </div>
         ) : null}
