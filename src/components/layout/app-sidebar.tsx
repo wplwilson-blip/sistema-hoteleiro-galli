@@ -165,7 +165,7 @@ export function AppSidebar() {
     () => menuGroups.filter((group) => isPathActive(pathname, group.href) || group.items.some((item) => isLinkActive(pathname, item))).map((group) => group.label),
     [pathname]
   );
-  const [openGroups, setOpenGroups] = useState<string[]>(activeGroups.length ? activeGroups : ["Cadastros", "Compras"]);
+  const [openGroups, setOpenGroups] = useState<string[]>(activeGroups);
 
   function toggleGroup(label: string) {
     setOpenGroups((current) => (current.includes(label) ? current.filter((item) => item !== label) : [...current, label]));

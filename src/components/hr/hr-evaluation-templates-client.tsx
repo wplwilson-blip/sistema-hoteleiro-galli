@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
+  ChevronDown,
   ClipboardCheck,
   Edit2,
   Eye,
@@ -765,6 +766,7 @@ export function HrEvaluationTemplatesClient() {
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [newCriterionSectionId, setNewCriterionSectionId] = useState<string | null>(null);
   const [editingCriterionId, setEditingCriterionId] = useState<string | null>(null);
+  const [openSectionIds, setOpenSectionIds] = useState<string[]>([]);
 
   const templatesQuery = useQuery({
     queryKey: ["hr", "evaluation-templates", filters, activeUnitId],
@@ -802,6 +804,10 @@ export function HrEvaluationTemplatesClient() {
   useEffect(() => {
     if (!selectedId && templates[0]?.id) setSelectedId(templates[0].id);
   }, [selectedId, templates]);
+
+  useEffect(() => {
+    setOpenSectionIds([]);
+  }, [selectedTemplateId]);
 
   function refresh(templateId?: string) {
     return Promise.all([
@@ -950,12 +956,14 @@ export function HrEvaluationTemplatesClient() {
   }
 
   function startEditSection(section: EvaluationSection) {
+    setOpenSectionIds([section.id]);
     setEditingSectionId(section.id);
     setNewCriterionSectionId(null);
     setSectionFormState(sectionToForm(section));
   }
 
   function startNewCriterion(section: EvaluationSection) {
+    setOpenSectionIds([section.id]);
     setNewCriterionSectionId(section.id);
     setEditingCriterionId(null);
     setCriterionFormState({
@@ -965,9 +973,14 @@ export function HrEvaluationTemplatesClient() {
   }
 
   function startEditCriterion(criterion: EvaluationCriterion) {
+    setOpenSectionIds([criterion.sectionId]);
     setEditingCriterionId(criterion.id);
     setNewCriterionSectionId(null);
     setCriterionFormState(criterionToForm(criterion));
+  }
+
+  function toggleSection(sectionId: string) {
+    setOpenSectionIds((current) => (current.includes(sectionId) ? [] : [sectionId]));
   }
 
   const currentError =
@@ -1252,18 +1265,23 @@ export function HrEvaluationTemplatesClient() {
                   <EmptyState title="Modelo sem grupos de avaliação" description="Adicione grupos como comportamento, operação, atendimento ou padrão do hotel." />
                 ) : null}
 
-                {(detail.sections ?? []).map((section) => (
-                  <div key={section.id} className="rounded-md border bg-muted/20">
+                {(detail.sections ?? []).map((section) => {
+                  const isSectionOpen = openSectionIds.includes(section.id);
+
+                  return (
+                    <div key={section.id} className="rounded-md border bg-muted/20">
                     <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
+                      <button type="button" onClick={() => toggleSection(section.id)} className="min-w-0 flex-1 text-left">
                         <div className="flex flex-wrap items-center gap-2">
+                          <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", isSectionOpen && "rotate-180")} />
                           <p className="break-words text-sm font-semibold">{section.title}</p>
                           <StatusBadge status={statusTone(section.status)} label={statusLabel(section.status)} />
+                          <StatusBadge status="visual" label={`${section.criteria.length} itens`} />
                           <StatusBadge status="visual" label={`Ordem ${section.sortOrder}`} />
                           <StatusBadge status="visual" label={`Peso ${section.weight}`} />
                         </div>
                         {section.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{section.description}</p> : null}
-                      </div>
+                      </button>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => startEditSection(section)}>
                           <Edit2 className="h-4 w-4" />
@@ -1280,8 +1298,10 @@ export function HrEvaluationTemplatesClient() {
                       </div>
                     </div>
 
-                    {editingSectionId === section.id ? (
-                      <div className="border-t p-3">
+                    {isSectionOpen ? (
+                      <>
+                        {editingSectionId === section.id ? (
+                          <div className="border-t p-3">
                         <SectionFormPanel
                           form={sectionFormState}
                           setForm={setSectionFormState}
@@ -1290,10 +1310,10 @@ export function HrEvaluationTemplatesClient() {
                           onSubmit={() => updateSectionMutation.mutate({ sectionId: section.id, payload: sectionPayload(sectionFormState) })}
                           onCancel={() => setEditingSectionId(null)}
                         />
-                      </div>
-                    ) : null}
+                          </div>
+                        ) : null}
 
-                    <div className="space-y-2 border-t p-3">
+                        <div className="space-y-2 border-t p-3">
                       {newCriterionSectionId === section.id ? (
                         <CriterionFormPanel
                           form={criterionFormState}
@@ -1363,9 +1383,12 @@ export function HrEvaluationTemplatesClient() {
                       ) : (
                         <p className="rounded-md border bg-background p-3 text-sm text-muted-foreground">Nenhum item avaliado neste grupo.</p>
                       )}
-                    </div>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           ) : null}
