@@ -84,7 +84,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Vagas e candidatos", href: "/rh/vagas", icon: BriefcaseBusiness },
       { label: "Documentos", href: "/rh/pendencias-documentais", icon: FileWarning },
       { label: "Onboarding", href: "/rh/onboarding", icon: ClipboardCheck },
-      { label: "Gestão do RH", href: "/rh/gestao", icon: BarChart3 }
+      { label: "Gestão do RH", href: "/rh/gestao", icon: BarChart3, match: "exact" }
     ]
   },
   {
@@ -129,8 +129,8 @@ const menuGroups: SidebarGroup[] = [
 ];
 
 const rhGroup = menuGroups.find((group) => group.href === "/rh");
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList });
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" });
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList, match: "exact" });
 
 const footerItems: SidebarLink[] = [{ label: "Relatórios", href: "/relatorios", icon: FileText }];
 

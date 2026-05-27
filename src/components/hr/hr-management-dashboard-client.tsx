@@ -99,18 +99,18 @@ const managementLinks = [
 
 managementLinks.push({
   title: "Modelos de avaliação",
-  description: "Configure templates, seções e critérios usados nas avaliações do hotel.",
+  description: "Prepare os modelos que gestores usam para avaliar experiência, setor e rotina.",
   href: "/rh/gestao/avaliacoes",
   icon: ListChecks,
-  badge: "Configuração"
+  badge: "Passo 1"
 });
 
 managementLinks.push({
   title: "Relatórios de avaliações",
-  description: "Acompanhe status, devolutivas, ciência, notas de atenção e PDIs vinculados.",
+  description: "Acompanhe avaliações abertas, devolutivas, ciência, notas de atenção e PDIs.",
   href: "/rh/gestao/avaliacoes/relatorios",
   icon: ClipboardList,
-  badge: "Acompanhamento"
+  badge: "Acompanhar"
 });
 
 function ManagementHubCard({
@@ -238,7 +238,7 @@ export function HrManagementDashboardClient() {
               <h2 className="text-sm font-semibold text-foreground">Gestão do RH</h2>
             </div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Supervisão, auditoria e configurações do RH em uma visão compacta. A operação diária fica no menu principal.
+              Central para orientar o RH: configurar modelos, acompanhar pendências e revisar a rotina sem entrar em telas técnicas.
             </p>
           </div>
           <Button asChild variant="outline" size="sm">

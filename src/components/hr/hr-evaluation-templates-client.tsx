@@ -494,7 +494,7 @@ function TemplateFormPanel({
               maxLength={160}
             />
           </Field>
-          <Field label="Codigo curto">
+          <Field label="Código interno">
             <Input value={form.code} onChange={(event) => setForm((current) => ({ ...current, code: toCode(event.target.value, "MODELO") }))} required />
           </Field>
           <Field label="Tipo">
@@ -570,7 +570,7 @@ function TemplateFormPanel({
               ))}
             </SelectField>
           </Field>
-          <Field label="Nota minima">
+          <Field label="Nota mínima">
             <Input
               type="number"
               min={1}
@@ -585,11 +585,11 @@ function TemplateFormPanel({
             <ToggleField checked={form.requiresFeedback} label="Exigir devolutiva do gestor" onChange={(checked) => setForm((current) => ({ ...current, requiresFeedback: checked }))} />
             <ToggleField
               checked={form.requiresEmployeeAcknowledgement}
-              label="Registrar ciencia do colaborador"
+              label="Registrar ciência do colaborador"
               onChange={(checked) => setForm((current) => ({ ...current, requiresEmployeeAcknowledgement: checked }))}
             />
           </div>
-          <Field label="Descricao" className="md:col-span-2 xl:col-span-4">
+          <Field label="Descrição" className="md:col-span-2 xl:col-span-4">
             <TextArea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} maxLength={2000} />
           </Field>
         </div>
@@ -622,7 +622,7 @@ function SectionFormPanel({
       }}
     >
       <div className="grid gap-3 md:grid-cols-4">
-        <Field label="Secao" className="md:col-span-2">
+        <Field label="Grupo da avaliação" className="md:col-span-2">
           <Input
             value={form.title}
             onChange={(event) => setForm((current) => ({ ...current, title: event.target.value, code: current.code || toCode(event.target.value, "SECAO") }))}
@@ -635,7 +635,7 @@ function SectionFormPanel({
         <Field label="Peso">
           <Input type="number" min={0} step="0.1" value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} />
         </Field>
-        <Field label="Codigo">
+        <Field label="Código interno">
           <Input value={form.code} onChange={(event) => setForm((current) => ({ ...current, code: toCode(event.target.value, "SECAO") }))} required />
         </Field>
         <Field label="Status">
@@ -648,9 +648,9 @@ function SectionFormPanel({
           </SelectField>
         </Field>
         <div className="md:col-span-2">
-          <ToggleField checked={form.isRequired} label="Secao obrigatoria" onChange={(checked) => setForm((current) => ({ ...current, isRequired: checked }))} />
+          <ToggleField checked={form.isRequired} label="Grupo obrigatório" onChange={(checked) => setForm((current) => ({ ...current, isRequired: checked }))} />
         </div>
-        <Field label="Descricao" className="md:col-span-4">
+        <Field label="Descrição" className="md:col-span-4">
           <TextArea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} maxLength={2000} />
         </Field>
       </div>
@@ -691,7 +691,7 @@ function CriterionFormPanel({
       }}
     >
       <div className="grid gap-3 md:grid-cols-4">
-        <Field label="Criterio" className="md:col-span-2">
+        <Field label="Item avaliado" className="md:col-span-2">
           <Input
             value={form.title}
             onChange={(event) => setForm((current) => ({ ...current, title: event.target.value, code: current.code || toCode(event.target.value, "CRITERIO") }))}
@@ -704,7 +704,7 @@ function CriterionFormPanel({
         <Field label="Peso">
           <Input type="number" min={0} step="0.1" value={form.weight} onChange={(event) => setForm((current) => ({ ...current, weight: event.target.value }))} />
         </Field>
-        <Field label="Codigo">
+        <Field label="Código interno">
           <Input value={form.code} onChange={(event) => setForm((current) => ({ ...current, code: toCode(event.target.value, "CRITERIO") }))} required />
         </Field>
         <Field label="Status">
@@ -716,7 +716,7 @@ function CriterionFormPanel({
             ))}
           </SelectField>
         </Field>
-        <Field label="Comentario se nota ate">
+        <Field label="Pedir comentário até nota">
           <Input
             type="number"
             min={0}
@@ -728,10 +728,10 @@ function CriterionFormPanel({
           />
         </Field>
         <div className="grid gap-2">
-          <ToggleField checked={form.isRequired} label="Obrigatorio" onChange={(checked) => setForm((current) => ({ ...current, isRequired: checked }))} />
-          <ToggleField checked={form.isCritical} label="Criterio critico" onChange={(checked) => setForm((current) => ({ ...current, isCritical: checked }))} />
+          <ToggleField checked={form.isRequired} label="Obrigatório" onChange={(checked) => setForm((current) => ({ ...current, isRequired: checked }))} />
+          <ToggleField checked={form.isCritical} label="Item crítico" onChange={(checked) => setForm((current) => ({ ...current, isCritical: checked }))} />
         </div>
-        <Field label="Descricao" className="md:col-span-2">
+        <Field label="Descrição" className="md:col-span-2">
           <TextArea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} maxLength={2000} />
         </Field>
         <Field label="Comportamento esperado" className="md:col-span-2">
@@ -988,53 +988,65 @@ export function HrEvaluationTemplatesClient() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <ClipboardCheck className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Gestao operacional dos modelos</h2>
+              <h2 className="text-sm font-semibold">Modelos de avaliação</h2>
               <StatusBadge status="info" label={activeUnit?.name ? `Unidade ativa: ${activeUnit.name}` : "Todas as unidades acessiveis"} />
             </div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Configure modelos simples para experiencia, avaliacoes periodicas e acompanhamentos do hotel.
+              Os modelos definem como cada colaborador será avaliado. Comece pelos modelos do hotel, revise o conteúdo e ative somente o que será usado.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
               <Link href="/rh/gestao">
-                Gestao do RH
+                Gestão do RH
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button type="button" size="sm" onClick={startCreateTemplate}>
               <Plus className="h-4 w-4" />
-              Novo modelo
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => createPresetsMutation.mutate()} disabled={createPresetsMutation.isPending}>
-              <Wand2 className="h-4 w-4" />
-              Criar padrao
+              Criar modelo manual
             </Button>
           </div>
         </div>
       </Card>
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Wand2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Templates padrao Hotel Galli</h2>
+              <h2 className="text-sm font-semibold">Como começar</h2>
               <StatusBadge status="visual" label={`${hotelGalliEvaluationTemplatePresets.length} modelos`} />
               <StatusBadge status="warning" label="Criados inativos" />
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Cria modelos reais para experiencia, governanca, recepcao, A&B, manutencao, administrativo e avaliacao operacional. Modelos existentes pelo codigo sao ignorados.
+              Use os modelos reais do Hotel Galli para experiência, governança, recepção, A&B, manutenção, administrativo e liderança. Eles nascem inativos para o RH revisar antes de liberar.
             </p>
           </div>
           <Button type="button" onClick={() => createPresetsMutation.mutate()} disabled={createPresetsMutation.isPending} className="shrink-0">
             <Wand2 className="h-4 w-4" />
-            {createPresetsMutation.isPending ? "Criando..." : "Criar templates padrao"}
+            {createPresetsMutation.isPending ? "Criando..." : "Criar modelos padrão do hotel"}
           </Button>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-4">
+          {[
+            ["1", "Criar modelos padrão", "Gera os modelos reais do hotel sem ativar automaticamente."],
+            ["2", "Revisar conteúdo", "Confira seções, critérios e pesos antes de liberar."],
+            ["3", "Ativar modelos", "Ative apenas os modelos que os gestores devem usar."],
+            ["4", "Aplicar no colaborador", "Abra o colaborador e use a aba Avaliações."]
+          ].map(([step, title, description]) => (
+            <div key={step} className="rounded-md border bg-background p-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{step}</span>
+                <p className="text-xs font-semibold text-foreground">{title}</p>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{description}</p>
+            </div>
+          ))}
         </div>
         {createPresetsMutation.data ? (
           <p className="mt-3 rounded-md border bg-background p-3 text-sm text-muted-foreground">
-            Templates criados: {createPresetsMutation.data.created}. Ja existentes ignorados: {createPresetsMutation.data.skipped}. Revise e ative somente os modelos que serao usados.
+            Modelos criados: {createPresetsMutation.data.created}. Modelos já existentes ignorados: {createPresetsMutation.data.skipped}. Revise e ative somente o que será usado na operação.
           </p>
         ) : null}
       </Card>
@@ -1045,11 +1057,11 @@ export function HrEvaluationTemplatesClient() {
           <p className="mt-1 text-2xl font-semibold">{activeTemplates}</p>
         </Card>
         <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
-          <p className="text-xs text-muted-foreground">Secoes no modelo aberto</p>
+          <p className="text-xs text-muted-foreground">Grupos do modelo aberto</p>
           <p className="mt-1 text-2xl font-semibold">{detail?.sections?.length ?? 0}</p>
         </Card>
         <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
-          <p className="text-xs text-muted-foreground">Criterios no modelo aberto</p>
+          <p className="text-xs text-muted-foreground">Itens avaliados no modelo aberto</p>
           <p className="mt-1 text-2xl font-semibold">{totalCriteria}</p>
         </Card>
       </div>
@@ -1059,7 +1071,7 @@ export function HrEvaluationTemplatesClient() {
           <Field label="Buscar">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Nome ou codigo" />
+              <Input className="pl-9" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Ex.: camareira, experiência, recepção" />
             </div>
           </Field>
           <Field label="Tipo">
@@ -1106,13 +1118,14 @@ export function HrEvaluationTemplatesClient() {
           <div className="border-b p-4">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Modelos</h2>
+              <h2 className="text-sm font-semibold">Modelos disponíveis</h2>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">Escolha um modelo para revisar, ajustar ou ativar.</p>
           </div>
           {templatesQuery.isLoading ? <LoadingTable label="Carregando modelos..." /> : null}
           {!templatesQuery.isLoading && !templates.length ? (
             <div className="p-4">
-              <EmptyState title="Nenhum modelo encontrado" description="Crie um modelo simples para experiencia ou avaliacao periodica antes de aplicar avaliacoes." />
+              <EmptyState title="Nenhum modelo pronto para revisar" description="Crie os modelos padrão do hotel ou cadastre um modelo manual antes de aplicar avaliações aos colaboradores." />
             </div>
           ) : null}
           <div className="divide-y">
@@ -1170,7 +1183,7 @@ export function HrEvaluationTemplatesClient() {
                     <StatusBadge status={statusTone(detail.status)} label={statusLabel(detail.status)} />
                     <StatusBadge status="info" label={typeLabel(detail.evaluationType)} />
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{detail.description || "Sem descricao operacional."}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{detail.description || "Sem orientação operacional cadastrada."}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <StatusBadge status="visual" label={frequencyLabel(detail.defaultFrequency)} />
                     <StatusBadge status="visual" label={detail.departmentName} />
@@ -1205,9 +1218,9 @@ export function HrEvaluationTemplatesClient() {
                 <div>
                   <div className="flex items-center gap-2">
                     <ListChecks className="h-4 w-4 text-primary" />
-                    <h2 className="text-sm font-semibold">Secoes e criterios</h2>
+                    <h2 className="text-sm font-semibold">O que será avaliado</h2>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">A ordem e os pesos definidos aqui guiam o formulario usado pelos gestores.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Organize os grupos e itens que aparecem no formulário do gestor.</p>
                 </div>
                 <Button
                   type="button"
@@ -1219,7 +1232,7 @@ export function HrEvaluationTemplatesClient() {
                   }}
                 >
                   <Plus className="h-4 w-4" />
-                  Nova secao
+                  Novo grupo
                 </Button>
               </div>
 
@@ -1229,14 +1242,14 @@ export function HrEvaluationTemplatesClient() {
                     form={sectionFormState}
                     setForm={setSectionFormState}
                     isSaving={createSectionMutation.isPending}
-                    submitLabel="Criar secao"
+                    submitLabel="Criar grupo"
                     onSubmit={() => createSectionMutation.mutate()}
                     onCancel={() => setEditingSectionId(null)}
                   />
                 ) : null}
 
                 {!(detail.sections ?? []).length && editingSectionId !== "new" ? (
-                  <EmptyState title="Modelo sem secoes" description="Adicione secoes como comportamento, operacao, atendimento ou padrao do hotel." />
+                  <EmptyState title="Modelo sem grupos de avaliação" description="Adicione grupos como comportamento, operação, atendimento ou padrão do hotel." />
                 ) : null}
 
                 {(detail.sections ?? []).map((section) => (
@@ -1262,7 +1275,7 @@ export function HrEvaluationTemplatesClient() {
                         </Button>
                         <Button type="button" size="sm" onClick={() => startNewCriterion(section)}>
                           <Plus className="h-4 w-4" />
-                          Criterio
+                          Item avaliado
                         </Button>
                       </div>
                     </div>
@@ -1273,7 +1286,7 @@ export function HrEvaluationTemplatesClient() {
                           form={sectionFormState}
                           setForm={setSectionFormState}
                           isSaving={updateSectionMutation.isPending}
-                          submitLabel="Salvar secao"
+                          submitLabel="Salvar grupo"
                           onSubmit={() => updateSectionMutation.mutate({ sectionId: section.id, payload: sectionPayload(sectionFormState) })}
                           onCancel={() => setEditingSectionId(null)}
                         />
@@ -1286,7 +1299,7 @@ export function HrEvaluationTemplatesClient() {
                           form={criterionFormState}
                           setForm={setCriterionFormState}
                           isSaving={createCriterionMutation.isPending}
-                          submitLabel="Criar criterio"
+                          submitLabel="Criar item"
                           onSubmit={() => createCriterionMutation.mutate({ sectionId: section.id })}
                           onCancel={() => setNewCriterionSectionId(null)}
                         />
@@ -1300,7 +1313,7 @@ export function HrEvaluationTemplatesClient() {
                                 form={criterionFormState}
                                 setForm={setCriterionFormState}
                                 isSaving={updateCriterionMutation.isPending}
-                                submitLabel="Salvar criterio"
+                                submitLabel="Salvar item"
                                 onSubmit={() => updateCriterionMutation.mutate({ sectionId: section.id, criterionId: criterion.id, payload: criterionPayload(criterionFormState) })}
                                 onCancel={() => setEditingCriterionId(null)}
                               />
@@ -1310,15 +1323,15 @@ export function HrEvaluationTemplatesClient() {
                                   <div className="flex flex-wrap items-center gap-2">
                                     <p className="break-words text-sm font-medium">{criterion.title}</p>
                                     <StatusBadge status={statusTone(criterion.status)} label={statusLabel(criterion.status)} />
-                                    {criterion.isRequired ? <StatusBadge status="info" label="Obrigatorio" /> : null}
-                                    {criterion.isCritical ? <StatusBadge status="warning" label="Critico" /> : null}
+                                    {criterion.isRequired ? <StatusBadge status="info" label="Obrigatório" /> : null}
+                                    {criterion.isCritical ? <StatusBadge status="warning" label="Crítico" /> : null}
                                   </div>
                                   {criterion.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{criterion.description}</p> : null}
                                   <div className="mt-2 flex flex-wrap gap-2">
                                     <StatusBadge status="visual" label={`Ordem ${criterion.sortOrder}`} />
                                     <StatusBadge status="visual" label={`Peso ${criterion.weight}`} />
                                     {criterion.requiresCommentBelowScore ? (
-                                      <StatusBadge status="warning" label={`Comentario ate nota ${criterion.commentRequiredScoreThreshold ?? "-"}`} />
+                                      <StatusBadge status="warning" label={`Pedir comentário até nota ${criterion.commentRequiredScoreThreshold ?? "-"}`} />
                                     ) : null}
                                   </div>
                                 </div>
@@ -1348,7 +1361,7 @@ export function HrEvaluationTemplatesClient() {
                           </div>
                         ))
                       ) : (
-                        <p className="rounded-md border bg-background p-3 text-sm text-muted-foreground">Nenhum criterio nesta secao.</p>
+                        <p className="rounded-md border bg-background p-3 text-sm text-muted-foreground">Nenhum item avaliado neste grupo.</p>
                       )}
                     </div>
                   </div>
