@@ -281,11 +281,11 @@ export async function ensureAutomaticEmployeeOnboarding(supabase: SupabaseClient
       unit_id: employee.unit_id,
       employee_id: employee.id,
       plan_id: plan?.id ?? null,
-      status: "in_progress",
+      status: "not_started",
       operational_release_status: hasCriticalOrBlocking ? "critical_pending" : "partial",
-      started_at: startedAt.toISOString(),
+      started_at: null,
       expected_release_at: expectedReleaseAt,
-      notes: plan ? "Onboarding gerado automaticamente a partir do plano aplicavel." : "Onboarding padrao Hotel Galli gerado automaticamente.",
+      notes: plan ? "Checklist de onboarding gerado automaticamente a partir do plano aplicavel." : "Checklist padrao Hotel Galli gerado automaticamente.",
       created_by: actorUserId,
       updated_by: actorUserId
     })

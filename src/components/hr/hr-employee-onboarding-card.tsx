@@ -434,6 +434,13 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
               </div>
             ) : null}
 
+            {onboarding.status === "not_started" ? (
+              <div className="flex items-start gap-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                <PlayCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>Checklist criado automaticamente. A integracao ainda nao foi iniciada; comece pelo primeiro item pendente.</p>
+              </div>
+            ) : null}
+
             <div className="space-y-3">
               {[...groupedItems.open, ...groupedItems.done].map((item) => (
                 <article key={item.id} className={cn("rounded-md border bg-background p-4", item.status === "completed" && "bg-muted/20")}>

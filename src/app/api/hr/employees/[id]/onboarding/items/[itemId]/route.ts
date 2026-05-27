@@ -104,6 +104,18 @@ function validateItemTransition(currentStatus: string, action: z.infer<typeof it
   return "";
 }
 
+function validateOnboardingTransition(currentStatus: string, action: z.infer<typeof itemActionSchema>["action"]) {
+  if (["completed", "cancelled"].includes(currentStatus) && action !== "update_notes") {
+    return "Este onboarding ja foi encerrado.";
+  }
+
+  if (currentStatus === "not_started" && action !== "start" && action !== "update_notes") {
+    return "Inicie o onboarding antes de executar esta acao.";
+  }
+
+  return "";
+}
+
 export async function PATCH(request: Request, { params }: RouteParams) {
   const { context, response } = await requireHrPermission(HR_PERMISSIONS.employeesManage);
 
@@ -147,7 +159,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     const { data: onboardingData, error: onboardingError } = await context.supabase
       .from("employee_onboardings")
-      .select("id, employee_id, unit_id")
+      .select("id, employee_id, unit_id, status, started_at")
       .eq("id", item.onboarding_id)
       .eq("employee_id", employee.id)
       .is("deleted_at", null)
@@ -158,8 +170,31 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       return hrApiError("Nao foi possivel validar o onboarding do colaborador.", 500);
     }
 
-    if (!onboardingData?.length) {
+    const onboarding = onboardingData?.[0] as { id: string; employee_id: string; unit_id: string | null; status: string; started_at: string | null } | undefined;
+
+    if (!onboarding) {
       return hrApiError("Onboarding nao encontrado para este colaborador.", 404);
+    }
+
+    const onboardingTransitionError = validateOnboardingTransition(onboarding.status, payload.action);
+    if (onboardingTransitionError) {
+      return hrApiError(onboardingTransitionError, 422);
+    }
+
+    if (payload.action === "start" && onboarding.status === "not_started") {
+      const { error: onboardingStartError } = await context.supabase
+        .from("employee_onboardings")
+        .update({
+          status: "in_progress",
+          started_at: onboarding.started_at ?? new Date().toISOString(),
+          updated_by: context.session.user.id
+        })
+        .eq("id", onboarding.id);
+
+      if (onboardingStartError) {
+        logHrApiError("employee_onboarding.parent_start_failed", onboardingStartError);
+        return hrApiError("Nao foi possivel iniciar o onboarding do colaborador.", 500);
+      }
     }
 
     const { data, error } = await context.supabase
