@@ -253,6 +253,14 @@ async function assertDocumentMutationContext(permission: string, employeeId: str
   return { context, response: null, employee };
 }
 
+function isResolvedDocumentStatus(status: string) {
+  return ["approved", "waived", "replaced"].includes(status);
+}
+
+function canReviewDocument(document: EmployeeDocumentRow) {
+  return Boolean(document.current_attachment_id) && ["received", "under_review"].includes(document.status);
+}
+
 export async function GET(request: Request, { params }: RouteParams) {
   const { context, response } = await requireHrPermission(HR_PERMISSIONS.documentsView);
 
@@ -406,6 +414,10 @@ export async function POST(request: Request, { params }: RouteParams) {
       return hrApiError("Documento nao encontrado para este colaborador.", 404);
     }
 
+    if (isResolvedDocumentStatus(document.status) && payload.action !== "update") {
+      return hrApiError("Documento ja resolvido. Abra uma nova pendencia se precisar substituir o registro.", 422);
+    }
+
     if (payload.action === "update") {
       const { data, error } = await context.supabase
         .from("employee_documents")
@@ -427,6 +439,10 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     if (payload.action === "approve") {
+      if (!canReviewDocument(document)) {
+        return hrApiError("Anexe o arquivo antes de aprovar. Se o documento nao se aplica, use Dispensar.", 422);
+      }
+
       const { data, error } = await context.supabase
         .from("employee_documents")
         .update({
@@ -464,6 +480,10 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     if (payload.action === "reject") {
+      if (!canReviewDocument(document)) {
+        return hrApiError("So e possivel rejeitar documento com arquivo enviado para conferencia.", 422);
+      }
+
       const { data, error } = await context.supabase
         .from("employee_documents")
         .update({
@@ -579,6 +599,10 @@ async function handleUpload(request: Request, employeeId: string) {
   const document = await loadEmployeeDocument(context, employee.id, documentId);
   if (!document || document.unit_id !== employee.unit_id) {
     return hrApiError("Documento nao encontrado para este colaborador.", 404);
+  }
+
+  if (isResolvedDocumentStatus(document.status)) {
+    return hrApiError("Documento ja resolvido. Abra uma nova pendencia se precisar substituir o registro.", 422);
   }
 
   const filePath = buildEmployeeDocumentPath({

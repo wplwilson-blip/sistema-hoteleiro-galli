@@ -137,9 +137,9 @@ function documentStatusLabel(status: string) {
 }
 
 function documentStatusTone(status: string) {
-  if (status === "approved" || status === "received") return "success" as const;
+  if (status === "approved" || status === "waived") return "success" as const;
   if (status === "expired" || status === "rejected") return "danger" as const;
-  if (status === "pending" || status === "under_review") return "warning" as const;
+  if (status === "pending" || status === "received" || status === "under_review") return "warning" as const;
   return "visual" as const;
 }
 
@@ -159,6 +159,33 @@ function categoryLabel(category: string | undefined) {
 
 function activeDocumentTypeIds(documents: HrEmployeeDocument[]) {
   return new Set(documents.map((document) => document.documentTypeId));
+}
+
+function isResolvedDocument(document: HrEmployeeDocument) {
+  return ["approved", "waived", "replaced"].includes(document.status);
+}
+
+function canUploadDocument(document: HrEmployeeDocument) {
+  return !isResolvedDocument(document);
+}
+
+function canReviewDocument(document: HrEmployeeDocument) {
+  return Boolean(document.hasCurrentAttachment) && ["received", "under_review"].includes(document.status);
+}
+
+function documentOperationalHint(document: HrEmployeeDocument) {
+  if (document.status === "approved") return "Documento aprovado e resolvido. Ele permanece no dossie como historico.";
+  if (document.status === "waived") return "Documento dispensado pelo RH. Ele nao conta como pendencia.";
+  if (document.status === "rejected") return "Documento rejeitado. Anexe um novo arquivo corrigido para nova conferencia.";
+  if (!document.hasCurrentAttachment) return "Anexe o arquivo para conferencia ou dispense este documento se ele nao se aplicar.";
+  if (document.status === "received" || document.status === "under_review") return "Arquivo anexado. O RH pode aprovar ou rejeitar apos conferir.";
+  return "";
+}
+
+function documentDisplayStatusLabel(document: HrEmployeeDocument) {
+  if (document.status === "received") return "Arquivo anexado";
+  if (document.status === "under_review") return "Aguardando aprovacao";
+  return documentStatusLabel(document.status);
 }
 
 export function HrEmployeeDocumentsCard({
@@ -379,12 +406,15 @@ export function HrEmployeeDocumentsCard({
           <div className="space-y-3">
             {documents.map((document) => (
               <article key={document.id} className="rounded-md border bg-background p-4">
+                {documentOperationalHint(document) ? (
+                  <div className="mb-3 rounded-md border bg-muted/25 px-3 py-2 text-xs leading-5 text-muted-foreground">{documentOperationalHint(document)}</div>
+                ) : null}
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <FileText className="h-4 w-4 text-primary" />
                       <h4 className="break-words text-sm font-semibold text-foreground">{document.documentType?.name ?? "Documento sem tipo informado"}</h4>
-                      <StatusBadge status={documentStatusTone(document.status)} label={documentStatusLabel(document.status)} />
+                      <StatusBadge status={documentStatusTone(document.status)} label={documentDisplayStatusLabel(document)} />
                       <StatusBadge status={document.documentType?.isRequired ? "warning" : "visual"} label={document.documentType?.isRequired ? "Obrigatório" : "Opcional"} />
                       {document.isSensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
                     </div>
@@ -427,7 +457,9 @@ export function HrEmployeeDocumentsCard({
                         </div>
                       </div>
                     ) : (
-                      <div className="rounded-md border bg-muted/25 p-3 text-sm text-muted-foreground">Nenhum arquivo anexado.</div>
+                      <div className="rounded-md border bg-muted/25 p-3 text-sm text-muted-foreground">
+                        Nenhum arquivo anexado. Anexe para aprovar ou dispense se nao se aplicar.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -435,36 +467,47 @@ export function HrEmployeeDocumentsCard({
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
                   {canManageDocuments ? (
                     <>
-                      <label className="inline-flex max-w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium leading-tight hover:bg-muted">
-                        <Upload className="h-4 w-4" />
-                        {document.hasCurrentAttachment ? "Substituir arquivo" : "Anexar arquivo"}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                          className="hidden"
-                          disabled={uploadMutation.isPending}
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) uploadMutation.mutate({ documentId: document.id, file });
-                            event.target.value = "";
-                          }}
-                        />
-                      </label>
+                      {canUploadDocument(document) ? (
+                        <label className="inline-flex max-w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium leading-tight hover:bg-muted">
+                          <Upload className="h-4 w-4" />
+                          {document.hasCurrentAttachment ? "Substituir arquivo" : "Anexar arquivo"}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                            className="hidden"
+                            disabled={uploadMutation.isPending}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) uploadMutation.mutate({ documentId: document.id, file });
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
+                      ) : null}
                       <Button type="button" variant="outline" size="sm" onClick={() => startAction("update", document)}>
                         Registrar observação
                       </Button>
                     </>
                   ) : null}
-                  {canVerifyDocuments ? (
+                  {canVerifyDocuments && !isResolvedDocument(document) ? (
                     <>
-                      <Button type="button" variant="outline" size="sm" onClick={() => actionMutation.mutate({ action: "approve", documentId: document.id })} disabled={document.status === "approved"}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => actionMutation.mutate({ action: "approve", documentId: document.id })}
+                        disabled={!canReviewDocument(document) || actionMutation.isPending}
+                        title={!canReviewDocument(document) ? "Anexe um arquivo antes de aprovar." : undefined}
+                      >
                         <CheckCircle2 className="h-4 w-4" />
                         Aprovar
                       </Button>
-                      <Button type="button" variant="danger" size="sm" onClick={() => startAction("reject", document)}>
-                        <XCircle className="h-4 w-4" />
-                        Rejeitar
-                      </Button>
+                      {canReviewDocument(document) ? (
+                        <Button type="button" variant="danger" size="sm" onClick={() => startAction("reject", document)} disabled={actionMutation.isPending}>
+                          <XCircle className="h-4 w-4" />
+                          Rejeitar
+                        </Button>
+                      ) : null}
                       <Button type="button" variant="outline" size="sm" onClick={() => startAction("waive", document)}>
                         <ShieldAlert className="h-4 w-4" />
                         Dispensar
