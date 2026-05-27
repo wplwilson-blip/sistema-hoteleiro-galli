@@ -209,6 +209,27 @@ async function loadApplicablePlans(context: HrRequestContext, employee: { organi
     .sort((a, b) => planSpecificity(a) - planSpecificity(b) || a.priority - b.priority || a.name.localeCompare(b.name));
 }
 
+async function loadLatestOnboarding(context: HrRequestContext, employee: { id: string; unit_id: string | null }) {
+  let onboardingQuery = context.supabase
+    .from("employee_onboardings")
+    .select(onboardingSelect)
+    .eq("employee_id", employee.id)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (employee.unit_id) onboardingQuery = onboardingQuery.eq("unit_id", employee.unit_id);
+
+  const { data, error } = await onboardingQuery;
+
+  if (error) {
+    logHrApiError("employee_onboarding.lookup_failed", error);
+    throw new Error("Nao foi possivel carregar o onboarding agora. Tente novamente ou verifique se o colaborador esta ativo.");
+  }
+
+  return (data?.[0] as EmployeeOnboardingRow | undefined) ?? null;
+}
+
 async function loadDocumentTypes(context: HrRequestContext, ids: string[]) {
   if (!ids.length) return new Map<string, HrDocumentTypeLite>();
 
@@ -298,24 +319,21 @@ export async function GET(_request: Request, { params }: RouteParams) {
       employee.unit_id
     );
 
-    let onboardingQuery = context.supabase
-      .from("employee_onboardings")
-      .select(onboardingSelect)
-      .eq("employee_id", employee.id)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    let onboarding = await loadLatestOnboarding(context, employee);
 
-    if (employee.unit_id) onboardingQuery = onboardingQuery.eq("unit_id", employee.unit_id);
-
-    const { data: onboardingData, error: onboardingError } = await onboardingQuery;
-
-    if (onboardingError) {
-      logHrApiError("employee_onboarding.lookup_failed", onboardingError);
-      return hrApiError("Nao foi possivel carregar o onboarding do colaborador.", 500);
+    if (!onboarding && employee.status === "active" && canManageOnboarding) {
+      try {
+        const result = await ensureAutomaticEmployeeOnboarding(context.supabase, employee.id, context.session.user.id);
+        if (result.created) {
+          onboarding = await loadLatestOnboarding(context, employee);
+        }
+      } catch (autoOnboardingError) {
+        logHrApiError(
+          "employee_onboarding.auto_create_on_get_failed",
+          autoOnboardingError instanceof Error ? autoOnboardingError : { message: "Falha desconhecida ao gerar onboarding automatico." }
+        );
+      }
     }
-
-    const onboarding = (onboardingData?.[0] as EmployeeOnboardingRow | undefined) ?? null;
 
     if (!onboarding) {
       const applicablePlans = await loadApplicablePlans(context, employee);

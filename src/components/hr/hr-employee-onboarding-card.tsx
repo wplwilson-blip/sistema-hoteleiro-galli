@@ -93,7 +93,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.message ?? "Nao foi possivel atualizar o onboarding.");
+    throw new Error(payload?.message ?? "Nao foi possivel carregar o onboarding agora. Tente novamente ou verifique se o colaborador esta ativo.");
   }
 
   return payload as T;
@@ -304,7 +304,13 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
       <div className="space-y-4 p-4">
         {onboardingQuery.isLoading ? <LoadingTable label="Carregando onboarding operacional..." /> : null}
         {onboardingQuery.error ? (
-          <ErrorMessage message={onboardingQuery.error instanceof Error ? onboardingQuery.error.message : "Nao foi possivel carregar o onboarding."} />
+          <ErrorMessage
+            message={
+              onboardingQuery.error instanceof Error
+                ? onboardingQuery.error.message
+                : "Nao foi possivel carregar o onboarding agora. Tente novamente ou verifique se o colaborador esta ativo."
+            }
+          />
         ) : null}
         {actionMutation.error ? (
           <ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel atualizar o item do onboarding."} />
