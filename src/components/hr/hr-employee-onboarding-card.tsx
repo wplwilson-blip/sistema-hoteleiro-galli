@@ -214,6 +214,15 @@ function actionDescription(action: NonNullable<ActiveItemAction>["action"]) {
   return "Atualize a observacao operacional deste item.";
 }
 
+function itemOperationalHint(item: HrOnboardingItem) {
+  if (item.status === "pending") return "Item preparado no checklist. Clique em Iniciar quando o RH ou responsavel comecar esta etapa.";
+  if (item.status === "in_progress") return "Item em andamento. Conclua somente depois que a etapa tiver sido realizada.";
+  if (item.status === "completed") return "Item concluido. Ele permanece no historico do onboarding.";
+  if (item.status === "waived") return "Item dispensado com justificativa. Ele nao conta como pendencia.";
+  if (item.status === "blocked") return "Item bloqueado. Revise o motivo antes de seguir com a liberacao operacional.";
+  return "";
+}
+
 export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string }) {
   const queryClient = useQueryClient();
   const [activeAction, setActiveAction] = useState<ActiveItemAction>(null);
@@ -315,9 +324,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
         {actionMutation.error ? (
           <ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel atualizar o item do onboarding."} />
         ) : null}
-        {startMutation.error ? (
-          <ErrorMessage message={startMutation.error instanceof Error ? startMutation.error.message : "Nao foi possivel iniciar o onboarding."} />
-        ) : null}
+        {startMutation.error ? <ErrorMessage message={startMutation.error instanceof Error ? startMutation.error.message : "Nao foi possivel criar o checklist."} /> : null}
 
         {!onboardingQuery.isLoading && !onboardingQuery.error && !onboarding ? (
           <div className="space-y-4 rounded-md border bg-muted/20 p-4">
@@ -334,7 +341,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                 <div className="mb-3">
                   <h4 className="text-sm font-semibold text-foreground">Plano de onboarding</h4>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Escolha o roteiro operacional que sera copiado para o checklist real deste colaborador.
+                    Escolha o roteiro operacional que sera copiado para o checklist deste colaborador. Criar o checklist nao inicia a integracao.
                   </p>
                 </div>
                 <Field label="Plano aplicavel">
@@ -371,12 +378,12 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                       disabled={startMutation.isPending || (!selectedPlanId && applicablePlans.length !== 1)}
                     >
                       <PlayCircle className="h-4 w-4" />
-                      Iniciar onboarding
+                      Criar checklist
                     </Button>
                   ) : (
                     <div className="flex items-center gap-2 rounded-md border bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
                       <LockKeyhole className="h-4 w-4" />
-                      Inicio restrito ao RH autorizado
+                      Criacao restrita ao RH autorizado
                     </div>
                   )}
                 </div>
@@ -385,12 +392,12 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
               <div className="mx-auto w-full max-w-2xl rounded-md border bg-background p-4">
                 <h4 className="text-sm font-semibold text-foreground">Checklist padrão do hotel</h4>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Nenhum plano específico foi encontrado para este cargo ou setor. Inicie o checklist padrão para acompanhar documentos, uniforme, acessos, orientações e liberação operacional.
+                  Nenhum plano especifico foi encontrado para este cargo ou setor. Crie o checklist padrao para acompanhar documentos, uniforme, acessos, orientacoes e liberacao operacional.
                 </p>
                 <div className="mt-4 flex justify-end">
                   <Button type="button" onClick={() => startMutation.mutate("")} disabled={startMutation.isPending}>
                     <PlayCircle className="h-4 w-4" />
-                    Iniciar checklist padrão
+                    Criar checklist padrao
                   </Button>
                 </div>
               </div>
@@ -444,6 +451,9 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
             <div className="space-y-3">
               {[...groupedItems.open, ...groupedItems.done].map((item) => (
                 <article key={item.id} className={cn("rounded-md border bg-background p-4", item.status === "completed" && "bg-muted/20")}>
+                  {itemOperationalHint(item) ? (
+                    <div className="mb-3 rounded-md border bg-muted/25 px-3 py-2 text-xs leading-5 text-muted-foreground">{itemOperationalHint(item)}</div>
+                  ) : null}
                   <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">

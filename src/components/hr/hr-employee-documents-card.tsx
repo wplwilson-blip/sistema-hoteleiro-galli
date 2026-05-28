@@ -361,6 +361,12 @@ export function HrEmployeeDocumentsCard({
           </div>
         ) : null}
 
+        {documents.length ? (
+          <div className="rounded-md border bg-muted/25 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            <span className="font-medium text-foreground">Leitura rapida:</span> obrigatorio precisa ser resolvido; condicional deve ser conferido e dispensado se nao se aplicar; operacional e controle interno do hotel.
+          </div>
+        ) : null}
+
         {showCreate ? (
           <form onSubmit={submitCreate} className="rounded-md border bg-muted/25 p-4">
             <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_180px]">

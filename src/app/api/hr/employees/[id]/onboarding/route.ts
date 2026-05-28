@@ -476,9 +476,9 @@ export async function POST(request: Request, { params }: RouteParams) {
       return hrApiError("O plano selecionado nao possui itens ativos.", 422);
     }
 
-    const startedAt = new Date();
+    const checklistCreatedAt = new Date();
     const expectedReleaseAt = planItems
-      .map((item) => addDaysIso(startedAt, item.due_days_after_start))
+      .map((item) => addDaysIso(checklistCreatedAt, item.due_days_after_start))
       .filter(Boolean)
       .sort()
       .at(-1) ?? null;
@@ -491,10 +491,11 @@ export async function POST(request: Request, { params }: RouteParams) {
         unit_id: employee.unit_id,
         employee_id: employee.id,
         plan_id: selectedPlan.id,
-        status: "in_progress",
+        status: "not_started",
         operational_release_status: hasCriticalOrBlocking ? "critical_pending" : "partial",
-        started_at: startedAt.toISOString(),
+        started_at: null,
         expected_release_at: expectedReleaseAt,
+        notes: "Checklist de onboarding criado a partir do plano selecionado. A integracao comeca ao iniciar o primeiro item.",
         created_by: context.session.user.id,
         updated_by: context.session.user.id
       })
@@ -518,7 +519,7 @@ export async function POST(request: Request, { params }: RouteParams) {
       category: item.category,
       owner_area: item.owner_area,
       responsible_profile_code: item.responsible_profile_code,
-      due_at: addDaysIso(startedAt, item.due_days_after_start),
+      due_at: addDaysIso(checklistCreatedAt, item.due_days_after_start),
       status: "pending",
       is_required: item.is_required,
       is_critical: item.is_critical,
