@@ -20,7 +20,8 @@ import {
   Inbox,
   ShieldAlert,
   UserPlus,
-  UserRound
+  UserRound,
+  type LucideIcon
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
@@ -198,6 +199,42 @@ type OnboardingSummaryResponse = {
   };
 };
 
+type EvaluationReportsSummaryResponse = {
+  ok: true;
+  summary: {
+    total: number;
+    inProgress: number;
+    waitingFeedback: number;
+    waitingAcknowledgement: number;
+    closedThisMonth: number;
+    lowScore: number;
+    withCritical: number;
+    withPdi: number;
+    overdue: number;
+  };
+};
+
+type DevelopmentPlanListItem = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  title: string;
+  status: string;
+  dueAt: string;
+  reviewAt: string;
+  redacted: boolean;
+};
+
+type DevelopmentPlansResponse = {
+  ok: true;
+  data: DevelopmentPlanListItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+};
+
 const emptyWorkflows: WorkflowListItem[] = [];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -362,6 +399,32 @@ function topEntries(values: Record<string, number> | undefined, limit = 4) {
     .slice(0, limit);
 }
 
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function addDays(value: Date, days: number) {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function isOpenDevelopmentPlan(status: string) {
+  return status !== "completed" && status !== "cancelled";
+}
+
+function isDateBeforeToday(value: string | null | undefined) {
+  if (!value) return false;
+  return value.slice(0, 10) < dateOnly(new Date());
+}
+
+function isDateWithinNextDays(value: string | null | undefined, days: number) {
+  if (!value) return false;
+  const target = value.slice(0, 10);
+  const today = new Date();
+  return target >= dateOnly(today) && target <= dateOnly(addDays(today, days));
+}
+
 function MetricFallback({ label }: { label: string }) {
   return (
     <Card className="border-border/80 p-5 shadow-sm shadow-primary/5">
@@ -376,6 +439,47 @@ function MetricFallback({ label }: { label: string }) {
         </div>
       </div>
     </Card>
+  );
+}
+
+function OperationalActionCard({
+  title,
+  value,
+  description,
+  href,
+  icon: Icon,
+  tone = "visual"
+}: {
+  title: string;
+  value: number;
+  description: string;
+  href: string;
+  icon: LucideIcon;
+  tone?: StatusTone;
+}) {
+  const hasAction = value > 0;
+
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "group flex min-w-0 flex-col justify-between rounded-md border bg-background p-3 transition-colors hover:bg-muted/40",
+        hasAction && tone === "danger" && "border-red-200 bg-red-50/60",
+        hasAction && tone === "warning" && "border-amber-200 bg-amber-50/60",
+        hasAction && tone === "info" && "border-blue-200 bg-blue-50/60"
+      )}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground group-hover:text-foreground">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{description}</p>
+    </Link>
   );
 }
 
@@ -520,6 +624,8 @@ export function HrOperationalDashboardClient() {
   const analyticsUrl = buildUrl("/api/hr/analytics", { unit_id: activeUnitId });
   const documentPendenciesUrl = buildUrl("/api/hr/document-pendencies/summary", { unitId: activeUnitId });
   const onboardingSummaryUrl = buildUrl("/api/hr/onboarding-dashboard/summary", { unitId: activeUnitId });
+  const evaluationReportsUrl = buildUrl("/api/hr/employee-evaluations/reports", { unitId: activeUnitId });
+  const developmentPlansUrl = buildUrl("/api/hr/development-plans", { page: 1, pageSize: 100, unitId: activeUnitId });
   const recentUrl = buildUrl("/api/hr/workflows", { page: 1, page_size: 8, unit_id: activeUnitId });
   const criticalUrl = buildUrl("/api/hr/workflows", { page: 1, page_size: 30, unit_id: activeUnitId });
   const myTasksUrl = buildUrl("/api/hr/workflows", {
@@ -547,6 +653,16 @@ export function HrOperationalDashboardClient() {
   const onboardingSummaryQuery = useQuery({
     queryKey: ["hr", "operational-dashboard", "onboarding-summary", activeUnitId],
     queryFn: async () => requestJson<OnboardingSummaryResponse>(onboardingSummaryUrl)
+  });
+
+  const evaluationReportsQuery = useQuery({
+    queryKey: ["hr", "operational-dashboard", "evaluation-reports", activeUnitId],
+    queryFn: async () => requestJson<EvaluationReportsSummaryResponse>(evaluationReportsUrl)
+  });
+
+  const developmentPlansQuery = useQuery({
+    queryKey: ["hr", "operational-dashboard", "development-plans", activeUnitId],
+    queryFn: async () => requestJson<DevelopmentPlansResponse>(developmentPlansUrl)
   });
 
   const recentQuery = useQuery({
@@ -582,6 +698,23 @@ export function HrOperationalDashboardClient() {
   const myTasksTotal = userId ? myTasksQuery.data?.pagination.total ?? myTasks.length : 0;
   const documentPendencies = documentPendenciesQuery.data?.data;
   const onboardingSummary = onboardingSummaryQuery.data?.data;
+  const evaluationSummary = evaluationReportsQuery.data?.summary;
+  const developmentPlans = developmentPlansQuery.data?.data ?? [];
+  const openDevelopmentPlans = developmentPlans.filter((plan) => isOpenDevelopmentPlan(plan.status));
+  const overdueDevelopmentPlans = openDevelopmentPlans.filter((plan) => isDateBeforeToday(plan.dueAt));
+  const dueSoonDevelopmentPlans = openDevelopmentPlans.filter((plan) => isDateWithinNextDays(plan.dueAt, 7));
+  const reviewDevelopmentPlans = openDevelopmentPlans.filter((plan) => plan.status === "under_review");
+  const documentActionTotal =
+    (documentPendencies?.awaitingReview ?? 0) + (documentPendencies?.rejected ?? 0) + (documentPendencies?.missingRequired ?? 0);
+  const onboardingActionTotal = (onboardingSummary?.overdue ?? 0) + (onboardingSummary?.blocked ?? 0) + (onboardingSummary?.critical ?? 0);
+  const evaluationActionTotal =
+    (evaluationSummary?.waitingFeedback ?? 0) + (evaluationSummary?.waitingAcknowledgement ?? 0) + (evaluationSummary?.overdue ?? 0);
+  const pdiActionTotal = overdueDevelopmentPlans.length + reviewDevelopmentPlans.length;
+  const operationalSummaryLoading =
+    documentPendenciesQuery.isLoading ||
+    onboardingSummaryQuery.isLoading ||
+    evaluationReportsQuery.isLoading ||
+    developmentPlansQuery.isLoading;
 
   return (
     <div className="space-y-5">
@@ -639,6 +772,63 @@ export function HrOperationalDashboardClient() {
 
       {isInitialLoading ? <LoadingTable label="Carregando dashboard operacional de RH..." /> : null}
 
+      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Pendencias de hoje</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Atalhos para o que normalmente pede acao do RH: documentos, onboarding, avaliacoes e PDI.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/rh/gestao">
+              Abrir gestao do RH
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+        {operationalSummaryLoading ? <LoadingTable label="Carregando pendencias operacionais..." /> : null}
+        {!operationalSummaryLoading ? (
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <OperationalActionCard
+              title="Documentos para agir"
+              value={documentActionTotal}
+              description="Conferir anexos, rejeitados e obrigatorios sem arquivo."
+              href="/rh/pendencias-documentais"
+              icon={FileWarning}
+              tone={documentActionTotal ? "warning" : "visual"}
+            />
+            <OperationalActionCard
+              title="Onboarding em atencao"
+              value={onboardingActionTotal}
+              description="Ver bloqueios, itens criticos e etapas atrasadas."
+              href="/rh/onboarding"
+              icon={ClipboardCheck}
+              tone={onboardingActionTotal ? "danger" : "visual"}
+            />
+            <OperationalActionCard
+              title="Avaliacoes pendentes"
+              value={evaluationActionTotal}
+              description="Resolver devolutiva, ciencia ou avaliacao atrasada."
+              href="/rh/gestao/avaliacoes/relatorios"
+              icon={CheckCircle2}
+              tone={evaluationActionTotal ? "warning" : "visual"}
+            />
+            <OperationalActionCard
+              title="PDI para acompanhar"
+              value={pdiActionTotal}
+              description="Acompanhar acoes atrasadas ou planos em revisao."
+              href="/rh/employees"
+              icon={ClipboardList}
+              tone={pdiActionTotal ? "danger" : "visual"}
+            />
+          </div>
+        ) : null}
+      </Card>
+
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-6">
         {dashboardQuery.error ? (
           <>
@@ -670,6 +860,14 @@ export function HrOperationalDashboardClient() {
 
       {onboardingSummaryQuery.error ? (
         <ErrorMessage message={onboardingSummaryQuery.error instanceof Error ? onboardingSummaryQuery.error.message : "Erro ao carregar onboarding operacional."} />
+      ) : null}
+
+      {evaluationReportsQuery.error ? (
+        <ErrorMessage message={evaluationReportsQuery.error instanceof Error ? evaluationReportsQuery.error.message : "Erro ao carregar avaliacoes operacionais."} />
+      ) : null}
+
+      {developmentPlansQuery.error ? (
+        <ErrorMessage message={developmentPlansQuery.error instanceof Error ? developmentPlansQuery.error.message : "Erro ao carregar PDI operacional."} />
       ) : null}
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -749,6 +947,86 @@ export function HrOperationalDashboardClient() {
           </div>
         ) : null}
       </Card>
+
+      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-semibold text-foreground">Avaliacoes</h2>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Devolutiva, ciencia e pontos de atencao do ciclo de avaliacao.</p>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/gestao/avaliacoes/relatorios">
+                Abrir relatorio
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          {evaluationReportsQuery.isLoading ? <LoadingTable label="Carregando avaliacoes operacionais..." /> : null}
+          {!evaluationReportsQuery.isLoading && !evaluationReportsQuery.error ? (
+            <div className="grid min-w-0 gap-3 md:grid-cols-2">
+              <div className={cn("rounded-md border bg-background p-3", (evaluationSummary?.waitingFeedback ?? 0) > 0 && "border-amber-200 bg-amber-50/60")}>
+                <p className="text-xs text-muted-foreground">Aguardando devolutiva</p>
+                <p className="mt-1 text-xl font-semibold">{evaluationSummary?.waitingFeedback ?? 0}</p>
+              </div>
+              <div className={cn("rounded-md border bg-background p-3", (evaluationSummary?.waitingAcknowledgement ?? 0) > 0 && "border-blue-200 bg-blue-50/60")}>
+                <p className="text-xs text-muted-foreground">Aguardando ciencia</p>
+                <p className="mt-1 text-xl font-semibold">{evaluationSummary?.waitingAcknowledgement ?? 0}</p>
+              </div>
+              <div className={cn("rounded-md border bg-background p-3", (evaluationSummary?.overdue ?? 0) > 0 && "border-red-200 bg-red-50/60")}>
+                <p className="text-xs text-muted-foreground">Avaliacoes atrasadas</p>
+                <p className="mt-1 text-xl font-semibold">{evaluationSummary?.overdue ?? 0}</p>
+              </div>
+              <div className={cn("rounded-md border bg-background p-3", ((evaluationSummary?.lowScore ?? 0) + (evaluationSummary?.withCritical ?? 0)) > 0 && "border-amber-200 bg-amber-50/60")}>
+                <p className="text-xs text-muted-foreground">Nota ou criterio de atencao</p>
+                <p className="mt-1 text-xl font-semibold">{(evaluationSummary?.lowScore ?? 0) + (evaluationSummary?.withCritical ?? 0)}</p>
+              </div>
+            </div>
+          ) : null}
+        </Card>
+
+        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-semibold text-foreground">PDI</h2>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Planos abertos, revisoes e prazos de desenvolvimento dos colaboradores.</p>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/rh/employees">
+                Abrir colaboradores
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          {developmentPlansQuery.isLoading ? <LoadingTable label="Carregando PDI operacional..." /> : null}
+          {!developmentPlansQuery.isLoading && !developmentPlansQuery.error ? (
+            <div className="grid min-w-0 gap-3 md:grid-cols-2">
+              <div className={cn("rounded-md border bg-background p-3", openDevelopmentPlans.length > 0 && "border-blue-200 bg-blue-50/60")}>
+                <p className="text-xs text-muted-foreground">Planos abertos</p>
+                <p className="mt-1 text-xl font-semibold">{openDevelopmentPlans.length}</p>
+              </div>
+              <div className={cn("rounded-md border bg-background p-3", overdueDevelopmentPlans.length > 0 && "border-red-200 bg-red-50/60")}>
+                <p className="text-xs text-muted-foreground">PDIs atrasados</p>
+                <p className="mt-1 text-xl font-semibold">{overdueDevelopmentPlans.length}</p>
+              </div>
+              <div className={cn("rounded-md border bg-background p-3", dueSoonDevelopmentPlans.length > 0 && "border-amber-200 bg-amber-50/60")}>
+                <p className="text-xs text-muted-foreground">Vencem em 7 dias</p>
+                <p className="mt-1 text-xl font-semibold">{dueSoonDevelopmentPlans.length}</p>
+              </div>
+              <div className={cn("rounded-md border bg-background p-3", reviewDevelopmentPlans.length > 0 && "border-blue-200 bg-blue-50/60")}>
+                <p className="text-xs text-muted-foreground">Em revisao</p>
+                <p className="mt-1 text-xl font-semibold">{reviewDevelopmentPlans.length}</p>
+              </div>
+            </div>
+          ) : null}
+        </Card>
+      </div>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-3">
