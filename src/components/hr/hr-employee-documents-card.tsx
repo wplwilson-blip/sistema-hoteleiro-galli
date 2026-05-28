@@ -183,9 +183,20 @@ function documentOperationalHint(document: HrEmployeeDocument) {
 }
 
 function documentDisplayStatusLabel(document: HrEmployeeDocument) {
-  if (document.status === "received") return "Arquivo anexado";
-  if (document.status === "under_review") return "Aguardando aprovacao";
+  if (document.status === "received" || document.status === "under_review") return "Aguardando conferencia";
   return documentStatusLabel(document.status);
+}
+
+function documentRequirementInfo(document: HrEmployeeDocument) {
+  if (document.documentType?.isRequired) {
+    return { label: "Obrigatorio", tone: "warning" as const };
+  }
+
+  if (document.documentType?.category === "internal") {
+    return { label: "Operacional", tone: "info" as const };
+  }
+
+  return { label: "Condicional", tone: "visual" as const };
 }
 
 export function HrEmployeeDocumentsCard({
@@ -205,6 +216,7 @@ export function HrEmployeeDocumentsCard({
   const [createForm, setCreateForm] = useState<CreateForm>({ documentTypeId: "", validUntil: "", notes: "" });
   const [actionText, setActionText] = useState("");
   const [actionValidUntil, setActionValidUntil] = useState("");
+  const [uploadFeedback, setUploadFeedback] = useState<{ documentId: string; fileName: string } | null>(null);
 
   const documentsQuery = useQuery({
     queryKey: ["hr", "employees", employeeId, "documents"],
@@ -253,12 +265,18 @@ export function HrEmployeeDocumentsCard({
       const formData = new FormData();
       formData.set("documentId", documentId);
       formData.set("file", file);
-      return requestJson(`/api/hr/employees/${employeeId}/documents`, {
+      return requestJson<{ ok: true; data: HrEmployeeDocument }>(`/api/hr/employees/${employeeId}/documents`, {
         method: "POST",
         body: formData
       });
     },
-    onSuccess: refreshDocuments
+    onSuccess: async (_payload, variables) => {
+      setUploadFeedback({ documentId: variables.documentId, fileName: variables.file.name });
+      await refreshDocuments();
+      window.setTimeout(() => {
+        setUploadFeedback((current) => (current?.documentId === variables.documentId ? null : current));
+      }, 6000);
+    }
   });
 
   function submitCreate(event: React.FormEvent<HTMLFormElement>) {
@@ -336,6 +354,12 @@ export function HrEmployeeDocumentsCard({
         {documentsQuery.error ? <ErrorMessage message={documentsQuery.error instanceof Error ? documentsQuery.error.message : "Não foi possível carregar documentos."} /> : null}
         {actionMutation.error ? <ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Não foi possível atualizar o documento."} /> : null}
         {uploadMutation.error ? <ErrorMessage message={uploadMutation.error instanceof Error ? uploadMutation.error.message : "Não foi possível anexar o arquivo."} /> : null}
+        {uploadFeedback ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-5 text-emerald-900">
+            <p className="font-medium">Arquivo anexado com sucesso.</p>
+            <p className="mt-1 text-xs">Documento aguardando conferencia do RH: {uploadFeedback.fileName}</p>
+          </div>
+        ) : null}
 
         {showCreate ? (
           <form onSubmit={submitCreate} className="rounded-md border bg-muted/25 p-4">
@@ -404,8 +428,18 @@ export function HrEmployeeDocumentsCard({
 
         {documents.length ? (
           <div className="space-y-3">
-            {documents.map((document) => (
-              <article key={document.id} className="rounded-md border bg-background p-4">
+            {documents.map((document) => {
+              const requirement = documentRequirementInfo(document);
+              const isUploadingThisDocument = uploadMutation.isPending && uploadMutation.variables?.documentId === document.id;
+              const isHighlighted = uploadFeedback?.documentId === document.id;
+
+              return (
+              <article
+                key={document.id}
+                className={`rounded-md border bg-background p-4 transition-colors ${
+                  isHighlighted ? "border-emerald-300 bg-emerald-50/40 ring-1 ring-emerald-200" : ""
+                }`}
+              >
                 {documentOperationalHint(document) ? (
                   <div className="mb-3 rounded-md border bg-muted/25 px-3 py-2 text-xs leading-5 text-muted-foreground">{documentOperationalHint(document)}</div>
                 ) : null}
@@ -415,7 +449,7 @@ export function HrEmployeeDocumentsCard({
                       <FileText className="h-4 w-4 text-primary" />
                       <h4 className="break-words text-sm font-semibold text-foreground">{document.documentType?.name ?? "Documento sem tipo informado"}</h4>
                       <StatusBadge status={documentStatusTone(document.status)} label={documentDisplayStatusLabel(document)} />
-                      <StatusBadge status={document.documentType?.isRequired ? "warning" : "visual"} label={document.documentType?.isRequired ? "Obrigatório" : "Opcional"} />
+                      <StatusBadge status={requirement.tone} label={requirement.label} />
                       {document.isSensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -470,7 +504,7 @@ export function HrEmployeeDocumentsCard({
                       {canUploadDocument(document) ? (
                         <label className="inline-flex max-w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium leading-tight hover:bg-muted">
                           <Upload className="h-4 w-4" />
-                          {document.hasCurrentAttachment ? "Substituir arquivo" : "Anexar arquivo"}
+                          {isUploadingThisDocument ? "Enviando..." : document.hasCurrentAttachment ? "Substituir arquivo" : "Anexar arquivo"}
                           <input
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
@@ -550,7 +584,8 @@ export function HrEmployeeDocumentsCard({
                   </form>
                 ) : null}
               </article>
-            ))}
+              );
+            })}
           </div>
         ) : null}
       </div>
