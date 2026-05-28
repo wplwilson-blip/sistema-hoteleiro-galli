@@ -42,6 +42,7 @@ const employeeDocumentSelect = "id, document_type_id";
 const hotelGalliDefaultMatchers = [
   { codes: ["RG_CNH", "RG", "CNH"], terms: ["rg", "cnh", "identificacao"], notes: "Documento de identificacao para compor o dossie admissional." },
   { codes: ["CPF"], terms: ["cpf"], notes: "CPF para conferencia cadastral do colaborador." },
+  { codes: ["FOTO", "FOTO_3X4", "FOTO_CADASTRAL"], terms: ["foto 3x4", "foto cadastral"], notes: "Foto cadastral para identificacao interna do colaborador." },
   { codes: ["CTPS", "CARTEIRA_TRABALHO"], terms: ["ctps", "carteira de trabalho"], notes: "Documento trabalhista para conferencia administrativa do RH." },
   {
     codes: ["COMPROVANTE_RESIDENCIA", "COMPROVANTE_ENDERECO"],
@@ -49,13 +50,83 @@ const hotelGalliDefaultMatchers = [
     notes: "Comprovante de residencia atualizado para o dossie admissional."
   },
   { codes: ["TITULO_ELEITOR"], terms: ["titulo de eleitor"], notes: "Titulo de eleitor quando aplicavel ao colaborador." },
+  {
+    codes: ["QUITACAO_ELEITORAL", "COMPROVANTE_VOTACAO"],
+    terms: ["quitacao eleitoral", "comprovante de votacao"],
+    notes: "Comprovante eleitoral quando aplicavel ao colaborador."
+  },
   { codes: ["RESERVISTA"], terms: ["reservista"], notes: "Certificado de reservista quando aplicavel." },
-  { codes: ["ASO", "EXAME_ADMISSIONAL"], terms: ["aso", "atestado de saude ocupacional", "exame admissional"], notes: "ASO ou exame admissional para acompanhamento documental." },
+  { codes: ["CERTIDAO_CASAMENTO"], terms: ["certidao de casamento"], notes: "Certidao de casamento quando aplicavel ao cadastro admissional." },
+  {
+    codes: ["CERTIDAO_NASCIMENTO", "CERTIDAO_NASCIMENTO_COLABORADOR"],
+    terms: ["certidao de nascimento do colaborador", "certidao de nascimento"],
+    notes: "Certidao de nascimento quando aplicavel ao cadastro admissional."
+  },
+  { codes: ["CERTIDAO_DIVORCIO"], terms: ["certidao de divorcio"], notes: "Certidao de divorcio quando aplicavel ao cadastro admissional." },
+  { codes: ["DECLARACAO_UNIAO_ESTAVEL"], terms: ["declaracao de uniao estavel"], notes: "Declaracao de uniao estavel quando aplicavel ao cadastro admissional." },
+  {
+    codes: ["CERTIDAO_NASCIMENTO_FILHOS", "CERTIDAO_NASCIMENTO_DEPENDENTES"],
+    terms: ["certidao de nascimento dos filhos", "certidao de nascimento de dependentes"],
+    notes: "Certidao de nascimento de filhos ou dependentes quando aplicavel."
+  },
+  { codes: ["CPF_DEPENDENTES"], terms: ["cpf dos dependentes", "cpf de dependentes"], notes: "CPF dos dependentes quando aplicavel." },
+  { codes: ["DOCUMENTOS_DEPENDENTES"], terms: ["documentos de dependentes"], notes: "Documentos de dependentes quando aplicavel." },
+  {
+    codes: ["CARTAO_VACINA_FILHOS", "CARTEIRA_VACINACAO_FILHOS", "CARTAO_VACINA_DEPENDENTES"],
+    terms: ["cartao de vacina dos filhos", "carteira de vacinacao dos filhos", "cartao de vacina de dependentes"],
+    notes: "Comprovante de vacinacao de filhos ou dependentes quando aplicavel."
+  },
+  {
+    codes: ["DECLARACAO_ESCOLAR_FILHOS", "DECLARACAO_ESCOLAR_DEPENDENTES"],
+    terms: ["declaracao escolar dos filhos", "declaracao escolar de dependentes"],
+    notes: "Declaracao escolar de filhos ou dependentes quando aplicavel."
+  },
+  { codes: ["DECLARACAO_DEPENDENTES"], terms: ["declaracao de dependentes"], notes: "Declaracao de dependentes para conferencia administrativa quando aplicavel." },
+  {
+    codes: ["ASO", "ASO_ADMISSIONAL", "EXAME_ADMISSIONAL", "EXAMES_ADMISSIONAIS"],
+    terms: ["aso", "aso admissional", "atestado de saude ocupacional", "exame admissional", "exames admissionais"],
+    notes: "ASO ou exame admissional para acompanhamento documental."
+  },
+  {
+    codes: ["COMPROVANTE_VACINACAO"],
+    terms: ["comprovante de vacinacao"],
+    notes: "Comprovante de vacinacao quando aplicavel ao colaborador."
+  },
   { codes: ["CONTRATO_TRABALHO"], terms: ["contrato de trabalho"], notes: "Contrato de trabalho para o prontuario funcional." },
   { codes: ["FICHA_ADMISSAO"], terms: ["ficha de admissao"], notes: "Ficha administrativa de admissao do colaborador." },
-  { codes: ["TERMO_RESPONSABILIDADE"], terms: ["termo de responsabilidade", "termo interno"], notes: "Termo interno ou ciencia operacional do colaborador." },
-  { codes: ["UNIFORME"], terms: ["uniforme"], notes: "Registro documental de uniforme quando aplicavel." },
-  { codes: ["EPI", "EPIS"], terms: ["epi", "epis", "equipamento de protecao"], notes: "Registro documental de EPI quando a funcao exigir." }
+  {
+    codes: ["TERMO_RESPONSABILIDADE", "TERMO_NORMAS_INTERNAS"],
+    terms: ["termo de responsabilidade", "termo interno", "termo de ciencia de normas internas", "normas internas"],
+    notes: "Termo interno ou ciencia operacional do colaborador."
+  },
+  { codes: ["TERMO_USO_IMAGEM"], terms: ["termo de uso de imagem"], notes: "Termo de uso de imagem quando aplicavel." },
+  { codes: ["TERMO_LGPD"], terms: ["termo lgpd", "termo de lgpd"], notes: "Termo de ciencia LGPD quando aplicavel." },
+  {
+    codes: ["DECLARACAO_VALE_TRANSPORTE", "VALE_TRANSPORTE"],
+    terms: ["declaracao de vale-transporte", "vale-transporte", "vale transporte"],
+    notes: "Declaracao de vale-transporte quando aplicavel."
+  },
+  { codes: ["DADOS_BANCARIOS"], terms: ["dados bancarios"], notes: "Dados bancarios quando aplicavel ao cadastro administrativo." },
+  {
+    codes: ["UNIFORME", "TERMO_ENTREGA_UNIFORME"],
+    terms: ["uniforme", "termo de entrega de uniforme"],
+    notes: "Registro documental de uniforme quando aplicavel."
+  },
+  {
+    codes: ["EPI", "EPIS", "TERMO_ENTREGA_EPI"],
+    terms: ["epi", "epis", "equipamento de protecao", "termo de entrega de epi"],
+    notes: "Registro documental de EPI quando a funcao exigir."
+  },
+  {
+    codes: ["TERMO_EQUIPAMENTOS", "TERMO_RESPONSABILIDADE_EQUIPAMENTOS"],
+    terms: ["termo de responsabilidade por equipamentos", "termo de equipamentos"],
+    notes: "Termo de responsabilidade por equipamentos quando aplicavel."
+  },
+  {
+    codes: ["TERMO_ACESSOS", "TERMO_ACESSO_SISTEMAS_CHAVES"],
+    terms: ["termo de acesso a sistemas", "termo de acesso a chaves", "sistemas/chaves"],
+    notes: "Termo de acesso a sistemas ou chaves quando aplicavel."
+  }
 ] as const;
 
 function normalize(value: string) {
