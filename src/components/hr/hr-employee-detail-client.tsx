@@ -4,7 +4,23 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Building2, CalendarClock, History, Lock, Mail, ShieldCheck, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  BriefcaseBusiness,
+  Building2,
+  CalendarClock,
+  ClipboardCheck,
+  FileText,
+  GraduationCap,
+  History,
+  Lock,
+  Mail,
+  MessageSquareText,
+  ShieldAlert,
+  ShieldCheck,
+  UserRound,
+  UsersRound
+} from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
@@ -97,8 +113,68 @@ type HrHistoryResponse = {
 };
 
 type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "history";
+type TimelineCategory = "all" | "registration" | "documents" | "admission" | "termination" | "movement" | "conduct" | "training" | "other";
+type TimelinePeriod = "all" | "today" | "7d" | "30d" | "90d" | "custom";
+type TimelineSeverity = "all" | "info" | "notice" | "warning" | "critical";
+type TimelineSensitiveFilter = "all" | "only_sensitive" | "hide_sensitive";
 
 const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "history"];
+const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "registration", label: "Cadastro" },
+  { value: "documents", label: "Documentos" },
+  { value: "admission", label: "Admissao" },
+  { value: "termination", label: "Desligamento" },
+  { value: "movement", label: "Movimentacoes" },
+  { value: "conduct", label: "Conduta" },
+  { value: "training", label: "Treinamentos" },
+  { value: "other", label: "Outros" }
+];
+const timelinePeriods: Array<{ value: TimelinePeriod; label: string }> = [
+  { value: "all", label: "Todo periodo" },
+  { value: "today", label: "Hoje" },
+  { value: "7d", label: "7 dias" },
+  { value: "30d", label: "30 dias" },
+  { value: "90d", label: "90 dias" },
+  { value: "custom", label: "Personalizado" }
+];
+const timelineSeverities: Array<{ value: TimelineSeverity; label: string }> = [
+  { value: "all", label: "Todas" },
+  { value: "info", label: "Info" },
+  { value: "notice", label: "Aviso" },
+  { value: "warning", label: "Alerta" },
+  { value: "critical", label: "Critico" }
+];
+const timelineSensitiveFilters: Array<{ value: TimelineSensitiveFilter; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "only_sensitive", label: "Somente restritos" },
+  { value: "hide_sensitive", label: "Ocultar restritos" }
+];
+
+const eventTypeLabels: Record<string, string> = {
+  employee_created: "Colaborador criado",
+  employee_basic_updated: "Dados basicos alterados",
+  employee_sensitive_updated: "Dados protegidos alterados",
+  unit_changed: "Unidade alterada",
+  department_changed: "Departamento alterado",
+  job_position_changed: "Cargo alterado",
+  document_requested: "Documento solicitado",
+  document_uploaded: "Documento enviado",
+  document_verified: "Documento aprovado",
+  document_rejected: "Documento rejeitado",
+  document_expired: "Documento vencido",
+  document_replaced: "Documento substituido",
+  document_waived: "Documento dispensado",
+  admission_started: "Admissao iniciada",
+  admission_completed: "Admissao concluida",
+  termination_started: "Desligamento iniciado",
+  termination_completed: "Desligamento concluido",
+  training_registered: "Treinamento registrado",
+  warning_registered: "Advertencia registrada",
+  vacation_registered: "Ferias registradas",
+  note_added: "Observacao registrada",
+  redacted: "Evento restrito"
+};
 
 function isDetailTab(value: string | null): value is DetailTab {
   return Boolean(value && detailTabs.includes(value as DetailTab));
@@ -109,35 +185,23 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.message ?? "Não foi possível carregar os dados de RH.");
+    throw new Error(payload?.message ?? "Nao foi possivel carregar os dados de RH.");
   }
 
   return payload as T;
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return "-";
-  }
-
+  if (!value) return "-";
   const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
 }
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) {
-    return "-";
-  }
-
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
+  if (Number.isNaN(date.getTime())) return "-";
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -148,10 +212,7 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 function metaLabel(meta: RelatedMeta, fallback = "-") {
-  if (!meta) {
-    return fallback;
-  }
-
+  if (!meta) return fallback;
   return [meta.code, meta.name].filter(Boolean).join(" - ") || fallback;
 }
 
@@ -170,6 +231,132 @@ function eventSeverityTone(severity: string) {
   if (severity === "warning") return "warning" as const;
   if (severity === "notice") return "info" as const;
   return "visual" as const;
+}
+
+function eventSeverityLabel(severity: string) {
+  if (severity === "critical") return "Critico";
+  if (severity === "warning") return "Alerta";
+  if (severity === "notice") return "Aviso";
+  return "Info";
+}
+
+function eventStatusLabel(status: string) {
+  if (status === "active") return "Ativo";
+  if (status === "corrected") return "Corrigido";
+  if (status === "cancelled") return "Cancelado";
+  return status;
+}
+
+function eventTypeLabel(eventType: string) {
+  return eventTypeLabels[eventType] ?? "Evento funcional";
+}
+
+function eventCategory(eventType: string): TimelineCategory {
+  if (["employee_created", "employee_basic_updated", "employee_sensitive_updated"].includes(eventType)) return "registration";
+  if (eventType.startsWith("document_")) return "documents";
+  if (eventType.startsWith("admission_")) return "admission";
+  if (eventType.startsWith("termination_")) return "termination";
+  if (["unit_changed", "department_changed", "job_position_changed"].includes(eventType)) return "movement";
+  if (eventType === "warning_registered") return "conduct";
+  if (eventType === "training_registered") return "training";
+  return "other";
+}
+
+function eventCategoryLabel(category: TimelineCategory) {
+  return timelineCategories.find((item) => item.value === category)?.label ?? "Outros";
+}
+
+function eventCategoryTone(category: TimelineCategory) {
+  if (category === "documents") return "info" as const;
+  if (category === "admission") return "success" as const;
+  if (category === "termination" || category === "conduct") return "warning" as const;
+  return "visual" as const;
+}
+
+function eventCategoryIcon(category: TimelineCategory) {
+  if (category === "registration") return UserRound;
+  if (category === "documents") return FileText;
+  if (category === "admission") return ClipboardCheck;
+  if (category === "termination") return BriefcaseBusiness;
+  if (category === "movement") return UsersRound;
+  if (category === "conduct") return ShieldAlert;
+  if (category === "training") return GraduationCap;
+  return MessageSquareText;
+}
+
+function sourceLabel(event: HrFunctionalEvent) {
+  const entityTypeLabels: Record<string, string> = {
+    employee_document: "Documentos",
+    employee_onboarding: "Onboarding",
+    employee_onboarding_item: "Onboarding",
+    employee_evaluation: "Avaliacoes",
+    employee_development_plan: "PDI",
+    hr_workflow: "Workflow RH",
+    hr_workflow_event: "Workflow RH"
+  };
+
+  if (event.sourceEntityType && entityTypeLabels[event.sourceEntityType]) return entityTypeLabels[event.sourceEntityType];
+  if (event.sourceModule === "HR") return "RH";
+  return event.sourceModule || "RH";
+}
+
+function sourceHref(employeeId: string, event: HrFunctionalEvent) {
+  if (!event.sourceEntityId || event.redacted) return "";
+  if (event.sourceEntityType === "employee_document") return `/rh/employees/${employeeId}?tab=documents`;
+  if (event.sourceEntityType === "employee_evaluation") return `/rh/employees/${employeeId}?tab=evaluations&evaluationId=${event.sourceEntityId}`;
+  if (event.sourceEntityType === "employee_development_plan") return `/rh/employees/${employeeId}?tab=development`;
+  if (event.sourceEntityType === "employee_onboarding" || event.sourceEntityType === "employee_onboarding_item") return `/rh/employees/${employeeId}?tab=onboarding`;
+  if (event.sourceEntityType === "hr_workflow") return `/rh/workflows/${event.sourceEntityId}`;
+  return "";
+}
+
+function monthGroupLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sem data";
+  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function dateOnlyIso(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function periodRange(period: TimelinePeriod, customFrom: string, customTo: string) {
+  if (period === "all") return { from: "", to: "" };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (period === "custom") return { from: customFrom, to: customTo };
+
+  const days = period === "today" ? 0 : period === "7d" ? 6 : period === "30d" ? 29 : 89;
+  const from = new Date(today);
+  from.setDate(today.getDate() - days);
+  return { from: dateOnlyIso(from), to: dateOnlyIso(today) };
+}
+
+function isWithinPeriod(eventDate: string, period: TimelinePeriod, customFrom: string, customTo: string) {
+  const range = periodRange(period, customFrom, customTo);
+  if (!range.from && !range.to) return true;
+  const date = new Date(eventDate);
+  if (Number.isNaN(date.getTime())) return false;
+  const dateOnly = dateOnlyIso(date);
+  if (range.from && dateOnly < range.from) return false;
+  if (range.to && dateOnly > range.to) return false;
+  return true;
+}
+
+function groupEventsByMonth(events: HrFunctionalEvent[]) {
+  const groups: Array<{ label: string; events: HrFunctionalEvent[] }> = [];
+
+  for (const event of events) {
+    const label = monthGroupLabel(event.eventDate);
+    const group = groups.find((item) => item.label === label);
+    if (group) group.events.push(event);
+    else groups.push({ label, events: [event] });
+  }
+
+  return groups;
 }
 
 function InfoTile({ label, value, icon: Icon }: { label: string; value: string; icon: typeof UserRound }) {
@@ -200,6 +387,12 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<DetailTab>("summary");
   const [historyPage, setHistoryPage] = useState(1);
+  const [timelineCategory, setTimelineCategory] = useState<TimelineCategory>("all");
+  const [timelinePeriod, setTimelinePeriod] = useState<TimelinePeriod>("all");
+  const [timelineSeverity, setTimelineSeverity] = useState<TimelineSeverity>("all");
+  const [timelineSensitiveFilter, setTimelineSensitiveFilter] = useState<TimelineSensitiveFilter>("all");
+  const [timelineCustomFrom, setTimelineCustomFrom] = useState("");
+  const [timelineCustomTo, setTimelineCustomTo] = useState("");
   const requestedTab = searchParams.get("tab");
   const initialEvaluationId = searchParams.get("evaluationId");
 
@@ -225,24 +418,20 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "sensitive" as const, label: "Dados protegidos", enabled: canViewSensitive },
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
         { value: "onboarding" as const, label: "Onboarding", enabled: true },
-        { value: "evaluations" as const, label: "Avaliações", enabled: true },
+        { value: "evaluations" as const, label: "Avaliacoes", enabled: true },
         { value: "development" as const, label: "Desenvolvimento", enabled: true },
-        { value: "history" as const, label: "Histórico", enabled: canViewHistory }
+        { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
     [canViewDocuments, canViewHistory, canViewSensitive]
   );
 
   useEffect(() => {
-    if (!tabs.some((tab) => tab.value === activeTab)) {
-      setActiveTab("summary");
-    }
+    if (!tabs.some((tab) => tab.value === activeTab)) setActiveTab("summary");
   }, [activeTab, tabs]);
 
   useEffect(() => {
     if (!isDetailTab(requestedTab)) return;
-    if (tabs.some((tab) => tab.value === requestedTab)) {
-      setActiveTab(requestedTab);
-    }
+    if (tabs.some((tab) => tab.value === requestedTab)) setActiveTab(requestedTab);
   }, [requestedTab, tabs]);
 
   const historyQuery = useQuery({
@@ -251,9 +440,21 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
     enabled: Boolean(employee && canViewHistory && activeTab === "history")
   });
 
-  if (detailQuery.isLoading) {
-    return <LoadingTable label="Carregando prontuario administrativo..." />;
-  }
+  const filteredHistoryEvents = useMemo(() => {
+    const events = historyQuery.data?.data ?? [];
+    return events.filter((event) => {
+      const category = eventCategory(event.eventType);
+      if (timelineCategory !== "all" && category !== timelineCategory) return false;
+      if (timelineSeverity !== "all" && event.severity !== timelineSeverity) return false;
+      if (timelineSensitiveFilter === "only_sensitive" && !event.isSensitive) return false;
+      if (timelineSensitiveFilter === "hide_sensitive" && event.isSensitive) return false;
+      return isWithinPeriod(event.eventDate, timelinePeriod, timelineCustomFrom, timelineCustomTo);
+    });
+  }, [historyQuery.data?.data, timelineCategory, timelineCustomFrom, timelineCustomTo, timelinePeriod, timelineSensitiveFilter, timelineSeverity]);
+  const timelineGroups = useMemo(() => groupEventsByMonth(filteredHistoryEvents), [filteredHistoryEvents]);
+  const historyPagination = historyQuery.data?.pagination;
+
+  if (detailQuery.isLoading) return <LoadingTable label="Carregando prontuario administrativo..." />;
 
   if (detailQuery.error) {
     return (
@@ -264,7 +465,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
             Voltar
           </Link>
         </Button>
-        <ErrorMessage message={detailQuery.error instanceof Error ? detailQuery.error.message : "Não foi possível carregar o colaborador."} />
+        <ErrorMessage message={detailQuery.error instanceof Error ? detailQuery.error.message : "Nao foi possivel carregar o colaborador."} />
       </div>
     );
   }
@@ -295,20 +496,14 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         <div className="flex flex-wrap gap-2">
           <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Dados protegidos permitidos" : "Dados protegidos ocultos"} />
           <StatusBadge status={canViewDocuments ? "success" : "visual"} label={canViewDocuments ? "Documentos liberados" : "Documentos restritos"} />
-          <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Histórico liberado" : "Histórico restrito"} />
+          <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Vida funcional liberada" : "Vida funcional restrita"} />
         </div>
       </div>
 
       <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
         <div className="flex flex-wrap gap-2">
           {tabs.map((tab) => (
-            <Button
-              key={tab.value}
-              type="button"
-              size="sm"
-              variant={activeTab === tab.value ? "default" : "outline"}
-              onClick={() => setActiveTab(tab.value)}
-            >
+            <Button key={tab.value} type="button" size="sm" variant={activeTab === tab.value ? "default" : "outline"} onClick={() => setActiveTab(tab.value)}>
               {tab.label}
             </Button>
           ))}
@@ -350,7 +545,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
             </div>
           </Card>
         ) : (
-          <RestrictedState title="Dados restritos" description="Seu perfil não possui permissão para visualizar dados protegidos deste colaborador." />
+          <RestrictedState title="Dados restritos" description="Seu perfil nao possui permissao para visualizar dados protegidos deste colaborador." />
         )
       ) : null}
 
@@ -368,89 +563,172 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
       ) : null}
 
       {activeTab === "onboarding" ? <HrEmployeeOnboardingCard employeeId={employeeId} /> : null}
-
       {activeTab === "evaluations" ? (
         <HrEmployeeEvaluationsCard employeeId={employeeId} initialEvaluationId={initialEvaluationId} onOpenDevelopment={() => setActiveTab("development")} />
       ) : null}
-
       {activeTab === "development" ? <HrEmployeeDevelopmentPlansCard employeeId={employeeId} /> : null}
 
       {activeTab === "history" ? (
         canViewHistory ? (
-          <Card className="border-border/80 p-5 shadow-sm shadow-primary/5">
-            <div className="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <History className="h-4 w-4 text-primary" />
-                  <h3 className="text-base font-semibold">Histórico administrativo</h3>
+          <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
+            <div className="border-b p-5">
+              <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <History className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-semibold">Vida Funcional</h3>
+                    <StatusBadge status="info" label="Linha do tempo oficial do colaborador" />
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Principais acontecimentos administrativos do colaborador, com dados protegidos redigidos quando necessario.
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Registros administrativos do colaborador, com dados protegidos redigidos quando necessário.</p>
+                <StatusBadge status={canViewSensitiveHistory ? "info" : "visual"} label={canViewSensitiveHistory ? "Eventos restritos permitidos" : "Eventos restritos redigidos"} />
               </div>
-              <StatusBadge
-                status={canViewSensitiveHistory ? "info" : "visual"}
-                label={canViewSensitiveHistory ? "Histórico sensível permitido" : "Histórico redigido"}
-              />
             </div>
 
-            {historyQuery.isLoading ? <LoadingTable label="Carregando histórico administrativo..." /> : null}
-            {historyQuery.error ? (
-              <ErrorMessage message={historyQuery.error instanceof Error ? historyQuery.error.message : "Não foi possível carregar histórico."} />
-            ) : null}
-            {!historyQuery.isLoading && historyQuery.data && !historyQuery.data.data.length ? (
-              <EmptyState title="Nenhum histórico encontrado" description="Ainda não existem registros administrativos para este colaborador." />
-            ) : null}
-            {historyQuery.data?.data.length ? (
-              <div className="space-y-3">
-                {historyQuery.data.data.map((event) => (
-                  <article key={event.id} className={cn("rounded-md border bg-background p-4", event.redacted && "bg-muted/35")}>
-                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge status={eventSeverityTone(event.severity)} label={event.severity} />
-                          <StatusBadge status="visual" label={event.status} />
-                          {event.isSensitive ? <StatusBadge status="warning" label={event.redacted ? "Sensivel redigido" : "Sensivel"} /> : null}
-                        </div>
-                        <h4 className="mt-2 break-words text-sm font-semibold text-foreground">{event.title}</h4>
-                        {event.description ? <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">{event.description}</p> : null}
+            <div className="space-y-4 p-5">
+              <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <TimelineSelect label="Categoria" value={timelineCategory} onChange={(value) => setTimelineCategory(value as TimelineCategory)} options={timelineCategories} />
+                <TimelineSelect label="Periodo" value={timelinePeriod} onChange={(value) => setTimelinePeriod(value as TimelinePeriod)} options={timelinePeriods} />
+                <TimelineSelect label="Severidade" value={timelineSeverity} onChange={(value) => setTimelineSeverity(value as TimelineSeverity)} options={timelineSeverities} />
+                <TimelineSelect label="Restricao" value={timelineSensitiveFilter} onChange={(value) => setTimelineSensitiveFilter(value as TimelineSensitiveFilter)} options={timelineSensitiveFilters} />
+              </div>
+
+              {timelinePeriod === "custom" ? (
+                <div className="grid min-w-0 gap-3 md:grid-cols-2">
+                  <TimelineDateInput label="Inicio" value={timelineCustomFrom} onChange={setTimelineCustomFrom} />
+                  <TimelineDateInput label="Fim" value={timelineCustomTo} onChange={setTimelineCustomTo} />
+                </div>
+              ) : null}
+
+              {historyQuery.isLoading ? <LoadingTable label="Carregando vida funcional..." /> : null}
+              {historyQuery.error ? <ErrorMessage message={historyQuery.error instanceof Error ? historyQuery.error.message : "Nao foi possivel carregar a vida funcional."} /> : null}
+              {!historyQuery.isLoading && historyQuery.data && !historyQuery.data.data.length ? (
+                <EmptyState title="Nenhum evento funcional registrado" description="Os principais acontecimentos da vida funcional do colaborador aparecerao aqui." />
+              ) : null}
+              {!historyQuery.isLoading && historyQuery.data?.data.length && !filteredHistoryEvents.length ? (
+                <EmptyState title="Nenhum evento encontrado" description="Ajuste os filtros para consultar outros registros da vida funcional." />
+              ) : null}
+
+              {timelineGroups.length ? (
+                <div className="space-y-6">
+                  {timelineGroups.map((group) => (
+                    <section key={group.label} className="min-w-0">
+                      <div className="mb-3 flex items-center gap-3">
+                        <h4 className="shrink-0 text-sm font-semibold text-foreground">{group.label}</h4>
+                        <div className="h-px min-w-0 flex-1 bg-border" />
                       </div>
-                      <div className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.eventDate)}</div>
+                      <div className="relative space-y-3 pl-7 before:absolute before:bottom-2 before:left-[13px] before:top-2 before:w-px before:bg-border">
+                        {group.events.map((event) => (
+                          <TimelineEventCard key={event.id} event={event} employeeId={employeeId} />
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                  <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Pagina {historyPagination?.page ?? historyPage} de {Math.max(historyPagination?.totalPages ?? 1, 1)} | {filteredHistoryEvents.length} evento(s) nesta pagina
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyPage <= 1 || historyQuery.isFetching}>
+                        Anterior
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setHistoryPage((current) => current + 1)}
+                        disabled={historyPage >= Math.max(historyPagination?.totalPages ?? 1, 1) || historyQuery.isFetching}
+                      >
+                        Proxima
+                      </Button>
                     </div>
-                    <p className="mt-3 text-xs text-muted-foreground">Registro de acompanhamento administrativo do RH.</p>
-                  </article>
-                ))}
-                <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Página {historyQuery.data.pagination.page} de {Math.max(historyQuery.data.pagination.totalPages, 1)}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}
-                      disabled={historyPage <= 1 || historyQuery.isFetching}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setHistoryPage((current) => current + 1)}
-                      disabled={historyPage >= Math.max(historyQuery.data.pagination.totalPages, 1) || historyQuery.isFetching}
-                    >
-                      Próxima
-                    </Button>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </Card>
         ) : (
-          <RestrictedState title="Histórico restrito" description="Seu perfil não possui permissão para consultar histórico funcional deste colaborador." />
+          <RestrictedState title="Vida funcional restrita" description="Seu perfil nao possui permissao para consultar a vida funcional deste colaborador." />
         )
       ) : null}
-
     </div>
+  );
+}
+
+function TimelineSelect({
+  label,
+  value,
+  onChange,
+  options
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="min-w-0 space-y-1 text-xs font-medium text-muted-foreground">
+      {label}
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground">
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TimelineDateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="min-w-0 space-y-1 text-xs font-medium text-muted-foreground">
+      {label}
+      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground" />
+    </label>
+  );
+}
+
+function TimelineEventCard({ event, employeeId }: { event: HrFunctionalEvent; employeeId: string }) {
+  const category = eventCategory(event.eventType);
+  const Icon = eventCategoryIcon(category);
+  const href = sourceHref(employeeId, event);
+
+  return (
+    <article className={cn("relative rounded-md border bg-background p-4", event.redacted && "bg-muted/35")}>
+      <div className="absolute -left-7 top-4 flex h-7 w-7 items-center justify-center rounded-full border bg-background shadow-sm">
+        <Icon className="h-4 w-4 text-primary" />
+      </div>
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={eventCategoryTone(category)} label={eventCategoryLabel(category)} />
+            <StatusBadge status={eventSeverityTone(event.severity)} label={eventSeverityLabel(event.severity)} />
+            <StatusBadge status="visual" label={eventStatusLabel(event.status)} />
+            {event.isSensitive ? <StatusBadge status="warning" label={event.redacted ? "Evento restrito" : "Restrito"} /> : null}
+          </div>
+          <h4 className="mt-2 break-words text-sm font-semibold text-foreground">{eventTypeLabel(event.eventType)}</h4>
+          <p className="mt-1 break-words text-sm leading-6 text-foreground">{event.title}</p>
+          {event.description ? <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">{event.description}</p> : null}
+        </div>
+        <div className="shrink-0 text-xs text-muted-foreground">{formatDateTime(event.eventDate)}</div>
+      </div>
+      <div className="mt-4 flex min-w-0 flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 text-xs leading-5 text-muted-foreground">
+          <span className="font-medium text-foreground">Origem:</span> {sourceLabel(event)}
+        </div>
+        {href ? (
+          <Button asChild type="button" variant="outline" size="sm">
+            <Link href={href}>Abrir origem</Link>
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" disabled>
+            Abrir origem
+          </Button>
+        )}
+      </div>
+    </article>
   );
 }
