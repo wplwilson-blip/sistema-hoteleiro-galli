@@ -113,7 +113,20 @@ type HrHistoryResponse = {
 };
 
 type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "history";
-type TimelineCategory = "all" | "registration" | "documents" | "admission" | "termination" | "movement" | "conduct" | "training" | "other";
+type TimelineCategory =
+  | "all"
+  | "registration"
+  | "documents"
+  | "admission"
+  | "onboarding"
+  | "evaluations"
+  | "development"
+  | "termination"
+  | "movement"
+  | "conduct"
+  | "training"
+  | "occupational_health"
+  | "other";
 type TimelinePeriod = "all" | "today" | "7d" | "30d" | "90d" | "custom";
 type TimelineSeverity = "all" | "info" | "notice" | "warning" | "critical";
 type TimelineSensitiveFilter = "all" | "only_sensitive" | "hide_sensitive";
@@ -124,10 +137,14 @@ const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
   { value: "registration", label: "Cadastro" },
   { value: "documents", label: "Documentos" },
   { value: "admission", label: "Admissao" },
+  { value: "onboarding", label: "Onboarding" },
+  { value: "evaluations", label: "Avaliacoes" },
+  { value: "development", label: "PDI" },
   { value: "termination", label: "Desligamento" },
   { value: "movement", label: "Movimentacoes" },
   { value: "conduct", label: "Conduta" },
   { value: "training", label: "Treinamentos" },
+  { value: "occupational_health", label: "Saude Ocupacional" },
   { value: "other", label: "Outros" }
 ];
 const timelinePeriods: Array<{ value: TimelinePeriod; label: string }> = [
@@ -173,6 +190,52 @@ const eventTypeLabels: Record<string, string> = {
   warning_registered: "Advertencia registrada",
   vacation_registered: "Ferias registradas",
   note_added: "Observacao registrada",
+  onboarding_created: "Onboarding criado",
+  onboarding_started: "Onboarding iniciado",
+  onboarding_item_started: "Item de onboarding iniciado",
+  onboarding_item_completed: "Item de onboarding concluido",
+  onboarding_item_blocked: "Item de onboarding bloqueado",
+  onboarding_item_waived: "Item de onboarding dispensado",
+  onboarding_completed: "Onboarding concluido",
+  onboarding_cancelled: "Onboarding cancelado",
+  evaluation_created: "Avaliacao criada",
+  evaluation_started: "Avaliacao iniciada",
+  evaluation_submitted: "Avaliacao enviada",
+  evaluation_reviewed: "Avaliacao revisada",
+  evaluation_feedback_given: "Devolutiva registrada",
+  evaluation_acknowledged: "Ciencia do colaborador registrada",
+  evaluation_closed: "Avaliacao encerrada",
+  evaluation_cancelled: "Avaliacao cancelada",
+  development_plan_created: "PDI criado",
+  development_plan_item_created: "Item de PDI criado",
+  development_plan_item_completed: "Item de PDI concluido",
+  development_plan_item_overdue: "Item de PDI em atraso",
+  development_plan_reviewed: "PDI revisado",
+  development_plan_completed: "PDI concluido",
+  development_plan_cancelled: "PDI cancelado",
+  salary_changed: "Salario alterado",
+  promotion_registered: "Promocao registrada",
+  transfer_registered: "Transferencia registrada",
+  suspension_registered: "Suspensao registrada",
+  complaint_registered: "Reclamacao registrada",
+  compliment_registered: "Elogio registrado",
+  formal_guidance_registered: "Orientacao formal registrada",
+  formal_conversation_registered: "Conversa formal registrada",
+  training_required: "Treinamento obrigatorio criado",
+  training_completed: "Treinamento concluido",
+  training_certificate_uploaded: "Certificado de treinamento anexado",
+  training_expiring: "Treinamento vencendo",
+  training_expired: "Treinamento vencido",
+  training_retraining_required: "Reciclagem necessaria",
+  aso_requested: "ASO solicitado",
+  aso_completed: "ASO concluido",
+  aso_expiring: "ASO vencendo",
+  aso_expired: "ASO vencido",
+  occupational_restriction_registered: "Restricao ocupacional registrada",
+  occupational_exam_registered: "Exame ocupacional registrado",
+  termination_checklist_created: "Checklist de desligamento criado",
+  termination_pending_item_registered: "Pendencia de desligamento registrada",
+  employee_inactivated: "Colaborador inativado",
   redacted: "Evento restrito"
 };
 
@@ -255,10 +318,25 @@ function eventCategory(eventType: string): TimelineCategory {
   if (["employee_created", "employee_basic_updated", "employee_sensitive_updated"].includes(eventType)) return "registration";
   if (eventType.startsWith("document_")) return "documents";
   if (eventType.startsWith("admission_")) return "admission";
-  if (eventType.startsWith("termination_")) return "termination";
-  if (["unit_changed", "department_changed", "job_position_changed"].includes(eventType)) return "movement";
-  if (eventType === "warning_registered") return "conduct";
-  if (eventType === "training_registered") return "training";
+  if (eventType.startsWith("onboarding_")) return "onboarding";
+  if (eventType.startsWith("evaluation_")) return "evaluations";
+  if (eventType.startsWith("development_plan_")) return "development";
+  if (eventType.startsWith("termination_") || eventType === "employee_inactivated") return "termination";
+  if (["unit_changed", "department_changed", "job_position_changed", "salary_changed", "promotion_registered", "transfer_registered"].includes(eventType)) return "movement";
+  if (
+    [
+      "warning_registered",
+      "suspension_registered",
+      "complaint_registered",
+      "compliment_registered",
+      "formal_guidance_registered",
+      "formal_conversation_registered"
+    ].includes(eventType)
+  ) {
+    return "conduct";
+  }
+  if (eventType.startsWith("training_")) return "training";
+  if (eventType.startsWith("aso_") || eventType.startsWith("occupational_")) return "occupational_health";
   return "other";
 }
 
@@ -268,7 +346,8 @@ function eventCategoryLabel(category: TimelineCategory) {
 
 function eventCategoryTone(category: TimelineCategory) {
   if (category === "documents") return "info" as const;
-  if (category === "admission") return "success" as const;
+  if (category === "admission" || category === "onboarding" || category === "development") return "success" as const;
+  if (category === "evaluations" || category === "occupational_health") return "info" as const;
   if (category === "termination" || category === "conduct") return "warning" as const;
   return "visual" as const;
 }
@@ -277,10 +356,14 @@ function eventCategoryIcon(category: TimelineCategory) {
   if (category === "registration") return UserRound;
   if (category === "documents") return FileText;
   if (category === "admission") return ClipboardCheck;
+  if (category === "onboarding") return ClipboardCheck;
+  if (category === "evaluations") return ShieldCheck;
+  if (category === "development") return CalendarClock;
   if (category === "termination") return BriefcaseBusiness;
   if (category === "movement") return UsersRound;
   if (category === "conduct") return ShieldAlert;
   if (category === "training") return GraduationCap;
+  if (category === "occupational_health") return ShieldCheck;
   return MessageSquareText;
 }
 
