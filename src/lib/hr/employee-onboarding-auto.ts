@@ -1,6 +1,8 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logHrApiError } from "@/lib/hr/api-auth";
+import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 
 type EmployeeRow = {
   id: string;
@@ -164,6 +166,38 @@ function addDaysIso(startedAt: Date, days: number | null) {
   const dueAt = new Date(startedAt);
   dueAt.setDate(dueAt.getDate() + days);
   return dueAt.toISOString();
+}
+
+async function writeOnboardingCreatedEvent(input: {
+  supabase: SupabaseClient;
+  employeeId: string;
+  onboardingId: string;
+  actorUserId: string;
+  source: string;
+  itemCount: number;
+}) {
+  const result = await createEmployeeFunctionalEvent(input.supabase, {
+    employeeId: input.employeeId,
+    eventType: "onboarding_created",
+    title: "Onboarding criado",
+    description: "Checklist de onboarding criado para o colaborador.",
+    severity: "info",
+    visibilityScope: "unit",
+    isSensitive: false,
+    sourceModule: "hr",
+    sourceEntityType: "employee_onboarding",
+    sourceEntityId: input.onboardingId,
+    actorUserId: input.actorUserId,
+    dedupeKey: `onboarding:${input.onboardingId}:created`,
+    eventPayload: {
+      source: input.source,
+      item_count: input.itemCount
+    }
+  });
+
+  if (!result.ok) {
+    logHrApiError("employee_onboarding.functional_event_create_failed", { message: result.error.message, code: result.error.code });
+  }
 }
 
 function planSpecificity(plan: OnboardingPlanRow) {
@@ -333,6 +367,15 @@ export async function ensureAutomaticEmployeeOnboarding(supabase: SupabaseClient
       .eq("id", onboardingId);
     throw itemsError;
   }
+
+  await writeOnboardingCreatedEvent({
+    supabase,
+    employeeId: employee.id,
+    onboardingId,
+    actorUserId,
+    source: plan ? "plan" : "fallback",
+    itemCount: itemsToInsert.length
+  });
 
   return { created: true, reason: plan ? "plan" : "fallback", onboardingId };
 }

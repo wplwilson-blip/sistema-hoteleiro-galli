@@ -12,6 +12,7 @@ import {
 } from "@/lib/hr/api-auth";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
 import { ensureAutomaticEmployeeOnboarding } from "@/lib/hr/employee-onboarding-auto";
+import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 
 type RouteParams = { params: { id: string } };
 
@@ -175,6 +176,39 @@ function mapPlan(plan: HrOnboardingPlanRow) {
     specificity,
     scopeLabel: labels[specificity] ?? "Organizacao"
   };
+}
+
+async function writeOnboardingCreatedEvent(input: {
+  context: HrRequestContext;
+  employeeId: string;
+  onboardingId: string;
+  planId: string | null;
+  itemCount: number;
+  expectedReleaseAt: string | null;
+}) {
+  const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    employeeId: input.employeeId,
+    eventType: "onboarding_created",
+    title: "Onboarding criado",
+    description: "Checklist de onboarding criado para o colaborador.",
+    severity: "info",
+    visibilityScope: "unit",
+    isSensitive: false,
+    sourceModule: "hr",
+    sourceEntityType: "employee_onboarding",
+    sourceEntityId: input.onboardingId,
+    actorUserId: input.context.session.user.id,
+    dedupeKey: `onboarding:${input.onboardingId}:created`,
+    eventPayload: {
+      plan_id: input.planId,
+      item_count: input.itemCount,
+      expected_release_at: input.expectedReleaseAt
+    }
+  });
+
+  if (!result.ok) {
+    logHrApiError("employee_onboarding.functional_event_create_failed", { message: result.error.message, code: result.error.code });
+  }
 }
 
 function planMatchesEmployee(plan: HrOnboardingPlanRow, employee: { organization_id: string | null; unit_id: string | null; department_id: string | null; job_position_id: string | null }) {
@@ -547,6 +581,15 @@ export async function POST(request: Request, { params }: RouteParams) {
         .eq("id", onboarding.id);
       return hrApiError("Onboarding criado, mas nao foi possivel gerar o checklist. Tente novamente.", 500);
     }
+
+    await writeOnboardingCreatedEvent({
+      context,
+      employeeId: employee.id,
+      onboardingId: onboarding.id,
+      planId: selectedPlan.id,
+      itemCount: itemsToInsert.length,
+      expectedReleaseAt
+    });
 
     return NextResponse.json({ ok: true, data: onboarding }, { status: 201 });
   } catch (error) {
