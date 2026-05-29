@@ -6,9 +6,11 @@ import {
   HR_PERMISSIONS,
   hrApiError,
   logHrApiError,
-  requireHrPermission
+  requireHrPermission,
+  type HrRequestContext
 } from "@/lib/hr/api-auth";
 import { loadDevelopmentPlan, prepareDevelopmentPlanWrite } from "@/lib/hr/development-plan-actions";
+import { createEmployeeFunctionalEvent, type EmployeeFunctionalEventType } from "@/lib/hr/employee-functional-events";
 import { developmentPlanListSelect, redactDevelopmentPlan, type EmployeeDevelopmentPlanRow } from "@/lib/hr/development-plans";
 import { developmentPlanPayloadSchema } from "@/lib/hr/evaluation-validation";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
@@ -17,6 +19,78 @@ type RouteParams = { params: { id: string } };
 
 function pickPayload<T extends Record<string, unknown>, K extends keyof T, F>(payload: T, key: K, fallback: F) {
   return Object.prototype.hasOwnProperty.call(payload, key) ? payload[key] : fallback;
+}
+
+function developmentPlanEventForStatus(status: string) {
+  const events: Record<
+    string,
+    {
+      eventType: EmployeeFunctionalEventType;
+      title: string;
+      description: string;
+      dedupeSuffix: string;
+      severity?: "info" | "notice" | "warning" | "critical";
+    }
+  > = {
+    under_review: {
+      eventType: "development_plan_reviewed",
+      title: "PDI revisado",
+      description: "Plano de desenvolvimento individual revisado.",
+      dedupeSuffix: "reviewed",
+      severity: "notice"
+    },
+    completed: {
+      eventType: "development_plan_completed",
+      title: "PDI concluido",
+      description: "Plano de desenvolvimento individual concluido.",
+      dedupeSuffix: "completed",
+      severity: "notice"
+    },
+    cancelled: {
+      eventType: "development_plan_cancelled",
+      title: "PDI cancelado",
+      description: "Plano de desenvolvimento individual cancelado.",
+      dedupeSuffix: "cancelled",
+      severity: "warning"
+    }
+  };
+
+  return events[status] ?? null;
+}
+
+async function writeDevelopmentPlanStatusEvent(input: {
+  context: HrRequestContext;
+  previousPlan: EmployeeDevelopmentPlanRow;
+  plan: EmployeeDevelopmentPlanRow;
+}) {
+  if (input.previousPlan.status === input.plan.status) return;
+  const event = developmentPlanEventForStatus(input.plan.status);
+  if (!event) return;
+
+  const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    employeeId: input.plan.employee_id,
+    eventType: event.eventType,
+    title: event.title,
+    description: event.description,
+    severity: event.severity ?? "notice",
+    visibilityScope: "restricted",
+    isSensitive: true,
+    sourceModule: "hr",
+    sourceEntityType: "employee_development_plan",
+    sourceEntityId: input.plan.id,
+    actorUserId: input.context.session.user.id,
+    dedupeKey: `development-plan:${input.plan.id}:${event.dedupeSuffix}`,
+    eventPayload: {
+      previous_status: input.previousPlan.status,
+      new_status: input.plan.status,
+      plan_title: input.plan.title,
+      due_date: input.plan.due_at
+    }
+  });
+
+  if (!result.ok) {
+    logHrApiError("development_plans.functional_event_status_failed", { message: result.error.message, code: result.error.code });
+  }
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
@@ -74,7 +148,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       return hrApiError("Nao foi possivel atualizar o PDI.", 500);
     }
 
-    return NextResponse.json({ ok: true, data: redactDevelopmentPlan(data as unknown as EmployeeDevelopmentPlanRow, true) });
+    const plan = data as unknown as EmployeeDevelopmentPlanRow;
+    await writeDevelopmentPlanStatusEvent({ context, previousPlan: existing, plan });
+
+    return NextResponse.json({ ok: true, data: redactDevelopmentPlan(plan, true) });
   } catch (error) {
     if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     return handleHrRouteError(error, "Nao foi possivel atualizar PDI.");

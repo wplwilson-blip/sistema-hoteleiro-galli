@@ -6,12 +6,44 @@ import {
   HR_PERMISSIONS,
   hrApiError,
   logHrApiError,
-  requireHrPermission
+  requireHrPermission,
+  type HrRequestContext
 } from "@/lib/hr/api-auth";
 import { prepareDevelopmentPlanWrite } from "@/lib/hr/development-plan-actions";
+import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 import { developmentPlanListSelect, redactDevelopmentPlan, type EmployeeDevelopmentPlanRow } from "@/lib/hr/development-plans";
 import { developmentPlanPayloadSchema, developmentPlansQuerySchema } from "@/lib/hr/evaluation-validation";
 import { parseSearchParams } from "@/lib/hr/schemas";
+
+async function writeDevelopmentPlanCreatedEvent(input: {
+  context: HrRequestContext;
+  plan: EmployeeDevelopmentPlanRow;
+}) {
+  const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    employeeId: input.plan.employee_id,
+    eventType: "development_plan_created",
+    title: "PDI criado",
+    description: "Plano de desenvolvimento individual criado para o colaborador.",
+    severity: "notice",
+    visibilityScope: "restricted",
+    isSensitive: true,
+    sourceModule: "hr",
+    sourceEntityType: "employee_development_plan",
+    sourceEntityId: input.plan.id,
+    actorUserId: input.context.session.user.id,
+    dedupeKey: `development-plan:${input.plan.id}:created`,
+    eventPayload: {
+      plan_title: input.plan.title,
+      status: input.plan.status,
+      due_date: input.plan.due_at,
+      evaluation_id: input.plan.evaluation_id
+    }
+  });
+
+  if (!result.ok) {
+    logHrApiError("development_plans.functional_event_create_failed", { message: result.error.message, code: result.error.code });
+  }
+}
 
 export async function GET(request: Request) {
   const { context, response } = await requireHrPermission(HR_PERMISSIONS.evaluationsView);
@@ -73,7 +105,10 @@ export async function POST(request: Request) {
       return hrApiError("Nao foi possivel criar o PDI.", 500);
     }
 
-    return NextResponse.json({ ok: true, data: redactDevelopmentPlan(data as unknown as EmployeeDevelopmentPlanRow, true) }, { status: 201 });
+    const plan = data as unknown as EmployeeDevelopmentPlanRow;
+    await writeDevelopmentPlanCreatedEvent({ context, plan });
+
+    return NextResponse.json({ ok: true, data: redactDevelopmentPlan(plan, true) }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     return handleHrRouteError(error, "Nao foi possivel criar PDI.");
