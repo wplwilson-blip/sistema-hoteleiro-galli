@@ -3,7 +3,7 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Filter, PlayCircle, Plus, Save, Search, Send, X, XCircle } from "lucide-react";
+import { ArrowRight, BarChart3, BriefcaseBusiness, Building2, CalendarClock, CheckCircle2, Filter, PlayCircle, Plus, Save, Search, Send, ShieldAlert, X, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -93,17 +93,17 @@ type MovementForm = {
 };
 
 const movementTypes: Array<{ value: MovementType; label: string }> = [
-  { value: "promotion", label: "Promocao" },
-  { value: "transfer", label: "Transferencia" },
-  { value: "job_position_change", label: "Mudanca de cargo" },
-  { value: "department_change", label: "Mudanca de departamento" },
-  { value: "unit_change", label: "Mudanca de unidade" },
-  { value: "salary_change", label: "Mudanca salarial" }
+  { value: "promotion", label: "Promoção" },
+  { value: "transfer", label: "Transferência" },
+  { value: "unit_change", label: "Mudança de unidade" },
+  { value: "department_change", label: "Mudança de departamento" },
+  { value: "job_position_change", label: "Mudança de cargo" },
+  { value: "salary_change", label: "Mudança salarial" }
 ];
 
 const movementStatuses: Array<{ value: MovementStatus; label: string }> = [
   { value: "draft", label: "Rascunho" },
-  { value: "pending_approval", label: "Aguardando aprovacao" },
+  { value: "pending_approval", label: "Aguardando aprovação" },
   { value: "approved", label: "Aprovada" },
   { value: "rejected", label: "Rejeitada" },
   { value: "implemented", label: "Efetivada" }
@@ -190,7 +190,7 @@ function toPayload(form: MovementForm) {
 
 export function HrMovementsClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ employeeId: "", movementType: "", status: "", from: "", to: "", search: "" });
+  const [filters, setFilters] = useState({ employeeId: "", unitId: "", departmentId: "", movementType: "", status: "", from: "", to: "", search: "" });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<MovementForm>(emptyForm);
   const [commentsByAction, setCommentsByAction] = useState<Record<string, string>>({});
@@ -230,9 +230,28 @@ export function HrMovementsClient() {
   });
 
   const selectedEmployee = useMemo(() => (employeesQuery.data?.data ?? []).find((employee) => employee.id === form.employeeId), [employeesQuery.data?.data, form.employeeId]);
-  const departmentOptions = departmentsQuery.data?.departments ?? [];
+  const departmentOptions = useMemo(() => departmentsQuery.data?.departments ?? [], [departmentsQuery.data?.departments]);
+  const filteredDepartmentOptions = useMemo(
+    () => departmentOptions.filter((department) => !filters.unitId || department.unitId === filters.unitId),
+    [departmentOptions, filters.unitId]
+  );
   const positionOptions = positionsQuery.data?.positions ?? [];
-  const rows = movementsQuery.data?.data ?? [];
+  const rows = useMemo(() => movementsQuery.data?.data ?? [], [movementsQuery.data?.data]);
+  const summary = useMemo(() => {
+    const byType = movementTypes.map((type) => ({
+      ...type,
+      total: rows.filter((row) => row.movementType === type.value).length
+    }));
+
+    return {
+      total: movementsQuery.data?.pagination.total ?? rows.length,
+      pendingApproval: rows.filter((row) => row.status === "pending_approval").length,
+      approved: rows.filter((row) => row.status === "approved").length,
+      implemented: rows.filter((row) => row.status === "implemented").length,
+      rejected: rows.filter((row) => row.status === "rejected").length,
+      byType
+    };
+  }, [movementsQuery.data?.pagination.total, rows]);
 
   function updateForm<K extends keyof MovementForm>(key: K, value: MovementForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -304,12 +323,44 @@ export function HrMovementsClient() {
         </div>
       </Card>
 
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <MovementStatCard title="Total de movimentacoes" value={summary.total} icon={BarChart3} tone="info" />
+        <MovementStatCard title="Aguardando aprovacao" value={summary.pendingApproval} icon={ShieldAlert} tone={summary.pendingApproval ? "warning" : "visual"} />
+        <MovementStatCard title="Aprovadas" value={summary.approved} icon={CheckCircle2} tone={summary.approved ? "success" : "visual"} />
+        <MovementStatCard title="Efetivadas" value={summary.implemented} icon={PlayCircle} tone={summary.implemented ? "success" : "visual"} />
+        <MovementStatCard title="Rejeitadas" value={summary.rejected} icon={XCircle} tone={summary.rejected ? "danger" : "visual"} />
+      </div>
+
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Movimentacoes por tipo</h2>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {summary.byType.map((type) => (
+            <StatusBadge key={type.value} status={type.total ? "info" : "visual"} label={`${type.label}: ${type.total}`} />
+          ))}
+        </div>
+      </Card>
+
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Filtros</h2>
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SelectField value={filters.unitId} onChange={(event) => setFilters((current) => ({ ...current, unitId: event.target.value, departmentId: "" }))}>
+            <option value="">Todas as unidades</option>
+            {(unitsQuery.data?.units ?? []).map((unit) => (
+              <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>
+            ))}
+          </SelectField>
+          <SelectField value={filters.departmentId} onChange={(event) => setFilters((current) => ({ ...current, departmentId: event.target.value }))}>
+            <option value="">Todos os departamentos</option>
+            {filteredDepartmentOptions.map((department) => (
+              <option key={department.id} value={department.id}>{[department.code, department.name].filter(Boolean).join(" - ")}</option>
+            ))}
+          </SelectField>
           <SelectField value={filters.employeeId} onChange={(event) => setFilters((current) => ({ ...current, employeeId: event.target.value }))}>
             <option value="">Todos os colaboradores</option>
             {(employeesQuery.data?.data ?? []).map((employee) => (
@@ -324,6 +375,8 @@ export function HrMovementsClient() {
             <option value="">Todos os status</option>
             {movementStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
           </SelectField>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <Input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} />
           <Input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} />
           <div className="relative min-w-0">
@@ -465,7 +518,11 @@ export function HrMovementsClient() {
                         </div>
                         <MovementActions row={row} commentsByAction={commentsByAction} setCommentsByAction={setCommentsByAction} onAction={runAction} pending={actionMutation.isPending} />
                       </div>
-                      {row.movementType === "salary_change" ? <p className="mt-2 text-xs text-muted-foreground">{moneyLabel(row.oldSalary)} para {moneyLabel(row.newSalary)}</p> : null}
+                      {row.movementType === "salary_change" ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {row.redacted ? "Informacao restrita" : `${moneyLabel(row.oldSalary)} para ${moneyLabel(row.newSalary)}`}
+                        </p>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -491,6 +548,35 @@ function MovementTimeline({ approvals }: { approvals: MovementApproval[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function MovementStatCard({
+  title,
+  value,
+  icon: Icon,
+  tone
+}: {
+  title: string;
+  value: number;
+  icon: typeof BarChart3;
+  tone: "visual" | "info" | "warning" | "success" | "danger";
+}) {
+  return (
+    <Card className="min-w-0 border-border/80 p-3 shadow-sm shadow-primary/5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <div className="mt-2">
+        <StatusBadge status={tone} label={value ? "Acompanhar" : "Sem pendencia"} />
+      </div>
+    </Card>
   );
 }
 

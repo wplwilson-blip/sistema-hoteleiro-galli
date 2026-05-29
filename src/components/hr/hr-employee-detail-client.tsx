@@ -10,7 +10,9 @@ import {
   Building2,
   CalendarClock,
   ClipboardCheck,
+  Clock3,
   FileText,
+  GitBranch,
   GraduationCap,
   History,
   Lock,
@@ -131,6 +133,15 @@ type HrCareerMovement = {
   oldSalary: number | null;
   newSalary: number | null;
   isSensitive: boolean;
+  reason: string;
+  approvals: Array<{
+    id: string;
+    action: string;
+    actionLabel: string;
+    comments: string;
+    actorUserId: string;
+    createdAt: string;
+  }>;
   redacted: boolean;
 };
 
@@ -331,6 +342,55 @@ function movementStatusTone(status: string) {
 function formatMoney(value: number | null | undefined) {
   if (value == null) return "-";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function daysSince(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return "-";
+  const diff = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+  if (diff === 0) return "Hoje";
+  if (diff === 1) return "1 dia";
+  return `${diff} dias`;
+}
+
+function movementTransitionLabel(movement: HrCareerMovement, kind: "unit" | "department" | "job" | "salary") {
+  if (kind === "salary") {
+    if (movement.redacted) return "Informacao restrita";
+    return `${formatMoney(movement.oldSalary)} -> ${formatMoney(movement.newSalary)}`;
+  }
+
+  const oldValue =
+    kind === "unit"
+      ? movementMetaLabel(movement.oldUnit)
+      : kind === "department"
+        ? movementMetaLabel(movement.oldDepartment)
+        : movementMetaLabel(movement.oldJobPosition);
+  const newValue =
+    kind === "unit"
+      ? movementMetaLabel(movement.newUnit)
+      : kind === "department"
+        ? movementMetaLabel(movement.newDepartment)
+        : movementMetaLabel(movement.newJobPosition);
+
+  if (oldValue === "-" && newValue === "-") return "-";
+  if (oldValue === newValue) return newValue;
+  return `${oldValue} -> ${newValue}`;
+}
+
+function CareerSummaryTile({ label, value, icon: Icon, tone = "visual" }: { label: string; value: string; icon: typeof UserRound; tone?: "visual" | "info" | "warning" | "success" }) {
+  return (
+    <div className="min-w-0 rounded-md border bg-background p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+        <Icon className="h-4 w-4 text-primary" />
+        {label}
+      </div>
+      <div className="flex items-start justify-between gap-3">
+        <p className="break-words text-sm font-medium text-foreground">{value || "-"}</p>
+        <StatusBadge status={tone} label="Carreira" />
+      </div>
+    </div>
+  );
 }
 
 function eventSeverityTone(severity: string) {
@@ -591,6 +651,15 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   }, [historyQuery.data?.data, timelineCategory, timelineCustomFrom, timelineCustomTo, timelinePeriod, timelineSensitiveFilter, timelineSeverity]);
   const timelineGroups = useMemo(() => groupEventsByMonth(filteredHistoryEvents), [filteredHistoryEvents]);
   const historyPagination = historyQuery.data?.pagination;
+  const careerMovements = useMemo(() => careerQuery.data?.data ?? [], [careerQuery.data?.data]);
+  const careerImplemented = useMemo(() => careerMovements.filter((movement) => movement.status === "implemented"), [careerMovements]);
+  const careerPending = useMemo(
+    () => careerMovements.filter((movement) => ["draft", "pending_approval", "approved"].includes(movement.status)),
+    [careerMovements]
+  );
+  const careerRecentRejected = useMemo(() => careerMovements.filter((movement) => movement.status === "rejected").slice(0, 3), [careerMovements]);
+  const latestCareerMovement = careerMovements[0] ?? null;
+  const latestImplementedMovement = careerImplemented[0] ?? null;
 
   if (detailQuery.isLoading) return <LoadingTable label="Carregando prontuario administrativo..." />;
 
@@ -716,56 +785,137 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <Shuffle className="h-4 w-4 text-primary" />
                     <h3 className="text-base font-semibold">Carreira</h3>
-                    <StatusBadge status="info" label="Historico de movimentacoes" />
+                    <StatusBadge status="info" label="Historico funcional" />
+                    {careerPending.length ? <StatusBadge status="warning" label={`${careerPending.length} pendente(s)`} /> : null}
                   </div>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Evolucao funcional registrada em promocoes, transferencias e mudancas administrativas.
+                    Resumo da posicao atual, movimentacoes em andamento e linha do tempo de carreira do colaborador.
                   </p>
                 </div>
                 <StatusBadge status={canViewSensitiveMovements ? "info" : "visual"} label={canViewSensitiveMovements ? "Dados salariais permitidos" : "Dados salariais restritos"} />
               </div>
             </div>
-            <div className="p-5">
+            <div className="space-y-5 p-5">
               {careerQuery.isLoading ? <LoadingTable label="Carregando carreira..." /> : null}
               {careerQuery.error ? <ErrorMessage message={careerQuery.error instanceof Error ? careerQuery.error.message : "Nao foi possivel carregar carreira."} /> : null}
               {!careerQuery.isLoading && careerQuery.data && !careerQuery.data.data.length ? (
                 <EmptyState title="Nenhuma movimentacao registrada" description="Promocoes, transferencias e mudancas administrativas do colaborador aparecerao aqui." />
               ) : null}
-              {careerQuery.data?.data.length ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-[920px] w-full text-sm">
-                    <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Data</th>
-                        <th className="px-4 py-3">Tipo</th>
-                        <th className="px-4 py-3">Cargo</th>
-                        <th className="px-4 py-3">Departamento</th>
-                        <th className="px-4 py-3">Unidade</th>
-                        <th className="px-4 py-3">Salario</th>
-                        <th className="px-4 py-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {careerQuery.data.data.map((movement) => (
-                        <tr key={movement.id} className="align-top">
-                          <td className="px-4 py-3">{formatDate(movement.effectiveDate)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <StatusBadge status="info" label={movement.movementTypeLabel} />
-                              {movement.isSensitive ? <StatusBadge status="warning" label={movement.redacted ? "Restrito" : "Sensivel"} /> : null}
+
+              <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <CareerSummaryTile label="Cargo atual" value={metaLabel(employee.jobPosition)} icon={UserRound} tone="info" />
+                <CareerSummaryTile label="Departamento atual" value={metaLabel(employee.department)} icon={Building2} tone="visual" />
+                <CareerSummaryTile label="Unidade atual" value={metaLabel(employee.unit)} icon={Building2} tone="visual" />
+                <CareerSummaryTile label="Ultima movimentacao" value={latestCareerMovement ? `${latestCareerMovement.movementTypeLabel} em ${formatDate(latestCareerMovement.effectiveDate)}` : "Nenhuma movimentacao"} icon={GitBranch} tone={latestCareerMovement ? "info" : "visual"} />
+                <CareerSummaryTile label="Movimentacoes pendentes" value={String(careerPending.length)} icon={ShieldAlert} tone={careerPending.length ? "warning" : "success"} />
+                <CareerSummaryTile label="Tempo desde ultima movimentacao" value={daysSince(latestImplementedMovement?.effectiveDate)} icon={Clock3} tone="visual" />
+              </div>
+
+              {careerPending.length || careerRecentRejected.length ? (
+                <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+                  <div className="rounded-md border bg-background p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Movimentacoes pendentes</h4>
+                    </div>
+                    {careerPending.length ? (
+                      <div className="space-y-2">
+                        {careerPending.map((movement) => (
+                          <div key={movement.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                            <span className="font-medium">{movement.movementTypeLabel}</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge status={movementStatusTone(movement.status)} label={movement.statusLabel} />
+                              <span className="text-xs text-muted-foreground">{formatDate(movement.effectiveDate)}</span>
                             </div>
-                          </td>
-                          <td className="px-4 py-3">{movementMetaLabel(movement.newJobPosition, "") || movementMetaLabel(movement.oldJobPosition)}</td>
-                          <td className="px-4 py-3">{movementMetaLabel(movement.newDepartment, "") || movementMetaLabel(movement.oldDepartment)}</td>
-                          <td className="px-4 py-3">{movementMetaLabel(movement.newUnit, "") || movementMetaLabel(movement.oldUnit)}</td>
-                          <td className="px-4 py-3">
-                            {movement.redacted ? "Restrito" : `${formatMoney(movement.oldSalary)} -> ${formatMoney(movement.newSalary)}`}
-                          </td>
-                          <td className="px-4 py-3"><StatusBadge status={movementStatusTone(movement.status)} label={movement.statusLabel} /></td>
-                        </tr>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Nenhuma movimentacao aguardando acao.</p>
+                    )}
+                  </div>
+                  <div className="rounded-md border bg-background p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Efetivadas e rejeitadas recentes</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge status="success" label={`Efetivadas: ${careerImplemented.length}`} />
+                      <StatusBadge status={careerRecentRejected.length ? "danger" : "visual"} label={`Rejeitadas recentes: ${careerRecentRejected.length}`} />
+                    </div>
+                    {careerRecentRejected.length ? (
+                      <div className="mt-3 space-y-2">
+                        {careerRecentRejected.map((movement) => (
+                          <div key={movement.id} className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">{movement.movementTypeLabel}</span> rejeitada em {formatDate(movement.effectiveDate)}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {careerQuery.data?.data.length ? (
+                <div className="grid min-w-0 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+                  <div className="min-w-0 rounded-md border bg-background p-4">
+                    <div className="mb-4 flex items-center gap-2">
+                      <GitBranch className="h-4 w-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Linha do tempo de carreira</h4>
+                    </div>
+                    <div className="relative space-y-3 pl-7 before:absolute before:bottom-2 before:left-[13px] before:top-2 before:w-px before:bg-border">
+                      {careerQuery.data.data.map((movement) => (
+                        <article key={movement.id} className="relative rounded-md border bg-muted/25 p-3">
+                          <div className="absolute -left-7 top-3 flex h-7 w-7 items-center justify-center rounded-full border bg-background shadow-sm">
+                            <Shuffle className="h-4 w-4 text-primary" />
+                          </div>
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">{movement.movementTypeLabel}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{formatDate(movement.effectiveDate)} | {movement.reason || "Movimentacao funcional"}</p>
+                            </div>
+                            <StatusBadge status={movementStatusTone(movement.status)} label={movement.statusLabel} />
+                          </div>
+                        </article>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="min-w-[1120px] w-full text-sm">
+                      <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3">Data efetiva</th>
+                          <th className="px-4 py-3">Tipo</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">Unidade</th>
+                          <th className="px-4 py-3">Departamento</th>
+                          <th className="px-4 py-3">Cargo</th>
+                          <th className="px-4 py-3">Salario</th>
+                          <th className="px-4 py-3">Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {careerQuery.data.data.map((movement) => (
+                          <tr key={movement.id} className="align-top">
+                            <td className="px-4 py-3">{formatDate(movement.effectiveDate)}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-2">
+                                <StatusBadge status="info" label={movement.movementTypeLabel} />
+                                {movement.isSensitive ? <StatusBadge status="warning" label={movement.redacted ? "Informacao restrita" : "Sensivel"} /> : null}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3"><StatusBadge status={movementStatusTone(movement.status)} label={movement.statusLabel} /></td>
+                            <td className="px-4 py-3">{movementTransitionLabel(movement, "unit")}</td>
+                            <td className="px-4 py-3">{movementTransitionLabel(movement, "department")}</td>
+                            <td className="px-4 py-3">{movementTransitionLabel(movement, "job")}</td>
+                            <td className="px-4 py-3">{movementTransitionLabel(movement, "salary")}</td>
+                            <td className="px-4 py-3">{movement.redacted ? "Informacao restrita" : movement.reason || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : null}
             </div>

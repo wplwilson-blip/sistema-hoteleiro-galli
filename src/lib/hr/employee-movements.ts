@@ -105,17 +105,17 @@ export const movementSelect = [
 export const movementListSelect = `${movementSelect}, employees(id, full_name, preferred_name), unit:units!employee_movements_unit_id_fkey(id, code, name), old_unit:units!employee_movements_old_unit_id_fkey(id, code, name), new_unit:units!employee_movements_new_unit_id_fkey(id, code, name), old_department:departments!employee_movements_old_department_id_fkey(id, code, name), new_department:departments!employee_movements_new_department_id_fkey(id, code, name), old_job_position:job_positions!employee_movements_old_job_position_id_fkey(id, code, name), new_job_position:job_positions!employee_movements_new_job_position_id_fkey(id, code, name), employee_movement_approvals(id, movement_id, action, comments, actor_user_id, created_at)`;
 
 export const movementTypeLabels: Record<EmployeeMovementType, string> = {
-  promotion: "Promocao",
-  transfer: "Transferencia",
-  job_position_change: "Mudanca de cargo",
-  department_change: "Mudanca de departamento",
-  unit_change: "Mudanca de unidade",
-  salary_change: "Mudanca salarial"
+  promotion: "Promoção",
+  transfer: "Transferência",
+  job_position_change: "Mudança de cargo",
+  department_change: "Mudança de departamento",
+  unit_change: "Mudança de unidade",
+  salary_change: "Mudança salarial"
 };
 
 export const movementStatusLabels: Record<EmployeeMovementStatus, string> = {
   draft: "Rascunho",
-  pending_approval: "Aguardando aprovacao",
+  pending_approval: "Aguardando aprovação",
   approved: "Aprovada",
   rejected: "Rejeitada",
   implemented: "Efetivada"
