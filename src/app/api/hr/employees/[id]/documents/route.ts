@@ -12,6 +12,7 @@ import {
   type HrRequestContext
 } from "@/lib/hr/api-auth";
 import { ensureAutomaticEmployeeDocumentDossier } from "@/lib/hr/employee-document-dossier-auto";
+import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 import { hrEmployeeDocumentsQuerySchema, hrIdParamSchema, parseSearchParams } from "@/lib/hr/schemas";
 import { redactEmployeeDocument, type EmployeeDocumentRow, type HrDocumentTypeRow } from "@/lib/hr/redaction";
 
@@ -216,33 +217,29 @@ async function writeDocumentEvent(input: {
   description: string;
   severity?: "info" | "notice" | "warning" | "critical";
 }) {
-  const { error } = await input.context.supabase.from("employee_functional_events").insert({
-    organization_id: input.document.organization_id,
-    unit_id: input.document.unit_id,
-    employee_id: input.document.employee_id,
-    event_type: input.eventType,
+  const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    employeeId: input.document.employee_id,
+    eventType: input.eventType,
     title: input.title,
     description: input.description,
     severity: input.severity ?? "notice",
-    visibility_scope: "restricted",
-    is_sensitive: true,
-    source_module: "HR",
-    source_entity_type: "employee_document",
-    source_entity_id: input.document.id,
-    related_document_id: input.document.id,
-    related_attachment_id: input.attachmentId ?? null,
-    actor_user_id: input.context.session.user.id,
-    event_payload: {
+    visibilityScope: "restricted",
+    isSensitive: true,
+    sourceModule: "HR",
+    sourceEntityType: "employee_document",
+    sourceEntityId: input.document.id,
+    relatedDocumentId: input.document.id,
+    relatedAttachmentId: input.attachmentId ?? null,
+    actorUserId: input.context.session.user.id,
+    eventPayload: {
       document_id: input.document.id,
       document_type_id: input.document.document_type_id,
       attachment_id: input.attachmentId ?? null
-    },
-    created_by: input.context.session.user.id,
-    updated_by: input.context.session.user.id
+    }
   });
 
-  if (error) {
-    logHrApiError("employee_documents.event_insert_failed", error);
+  if (!result.ok) {
+    logHrApiError("employee_documents.event_insert_failed", { message: result.error.message, code: result.error.code });
   }
 }
 

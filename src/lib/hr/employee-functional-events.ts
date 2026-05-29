@@ -1,7 +1,7 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
-import type { SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { logHrApiError } from "@/lib/hr/api-auth";
 import { employeeFunctionalEventTypeSchema } from "@/lib/hr/schemas";
 
@@ -76,6 +76,8 @@ type EmployeeScopeRow = {
   organization_id: string | null;
   unit_id: string | null;
 };
+
+type FunctionalEventSupabase = SupabaseClient;
 
 type FunctionalEventDomain =
   | "registration"
@@ -259,10 +261,10 @@ function sanitizePayload(payload: Record<string, unknown>) {
 }
 
 function shouldRunDedupe(input: CreateEmployeeFunctionalEventInput) {
-  return Boolean(input.dedupeKey || input.sourceEntityId || input.relatedDocumentId);
+  return Boolean(input.dedupeKey);
 }
 
-async function loadEmployee(supabase: SupabaseAdmin, employeeId: string) {
+async function loadEmployee(supabase: FunctionalEventSupabase, employeeId: string) {
   const { data, error } = await supabase.from("employees").select(employeeSelect).eq("id", employeeId).is("deleted_at", null).limit(1);
 
   if (error) {
@@ -280,7 +282,7 @@ async function loadEmployee(supabase: SupabaseAdmin, employeeId: string) {
 }
 
 async function findDuplicateEvent(input: {
-  supabase: SupabaseAdmin;
+  supabase: FunctionalEventSupabase;
   employeeId: string;
   eventType: EmployeeFunctionalEventType;
   sourceModule: string;
@@ -314,7 +316,7 @@ async function findDuplicateEvent(input: {
 }
 
 export async function createEmployeeFunctionalEvent(
-  supabase: SupabaseAdmin,
+  supabase: FunctionalEventSupabase,
   input: CreateEmployeeFunctionalEventInput
 ): Promise<CreateEmployeeFunctionalEventResult> {
   const eventTypeResult = employeeFunctionalEventTypeSchema.safeParse(input.eventType);

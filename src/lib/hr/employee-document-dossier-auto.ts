@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveRequiredDocumentExpectations, type HrDocumentRuleRow } from "@/lib/hr/document-rules";
+import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 import type { HrDocumentTypeRow } from "@/lib/hr/redaction";
 
 type EmployeeRow = {
@@ -282,32 +283,31 @@ export async function ensureAutomaticEmployeeDocumentDossier(supabase: SupabaseC
 
   const createdRows = (data ?? []) as Array<{ id: string; document_type_id: string }>;
   if (createdRows.length) {
-    const events = createdRows.map((document) => ({
-      organization_id: employee.organization_id,
-      unit_id: employee.unit_id,
-      employee_id: employee.id,
-      event_type: "document_requested",
-      title: "Dossie documental iniciado",
-      description: "Pendencia documental criada automaticamente para o colaborador.",
-      severity: "notice",
-      visibility_scope: "restricted",
-      is_sensitive: true,
-      source_module: "HR",
-      source_entity_type: "employee_document",
-      source_entity_id: document.id,
-      related_document_id: document.id,
-      actor_user_id: actorUserId,
-      event_payload: {
-        document_id: document.id,
-        document_type_id: document.document_type_id,
-        source: "automatic_employee_document_dossier"
-      },
-      created_by: actorUserId,
-      updated_by: actorUserId
-    }));
+    for (const document of createdRows) {
+      const eventResult = await createEmployeeFunctionalEvent(supabase, {
+        employeeId: employee.id,
+        eventType: "document_requested",
+        title: "Dossie documental iniciado",
+        description: "Pendencia documental criada automaticamente para o colaborador.",
+        severity: "notice",
+        visibilityScope: "restricted",
+        isSensitive: true,
+        sourceModule: "HR",
+        sourceEntityType: "employee_document",
+        sourceEntityId: document.id,
+        relatedDocumentId: document.id,
+        actorUserId,
+        eventPayload: {
+          document_id: document.id,
+          document_type_id: document.document_type_id,
+          source: "automatic_employee_document_dossier"
+        }
+      });
 
-    const { error: eventError } = await supabase.from("employee_functional_events").insert(events);
-    if (eventError) throw eventError;
+      if (!eventResult.ok) {
+        throw new Error(eventResult.error.message);
+      }
+    }
   }
 
   return { created: createdRows.length, skipped: false, reason: "created" };
