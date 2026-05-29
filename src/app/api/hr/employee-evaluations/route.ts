@@ -6,12 +6,45 @@ import {
   HR_PERMISSIONS,
   hrApiError,
   logHrApiError,
-  requireHrPermission
+  requireHrPermission,
+  type HrRequestContext
 } from "@/lib/hr/api-auth";
 import { prepareEmployeeEvaluationCreate } from "@/lib/hr/evaluation-actions";
+import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 import { employeeEvaluationListSelect, redactEmployeeEvaluation, type EmployeeEvaluationRow } from "@/lib/hr/evaluations";
 import { employeeEvaluationCreateSchema, employeeEvaluationsQuerySchema } from "@/lib/hr/evaluation-validation";
 import { parseSearchParams } from "@/lib/hr/schemas";
+
+async function writeEvaluationCreatedEvent(input: {
+  context: HrRequestContext;
+  evaluation: EmployeeEvaluationRow;
+}) {
+  const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    employeeId: input.evaluation.employee_id,
+    eventType: "evaluation_created",
+    title: "Avaliacao criada",
+    description: "Avaliacao criada para o colaborador.",
+    severity: "notice",
+    visibilityScope: "restricted",
+    isSensitive: true,
+    sourceModule: "hr",
+    sourceEntityType: "employee_evaluation",
+    sourceEntityId: input.evaluation.id,
+    actorUserId: input.context.session.user.id,
+    dedupeKey: `evaluation:${input.evaluation.id}:created`,
+    eventPayload: {
+      template_name: input.evaluation.hr_evaluation_templates?.name ?? null,
+      evaluation_type: input.evaluation.evaluation_type,
+      status: input.evaluation.status,
+      period_start: input.evaluation.period_start,
+      period_end: input.evaluation.period_end
+    }
+  });
+
+  if (!result.ok) {
+    logHrApiError("employee_evaluations.functional_event_create_failed", { message: result.error.message, code: result.error.code });
+  }
+}
 
 export async function GET(request: Request) {
   const { context, response } = await requireHrPermission(HR_PERMISSIONS.evaluationsView);
@@ -74,7 +107,10 @@ export async function POST(request: Request) {
       return hrApiError("Nao foi possivel criar a avaliacao do colaborador.", 500);
     }
 
-    return NextResponse.json({ ok: true, data: redactEmployeeEvaluation(data as unknown as EmployeeEvaluationRow, true) }, { status: 201 });
+    const evaluation = data as unknown as EmployeeEvaluationRow;
+    await writeEvaluationCreatedEvent({ context, evaluation });
+
+    return NextResponse.json({ ok: true, data: redactEmployeeEvaluation(evaluation, true) }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     return handleHrRouteError(error, "Nao foi possivel criar avaliacao.");
