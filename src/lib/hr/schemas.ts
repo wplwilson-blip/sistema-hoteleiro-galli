@@ -43,6 +43,24 @@ export const employeeMovementVisibilityScopeSchema = z.enum(["restricted", "unit
 
 export const employeeMovementApprovalActionSchema = z.enum(["submitted", "approved", "rejected", "implemented"]);
 
+export const hrTrainingTypeSchema = z.enum([
+  "integration",
+  "operational",
+  "mandatory",
+  "safety",
+  "leadership",
+  "technical",
+  "behavioral",
+  "recycling",
+  "other"
+]);
+
+export const hrTrainingDeliveryModeSchema = z.enum(["in_person", "online", "hybrid", "external"]);
+
+export const hrTrainingCatalogStatusSchema = z.enum(["active", "inactive", "archived"]);
+
+export const employeeTrainingStatusSchema = z.enum(["assigned", "scheduled", "in_progress", "completed", "expired", "waived", "cancelled"]);
+
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
   "critical",
@@ -474,6 +492,79 @@ export const hrMovementRejectPayloadSchema = hrMovementDecisionPayloadSchema.ext
       (value) => !/(cpf|rg|ctps|pis|medical|medico|cid|diagnostico|laudo|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
       "Comentario contem dado sensivel nao permitido."
     )
+});
+
+const optionalTrainingNumberSchema = (min: number, max: number) =>
+  z.preprocess((value) => (value === "" || value == null ? undefined : value), z.coerce.number().min(min).max(max).optional());
+
+const safeTrainingTextSchema = (max = 3000) =>
+  z
+    .string()
+    .trim()
+    .max(max, "Texto muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|medical|medico|cid|diagnostico|laudo|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Texto contem dado sensivel nao permitido."
+    )
+    .optional()
+    .or(emptyToUndefined);
+
+export const hrTrainingsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  unitId: optionalUuidSchema,
+  trainingType: hrTrainingTypeSchema.optional().or(emptyToUndefined),
+  deliveryMode: hrTrainingDeliveryModeSchema.optional().or(emptyToUndefined),
+  status: hrTrainingCatalogStatusSchema.optional().or(emptyToUndefined),
+  mandatory: optionalBooleanSchema,
+  search: z.string().trim().max(120, "Busca muito longa.").optional().or(emptyToUndefined)
+});
+
+export const hrTrainingPayloadSchema = z.object({
+  unitId: optionalUuidSchema,
+  title: z.string().trim().min(3, "Informe o titulo do treinamento.").max(180, "Titulo muito longo."),
+  description: safeTrainingTextSchema(3000),
+  trainingType: hrTrainingTypeSchema.default("other"),
+  deliveryMode: hrTrainingDeliveryModeSchema.default("in_person"),
+  providerName: z.string().trim().max(160, "Fornecedor/instrutor muito longo.").optional().or(emptyToUndefined),
+  workloadHours: optionalTrainingNumberSchema(0, 10000),
+  isMandatory: z.boolean().default(false),
+  requiresCertificate: z.boolean().default(false),
+  hasExpiration: z.boolean().default(false),
+  validityDays: z.preprocess((value) => (value === "" || value == null ? undefined : value), z.coerce.number().int().min(1).max(36500).optional()),
+  status: hrTrainingCatalogStatusSchema.default("active")
+});
+
+export const employeeTrainingsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  employeeId: optionalUuidSchema,
+  trainingId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  status: employeeTrainingStatusSchema.optional().or(emptyToUndefined),
+  trainingType: hrTrainingTypeSchema.optional().or(emptyToUndefined),
+  deliveryMode: hrTrainingDeliveryModeSchema.optional().or(emptyToUndefined),
+  mandatory: optionalBooleanSchema,
+  dueFrom: optionalDateSchema,
+  dueTo: optionalDateSchema,
+  expiresFrom: optionalDateSchema,
+  expiresTo: optionalDateSchema
+});
+
+export const employeeTrainingAssignPayloadSchema = z.object({
+  trainingId: z.string().uuid("Treinamento invalido."),
+  dueDate: optionalDateSchema,
+  notes: safeTrainingTextSchema(1000)
+});
+
+export const employeeTrainingUpdatePayloadSchema = z.object({
+  status: employeeTrainingStatusSchema.optional(),
+  dueDate: optionalDateSchema,
+  completedAt: optionalDateTimeSchema,
+  expiresAt: optionalDateTimeSchema,
+  certificateAttachmentId: optionalUuidSchema,
+  attendanceConfirmed: z.boolean().optional(),
+  notes: safeTrainingTextSchema(1000)
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({

@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FileCog,
   FileText,
+  GraduationCap,
   Inbox,
   ListChecks,
   Settings2,
@@ -120,6 +121,14 @@ managementLinks.push({
   href: "/rh/gestao/movimentacoes",
   icon: Shuffle,
   badge: "Carreira"
+});
+
+managementLinks.push({
+  title: "Treinamentos",
+  description: "Gerencie catalogo, atribuicoes, presenca, certificados e validade dos treinamentos.",
+  href: "/rh/gestao/treinamentos",
+  icon: GraduationCap,
+  badge: "Capacitacao"
 });
 
 function ManagementHubCard({
