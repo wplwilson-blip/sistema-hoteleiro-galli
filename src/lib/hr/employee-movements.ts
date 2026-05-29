@@ -6,6 +6,7 @@ import { createEmployeeFunctionalEvent, type EmployeeFunctionalEventType } from 
 import type { hrMovementPayloadSchema } from "@/lib/hr/schemas";
 
 type MovementPayload = z.infer<typeof hrMovementPayloadSchema>;
+export type EmployeeMovementApprovalAction = "submitted" | "approved" | "rejected" | "implemented";
 
 type RelatedMetaRow = { id: string; code: string | null; name: string | null } | null;
 
@@ -39,6 +40,7 @@ export type EmployeeMovementRow = {
   visibility_scope: string;
   created_at: string;
   updated_at: string;
+  employee_movement_approvals?: EmployeeMovementApprovalRow[];
   employees?: { id: string; full_name: string | null; preferred_name: string | null } | null;
   unit?: RelatedMetaRow;
   old_unit?: RelatedMetaRow;
@@ -47,6 +49,15 @@ export type EmployeeMovementRow = {
   new_department?: RelatedMetaRow;
   old_job_position?: RelatedMetaRow;
   new_job_position?: RelatedMetaRow;
+};
+
+export type EmployeeMovementApprovalRow = {
+  id: string;
+  movement_id: string;
+  action: EmployeeMovementApprovalAction;
+  comments: string | null;
+  actor_user_id: string | null;
+  created_at: string;
 };
 
 export type EmployeeMovementType =
@@ -91,7 +102,7 @@ export const movementSelect = [
   "updated_at"
 ].join(", ");
 
-export const movementListSelect = `${movementSelect}, employees(id, full_name, preferred_name), unit:units!employee_movements_unit_id_fkey(id, code, name), old_unit:units!employee_movements_old_unit_id_fkey(id, code, name), new_unit:units!employee_movements_new_unit_id_fkey(id, code, name), old_department:departments!employee_movements_old_department_id_fkey(id, code, name), new_department:departments!employee_movements_new_department_id_fkey(id, code, name), old_job_position:job_positions!employee_movements_old_job_position_id_fkey(id, code, name), new_job_position:job_positions!employee_movements_new_job_position_id_fkey(id, code, name)`;
+export const movementListSelect = `${movementSelect}, employees(id, full_name, preferred_name), unit:units!employee_movements_unit_id_fkey(id, code, name), old_unit:units!employee_movements_old_unit_id_fkey(id, code, name), new_unit:units!employee_movements_new_unit_id_fkey(id, code, name), old_department:departments!employee_movements_old_department_id_fkey(id, code, name), new_department:departments!employee_movements_new_department_id_fkey(id, code, name), old_job_position:job_positions!employee_movements_old_job_position_id_fkey(id, code, name), new_job_position:job_positions!employee_movements_new_job_position_id_fkey(id, code, name), employee_movement_approvals(id, movement_id, action, comments, actor_user_id, created_at)`;
 
 export const movementTypeLabels: Record<EmployeeMovementType, string> = {
   promotion: "Promocao",
@@ -110,6 +121,14 @@ export const movementStatusLabels: Record<EmployeeMovementStatus, string> = {
   implemented: "Efetivada"
 };
 
+export const movementApprovalActionLabels: Record<EmployeeMovementApprovalAction | "created", string> = {
+  created: "Criado",
+  submitted: "Enviado",
+  approved: "Aprovado",
+  rejected: "Rejeitado",
+  implemented: "Efetivado"
+};
+
 function meta(row: RelatedMetaRow) {
   if (!row) return null;
   return {
@@ -122,6 +141,33 @@ function meta(row: RelatedMetaRow) {
 
 function shouldRedactMovement(row: Pick<EmployeeMovementRow, "is_sensitive" | "visibility_scope">, canViewSensitive: boolean) {
   return row.is_sensitive && !canViewSensitive;
+}
+
+function mapApprovals(row: EmployeeMovementRow, redacted: boolean) {
+  const approvals = (row.employee_movement_approvals ?? [])
+    .map((approval) => ({
+      id: approval.id,
+      movementId: approval.movement_id,
+      action: approval.action,
+      actionLabel: movementApprovalActionLabels[approval.action],
+      comments: redacted ? "" : approval.comments ?? "",
+      actorUserId: approval.actor_user_id ?? "",
+      createdAt: approval.created_at
+    }))
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  return [
+    {
+      id: `${row.id}:created`,
+      movementId: row.id,
+      action: "created",
+      actionLabel: movementApprovalActionLabels.created,
+      comments: redacted ? "" : "Movimentacao criada.",
+      actorUserId: row.requested_by ?? "",
+      createdAt: row.created_at
+    },
+    ...approvals
+  ];
 }
 
 export function redactEmployeeMovement(row: EmployeeMovementRow, canViewSensitive: boolean) {
@@ -159,6 +205,7 @@ export function redactEmployeeMovement(row: EmployeeMovementRow, canViewSensitiv
     notes: redacted ? "" : row.notes ?? "",
     isSensitive: row.is_sensitive,
     visibilityScope: row.visibility_scope,
+    approvals: mapApprovals(row, redacted),
     redacted,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -240,10 +287,6 @@ export async function prepareEmployeeMovementWrite(context: HrRequestContext, pa
     throw new HrAuthorizationError("Movimentacoes sensiveis devem ter visibilidade restrita.", 422);
   }
 
-  if ((status === "approved" || status === "implemented") && !existing?.approved_at) {
-    existing = { ...(existing as EmployeeMovementRow | undefined), approved_at: now, approved_by: context.session.user.id } as EmployeeMovementRow;
-  }
-
   return {
     organization_id: employee.organization_id,
     unit_id: employee.unit_id,
@@ -265,20 +308,88 @@ export async function prepareEmployeeMovementWrite(context: HrRequestContext, pa
     visibility_scope: visibilityScope,
     requested_at: existing?.requested_at ?? now,
     requested_by: existing?.requested_by ?? context.session.user.id,
-    approved_at:
-      status === "approved" || status === "implemented"
-        ? existing?.approved_at ?? now
-        : existing?.approved_at ?? null,
-    approved_by:
-      status === "approved" || status === "implemented"
-        ? existing?.approved_by ?? context.session.user.id
-        : existing?.approved_by ?? null,
-    rejected_at: status === "rejected" ? existing?.rejected_at ?? now : existing?.rejected_at ?? null,
-    rejected_by: status === "rejected" ? existing?.rejected_by ?? context.session.user.id : existing?.rejected_by ?? null,
-    implemented_at: status === "implemented" ? existing?.implemented_at ?? now : existing?.implemented_at ?? null,
-    implemented_by: status === "implemented" ? existing?.implemented_by ?? context.session.user.id : existing?.implemented_by ?? null,
+    approved_at: existing?.approved_at ?? null,
+    approved_by: existing?.approved_by ?? null,
+    rejected_at: existing?.rejected_at ?? null,
+    rejected_by: existing?.rejected_by ?? null,
+    implemented_at: existing?.implemented_at ?? null,
+    implemented_by: existing?.implemented_by ?? null,
     metadata: {}
   };
+}
+
+export async function recordEmployeeMovementApproval(input: {
+  context: HrRequestContext;
+  movementId: string;
+  action: EmployeeMovementApprovalAction;
+  comments?: string | null;
+}) {
+  const { error } = await input.context.supabase.from("employee_movement_approvals").insert({
+    movement_id: input.movementId,
+    action: input.action,
+    comments: input.comments?.trim() || null,
+    actor_user_id: input.context.session.user.id
+  });
+
+  if (error) {
+    logHrApiError("movements.approval_audit_failed", error);
+    throw new Error("Nao foi possivel registrar a auditoria da movimentacao.");
+  }
+}
+
+export async function transitionEmployeeMovement(input: {
+  context: HrRequestContext;
+  movement: EmployeeMovementRow;
+  expectedStatus: EmployeeMovementStatus;
+  nextStatus: EmployeeMovementStatus;
+  action: EmployeeMovementApprovalAction;
+  comments?: string | null;
+}) {
+  if (input.movement.status !== input.expectedStatus) {
+    throw new HrAuthorizationError("Transicao de movimentacao funcional nao permitida para o status atual.", 422);
+  }
+
+  const now = new Date().toISOString();
+  const auditColumns: Partial<EmployeeMovementRow> = {};
+  if (input.action === "approved") {
+    auditColumns.approved_at = now;
+    auditColumns.approved_by = input.context.session.user.id;
+  }
+  if (input.action === "rejected") {
+    auditColumns.rejected_at = now;
+    auditColumns.rejected_by = input.context.session.user.id;
+  }
+  if (input.action === "implemented") {
+    auditColumns.implemented_at = now;
+    auditColumns.implemented_by = input.context.session.user.id;
+  }
+
+  const { data, error } = await input.context.supabase
+    .from("employee_movements")
+    .update({
+      status: input.nextStatus,
+      ...auditColumns,
+      updated_by: input.context.session.user.id
+    })
+    .eq("id", input.movement.id)
+    .eq("status", input.expectedStatus)
+    .is("deleted_at", null)
+    .select(movementListSelect)
+    .single();
+
+  if (error) {
+    logHrApiError("movements.transition_failed", error);
+    throw new Error("Nao foi possivel atualizar o status da movimentacao.");
+  }
+
+  await recordEmployeeMovementApproval({
+    context: input.context,
+    movementId: input.movement.id,
+    action: input.action,
+    comments: input.comments
+  });
+
+  return data as unknown as EmployeeMovementRow;
 }
 
 function movementFunctionalEventType(type: EmployeeMovementType): EmployeeFunctionalEventType {
@@ -311,7 +422,7 @@ export async function publishEmployeeMovementFunctionalEvent(input: {
   previous?: EmployeeMovementRow | null;
   movement: EmployeeMovementRow;
 }) {
-  if (!["approved", "implemented"].includes(input.movement.status)) return;
+  if (input.movement.status !== "implemented") return;
   if (input.previous && input.previous.status === input.movement.status) return;
 
   const eventType = movementFunctionalEventType(input.movement.movement_type);

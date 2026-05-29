@@ -41,6 +41,8 @@ export const employeeMovementStatusSchema = z.enum(["draft", "pending_approval",
 
 export const employeeMovementVisibilityScopeSchema = z.enum(["restricted", "unit", "organization"]);
 
+export const employeeMovementApprovalActionSchema = z.enum(["submitted", "approved", "rejected", "implemented"]);
+
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
   "critical",
@@ -447,6 +449,31 @@ export const hrMovementPayloadSchema = z.object({
   notes: safeMovementTextSchema(3000),
   isSensitive: z.boolean().optional(),
   visibilityScope: employeeMovementVisibilityScopeSchema.optional()
+});
+
+export const hrMovementDecisionPayloadSchema = z.object({
+  comments: z
+    .string()
+    .trim()
+    .max(3000, "Comentario muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|medical|medico|cid|diagnostico|laudo|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Comentario contem dado sensivel nao permitido."
+    )
+    .optional()
+    .or(emptyToUndefined)
+});
+
+export const hrMovementRejectPayloadSchema = hrMovementDecisionPayloadSchema.extend({
+  comments: z
+    .string()
+    .trim()
+    .min(3, "Informe o motivo da rejeicao.")
+    .max(3000, "Comentario muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|medical|medico|cid|diagnostico|laudo|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Comentario contem dado sensivel nao permitido."
+    )
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({

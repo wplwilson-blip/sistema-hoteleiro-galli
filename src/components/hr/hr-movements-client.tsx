@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, BriefcaseBusiness, CalendarClock, Filter, Plus, Save, Search, X } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Filter, PlayCircle, Plus, Save, Search, Send, X, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -33,12 +33,23 @@ type MovementRow = {
   reason: string;
   notes: string;
   isSensitive: boolean;
+  approvals: MovementApproval[];
   redacted: boolean;
   updatedAt: string;
 };
 
+type MovementApproval = {
+  id: string;
+  action: string;
+  actionLabel: string;
+  comments: string;
+  actorUserId: string;
+  createdAt: string;
+};
+
 type MovementType = "promotion" | "transfer" | "job_position_change" | "department_change" | "unit_change" | "salary_change";
 type MovementStatus = "draft" | "pending_approval" | "approved" | "rejected" | "implemented";
+type MovementActionKey = "submit" | "approve" | "reject" | "implement";
 
 type MovementsResponse = {
   ok: true;
@@ -182,6 +193,7 @@ export function HrMovementsClient() {
   const [filters, setFilters] = useState({ employeeId: "", movementType: "", status: "", from: "", to: "", search: "" });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<MovementForm>(emptyForm);
+  const [commentsByAction, setCommentsByAction] = useState<Record<string, string>>({});
 
   const movementsQuery = useQuery({
     queryKey: ["hr", "movements", filters],
@@ -201,6 +213,18 @@ export function HrMovementsClient() {
     onSuccess: async () => {
       setShowForm(false);
       setForm(emptyForm);
+      await queryClient.invalidateQueries({ queryKey: ["hr", "movements"] });
+    }
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: async (input: { id: string; action: MovementActionKey; comments?: string }) =>
+      requestJson(`/api/hr/movements/${input.id}/${input.action}`, {
+        method: "POST",
+        body: JSON.stringify({ comments: input.comments ?? "" })
+      }),
+    onSuccess: async () => {
+      setCommentsByAction({});
       await queryClient.invalidateQueries({ queryKey: ["hr", "movements"] });
     }
   });
@@ -250,6 +274,15 @@ export function HrMovementsClient() {
   const showDepartmentFields = form.movementType === "department_change";
   const showJobFields = form.movementType === "promotion" || form.movementType === "job_position_change";
   const showSalaryFields = form.movementType === "salary_change";
+
+  function actionCommentKey(row: MovementRow) {
+    return `${row.id}:comment`;
+  }
+
+  function runAction(row: MovementRow, action: MovementActionKey) {
+    const key = actionCommentKey(row);
+    actionMutation.mutate({ id: row.id, action, comments: commentsByAction[key] });
+  }
 
   return (
     <div className="space-y-4">
@@ -328,7 +361,7 @@ export function HrMovementsClient() {
               </SelectField>
             </Field>
             <Field label="Status">
-              <SelectField value={form.status} onChange={(event) => updateForm("status", event.target.value as MovementStatus)}>
+              <SelectField value={form.status} onChange={(event) => updateForm("status", event.target.value as MovementStatus)} disabled>
                 {movementStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
               </SelectField>
             </Field>
@@ -379,6 +412,7 @@ export function HrMovementsClient() {
           ) : null}
 
           {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar."} /></div> : null}
+          {actionMutation.error ? <div className="mt-3"><ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel executar a acao."} /></div> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
               <Save className="h-4 w-4" />
@@ -416,6 +450,7 @@ export function HrMovementsClient() {
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{row.employeeName || "-"}</div>
                       <div className="mt-1 text-xs text-muted-foreground">{row.reason || (row.redacted ? "Motivo restrito" : "-")}</div>
+                      <MovementTimeline approvals={row.approvals} />
                     </td>
                     <td className="px-4 py-3"><StatusBadge status="info" label={row.movementTypeLabel} />{row.isSensitive ? <div className="mt-1"><StatusBadge status="warning" label="Restrito" /></div> : null}</td>
                     <td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td>
@@ -423,9 +458,12 @@ export function HrMovementsClient() {
                     <td className="px-4 py-3">{row.newUnit?.label || row.oldUnit?.label || "-"}</td>
                     <td className="px-4 py-3">{row.newDepartment?.label || row.oldDepartment?.label || "-"}</td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => startEdit(row)}>Editar</Button>
-                        <Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${row.employeeId}?tab=career`}>Carreira<ArrowRight className="h-4 w-4" /></Link></Button>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => startEdit(row)} disabled={row.status !== "draft"}>Editar</Button>
+                          <Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${row.employeeId}?tab=career`}>Carreira<ArrowRight className="h-4 w-4" /></Link></Button>
+                        </div>
+                        <MovementActions row={row} commentsByAction={commentsByAction} setCommentsByAction={setCommentsByAction} onAction={runAction} pending={actionMutation.isPending} />
                       </div>
                       {row.movementType === "salary_change" ? <p className="mt-2 text-xs text-muted-foreground">{moneyLabel(row.oldSalary)} para {moneyLabel(row.newSalary)}</p> : null}
                     </td>
@@ -436,6 +474,83 @@ export function HrMovementsClient() {
           </div>
         </Card>
       ) : null}
+    </div>
+  );
+}
+
+function MovementTimeline({ approvals }: { approvals: MovementApproval[] }) {
+  if (!approvals.length) return null;
+
+  return (
+    <div className="mt-3 space-y-1 border-l pl-3">
+      {approvals.map((approval) => (
+        <div key={approval.id} className="text-xs leading-5 text-muted-foreground">
+          <span className="font-medium text-foreground">{approval.actionLabel}</span>
+          <span> em {formatDate(approval.createdAt)}</span>
+          {approval.comments ? <span> - {approval.comments}</span> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MovementActions({
+  row,
+  commentsByAction,
+  setCommentsByAction,
+  onAction,
+  pending
+}: {
+  row: MovementRow;
+  commentsByAction: Record<string, string>;
+  setCommentsByAction: Dispatch<SetStateAction<Record<string, string>>>;
+  onAction: (row: MovementRow, action: MovementActionKey) => void;
+  pending: boolean;
+}) {
+  const allActions: Array<{ key: MovementActionKey; label: string; icon: typeof Send; visible: boolean; variant?: "default" | "outline" }> = [
+    { key: "submit", label: "Enviar aprovacao", icon: Send, visible: row.status === "draft", variant: "default" },
+    { key: "approve", label: "Aprovar", icon: CheckCircle2, visible: row.status === "pending_approval", variant: "default" },
+    { key: "reject", label: "Rejeitar", icon: XCircle, visible: row.status === "pending_approval", variant: "outline" },
+    { key: "implement", label: "Efetivar", icon: PlayCircle, visible: row.status === "approved", variant: "default" }
+  ];
+  const actions = allActions.filter((action) => action.visible);
+
+  if (!actions.length) return null;
+  const commentKey = `${row.id}:comment`;
+  const comment = commentsByAction[commentKey] ?? "";
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-2">
+      {actions.some((action) => action.key === "reject" || action.key === "submit" || action.key === "approve" || action.key === "implement") ? (
+        <Input
+          value={comment}
+          onChange={(event) =>
+            setCommentsByAction((current) => ({
+              ...current,
+              [commentKey]: event.target.value
+            }))
+          }
+          placeholder={actions[0].key === "reject" ? "Motivo da rejeicao" : "Comentario opcional"}
+        />
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <Button
+              key={action.key}
+              type="button"
+              variant={action.variant ?? "outline"}
+              size="sm"
+              onClick={() => onAction(row, action.key)}
+              disabled={pending || (action.key === "reject" && !comment.trim())}
+            >
+              <Icon className="h-4 w-4" />
+              {action.label}
+            </Button>
+          );
+        })}
+      </div>
     </div>
   );
 }

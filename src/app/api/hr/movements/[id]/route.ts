@@ -6,14 +6,12 @@ import {
   HR_PERMISSIONS,
   hrApiError,
   logHrApiError,
-  requireHrPermission,
-  type HrPermissionCode
+  requireHrPermission
 } from "@/lib/hr/api-auth";
 import {
   loadEmployeeMovement,
   movementListSelect,
   prepareEmployeeMovementWrite,
-  publishEmployeeMovementFunctionalEvent,
   redactEmployeeMovement,
   type EmployeeMovementRow
 } from "@/lib/hr/employee-movements";
@@ -23,14 +21,6 @@ type RouteParams = { params: { id: string } };
 
 function pickPayload<T extends Record<string, unknown>, K extends keyof T, F>(payload: T, key: K, fallback: F) {
   return Object.prototype.hasOwnProperty.call(payload, key) ? payload[key] : fallback;
-}
-
-async function requirePatchPermission(request: Request): Promise<{ permission: HrPermissionCode; body: unknown }> {
-  const body = await request.json();
-  const status = typeof body === "object" && body && "status" in body ? (body as { status?: unknown }).status : undefined;
-  const permission =
-    status === "approved" || status === "rejected" ? HR_PERMISSIONS.movementsApprove : HR_PERMISSIONS.movementsManage;
-  return { permission, body };
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
@@ -53,15 +43,20 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
-  try {
-    const { permission, body } = await requirePatchPermission(request);
-    const { context, response } = await requireHrPermission(permission);
-    if (response || !context) return response;
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.movementsManage);
+  if (response || !context) return response;
 
+  try {
     const { id } = hrIdParamSchema.parse(params);
-    const payload = hrMovementPayloadSchema.partial().parse(body);
+    const payload = hrMovementPayloadSchema.partial().parse(await request.json());
     const existing = await loadEmployeeMovement(context, id);
     if (!existing) return hrApiError("Movimentacao funcional nao encontrada.", 404);
+    if (payload.status && payload.status !== existing.status) {
+      return hrApiError("Altere o status usando as acoes formais de envio, aprovacao, rejeicao ou efetivacao.", 422);
+    }
+    if (existing.status !== "draft") {
+      return hrApiError("Somente movimentacoes em rascunho podem ser editadas diretamente.", 422);
+    }
 
     const merged = {
       employeeId: payload.employeeId ?? existing.employee_id,
@@ -95,7 +90,6 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
 
     const movement = data as unknown as EmployeeMovementRow;
-    await publishEmployeeMovementFunctionalEvent({ context, previous: existing, movement });
 
     return NextResponse.json({ ok: true, data: redactEmployeeMovement(movement, true) });
   } catch (error) {

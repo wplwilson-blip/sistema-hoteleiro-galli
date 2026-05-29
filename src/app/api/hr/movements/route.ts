@@ -11,7 +11,6 @@ import {
 import {
   movementListSelect,
   prepareEmployeeMovementWrite,
-  publishEmployeeMovementFunctionalEvent,
   redactEmployeeMovement,
   type EmployeeMovementRow
 } from "@/lib/hr/employee-movements";
@@ -70,6 +69,10 @@ export async function POST(request: Request) {
 
   try {
     const payload = hrMovementPayloadSchema.parse(await request.json());
+    if (payload.status !== "draft") {
+      return hrApiError("Movimentacao deve nascer como rascunho e ser enviada para aprovacao pelo fluxo formal.", 422);
+    }
+
     const insertPayload = await prepareEmployeeMovementWrite(context, payload);
     const { data, error } = await context.supabase
       .from("employee_movements")
@@ -83,7 +86,6 @@ export async function POST(request: Request) {
     }
 
     const movement = data as unknown as EmployeeMovementRow;
-    await publishEmployeeMovementFunctionalEvent({ context, movement });
 
     return NextResponse.json({ ok: true, data: redactEmployeeMovement(movement, true) }, { status: 201 });
   } catch (error) {
