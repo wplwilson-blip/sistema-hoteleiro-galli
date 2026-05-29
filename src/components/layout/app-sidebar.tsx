@@ -20,6 +20,7 @@ import {
   LayoutDashboard,
   ListChecks,
   ShieldCheck,
+  Shuffle,
   ShoppingCart,
   SlidersHorizontal,
   Tags,
@@ -131,6 +132,7 @@ const menuGroups: SidebarGroup[] = [
 const rhGroup = menuGroups.find((group) => group.href === "/rh");
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" });
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList, match: "exact" });
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact" });
 
 const footerItems: SidebarLink[] = [{ label: "Relatórios", href: "/relatorios", icon: FileText }];
 

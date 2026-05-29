@@ -14,6 +14,7 @@ import {
   ListChecks,
   Settings2,
   ShieldAlert,
+  Shuffle,
   TimerReset
 } from "lucide-react";
 import { StatCard } from "@/components/common/stat-card";
@@ -111,6 +112,14 @@ managementLinks.push({
   href: "/rh/gestao/avaliacoes/relatorios",
   icon: ClipboardList,
   badge: "Acompanhar"
+});
+
+managementLinks.push({
+  title: "Movimentações funcionais",
+  description: "Registre promocoes, transferencias e mudancas administrativas de carreira.",
+  href: "/rh/gestao/movimentacoes",
+  icon: Shuffle,
+  badge: "Carreira"
 });
 
 function ManagementHubCard({

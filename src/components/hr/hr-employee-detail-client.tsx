@@ -18,6 +18,7 @@ import {
   MessageSquareText,
   ShieldAlert,
   ShieldCheck,
+  Shuffle,
   UserRound,
   UsersRound
 } from "lucide-react";
@@ -72,6 +73,8 @@ type HrEmployeePermissions = {
   canVerifyDocuments?: boolean;
   canViewHistory?: boolean;
   canViewSensitiveHistory?: boolean;
+  canViewMovements?: boolean;
+  canViewSensitiveMovements?: boolean;
 };
 
 type HrEmployeeDetailResponse = {
@@ -112,7 +115,31 @@ type HrHistoryResponse = {
   };
 };
 
-type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "history";
+type HrCareerMovement = {
+  id: string;
+  movementType: string;
+  movementTypeLabel: string;
+  status: string;
+  statusLabel: string;
+  effectiveDate: string;
+  oldUnit: (RelatedMeta & { label?: string }) | null;
+  newUnit: (RelatedMeta & { label?: string }) | null;
+  oldDepartment: (RelatedMeta & { label?: string }) | null;
+  newDepartment: (RelatedMeta & { label?: string }) | null;
+  oldJobPosition: (RelatedMeta & { label?: string }) | null;
+  newJobPosition: (RelatedMeta & { label?: string }) | null;
+  oldSalary: number | null;
+  newSalary: number | null;
+  isSensitive: boolean;
+  redacted: boolean;
+};
+
+type HrCareerResponse = {
+  ok: true;
+  data: HrCareerMovement[];
+};
+
+type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "career" | "history";
 type TimelineCategory =
   | "all"
   | "registration"
@@ -131,7 +158,7 @@ type TimelinePeriod = "all" | "today" | "7d" | "30d" | "90d" | "custom";
 type TimelineSeverity = "all" | "info" | "notice" | "warning" | "critical";
 type TimelineSensitiveFilter = "all" | "only_sensitive" | "hide_sensitive";
 
-const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "history"];
+const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "career", "history"];
 const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
   { value: "all", label: "Todos" },
   { value: "registration", label: "Cadastro" },
@@ -279,6 +306,11 @@ function metaLabel(meta: RelatedMeta, fallback = "-") {
   return [meta.code, meta.name].filter(Boolean).join(" - ") || fallback;
 }
 
+function movementMetaLabel(meta: (RelatedMeta & { label?: string }) | null, fallback = "-") {
+  if (!meta) return fallback;
+  return meta.label || metaLabel(meta, fallback);
+}
+
 function recordStatusLabel(status: HrEmployeeDetail["status"]) {
   if (status === "active") return "Ativo";
   if (status === "inactive") return "Inativo";
@@ -287,6 +319,18 @@ function recordStatusLabel(status: HrEmployeeDetail["status"]) {
 
 function recordStatusTone(status: HrEmployeeDetail["status"]) {
   return status === "active" ? "success" : "visual";
+}
+
+function movementStatusTone(status: string) {
+  if (status === "implemented" || status === "approved") return "success" as const;
+  if (status === "rejected") return "danger" as const;
+  if (status === "pending_approval") return "warning" as const;
+  return "visual" as const;
+}
+
+function formatMoney(value: number | null | undefined) {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
 function eventSeverityTone(severity: string) {
@@ -374,6 +418,7 @@ function sourceLabel(event: HrFunctionalEvent) {
     employee_onboarding_item: "Onboarding",
     employee_evaluation: "Avaliacoes",
     employee_development_plan: "PDI",
+    employee_movement: "Movimentacoes",
     hr_workflow: "Workflow RH",
     hr_workflow_event: "Workflow RH"
   };
@@ -388,6 +433,7 @@ function sourceHref(employeeId: string, event: HrFunctionalEvent) {
   if (event.sourceEntityType === "employee_document") return `/rh/employees/${employeeId}?tab=documents`;
   if (event.sourceEntityType === "employee_evaluation") return `/rh/employees/${employeeId}?tab=evaluations&evaluationId=${event.sourceEntityId}`;
   if (event.sourceEntityType === "employee_development_plan") return `/rh/employees/${employeeId}?tab=development`;
+  if (event.sourceEntityType === "employee_movement") return `/rh/employees/${employeeId}?tab=career`;
   if (event.sourceEntityType === "employee_onboarding" || event.sourceEntityType === "employee_onboarding_item") return `/rh/employees/${employeeId}?tab=onboarding`;
   if (event.sourceEntityType === "hr_workflow") return `/rh/workflows/${event.sourceEntityId}`;
   return "";
@@ -493,6 +539,8 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   const canVerifyDocuments = Boolean(permissions.canVerifyDocuments);
   const canViewHistory = Boolean(permissions.canViewHistory);
   const canViewSensitiveHistory = Boolean(permissions.canViewSensitiveHistory);
+  const canViewMovements = Boolean(permissions.canViewMovements);
+  const canViewSensitiveMovements = Boolean(permissions.canViewSensitiveMovements);
 
   const tabs = useMemo(
     () =>
@@ -503,9 +551,10 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "onboarding" as const, label: "Onboarding", enabled: true },
         { value: "evaluations" as const, label: "Avaliacoes", enabled: true },
         { value: "development" as const, label: "Desenvolvimento", enabled: true },
+        { value: "career" as const, label: "Carreira", enabled: canViewMovements },
         { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
-    [canViewDocuments, canViewHistory, canViewSensitive]
+    [canViewDocuments, canViewHistory, canViewMovements, canViewSensitive]
   );
 
   useEffect(() => {
@@ -521,6 +570,12 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
     queryKey: ["hr", "employees", employeeId, "history", historyPage],
     queryFn: async () => requestJson<HrHistoryResponse>(`/api/hr/employees/${employeeId}/history?page=${historyPage}&pageSize=20`),
     enabled: Boolean(employee && canViewHistory && activeTab === "history")
+  });
+
+  const careerQuery = useQuery({
+    queryKey: ["hr", "employees", employeeId, "career"],
+    queryFn: async () => requestJson<HrCareerResponse>(`/api/hr/movements?employeeId=${employeeId}&pageSize=50`),
+    enabled: Boolean(employee && canViewMovements && activeTab === "career")
   });
 
   const filteredHistoryEvents = useMemo(() => {
@@ -579,6 +634,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         <div className="flex flex-wrap gap-2">
           <StatusBadge status={canViewSensitive ? "info" : "visual"} label={canViewSensitive ? "Dados protegidos permitidos" : "Dados protegidos ocultos"} />
           <StatusBadge status={canViewDocuments ? "success" : "visual"} label={canViewDocuments ? "Documentos liberados" : "Documentos restritos"} />
+          <StatusBadge status={canViewMovements ? "success" : "visual"} label={canViewMovements ? "Carreira liberada" : "Carreira restrita"} />
           <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Vida funcional liberada" : "Vida funcional restrita"} />
         </div>
       </div>
@@ -650,6 +706,74 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         <HrEmployeeEvaluationsCard employeeId={employeeId} initialEvaluationId={initialEvaluationId} onOpenDevelopment={() => setActiveTab("development")} />
       ) : null}
       {activeTab === "development" ? <HrEmployeeDevelopmentPlansCard employeeId={employeeId} /> : null}
+
+      {activeTab === "career" ? (
+        canViewMovements ? (
+          <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
+            <div className="border-b p-5">
+              <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Shuffle className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-semibold">Carreira</h3>
+                    <StatusBadge status="info" label="Historico de movimentacoes" />
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Evolucao funcional registrada em promocoes, transferencias e mudancas administrativas.
+                  </p>
+                </div>
+                <StatusBadge status={canViewSensitiveMovements ? "info" : "visual"} label={canViewSensitiveMovements ? "Dados salariais permitidos" : "Dados salariais restritos"} />
+              </div>
+            </div>
+            <div className="p-5">
+              {careerQuery.isLoading ? <LoadingTable label="Carregando carreira..." /> : null}
+              {careerQuery.error ? <ErrorMessage message={careerQuery.error instanceof Error ? careerQuery.error.message : "Nao foi possivel carregar carreira."} /> : null}
+              {!careerQuery.isLoading && careerQuery.data && !careerQuery.data.data.length ? (
+                <EmptyState title="Nenhuma movimentacao registrada" description="Promocoes, transferencias e mudancas administrativas do colaborador aparecerao aqui." />
+              ) : null}
+              {careerQuery.data?.data.length ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-[920px] w-full text-sm">
+                    <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Data</th>
+                        <th className="px-4 py-3">Tipo</th>
+                        <th className="px-4 py-3">Cargo</th>
+                        <th className="px-4 py-3">Departamento</th>
+                        <th className="px-4 py-3">Unidade</th>
+                        <th className="px-4 py-3">Salario</th>
+                        <th className="px-4 py-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {careerQuery.data.data.map((movement) => (
+                        <tr key={movement.id} className="align-top">
+                          <td className="px-4 py-3">{formatDate(movement.effectiveDate)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <StatusBadge status="info" label={movement.movementTypeLabel} />
+                              {movement.isSensitive ? <StatusBadge status="warning" label={movement.redacted ? "Restrito" : "Sensivel"} /> : null}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">{movementMetaLabel(movement.newJobPosition, "") || movementMetaLabel(movement.oldJobPosition)}</td>
+                          <td className="px-4 py-3">{movementMetaLabel(movement.newDepartment, "") || movementMetaLabel(movement.oldDepartment)}</td>
+                          <td className="px-4 py-3">{movementMetaLabel(movement.newUnit, "") || movementMetaLabel(movement.oldUnit)}</td>
+                          <td className="px-4 py-3">
+                            {movement.redacted ? "Restrito" : `${formatMoney(movement.oldSalary)} -> ${formatMoney(movement.newSalary)}`}
+                          </td>
+                          <td className="px-4 py-3"><StatusBadge status={movementStatusTone(movement.status)} label={movement.statusLabel} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+        ) : (
+          <RestrictedState title="Carreira restrita" description="Seu perfil nao possui permissao para consultar movimentacoes funcionais deste colaborador." />
+        )
+      ) : null}
 
       {activeTab === "history" ? (
         canViewHistory ? (

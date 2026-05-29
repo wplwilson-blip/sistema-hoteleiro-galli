@@ -28,6 +28,19 @@ export const hrDocumentPendingTypeSchema = z.enum([
 
 export const employeeFunctionalEventStatusSchema = z.enum(["active", "cancelled", "corrected"]);
 
+export const employeeMovementTypeSchema = z.enum([
+  "promotion",
+  "transfer",
+  "job_position_change",
+  "department_change",
+  "unit_change",
+  "salary_change"
+]);
+
+export const employeeMovementStatusSchema = z.enum(["draft", "pending_approval", "approved", "rejected", "implemented"]);
+
+export const employeeMovementVisibilityScopeSchema = z.enum(["restricted", "unit", "organization"]);
+
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
   "critical",
@@ -377,6 +390,63 @@ export const hrWorkflowListQuerySchema = z.object({
     .max(120, "Busca muito longa.")
     .optional()
     .or(emptyToUndefined)
+});
+
+const optionalMoneySchema = z.preprocess(
+  (value) => (value === "" || value == null ? undefined : value),
+  z.coerce.number().min(0, "Valor nao pode ser negativo.").max(9999999999.99, "Valor muito alto.").optional()
+);
+
+const safeMovementTextSchema = (max = 3000) =>
+  z
+    .string()
+    .trim()
+    .max(max, "Texto muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|medical|medico|cid|diagnostico|laudo|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Texto contem dado sensivel nao permitido."
+    )
+    .optional()
+    .or(emptyToUndefined);
+
+export const hrMovementsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  employeeId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  departmentId: optionalUuidSchema,
+  movementType: employeeMovementTypeSchema.optional().or(emptyToUndefined),
+  status: employeeMovementStatusSchema.optional().or(emptyToUndefined),
+  from: optionalDateSchema,
+  to: optionalDateSchema,
+  search: z.string().trim().max(120, "Busca muito longa.").optional().or(emptyToUndefined)
+});
+
+export const hrMovementPayloadSchema = z.object({
+  employeeId: z.string().uuid("Colaborador invalido."),
+  movementType: employeeMovementTypeSchema,
+  status: employeeMovementStatusSchema.default("draft"),
+  effectiveDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Use datas no formato YYYY-MM-DD."),
+  oldUnitId: optionalUuidSchema,
+  newUnitId: optionalUuidSchema,
+  oldDepartmentId: optionalUuidSchema,
+  newDepartmentId: optionalUuidSchema,
+  oldJobPositionId: optionalUuidSchema,
+  newJobPositionId: optionalUuidSchema,
+  oldSalary: optionalMoneySchema,
+  newSalary: optionalMoneySchema,
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Informe o motivo da movimentacao.")
+    .max(3000, "Motivo muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|medical|medico|cid|diagnostico|laudo|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Motivo contem dado sensivel nao permitido."
+    ),
+  notes: safeMovementTextSchema(3000),
+  isSensitive: z.boolean().optional(),
+  visibilityScope: employeeMovementVisibilityScopeSchema.optional()
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({

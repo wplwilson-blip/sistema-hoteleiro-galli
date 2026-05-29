@@ -1,0 +1,441 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, BriefcaseBusiness, CalendarClock, Filter, Plus, Save, Search, X } from "lucide-react";
+import { EmptyState } from "@/components/common/empty-state";
+import { StatusBadge } from "@/components/common/status-badge";
+import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+
+type RelatedMeta = { id: string; code: string; name: string; label: string } | null;
+
+type MovementRow = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  movementType: MovementType;
+  movementTypeLabel: string;
+  status: MovementStatus;
+  statusLabel: string;
+  effectiveDate: string;
+  oldUnit: RelatedMeta;
+  newUnit: RelatedMeta;
+  oldDepartment: RelatedMeta;
+  newDepartment: RelatedMeta;
+  oldJobPosition: RelatedMeta;
+  newJobPosition: RelatedMeta;
+  oldSalary: number | null;
+  newSalary: number | null;
+  reason: string;
+  notes: string;
+  isSensitive: boolean;
+  redacted: boolean;
+  updatedAt: string;
+};
+
+type MovementType = "promotion" | "transfer" | "job_position_change" | "department_change" | "unit_change" | "salary_change";
+type MovementStatus = "draft" | "pending_approval" | "approved" | "rejected" | "implemented";
+
+type MovementsResponse = {
+  ok: true;
+  data: MovementRow[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+};
+
+type EmployeeOption = {
+  id: string;
+  fullName: string;
+  preferredName: string;
+  unitId: string | null;
+  departmentId: string | null;
+  jobPositionId: string | null;
+  unit?: RelatedMeta;
+  department?: RelatedMeta;
+  jobPosition?: RelatedMeta;
+};
+
+type EmployeesResponse = { ok: true; data: EmployeeOption[] };
+type UnitsResponse = { ok: true; units: Array<{ id: string; code: string; name: string }> };
+type DepartmentsResponse = { ok: true; departments: Array<{ id: string; code: string; name: string; unitId: string }> };
+type PositionsResponse = { ok: true; positions: Array<{ id: string; code: string; name: string; unitId: string; departmentId: string | null }> };
+
+type MovementForm = {
+  id: string;
+  employeeId: string;
+  movementType: MovementType;
+  status: MovementStatus;
+  effectiveDate: string;
+  oldUnitId: string;
+  newUnitId: string;
+  oldDepartmentId: string;
+  newDepartmentId: string;
+  oldJobPositionId: string;
+  newJobPositionId: string;
+  oldSalary: string;
+  newSalary: string;
+  reason: string;
+  notes: string;
+};
+
+const movementTypes: Array<{ value: MovementType; label: string }> = [
+  { value: "promotion", label: "Promocao" },
+  { value: "transfer", label: "Transferencia" },
+  { value: "job_position_change", label: "Mudanca de cargo" },
+  { value: "department_change", label: "Mudanca de departamento" },
+  { value: "unit_change", label: "Mudanca de unidade" },
+  { value: "salary_change", label: "Mudanca salarial" }
+];
+
+const movementStatuses: Array<{ value: MovementStatus; label: string }> = [
+  { value: "draft", label: "Rascunho" },
+  { value: "pending_approval", label: "Aguardando aprovacao" },
+  { value: "approved", label: "Aprovada" },
+  { value: "rejected", label: "Rejeitada" },
+  { value: "implemented", label: "Efetivada" }
+];
+
+const emptyForm: MovementForm = {
+  id: "",
+  employeeId: "",
+  movementType: "promotion",
+  status: "draft",
+  effectiveDate: "",
+  oldUnitId: "",
+  newUnitId: "",
+  oldDepartmentId: "",
+  newDepartmentId: "",
+  oldJobPositionId: "",
+  newJobPositionId: "",
+  oldSalary: "",
+  newSalary: "",
+  reason: "",
+  notes: ""
+};
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel processar a movimentacao funcional.");
+  return payload as T;
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
+}
+
+function moneyLabel(value: number | null | undefined) {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function metaLabel(meta: RelatedMeta | undefined | null, fallback = "-") {
+  if (!meta) return fallback;
+  return [meta.code, meta.name].filter(Boolean).join(" - ") || fallback;
+}
+
+function statusTone(status: MovementStatus) {
+  if (status === "implemented" || status === "approved") return "success" as const;
+  if (status === "rejected") return "danger" as const;
+  if (status === "pending_approval") return "warning" as const;
+  return "visual" as const;
+}
+
+function buildMovementsUrl(filters: Record<string, string>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const query = params.toString();
+  return `/api/hr/movements${query ? `?${query}` : ""}`;
+}
+
+function toPayload(form: MovementForm) {
+  return {
+    employeeId: form.employeeId,
+    movementType: form.movementType,
+    status: form.status,
+    effectiveDate: form.effectiveDate,
+    oldUnitId: form.oldUnitId,
+    newUnitId: form.newUnitId,
+    oldDepartmentId: form.oldDepartmentId,
+    newDepartmentId: form.newDepartmentId,
+    oldJobPositionId: form.oldJobPositionId,
+    newJobPositionId: form.newJobPositionId,
+    oldSalary: form.oldSalary,
+    newSalary: form.newSalary,
+    reason: form.reason,
+    notes: form.notes,
+    isSensitive: form.movementType === "salary_change",
+    visibilityScope: form.movementType === "salary_change" ? "restricted" : "unit"
+  };
+}
+
+export function HrMovementsClient() {
+  const queryClient = useQueryClient();
+  const [filters, setFilters] = useState({ employeeId: "", movementType: "", status: "", from: "", to: "", search: "" });
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<MovementForm>(emptyForm);
+
+  const movementsQuery = useQuery({
+    queryKey: ["hr", "movements", filters],
+    queryFn: async () => requestJson<MovementsResponse>(buildMovementsUrl(filters))
+  });
+  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "movement-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
+  const unitsQuery = useQuery({ queryKey: ["base", "units", "movement-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
+  const departmentsQuery = useQuery({ queryKey: ["base", "departments", "movement-options"], queryFn: async () => requestJson<DepartmentsResponse>("/api/base/departments") });
+  const positionsQuery = useQuery({ queryKey: ["base", "positions", "movement-options"], queryFn: async () => requestJson<PositionsResponse>("/api/base/job-positions") });
+
+  const mutation = useMutation({
+    mutationFn: async (input: MovementForm) =>
+      requestJson(input.id ? `/api/hr/movements/${input.id}` : "/api/hr/movements", {
+        method: input.id ? "PATCH" : "POST",
+        body: JSON.stringify(toPayload(input))
+      }),
+    onSuccess: async () => {
+      setShowForm(false);
+      setForm(emptyForm);
+      await queryClient.invalidateQueries({ queryKey: ["hr", "movements"] });
+    }
+  });
+
+  const selectedEmployee = useMemo(() => (employeesQuery.data?.data ?? []).find((employee) => employee.id === form.employeeId), [employeesQuery.data?.data, form.employeeId]);
+  const departmentOptions = departmentsQuery.data?.departments ?? [];
+  const positionOptions = positionsQuery.data?.positions ?? [];
+  const rows = movementsQuery.data?.data ?? [];
+
+  function updateForm<K extends keyof MovementForm>(key: K, value: MovementForm[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectEmployee(employeeId: string) {
+    const employee = (employeesQuery.data?.data ?? []).find((item) => item.id === employeeId);
+    setForm((current) => ({
+      ...current,
+      employeeId,
+      oldUnitId: employee?.unitId ?? "",
+      oldDepartmentId: employee?.departmentId ?? "",
+      oldJobPositionId: employee?.jobPositionId ?? ""
+    }));
+  }
+
+  function startEdit(row: MovementRow) {
+    setForm({
+      id: row.id,
+      employeeId: row.employeeId,
+      movementType: row.movementType,
+      status: row.status,
+      effectiveDate: row.effectiveDate,
+      oldUnitId: row.oldUnit?.id ?? "",
+      newUnitId: row.newUnit?.id ?? "",
+      oldDepartmentId: row.oldDepartment?.id ?? "",
+      newDepartmentId: row.newDepartment?.id ?? "",
+      oldJobPositionId: row.oldJobPosition?.id ?? "",
+      newJobPositionId: row.newJobPosition?.id ?? "",
+      oldSalary: row.oldSalary == null ? "" : String(row.oldSalary),
+      newSalary: row.newSalary == null ? "" : String(row.newSalary),
+      reason: row.reason,
+      notes: row.notes
+    });
+    setShowForm(true);
+  }
+
+  const showUnitFields = form.movementType === "transfer" || form.movementType === "unit_change";
+  const showDepartmentFields = form.movementType === "department_change";
+  const showJobFields = form.movementType === "promotion" || form.movementType === "job_position_change";
+  const showSalaryFields = form.movementType === "salary_change";
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <BriefcaseBusiness className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Carreira administrativa</h2>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Registre movimentacoes funcionais com aprovacao simples e rastreabilidade na Vida Funcional, sem impacto automatico em folha ou ponto.
+            </p>
+          </div>
+          <Button type="button" size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}>
+            <Plus className="h-4 w-4" />
+            Nova movimentacao
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold">Filtros</h2>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <SelectField value={filters.employeeId} onChange={(event) => setFilters((current) => ({ ...current, employeeId: event.target.value }))}>
+            <option value="">Todos os colaboradores</option>
+            {(employeesQuery.data?.data ?? []).map((employee) => (
+              <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>
+            ))}
+          </SelectField>
+          <SelectField value={filters.movementType} onChange={(event) => setFilters((current) => ({ ...current, movementType: event.target.value }))}>
+            <option value="">Todos os tipos</option>
+            {movementTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+          </SelectField>
+          <SelectField value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            <option value="">Todos os status</option>
+            {movementStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+          </SelectField>
+          <Input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} />
+          <Input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} />
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Buscar motivo" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} />
+          </div>
+        </div>
+      </Card>
+
+      {showForm ? (
+        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{form.id ? "Editar movimentacao" : "Nova movimentacao funcional"}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Campos sensiveis, como salario, ficam restritos por permissao.</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setShowForm(false); setForm(emptyForm); }}>
+              <X className="h-4 w-4" />
+              Fechar
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Field label="Colaborador">
+              <SelectField value={form.employeeId} onChange={(event) => selectEmployee(event.target.value)}>
+                <option value="">Selecione</option>
+                {(employeesQuery.data?.data ?? []).map((employee) => (
+                  <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>
+                ))}
+              </SelectField>
+            </Field>
+            <Field label="Tipo">
+              <SelectField value={form.movementType} onChange={(event) => updateForm("movementType", event.target.value as MovementType)}>
+                {movementTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+              </SelectField>
+            </Field>
+            <Field label="Status">
+              <SelectField value={form.status} onChange={(event) => updateForm("status", event.target.value as MovementStatus)}>
+                {movementStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+              </SelectField>
+            </Field>
+            <Field label="Data efetiva">
+              <Input type="date" value={form.effectiveDate} onChange={(event) => updateForm("effectiveDate", event.target.value)} />
+            </Field>
+            <Field label="Motivo">
+              <Input value={form.reason} onChange={(event) => updateForm("reason", event.target.value)} placeholder="Motivo operacional" />
+            </Field>
+            <Field label="Observacao">
+              <TextArea value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} placeholder="Observacao administrativa opcional" />
+            </Field>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {showUnitFields ? (
+              <>
+                <Field label="Unidade anterior"><SelectField value={form.oldUnitId} onChange={(event) => updateForm("oldUnitId", event.target.value)}><option value="">Selecione</option>{(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>)}</SelectField></Field>
+                <Field label="Unidade nova"><SelectField value={form.newUnitId} onChange={(event) => updateForm("newUnitId", event.target.value)}><option value="">Selecione</option>{(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>)}</SelectField></Field>
+              </>
+            ) : null}
+            {showDepartmentFields ? (
+              <>
+                <Field label="Departamento anterior"><SelectField value={form.oldDepartmentId} onChange={(event) => updateForm("oldDepartmentId", event.target.value)}><option value="">Selecione</option>{departmentOptions.map((department) => <option key={department.id} value={department.id}>{[department.code, department.name].filter(Boolean).join(" - ")}</option>)}</SelectField></Field>
+                <Field label="Departamento novo"><SelectField value={form.newDepartmentId} onChange={(event) => updateForm("newDepartmentId", event.target.value)}><option value="">Selecione</option>{departmentOptions.map((department) => <option key={department.id} value={department.id}>{[department.code, department.name].filter(Boolean).join(" - ")}</option>)}</SelectField></Field>
+              </>
+            ) : null}
+            {showJobFields ? (
+              <>
+                <Field label="Cargo anterior"><SelectField value={form.oldJobPositionId} onChange={(event) => updateForm("oldJobPositionId", event.target.value)}><option value="">Selecione</option>{positionOptions.map((position) => <option key={position.id} value={position.id}>{[position.code, position.name].filter(Boolean).join(" - ")}</option>)}</SelectField></Field>
+                <Field label="Cargo novo"><SelectField value={form.newJobPositionId} onChange={(event) => updateForm("newJobPositionId", event.target.value)}><option value="">Selecione</option>{positionOptions.map((position) => <option key={position.id} value={position.id}>{[position.code, position.name].filter(Boolean).join(" - ")}</option>)}</SelectField></Field>
+              </>
+            ) : null}
+            {showSalaryFields ? (
+              <>
+                <Field label="Salario anterior"><Input type="number" min="0" step="0.01" value={form.oldSalary} onChange={(event) => updateForm("oldSalary", event.target.value)} /></Field>
+                <Field label="Salario novo"><Input type="number" min="0" step="0.01" value={form.newSalary} onChange={(event) => updateForm("newSalary", event.target.value)} /></Field>
+              </>
+            ) : null}
+          </div>
+
+          {selectedEmployee ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <StatusBadge status="info" label={`Unidade atual: ${metaLabel(selectedEmployee.unit)}`} />
+              <StatusBadge status="visual" label={`Departamento atual: ${metaLabel(selectedEmployee.department)}`} />
+              <StatusBadge status="visual" label={`Cargo atual: ${metaLabel(selectedEmployee.jobPosition)}`} />
+            </div>
+          ) : null}
+
+          {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar."} /></div> : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
+              <Save className="h-4 w-4" />
+              Salvar
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setShowForm(false); setForm(emptyForm); }}>Cancelar</Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {movementsQuery.isLoading ? <LoadingTable label="Carregando movimentacoes funcionais..." /> : null}
+      {movementsQuery.error ? <ErrorMessage message={movementsQuery.error instanceof Error ? movementsQuery.error.message : "Erro ao carregar movimentacoes."} /> : null}
+      {!movementsQuery.isLoading && !rows.length ? (
+        <EmptyState title="Nenhuma movimentacao funcional registrada" description="Promocoes, transferencias e mudancas administrativas do colaborador aparecerao aqui." />
+      ) : null}
+
+      {rows.length ? (
+        <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
+          <div className="overflow-x-auto">
+            <table className="min-w-[980px] w-full text-sm">
+              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3">Colaborador</th>
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Data efetiva</th>
+                  <th className="px-4 py-3">Unidade</th>
+                  <th className="px-4 py-3">Departamento</th>
+                  <th className="px-4 py-3">Acao</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((row) => (
+                  <tr key={row.id} className="align-top">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-foreground">{row.employeeName || "-"}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{row.reason || (row.redacted ? "Motivo restrito" : "-")}</div>
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status="info" label={row.movementTypeLabel} />{row.isSensitive ? <div className="mt-1"><StatusBadge status="warning" label="Restrito" /></div> : null}</td>
+                    <td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td>
+                    <td className="px-4 py-3"><div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-muted-foreground" />{formatDate(row.effectiveDate)}</div></td>
+                    <td className="px-4 py-3">{row.newUnit?.label || row.oldUnit?.label || "-"}</td>
+                    <td className="px-4 py-3">{row.newDepartment?.label || row.oldDepartment?.label || "-"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => startEdit(row)}>Editar</Button>
+                        <Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${row.employeeId}?tab=career`}>Carreira<ArrowRight className="h-4 w-4" /></Link></Button>
+                      </div>
+                      {row.movementType === "salary_change" ? <p className="mt-2 text-xs text-muted-foreground">{moneyLabel(row.oldSalary)} para {moneyLabel(row.newSalary)}</p> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
