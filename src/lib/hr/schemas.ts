@@ -70,6 +70,19 @@ export const employeeTrainingStatusSchema = z.enum([
   "cancelled"
 ]);
 
+export const occupationalRecordTypeSchema = z.enum([
+  "aso_admission",
+  "aso_periodic",
+  "aso_return",
+  "aso_role_change",
+  "aso_termination",
+  "occupational_exam",
+  "occupational_restriction",
+  "nr_certification"
+]);
+
+export const occupationalStatusSchema = z.enum(["valid", "expiring", "expired", "cancelled"]);
+
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
   "critical",
@@ -575,6 +588,75 @@ export const employeeTrainingUpdatePayloadSchema = z.object({
   certificateAttachmentId: optionalUuidSchema,
   attendanceConfirmed: z.boolean().optional(),
   notes: safeTrainingTextSchema(1000)
+});
+
+const safeOccupationalTextSchema = (max = 1000) =>
+  z
+    .string()
+    .trim()
+    .max(max, "Texto muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Texto contem dado sensivel nao permitido."
+    )
+    .optional()
+    .or(emptyToUndefined);
+
+export const occupationalRecordsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  employeeId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  recordType: occupationalRecordTypeSchema.optional().or(emptyToUndefined),
+  status: occupationalStatusSchema.optional().or(emptyToUndefined),
+  from: optionalDateSchema,
+  to: optionalDateSchema,
+  expiresFrom: optionalDateSchema,
+  expiresTo: optionalDateSchema,
+  search: z.string().trim().max(120, "Busca muito longa.").optional().or(emptyToUndefined)
+});
+
+export const occupationalRecordPayloadSchema = z.object({
+  employeeId: z.string().uuid("Colaborador invalido."),
+  recordType: occupationalRecordTypeSchema,
+  status: occupationalStatusSchema.default("valid"),
+  examDate: optionalDateSchema,
+  expiresAt: optionalDateSchema,
+  providerName: safeOccupationalTextSchema(160),
+  doctorName: safeOccupationalTextSchema(160),
+  certificateNumber: safeOccupationalTextSchema(80),
+  restrictionNotes: safeOccupationalTextSchema(1000),
+  attachmentId: optionalUuidSchema
+});
+
+export const nrCertificationsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  employeeId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  nrCode: z.string().trim().toUpperCase().regex(/^NR-[0-9]{2,3}[A-Z]?$/, "NR invalida.").optional().or(emptyToUndefined),
+  status: occupationalStatusSchema.optional().or(emptyToUndefined),
+  expiresFrom: optionalDateSchema,
+  expiresTo: optionalDateSchema,
+  search: z.string().trim().max(120, "Busca muito longa.").optional().or(emptyToUndefined)
+});
+
+export const nrCertificationPayloadSchema = z.object({
+  employeeId: z.string().uuid("Colaborador invalido."),
+  nrCode: z.string().trim().toUpperCase().regex(/^NR-[0-9]{2,3}[A-Z]?$/, "NR invalida."),
+  trainingName: z
+    .string()
+    .trim()
+    .min(2, "Informe o treinamento.")
+    .max(180, "Treinamento muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Texto contem dado sensivel nao permitido."
+    ),
+  issuedAt: optionalDateSchema,
+  expiresAt: optionalDateSchema,
+  certificateAttachmentId: optionalUuidSchema,
+  status: occupationalStatusSchema.default("valid")
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({

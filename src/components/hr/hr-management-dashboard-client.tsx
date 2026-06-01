@@ -11,6 +11,7 @@ import {
   FileCog,
   FileText,
   GraduationCap,
+  HeartPulse,
   Inbox,
   ListChecks,
   Settings2,
@@ -129,6 +130,14 @@ managementLinks.push({
   href: "/rh/gestao/treinamentos",
   icon: GraduationCap,
   badge: "Capacitacao"
+});
+
+managementLinks.push({
+  title: "Saude Ocupacional",
+  description: "Controle ASOs, exames, restricoes e certificacoes NR com dados restritos.",
+  href: "/rh/gestao/saude-ocupacional",
+  icon: HeartPulse,
+  badge: "Restrito"
 });
 
 function ManagementHubCard({

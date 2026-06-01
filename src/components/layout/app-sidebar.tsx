@@ -15,6 +15,7 @@ import {
   FileText,
   FileWarning,
   GraduationCap,
+  HeartPulse,
   IdCard,
   Inbox,
   Landmark,
@@ -131,6 +132,7 @@ const menuGroups: SidebarGroup[] = [
 ];
 
 const rhGroup = menuGroups.find((group) => group.href === "/rh");
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Saude Ocupacional", href: "/rh/gestao/saude-ocupacional", icon: HeartPulse, match: "exact" });
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Treinamentos", href: "/rh/gestao/treinamentos", icon: GraduationCap, match: "exact" });
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" });
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList, match: "exact" });

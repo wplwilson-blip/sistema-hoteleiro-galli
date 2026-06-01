@@ -15,6 +15,7 @@ import {
   GitBranch,
   GraduationCap,
   History,
+  HeartPulse,
   Lock,
   Mail,
   MessageSquareText,
@@ -33,6 +34,7 @@ import { HrEmployeeDocumentsCard } from "@/components/hr/hr-employee-documents-c
 import { HrEmployeeDevelopmentPlansCard } from "@/components/hr/hr-employee-development-plans-card";
 import { HrEmployeeEvaluationsCard } from "@/components/hr/hr-employee-evaluations-card";
 import { HrEmployeeOnboardingCard } from "@/components/hr/hr-employee-onboarding-card";
+import { HrEmployeeOccupationalHealthCard } from "@/components/hr/hr-employee-occupational-health-card";
 import { HrEmployeeTrainingsCard } from "@/components/hr/hr-employee-trainings-card";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +82,8 @@ type HrEmployeePermissions = {
   canViewSensitiveMovements?: boolean;
   canViewTrainings?: boolean;
   canViewSensitiveTrainings?: boolean;
+  canViewOccupational?: boolean;
+  canViewSensitiveOccupational?: boolean;
 };
 
 type HrEmployeeDetailResponse = {
@@ -153,7 +157,7 @@ type HrCareerResponse = {
   data: HrCareerMovement[];
 };
 
-type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "career" | "trainings" | "history";
+type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "career" | "trainings" | "occupational" | "history";
 type TimelineCategory =
   | "all"
   | "registration"
@@ -172,7 +176,7 @@ type TimelinePeriod = "all" | "today" | "7d" | "30d" | "90d" | "custom";
 type TimelineSeverity = "all" | "info" | "notice" | "warning" | "critical";
 type TimelineSensitiveFilter = "all" | "only_sensitive" | "hide_sensitive";
 
-const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "career", "trainings", "history"];
+const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "career", "trainings", "occupational", "history"];
 const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
   { value: "all", label: "Todos" },
   { value: "registration", label: "Cadastro" },
@@ -483,12 +487,14 @@ function sourceLabel(event: HrFunctionalEvent) {
     employee_development_plan: "PDI",
     employee_movement: "Movimentacoes",
     employee_training: "Treinamentos",
+    employee_occupational_record: "Saude Ocupacional",
+    employee_nr_certification: "Saude Ocupacional",
     hr_workflow: "Workflow RH",
     hr_workflow_event: "Workflow RH"
   };
 
   if (event.sourceEntityType && entityTypeLabels[event.sourceEntityType]) return entityTypeLabels[event.sourceEntityType];
-  if (event.sourceModule === "HR") return "RH";
+  if (event.sourceModule?.toLowerCase() === "hr") return "RH";
   return event.sourceModule || "RH";
 }
 
@@ -499,6 +505,7 @@ function sourceHref(employeeId: string, event: HrFunctionalEvent) {
   if (event.sourceEntityType === "employee_development_plan") return `/rh/employees/${employeeId}?tab=development`;
   if (event.sourceEntityType === "employee_movement") return `/rh/employees/${employeeId}?tab=career`;
   if (event.sourceEntityType === "employee_training") return `/rh/employees/${employeeId}?tab=trainings`;
+  if (event.sourceEntityType === "employee_occupational_record" || event.sourceEntityType === "employee_nr_certification") return `/rh/employees/${employeeId}?tab=occupational`;
   if (event.sourceEntityType === "employee_onboarding" || event.sourceEntityType === "employee_onboarding_item") return `/rh/employees/${employeeId}?tab=onboarding`;
   if (event.sourceEntityType === "hr_workflow") return `/rh/workflows/${event.sourceEntityId}`;
   return "";
@@ -607,6 +614,8 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   const canViewMovements = Boolean(permissions.canViewMovements);
   const canViewSensitiveMovements = Boolean(permissions.canViewSensitiveMovements);
   const canViewTrainings = Boolean(permissions.canViewTrainings);
+  const canViewOccupational = Boolean(permissions.canViewOccupational);
+  const canViewSensitiveOccupational = Boolean(permissions.canViewSensitiveOccupational);
 
   const tabs = useMemo(
     () =>
@@ -619,9 +628,10 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "development" as const, label: "Desenvolvimento", enabled: true },
         { value: "career" as const, label: "Carreira", enabled: canViewMovements },
         { value: "trainings" as const, label: "Treinamentos", enabled: canViewTrainings },
+        { value: "occupational" as const, label: "Saude Ocupacional", enabled: canViewOccupational },
         { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
-    [canViewDocuments, canViewHistory, canViewMovements, canViewSensitive, canViewTrainings]
+    [canViewDocuments, canViewHistory, canViewMovements, canViewOccupational, canViewSensitive, canViewTrainings]
   );
 
   useEffect(() => {
@@ -712,6 +722,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <StatusBadge status={canViewDocuments ? "success" : "visual"} label={canViewDocuments ? "Documentos liberados" : "Documentos restritos"} />
           <StatusBadge status={canViewMovements ? "success" : "visual"} label={canViewMovements ? "Carreira liberada" : "Carreira restrita"} />
           <StatusBadge status={canViewTrainings ? "success" : "visual"} label={canViewTrainings ? "Treinamentos liberados" : "Treinamentos restritos"} />
+          <StatusBadge status={canViewOccupational ? "success" : "visual"} label={canViewOccupational ? "Saude ocupacional liberada" : "Saude ocupacional restrita"} />
           <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Vida funcional liberada" : "Vida funcional restrita"} />
         </div>
       </div>
@@ -789,6 +800,20 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <HrEmployeeTrainingsCard employeeId={employeeId} />
         ) : (
           <RestrictedState title="Treinamentos restritos" description="Seu perfil nao possui permissao para consultar treinamentos deste colaborador." />
+        )
+      ) : null}
+
+      {activeTab === "occupational" ? (
+        canViewOccupational ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
+              <HeartPulse className="h-4 w-4 text-primary" />
+              <StatusBadge status={canViewSensitiveOccupational ? "info" : "visual"} label={canViewSensitiveOccupational ? "Dados ocupacionais permitidos" : "Dados ocupacionais redigidos"} />
+            </div>
+            <HrEmployeeOccupationalHealthCard employeeId={employeeId} />
+          </div>
+        ) : (
+          <RestrictedState title="Saude Ocupacional restrita" description="Seu perfil nao possui permissao para consultar dados ocupacionais deste colaborador." />
         )
       ) : null}
 
