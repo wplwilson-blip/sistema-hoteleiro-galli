@@ -35,7 +35,7 @@ type Job = {
 type JobsResponse = { data: Job[] };
 
 const statuses = ["pending", "scheduled", "running", "completed", "failed", "cancelled", "retrying"];
-const jobTypes = ["sla_scan", "escalation_scan", "notification_dispatch", "audit_cleanup", "analytics_refresh", "dashboard_refresh"];
+const jobTypes = ["sla_scan", "escalation_scan", "notification_dispatch", "audit_cleanup", "analytics_refresh", "dashboard_refresh", "training_expiration_scan"];
 const priorities = ["low", "normal", "high", "critical"];
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -108,7 +108,8 @@ function jobTypeLabel(type: string) {
     notification_dispatch: "Envio de notificacoes",
     audit_cleanup: "Organizacao de auditoria",
     analytics_refresh: "Atualizacao de indicadores",
-    dashboard_refresh: "Atualizacao do painel"
+    dashboard_refresh: "Atualizacao do painel",
+    training_expiration_scan: "Vencimentos de treinamentos"
   };
   return labels[type] ?? type;
 }

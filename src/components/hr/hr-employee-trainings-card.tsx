@@ -20,6 +20,12 @@ type EmployeeTraining = {
   hasCertificate: boolean;
   isMandatory: boolean;
   redacted: boolean;
+  expiration?: {
+    isExpired: boolean;
+    expiresSoon: boolean;
+    needsRetraining: boolean;
+    mandatoryPending: boolean;
+  };
 };
 
 type TrainingsResponse = { ok: true; data: EmployeeTraining[] };
@@ -41,6 +47,7 @@ function formatDate(value: string | null | undefined) {
 function statusTone(status: string) {
   if (status === "completed") return "success" as const;
   if (status === "expired" || status === "cancelled") return "danger" as const;
+  if (status === "retraining_required") return "warning" as const;
   if (status === "assigned" || status === "scheduled" || status === "in_progress") return "warning" as const;
   return "visual" as const;
 }
@@ -89,7 +96,12 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
                   <tr key={training.id} className="align-top">
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{training.trainingTitle || "-"}</div>
-                      {training.isMandatory ? <div className="mt-1"><StatusBadge status="warning" label="Obrigatorio" /></div> : null}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {training.isMandatory ? <StatusBadge status="warning" label="Obrigatorio" /> : null}
+                        {training.expiration?.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}
+                        {training.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}
+                        {training.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessaria" /> : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">{training.trainingTypeLabel || "-"}</td>
                     <td className="px-4 py-3"><StatusBadge status={statusTone(training.status)} label={training.statusLabel} /></td>

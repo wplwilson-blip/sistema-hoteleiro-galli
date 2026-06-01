@@ -42,6 +42,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (existing.status !== "completed" && updated.status === "completed") {
       await publishEmployeeTrainingEvent({ context, eventType: "training_completed", employeeTraining: updated, previous: existing });
     }
+    if (existing.status !== "expired" && updated.status === "expired") {
+      await publishEmployeeTrainingEvent({ context, eventType: "training_expired", employeeTraining: updated, previous: existing });
+    }
+    if (existing.status !== "retraining_required" && updated.status === "retraining_required") {
+      await publishEmployeeTrainingEvent({ context, eventType: "training_retraining_required", employeeTraining: updated, previous: existing });
+    }
     if (!existing.certificate_attachment_id && updated.certificate_attachment_id) {
       await publishEmployeeTrainingEvent({ context, eventType: "training_certificate_uploaded", employeeTraining: updated, previous: existing });
     }

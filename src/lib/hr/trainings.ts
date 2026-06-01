@@ -88,6 +88,7 @@ export const employeeTrainingStatusLabels: Record<string, string> = {
   in_progress: "Em andamento",
   completed: "Concluído",
   expired: "Vencido",
+  retraining_required: "Reciclagem necessaria",
   waived: "Dispensado",
   cancelled: "Cancelado"
 };
@@ -107,6 +108,41 @@ function addDaysIso(base: string, days: number) {
   if (Number.isNaN(date.getTime())) return null;
   date.setDate(date.getDate() + days);
   return date.toISOString();
+}
+
+function dateAtStart(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+export function trainingExpirationState(row: EmployeeTrainingRow, now = new Date()) {
+  const expiresAt = dateAtStart(row.expires_at);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const warningLimit = new Date(today);
+  warningLimit.setDate(today.getDate() + 30);
+  const expiredByDate = Boolean(expiresAt && expiresAt.getTime() < today.getTime());
+  const expiresSoon = Boolean(
+    expiresAt &&
+      expiresAt.getTime() >= today.getTime() &&
+      expiresAt.getTime() <= warningLimit.getTime() &&
+      !["expired", "retraining_required", "waived", "cancelled"].includes(row.status)
+  );
+  const training = row.hr_trainings;
+  const isExpired = row.status === "expired" || row.status === "retraining_required" || expiredByDate;
+  const needsRetraining = row.status === "retraining_required" || (isExpired && Boolean(training?.has_expiration));
+  const mandatoryPending = Boolean(training?.is_mandatory && row.status !== "completed");
+
+  return {
+    expiredByDate,
+    isExpired,
+    expiresSoon,
+    needsRetraining,
+    mandatoryPending
+  };
 }
 
 export function mapTraining(row: HrTrainingRow) {
@@ -166,6 +202,7 @@ export function redactEmployeeTraining(row: EmployeeTrainingRow, canViewSensitiv
     notes: redacted ? "" : row.notes ?? "",
     isSensitive: row.is_sensitive,
     visibilityScope: row.visibility_scope,
+    expiration: trainingExpirationState(row),
     redacted,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -273,7 +310,13 @@ export function prepareEmployeeTrainingUpdate(existing: EmployeeTrainingRow, pay
 
 export async function publishEmployeeTrainingEvent(input: {
   context: HrRequestContext;
-  eventType: "training_required" | "training_completed" | "training_certificate_uploaded";
+  eventType:
+    | "training_required"
+    | "training_completed"
+    | "training_certificate_uploaded"
+    | "training_expiring"
+    | "training_expired"
+    | "training_retraining_required";
   employeeTraining: EmployeeTrainingRow;
   previous?: EmployeeTrainingRow | null;
 }) {
@@ -281,8 +324,12 @@ export async function publishEmployeeTrainingEvent(input: {
   const titles = {
     training_required: "Treinamento atribuido",
     training_completed: "Treinamento concluido",
-    training_certificate_uploaded: "Certificado de treinamento anexado"
+    training_certificate_uploaded: "Certificado de treinamento anexado",
+    training_expiring: "Treinamento vencendo",
+    training_expired: "Treinamento vencido",
+    training_retraining_required: "Reciclagem necessaria"
   };
+  const warningEvents = new Set(["training_expired", "training_retraining_required"]);
 
   try {
     const result = await createEmployeeFunctionalEvent(input.context.supabase, {
@@ -290,7 +337,7 @@ export async function publishEmployeeTrainingEvent(input: {
       eventType: input.eventType,
       title: titles[input.eventType],
       description: training?.title ? `${titles[input.eventType]}: ${training.title}.` : titles[input.eventType],
-      severity: "notice",
+      severity: warningEvents.has(input.eventType) ? "warning" : "notice",
       visibilityScope: "unit",
       isSensitive: false,
       sourceModule: "hr",
@@ -306,6 +353,8 @@ export async function publishEmployeeTrainingEvent(input: {
         due_date: input.employeeTraining.due_date,
         completed_at: input.employeeTraining.completed_at,
         expires_at: input.employeeTraining.expires_at,
+        previous_status: input.previous?.status,
+        new_status: input.employeeTraining.status,
         requires_certificate: training?.requires_certificate,
         has_expiration: training?.has_expiration
       }
@@ -315,4 +364,71 @@ export async function publishEmployeeTrainingEvent(input: {
   } catch (error) {
     logHrApiError("trainings.functional_event_failed", error instanceof Error ? error : { message: "Erro desconhecido ao publicar evento de treinamento." });
   }
+}
+
+export async function processTrainingExpirationGovernance(input: { context: HrRequestContext; unitId: string }) {
+  assertUnitInHrScope(input.context, input.unitId);
+
+  const { data, error } = await input.context.supabase
+    .from("employee_trainings")
+    .select(employeeTrainingListSelect)
+    .eq("unit_id", input.unitId)
+    .is("deleted_at", null)
+    .not("expires_at", "is", null)
+    .in("status", ["assigned", "scheduled", "in_progress", "completed", "expired", "retraining_required"]);
+
+  if (error) {
+    logHrApiError("trainings.expiration_scan_failed", error);
+    throw new Error("Nao foi possivel processar vencimentos de treinamentos.");
+  }
+
+  const rows = ((data ?? []) as unknown as EmployeeTrainingRow[]).filter((row) => Boolean(row.hr_trainings?.has_expiration));
+  const result = {
+    processedCount: rows.length,
+    expiringCount: 0,
+    expiredCount: 0,
+    retrainingCount: 0
+  };
+
+  for (const row of rows) {
+    const state = trainingExpirationState(row);
+
+    if (state.expiresSoon) {
+      result.expiringCount += 1;
+      await publishEmployeeTrainingEvent({ context: input.context, eventType: "training_expiring", employeeTraining: row });
+    }
+
+    if (!state.expiredByDate) {
+      continue;
+    }
+
+    const shouldUseRetrainingStatus = row.hr_trainings?.training_type === "recycling";
+    const nextStatus = shouldUseRetrainingStatus ? "retraining_required" : "expired";
+    let currentRow = row;
+
+    if (row.status !== nextStatus) {
+      const { data: updated, error: updateError } = await input.context.supabase
+        .from("employee_trainings")
+        .update({ status: nextStatus, updated_by: input.context.session.user.id })
+        .eq("id", row.id)
+        .select(employeeTrainingListSelect)
+        .single();
+
+      if (updateError) {
+        logHrApiError("trainings.expiration_update_failed", updateError);
+        continue;
+      }
+
+      currentRow = updated as unknown as EmployeeTrainingRow;
+      result.expiredCount += 1;
+      await publishEmployeeTrainingEvent({ context: input.context, eventType: "training_expired", employeeTraining: currentRow, previous: row });
+    }
+
+    if (trainingExpirationState(currentRow).needsRetraining) {
+      result.retrainingCount += 1;
+      await publishEmployeeTrainingEvent({ context: input.context, eventType: "training_retraining_required", employeeTraining: currentRow, previous: row });
+    }
+  }
+
+  return result;
 }

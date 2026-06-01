@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Award, CalendarClock, CheckCircle2, FileCheck2, Filter, Plus, Save, Search, ShieldAlert, X } from "lucide-react";
+import { Award, CalendarClock, CheckCircle2, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -49,6 +49,12 @@ type EmployeeTraining = {
   expiresAt: string;
   hasCertificate: boolean;
   redacted: boolean;
+  expiration?: {
+    isExpired: boolean;
+    expiresSoon: boolean;
+    needsRetraining: boolean;
+    mandatoryPending: boolean;
+  };
 };
 
 type EmployeeOption = { id: string; fullName: string; preferredName: string };
@@ -118,8 +124,19 @@ const employeeStatuses = [
   ["in_progress", "Em andamento"],
   ["completed", "Concluído"],
   ["expired", "Vencido"],
+  ["retraining_required", "Reciclagem necessaria"],
   ["waived", "Dispensado"],
   ["cancelled", "Cancelado"]
+];
+
+const quickFilters = [
+  ["", "Todas as pendencias"],
+  ["expired", "Vencidos"],
+  ["expiring", "A vencer"],
+  ["retraining", "Reciclagem"],
+  ["mandatory_pending", "Obrigatorios pendentes"],
+  ["pending", "Pendentes"],
+  ["completed", "Concluidos"]
 ];
 
 const emptyTrainingForm: TrainingForm = {
@@ -167,6 +184,7 @@ function formatDate(value: string | null | undefined) {
 function statusTone(status: string) {
   if (status === "completed") return "success" as const;
   if (status === "expired" || status === "cancelled") return "danger" as const;
+  if (status === "retraining_required") return "warning" as const;
   if (status === "assigned" || status === "scheduled" || status === "in_progress") return "warning" as const;
   return "visual" as const;
 }
@@ -197,7 +215,7 @@ function trainingPayload(form: TrainingForm) {
 
 export function HrTrainingsClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ status: "", trainingType: "", deliveryMode: "", mandatory: "", unitId: "", employeeId: "", expiresTo: "", search: "" });
+  const [filters, setFilters] = useState({ status: "", trainingType: "", deliveryMode: "", mandatory: "", unitId: "", employeeId: "", expiresTo: "", search: "", quick: "" });
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [verifyForm, setVerifyForm] = useState<VerifyForm>(emptyVerifyForm);
@@ -206,7 +224,7 @@ export function HrTrainingsClient() {
 
   const assignmentsQuery = useQuery({
     queryKey: ["hr", "training-assignments", filters],
-    queryFn: async () => requestJson<AssignmentsResponse>(buildUrl("/api/hr/trainings/assignments", filters))
+    queryFn: async () => requestJson<AssignmentsResponse>(buildUrl("/api/hr/trainings/assignments", { ...filters, quick: "" }))
   });
   const catalogFilters = useMemo(
     () => ({
@@ -228,14 +246,27 @@ export function HrTrainingsClient() {
 
   const trainings = useMemo(() => trainingsQuery.data?.data ?? [], [trainingsQuery.data?.data]);
   const assignments = useMemo(() => assignmentsQuery.data?.data ?? [], [assignmentsQuery.data?.data]);
+  const visibleAssignments = useMemo(() => {
+    if (!filters.quick) return assignments;
+    return assignments.filter((item) => {
+      if (filters.quick === "expired") return Boolean(item.expiration?.isExpired || item.status === "expired");
+      if (filters.quick === "expiring") return Boolean(item.expiration?.expiresSoon);
+      if (filters.quick === "retraining") return Boolean(item.expiration?.needsRetraining || item.status === "retraining_required");
+      if (filters.quick === "mandatory_pending") return Boolean(item.expiration?.mandatoryPending);
+      if (filters.quick === "pending") return !["completed", "waived", "cancelled"].includes(item.status);
+      if (filters.quick === "completed") return item.status === "completed";
+      return true;
+    });
+  }, [assignments, filters.quick]);
   const summary = useMemo(
     () => ({
       totalTrainings: trainingsQuery.data?.pagination.total ?? trainings.length,
-      mandatory: trainings.filter((training) => training.isMandatory).length,
+      mandatoryPending: assignments.filter((item) => item.expiration?.mandatoryPending).length,
       assigned: assignments.length,
       completed: assignments.filter((item) => item.status === "completed").length,
-      expired: assignments.filter((item) => item.status === "expired").length,
-      expiring: assignments.filter((item) => item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now() + 30 * 86400000).length,
+      expired: assignments.filter((item) => item.expiration?.isExpired || item.status === "expired").length,
+      expiring: assignments.filter((item) => item.expiration?.expiresSoon).length,
+      retraining: assignments.filter((item) => item.expiration?.needsRetraining || item.status === "retraining_required").length,
       certificatePending: assignments.filter((item) => item.requiresCertificate && item.status === "completed" && !item.hasCertificate).length
     }),
     [assignments, trainings, trainingsQuery.data?.pagination.total]
@@ -286,6 +317,18 @@ export function HrTrainingsClient() {
     }
   });
 
+  const processMutation = useMutation({
+    mutationFn: async () =>
+      requestJson<{ ok: true; data: { processedCount: number; expiringCount: number; expiredCount: number; retrainingCount: number } }>("/api/hr/trainings/process-expirations", {
+        method: "POST",
+        body: JSON.stringify({ unitId: filters.unitId })
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["hr", "training-assignments"] });
+      await queryClient.invalidateQueries({ queryKey: ["hr", "employees"] });
+    }
+  });
+
   function startEdit(training: Training) {
     setTrainingForm({
       id: training.id,
@@ -332,19 +375,26 @@ export function HrTrainingsClient() {
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Novo treinamento</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignForm(true)}><Plus className="h-4 w-4" />Atribuir</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
           </div>
         </div>
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-        <TrainingStat title="Total" value={summary.totalTrainings} icon={Award} tone="info" />
-        <TrainingStat title="Obrigatórios" value={summary.mandatory} icon={ShieldAlert} tone={summary.mandatory ? "warning" : "visual"} />
-        <TrainingStat title="Atribuídos" value={summary.assigned} icon={CalendarClock} tone="info" />
-        <TrainingStat title="Concluídos" value={summary.completed} icon={CheckCircle2} tone={summary.completed ? "success" : "visual"} />
-        <TrainingStat title="Vencidos" value={summary.expired} icon={ShieldAlert} tone={summary.expired ? "danger" : "visual"} />
+        <TrainingStat title="Total treinamentos" value={summary.totalTrainings} icon={Award} tone="info" />
+        <TrainingStat title="Obrigatorios pendentes" value={summary.mandatoryPending} icon={ShieldAlert} tone={summary.mandatoryPending ? "warning" : "visual"} />
         <TrainingStat title="A vencer" value={summary.expiring} icon={CalendarClock} tone={summary.expiring ? "warning" : "visual"} />
+        <TrainingStat title="Vencidos" value={summary.expired} icon={ShieldAlert} tone={summary.expired ? "danger" : "visual"} />
+        <TrainingStat title="Reciclagem necessaria" value={summary.retraining} icon={RefreshCw} tone={summary.retraining ? "warning" : "visual"} />
         <TrainingStat title="Certificados pendentes" value={summary.certificatePending} icon={FileCheck2} tone={summary.certificatePending ? "warning" : "visual"} />
+        <TrainingStat title="Concluidos" value={summary.completed} icon={CheckCircle2} tone={summary.completed ? "success" : "visual"} />
       </div>
+      {processMutation.error ? <ErrorMessage message={processMutation.error instanceof Error ? processMutation.error.message : "Erro ao atualizar vencimentos."} /> : null}
+      {processMutation.data?.data ? (
+        <Card className="border-border/80 p-3 text-sm shadow-sm shadow-primary/5">
+          Processamento concluido: {processMutation.data.data.processedCount} registro(s) avaliados, {processMutation.data.data.expiredCount} vencido(s), {processMutation.data.data.expiringCount} a vencer e {processMutation.data.data.retrainingCount} com reciclagem necessaria.
+        </Card>
+      ) : null}
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros</h2></div>
@@ -368,6 +418,9 @@ export function HrTrainingsClient() {
           <SelectField value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
             <option value="">Todos os status</option>
             {employeeStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </SelectField>
+          <SelectField value={filters.quick} onChange={(event) => setFilters((current) => ({ ...current, quick: event.target.value }))}>
+            {quickFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </SelectField>
           <SelectField value={filters.mandatory} onChange={(event) => setFilters((current) => ({ ...current, mandatory: event.target.value }))}>
             <option value="">Obrigatorio?</option>
@@ -454,12 +507,12 @@ export function HrTrainingsClient() {
 
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
           <div className="border-b p-4"><h2 className="text-sm font-semibold">Treinamentos atribuídos</h2></div>
-          {!assignments.length && !assignmentsQuery.isLoading ? <EmptyState title="Nenhum treinamento atribuído" description="As atribuições de treinamento dos colaboradores aparecerão aqui." /> : null}
-          {assignments.length ? (
+          {!visibleAssignments.length && !assignmentsQuery.isLoading ? <EmptyState title="Nenhum treinamento atribuído" description="As atribuições de treinamento dos colaboradores aparecerão aqui." /> : null}
+          {visibleAssignments.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-[920px] w-full text-sm">
                 <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prazo</th><th className="px-4 py-3">Conclusão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead>
-                <tbody className="divide-y">{assignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div>{row.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}</td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Validar</Button></td></tr>)}</tbody>
+                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatorio" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessaria" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Validar</Button></td></tr>)}</tbody>
               </table>
             </div>
           ) : null}

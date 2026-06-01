@@ -59,7 +59,16 @@ export const hrTrainingDeliveryModeSchema = z.enum(["in_person", "online", "hybr
 
 export const hrTrainingCatalogStatusSchema = z.enum(["active", "inactive", "archived"]);
 
-export const employeeTrainingStatusSchema = z.enum(["assigned", "scheduled", "in_progress", "completed", "expired", "waived", "cancelled"]);
+export const employeeTrainingStatusSchema = z.enum([
+  "assigned",
+  "scheduled",
+  "in_progress",
+  "completed",
+  "expired",
+  "retraining_required",
+  "waived",
+  "cancelled"
+]);
 
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
@@ -154,7 +163,8 @@ export const hrBackgroundJobTypeSchema = z.enum([
   "notification_dispatch",
   "audit_cleanup",
   "analytics_refresh",
-  "dashboard_refresh"
+  "dashboard_refresh",
+  "training_expiration_scan"
 ]);
 
 export const hrBackgroundJobStatusSchema = z.enum(["pending", "scheduled", "running", "completed", "failed", "cancelled", "retrying"]);
