@@ -20,6 +20,10 @@ type OccupationalRecord = {
   hasAttachment: boolean;
   restrictionNotes: string;
   redacted: boolean;
+  expiration?: {
+    isExpired: boolean;
+    expiresSoon: boolean;
+  };
 };
 
 type NrCertification = {
@@ -32,6 +36,10 @@ type NrCertification = {
   statusLabel: string;
   hasCertificate: boolean;
   redacted: boolean;
+  expiration?: {
+    isExpired: boolean;
+    expiresSoon: boolean;
+  };
 };
 
 type OccupationalResponse = { ok: true; data: OccupationalRecord[] };
@@ -56,6 +64,28 @@ function statusTone(status: string) {
   if (status === "expiring") return "warning" as const;
   if (status === "expired" || status === "cancelled") return "danger" as const;
   return "visual" as const;
+}
+
+function expirationState(value: string | null | undefined, status: string) {
+  const date = value ? new Date(value.includes("T") ? value : `${value}T00:00:00.000Z`) : null;
+  if (!date || Number.isNaN(date.getTime())) return { isExpired: status === "expired", expiresSoon: false };
+  date.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const limit = new Date(today);
+  limit.setDate(today.getDate() + 30);
+  return {
+    isExpired: status === "expired" || date.getTime() < today.getTime(),
+    expiresSoon: status !== "expired" && status !== "cancelled" && date.getTime() >= today.getTime() && date.getTime() <= limit.getTime()
+  };
+}
+
+function recordExpiration(record: OccupationalRecord) {
+  return record.expiration ?? expirationState(record.expiresAt, record.status);
+}
+
+function nrExpiration(nr: NrCertification) {
+  return nr.expiration ?? expirationState(nr.expiresAt, nr.status);
 }
 
 function restrictedValue(value: string, redacted: boolean) {
@@ -117,11 +147,16 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {records.map((record) => (
+                {records.map((record) => {
+                  const expiration = recordExpiration(record);
+                  return (
                   <tr key={record.id} className="align-top">
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         <StatusBadge status="info" label={record.recordTypeLabel} />
+                        {expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}
+                        {expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}
+                        {record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restricao ativa" /> : null}
                         {record.redacted ? <StatusBadge status="warning" label="Restrito" /> : null}
                       </div>
                     </td>
@@ -133,7 +168,8 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                     <td className="px-4 py-3">{restrictedValue(record.restrictionNotes, record.redacted)}</td>
                     <td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -153,7 +189,9 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {nrs.map((nr) => (
+                {nrs.map((nr) => {
+                  const expiration = nrExpiration(nr);
+                  return (
                   <tr key={nr.id} className="align-top">
                     <td className="px-4 py-3"><StatusBadge status="info" label={nr.nrCode} /></td>
                     <td className="px-4 py-3">{nr.trainingName || "-"}</td>
@@ -162,12 +200,15 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                     <td className="px-4 py-3"><StatusBadge status={statusTone(nr.status)} label={nr.statusLabel} /></td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        {expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}
+                        {expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}
                         <StatusBadge status={nr.hasCertificate ? "success" : "visual"} label={nr.hasCertificate ? "Anexado" : "Pendente"} />
                         {nr.redacted ? <StatusBadge status="warning" label="Restrito" /> : null}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

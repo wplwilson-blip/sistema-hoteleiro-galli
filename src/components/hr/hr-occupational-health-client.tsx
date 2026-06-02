@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, FileCheck2, Filter, HeartPulse, Plus, Save, ShieldAlert, X } from "lucide-react";
+import { Activity, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -25,6 +25,10 @@ type OccupationalRecord = {
   hasAttachment: boolean;
   restrictionNotes: string;
   redacted: boolean;
+  expiration?: {
+    isExpired: boolean;
+    expiresSoon: boolean;
+  };
 };
 
 type NrCertification = {
@@ -39,6 +43,10 @@ type NrCertification = {
   statusLabel: string;
   hasCertificate: boolean;
   redacted: boolean;
+  expiration?: {
+    isExpired: boolean;
+    expiresSoon: boolean;
+  };
 };
 
 type EmployeeOption = { id: string; fullName: string; preferredName: string };
@@ -47,6 +55,17 @@ type RecordsResponse = { ok: true; data: OccupationalRecord[] };
 type NrResponse = { ok: true; data: NrCertification[] };
 type EmployeesResponse = { ok: true; data: EmployeeOption[] };
 type UnitsResponse = { ok: true; units: UnitOption[] };
+type ProcessExpirationsResponse = {
+  ok: true;
+  data: {
+    processedCount: number;
+    asoExpiringCount: number;
+    asoExpiredCount: number;
+    nrExpiringCount: number;
+    nrExpiredCount: number;
+    restrictionCount: number;
+  };
+};
 
 type RecordForm = {
   id: string;
@@ -92,6 +111,14 @@ const statuses = [
 ];
 
 const nrCodes = ["NR-05", "NR-06", "NR-10", "NR-12", "NR-17", "NR-23", "NR-35"];
+const quickFilters = [
+  ["", "Todas as pendencias"],
+  ["expired", "Vencidos"],
+  ["expiring", "A vencer"],
+  ["aso", "ASO"],
+  ["nr", "NR"],
+  ["restrictions", "Restricoes"]
+];
 const emptyRecordForm: RecordForm = { id: "", employeeId: "", recordType: "aso_periodic", status: "valid", examDate: "", expiresAt: "", providerName: "", doctorName: "", certificateNumber: "", restrictionNotes: "", attachmentId: "" };
 const emptyNrForm: NrForm = { id: "", employeeId: "", nrCode: "NR-06", trainingName: "", issuedAt: "", expiresAt: "", certificateAttachmentId: "", status: "valid" };
 
@@ -123,6 +150,28 @@ function statusTone(status: string) {
   return "visual" as const;
 }
 
+function expirationState(value: string | null | undefined, status: string) {
+  const date = value ? new Date(value.includes("T") ? value : `${value}T00:00:00.000Z`) : null;
+  if (!date || Number.isNaN(date.getTime())) return { isExpired: status === "expired", expiresSoon: false };
+  date.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const limit = new Date(today);
+  limit.setDate(today.getDate() + 30);
+  return {
+    isExpired: status === "expired" || date.getTime() < today.getTime(),
+    expiresSoon: status !== "expired" && status !== "cancelled" && date.getTime() >= today.getTime() && date.getTime() <= limit.getTime()
+  };
+}
+
+function recordExpiration(record: OccupationalRecord) {
+  return record.expiration ?? expirationState(record.expiresAt, record.status);
+}
+
+function nrExpiration(nr: NrCertification) {
+  return nr.expiration ?? expirationState(nr.expiresAt, nr.status);
+}
+
 function recordPayload(form: RecordForm) {
   return {
     employeeId: form.employeeId,
@@ -152,26 +201,52 @@ function nrPayload(form: NrForm) {
 
 export function HrOccupationalHealthClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ unitId: "", employeeId: "", recordType: "", status: "", search: "" });
+  const [filters, setFilters] = useState({ unitId: "", employeeId: "", recordType: "", status: "", search: "", quick: "" });
   const [recordForm, setRecordForm] = useState<RecordForm>(emptyRecordForm);
   const [nrForm, setNrForm] = useState<NrForm>(emptyNrForm);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showNrForm, setShowNrForm] = useState(false);
 
-  const recordsQuery = useQuery({ queryKey: ["hr", "occupational-records", filters], queryFn: async () => requestJson<RecordsResponse>(buildUrl("/api/hr/occupational-records", { ...filters, pageSize: "100" })) });
+  const recordsQuery = useQuery({ queryKey: ["hr", "occupational-records", filters], queryFn: async () => requestJson<RecordsResponse>(buildUrl("/api/hr/occupational-records", { unitId: filters.unitId, employeeId: filters.employeeId, recordType: filters.recordType, status: filters.status, search: filters.search, pageSize: "100" })) });
   const nrQuery = useQuery({ queryKey: ["hr", "nr-certifications", filters], queryFn: async () => requestJson<NrResponse>(buildUrl("/api/hr/nr-certifications", { unitId: filters.unitId, employeeId: filters.employeeId, status: filters.status, search: filters.search, pageSize: "100" })) });
   const employeesQuery = useQuery({ queryKey: ["hr", "employees", "occupational-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const unitsQuery = useQuery({ queryKey: ["base", "units", "occupational-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
 
   const records = useMemo(() => recordsQuery.data?.data ?? [], [recordsQuery.data?.data]);
   const nrs = useMemo(() => nrQuery.data?.data ?? [], [nrQuery.data?.data]);
+  const filteredRecords = useMemo(
+    () =>
+      records.filter((record) => {
+        const expiration = recordExpiration(record);
+        if (filters.quick === "expired") return expiration.isExpired;
+        if (filters.quick === "expiring") return expiration.expiresSoon;
+        if (filters.quick === "aso") return record.recordType.startsWith("aso_");
+        if (filters.quick === "nr") return false;
+        if (filters.quick === "restrictions") return record.recordType === "occupational_restriction" && record.status !== "cancelled";
+        return true;
+      }),
+    [filters.quick, records]
+  );
+  const filteredNrs = useMemo(
+    () =>
+      nrs.filter((nr) => {
+        const expiration = nrExpiration(nr);
+        if (filters.quick === "expired") return expiration.isExpired;
+        if (filters.quick === "expiring") return expiration.expiresSoon;
+        if (filters.quick === "aso") return false;
+        if (filters.quick === "restrictions") return false;
+        return true;
+      }),
+    [filters.quick, nrs]
+  );
   const summary = useMemo(
     () => ({
       asoValid: records.filter((record) => record.recordType.startsWith("aso_") && record.status === "valid").length,
-      asoExpired: records.filter((record) => record.recordType.startsWith("aso_") && record.status === "expired").length,
-      asoExpiring: records.filter((record) => record.recordType.startsWith("aso_") && record.status === "expiring").length,
+      asoExpired: records.filter((record) => record.recordType.startsWith("aso_") && recordExpiration(record).isExpired).length,
+      asoExpiring: records.filter((record) => record.recordType.startsWith("aso_") && recordExpiration(record).expiresSoon).length,
       nrValid: nrs.filter((nr) => nr.status === "valid").length,
-      nrExpired: nrs.filter((nr) => nr.status === "expired").length,
+      nrExpired: nrs.filter((nr) => nrExpiration(nr).isExpired).length,
+      nrExpiring: nrs.filter((nr) => nrExpiration(nr).expiresSoon).length,
       restrictions: records.filter((record) => record.recordType === "occupational_restriction" && record.status !== "cancelled").length
     }),
     [nrs, records]
@@ -203,6 +278,21 @@ export function HrOccupationalHealthClient() {
     }
   });
 
+  const processMutation = useMutation({
+    mutationFn: async () =>
+      requestJson<ProcessExpirationsResponse>("/api/hr/occupational-records/process-expirations", {
+        method: "POST",
+        body: JSON.stringify({ unitId: filters.unitId })
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["hr", "occupational-records"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "nr-certifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "background-jobs"] })
+      ]);
+    }
+  });
+
   function editRecord(record: OccupationalRecord) {
     setRecordForm({ id: record.id, employeeId: record.employeeId, recordType: record.recordType, status: record.status, examDate: record.examDate, expiresAt: record.expiresAt, providerName: record.providerName, doctorName: record.doctorName, certificateNumber: "", restrictionNotes: record.restrictionNotes, attachmentId: "" });
     setShowRecordForm(true);
@@ -222,24 +312,37 @@ export function HrOccupationalHealthClient() {
             <p className="mt-1 text-sm text-muted-foreground">ASOs, exames ocupacionais, restricoes e certificacoes NR com dados restritos.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
             <Button size="sm" onClick={() => { setRecordForm(emptyRecordForm); setShowRecordForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
             <Button size="sm" variant="outline" onClick={() => { setNrForm(emptyNrForm); setShowNrForm(true); }}><Plus className="h-4 w-4" />Nova NR</Button>
           </div>
         </div>
+        {processMutation.data ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusBadge status="info" label={`${processMutation.data.data.processedCount} processado(s)`} />
+            <StatusBadge status="warning" label={`ASOs a vencer: ${processMutation.data.data.asoExpiringCount}`} />
+            <StatusBadge status={processMutation.data.data.asoExpiredCount ? "danger" : "visual"} label={`ASOs vencidos: ${processMutation.data.data.asoExpiredCount}`} />
+            <StatusBadge status="warning" label={`NRs a vencer: ${processMutation.data.data.nrExpiringCount}`} />
+            <StatusBadge status={processMutation.data.data.nrExpiredCount ? "danger" : "visual"} label={`NRs vencidas: ${processMutation.data.data.nrExpiredCount}`} />
+          </div>
+        ) : null}
+        {processMutation.error ? <div className="mt-3"><ErrorMessage message={processMutation.error instanceof Error ? processMutation.error.message : "Erro ao atualizar vencimentos."} /></div> : null}
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
         <OccupationalStat title="ASOs validos" value={summary.asoValid} icon={FileCheck2} tone="success" />
-        <OccupationalStat title="ASOs vencidos" value={summary.asoExpired} icon={ShieldAlert} tone={summary.asoExpired ? "danger" : "visual"} />
         <OccupationalStat title="ASOs a vencer" value={summary.asoExpiring} icon={Activity} tone={summary.asoExpiring ? "warning" : "visual"} />
+        <OccupationalStat title="ASOs vencidos" value={summary.asoExpired} icon={ShieldAlert} tone={summary.asoExpired ? "danger" : "visual"} />
         <OccupationalStat title="NRs validas" value={summary.nrValid} icon={FileCheck2} tone="success" />
+        <OccupationalStat title="NRs a vencer" value={summary.nrExpiring} icon={Activity} tone={summary.nrExpiring ? "warning" : "visual"} />
         <OccupationalStat title="NRs vencidas" value={summary.nrExpired} icon={ShieldAlert} tone={summary.nrExpired ? "danger" : "visual"} />
         <OccupationalStat title="Restricoes ativas" value={summary.restrictions} icon={ShieldAlert} tone={summary.restrictions ? "warning" : "visual"} />
       </div>
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros</h2></div>
-        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <SelectField value={filters.quick} onChange={(event) => setFilters((current) => ({ ...current, quick: event.target.value }))}>{quickFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>
           <SelectField value={filters.unitId} onChange={(event) => setFilters((current) => ({ ...current, unitId: event.target.value }))}><option value="">Todas as unidades</option>{(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>)}</SelectField>
           <SelectField value={filters.employeeId} onChange={(event) => setFilters((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Todos os colaboradores</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField>
           <SelectField value={filters.recordType} onChange={(event) => setFilters((current) => ({ ...current, recordType: event.target.value }))}><option value="">Todos os tipos</option>{recordTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>
@@ -289,8 +392,8 @@ export function HrOccupationalHealthClient() {
       {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Erro ao carregar NRs."} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <OccupationalRecordsTable records={records} onEdit={editRecord} />
-        <NrTable rows={nrs} onEdit={editNr} />
+        <OccupationalRecordsTable records={filteredRecords} onEdit={editRecord} />
+        <NrTable rows={filteredNrs} onEdit={editNr} />
       </div>
     </div>
   );
@@ -311,7 +414,7 @@ function OccupationalRecordsTable({ records, onEdit }: { records: OccupationalRe
       <div className="border-b p-4"><h2 className="text-sm font-semibold">ASOs, exames e restricoes</h2></div>
       {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="ASOs, exames e restricoes ocupacionais aparecerao aqui." /> : null}
       {records.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Medico</th><th className="px-4 py-3">Restricoes</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3">{record.recordTypeLabel}</td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Medico</th><th className="px-4 py-3">Restricoes</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{records.map((record) => { const expiration = recordExpiration(record); return <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span>{record.recordTypeLabel}</span>{record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restricao ativa" /> : null}</div></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}</div></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
     </Card>
   );
@@ -323,7 +426,7 @@ function NrTable({ rows, onEdit }: { rows: NrCertification[]; onEdit: (row: NrCe
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Certificacoes NR</h2></div>
       {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Certificacoes obrigatorias e seus vencimentos aparecerao aqui." /> : null}
       {rows.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissao</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{rows.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissao</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{rows.map((row) => { const expiration = nrExpiration(row); return <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}</div></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
     </Card>
   );

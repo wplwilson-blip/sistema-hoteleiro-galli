@@ -174,11 +174,12 @@ export const hrBackgroundJobTypeSchema = z.enum([
   "sla_scan",
   "escalation_scan",
   "notification_dispatch",
-  "audit_cleanup",
-  "analytics_refresh",
-  "dashboard_refresh",
-  "training_expiration_scan"
-]);
+    "audit_cleanup",
+    "analytics_refresh",
+    "dashboard_refresh",
+    "training_expiration_scan",
+    "occupational_expiration_scan"
+  ]);
 
 export const hrBackgroundJobStatusSchema = z.enum(["pending", "scheduled", "running", "completed", "failed", "cancelled", "retrying"]);
 

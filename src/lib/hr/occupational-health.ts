@@ -97,6 +97,35 @@ function isAso(recordType: string) {
   return recordType.startsWith("aso_");
 }
 
+function dateAtStart(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function expirationState(value: string | null | undefined, status: string, now = new Date()) {
+  const expiresAt = dateAtStart(value);
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const warningLimit = new Date(today);
+  warningLimit.setDate(today.getDate() + 30);
+  const expiredByDate = Boolean(expiresAt && expiresAt.getTime() < today.getTime());
+  const expiresSoon = Boolean(
+    expiresAt &&
+      expiresAt.getTime() >= today.getTime() &&
+      expiresAt.getTime() <= warningLimit.getTime() &&
+      !["expired", "cancelled"].includes(status)
+  );
+
+  return {
+    expiredByDate,
+    isExpired: status === "expired" || expiredByDate,
+    expiresSoon
+  };
+}
+
 export function mapOccupationalRecord(row: OccupationalRecordRow, canViewSensitive: boolean) {
   const redacted = row.is_sensitive && !canViewSensitive;
   return {
@@ -120,6 +149,7 @@ export function mapOccupationalRecord(row: OccupationalRecordRow, canViewSensiti
     hasAttachment: Boolean(row.attachment_id),
     isSensitive: row.is_sensitive,
     visibilityScope: row.visibility_scope,
+    expiration: expirationState(row.expires_at, row.status),
     redacted,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -145,6 +175,7 @@ export function mapNrCertification(row: NrCertificationRow, canViewSensitive: bo
     statusLabel: occupationalStatusLabels[row.status] ?? row.status,
     isSensitive: row.is_sensitive,
     visibilityScope: row.visibility_scope,
+    expiration: expirationState(row.expires_at, row.status),
     redacted,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -283,4 +314,138 @@ export async function publishNrCertificationEvent(input: { context: HrRequestCon
   } catch (error) {
     logHrApiError("occupational.nr_functional_event_failed", error instanceof Error ? error : { message: "Erro desconhecido ao publicar evento de certificacao NR." });
   }
+}
+
+async function publishAsoExpirationEvent(input: {
+  context: HrRequestContext;
+  eventType: "aso_expiring" | "aso_expired";
+  record: OccupationalRecordRow;
+  previous?: OccupationalRecordRow | null;
+}) {
+  const titles = {
+    aso_expiring: "ASO vencendo",
+    aso_expired: "ASO vencido"
+  };
+
+  try {
+    const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+      employeeId: input.record.employee_id,
+      eventType: input.eventType,
+      title: titles[input.eventType],
+      description: `${occupationalRecordTypeLabels[input.record.record_type] ?? "ASO"} ${input.eventType === "aso_expired" ? "vencido" : "em janela de vencimento"}.`,
+      severity: input.eventType === "aso_expired" ? "warning" : "notice",
+      visibilityScope: "restricted",
+      isSensitive: true,
+      sourceModule: "hr",
+      sourceEntityType: "employee_occupational_record",
+      sourceEntityId: input.record.id,
+      relatedAttachmentId: input.record.attachment_id,
+      actorUserId: input.context.session.user.id,
+      dedupeKey: `occupational:${input.record.id}:${input.eventType === "aso_expired" ? "expired" : "expiring"}`,
+      eventPayload: {
+        record_type: input.record.record_type,
+        exam_date: input.record.exam_date,
+        expires_at: input.record.expires_at,
+        previous_status: input.previous?.status,
+        new_status: input.record.status
+      }
+    });
+    if (!result.ok) logHrApiError("occupational.expiration_event_failed", { message: result.error.message, code: result.error.code });
+  } catch (error) {
+    logHrApiError("occupational.expiration_event_failed", error instanceof Error ? error : { message: "Erro desconhecido ao publicar vencimento ocupacional." });
+  }
+}
+
+export async function processOccupationalExpirationGovernance(input: { context: HrRequestContext; unitId: string }) {
+  assertUnitInHrScope(input.context, input.unitId);
+
+  const asoTypes = ["aso_admission", "aso_periodic", "aso_return", "aso_role_change", "aso_termination"];
+  const result = {
+    processedCount: 0,
+    asoExpiringCount: 0,
+    asoExpiredCount: 0,
+    nrExpiringCount: 0,
+    nrExpiredCount: 0,
+    restrictionCount: 0
+  };
+
+  const { data: recordData, error: recordError } = await input.context.supabase
+    .from("employee_occupational_records")
+    .select(occupationalRecordListSelect)
+    .eq("unit_id", input.unitId)
+    .is("deleted_at", null);
+
+  if (recordError) {
+    logHrApiError("occupational.expiration_records_scan_failed", recordError);
+    throw new Error("Nao foi possivel processar vencimentos ocupacionais.");
+  }
+
+  const records = (recordData ?? []) as unknown as OccupationalRecordRow[];
+  const asoRecords = records.filter((record) => asoTypes.includes(record.record_type) && record.expires_at && record.status !== "cancelled");
+  result.restrictionCount = records.filter((record) => record.record_type === "occupational_restriction" && record.status !== "cancelled").length;
+  result.processedCount += asoRecords.length;
+
+  for (const record of asoRecords) {
+    const state = expirationState(record.expires_at, record.status);
+
+    if (state.expiresSoon) {
+      result.asoExpiringCount += 1;
+      await publishAsoExpirationEvent({ context: input.context, eventType: "aso_expiring", record });
+    }
+
+    if (!state.expiredByDate || record.status === "expired") continue;
+
+    const { data: updated, error: updateError } = await input.context.supabase
+      .from("employee_occupational_records")
+      .update({ status: "expired", updated_by: input.context.session.user.id })
+      .eq("id", record.id)
+      .select(occupationalRecordListSelect)
+      .single();
+
+    if (updateError) {
+      logHrApiError("occupational.aso_expiration_update_failed", updateError);
+      continue;
+    }
+
+    const updatedRecord = updated as unknown as OccupationalRecordRow;
+    result.asoExpiredCount += 1;
+    await publishAsoExpirationEvent({ context: input.context, eventType: "aso_expired", record: updatedRecord, previous: record });
+  }
+
+  const { data: nrData, error: nrError } = await input.context.supabase
+    .from("employee_nr_certifications")
+    .select(nrCertificationListSelect)
+    .eq("unit_id", input.unitId)
+    .is("deleted_at", null)
+    .not("expires_at", "is", null)
+    .neq("status", "cancelled");
+
+  if (nrError) {
+    logHrApiError("occupational.expiration_nr_scan_failed", nrError);
+    throw new Error("Nao foi possivel processar vencimentos de certificacoes NR.");
+  }
+
+  const nrRows = (nrData ?? []) as unknown as NrCertificationRow[];
+  result.processedCount += nrRows.length;
+
+  for (const nr of nrRows) {
+    const state = expirationState(nr.expires_at, nr.status);
+
+    if (state.expiresSoon) result.nrExpiringCount += 1;
+    if (!state.expiredByDate || nr.status === "expired") continue;
+
+    const { error: updateError } = await input.context.supabase
+      .from("employee_nr_certifications")
+      .update({ status: "expired", updated_by: input.context.session.user.id })
+      .eq("id", nr.id);
+
+    if (updateError) {
+      logHrApiError("occupational.nr_expiration_update_failed", updateError);
+      continue;
+    }
+
+    result.nrExpiredCount += 1;
+  }
+
+  return result;
 }

@@ -14,7 +14,8 @@ export type HrBackgroundJobType =
   | "audit_cleanup"
   | "analytics_refresh"
   | "dashboard_refresh"
-  | "training_expiration_scan";
+  | "training_expiration_scan"
+  | "occupational_expiration_scan";
 export type HrBackgroundJobPriority = "low" | "normal" | "high" | "critical";
 
 export type HrBackgroundJobRow = {
@@ -74,10 +75,16 @@ const safePayloadKeys = new Set([
   "requested_by",
   "source",
   "training_scope",
+  "occupational_scope",
   "expired_count",
   "expiring_count",
   "retraining_count",
-  "processed_count"
+  "processed_count",
+  "aso_expiring_count",
+  "aso_expired_count",
+  "nr_expiring_count",
+  "nr_expired_count",
+  "restriction_count"
 ]);
 
 function toNumber(value: number | string | null | undefined) {
