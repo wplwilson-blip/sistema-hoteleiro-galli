@@ -36,7 +36,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       canViewTrainings,
       canViewSensitiveTrainings,
       canViewOccupational,
-      canViewSensitiveOccupational
+      canViewSensitiveOccupational,
+      canViewConduct,
+      canViewSensitiveConduct
     ] =
       await Promise.all([
         loadEmployeeRelations(context.supabase, [employee]),
@@ -52,7 +54,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.trainingsView, employee.unit_id),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.trainingsSensitiveView, employee.unit_id),
         userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.occupationalView, employee.unit_id),
-        userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.occupationalSensitiveView, employee.unit_id)
+        userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.occupationalSensitiveView, employee.unit_id),
+        userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.conductView, employee.unit_id),
+        userHasHrPermissionForUnit(context.supabase, context.session, HR_PERMISSIONS.conductSensitiveView, employee.unit_id)
       ]);
 
     return NextResponse.json({
@@ -71,7 +75,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         canViewTrainings,
         canViewSensitiveTrainings,
         canViewOccupational,
-        canViewSensitiveOccupational
+        canViewSensitiveOccupational,
+        canViewConduct,
+        canViewSensitiveConduct
       }
     });
   } catch (error) {

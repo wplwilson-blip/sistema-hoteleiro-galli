@@ -14,6 +14,7 @@ import {
   HeartPulse,
   Inbox,
   ListChecks,
+  MessageSquareText,
   Settings2,
   ShieldAlert,
   Shuffle,
@@ -138,6 +139,14 @@ managementLinks.push({
   href: "/rh/gestao/saude-ocupacional",
   icon: HeartPulse,
   badge: "Restrito"
+});
+
+managementLinks.push({
+  title: "Conduta e ocorrencias",
+  description: "Registre advertencias, suspensoes, reclamacoes, elogios e conversas formais.",
+  href: "/rh/gestao/conduta",
+  icon: MessageSquareText,
+  badge: "Conduta"
 });
 
 function ManagementHubCard({

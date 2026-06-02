@@ -83,6 +83,19 @@ export const occupationalRecordTypeSchema = z.enum([
 
 export const occupationalStatusSchema = z.enum(["valid", "expiring", "expired", "cancelled"]);
 
+export const employeeConductTypeSchema = z.enum([
+  "warning",
+  "suspension",
+  "complaint",
+  "compliment",
+  "formal_guidance",
+  "formal_conversation"
+]);
+
+export const employeeConductStatusSchema = z.enum(["active", "cancelled", "resolved", "archived"]);
+
+export const employeeConductSeveritySchema = z.enum(["info", "notice", "warning", "critical"]);
+
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
   "critical",
@@ -658,6 +671,44 @@ export const nrCertificationPayloadSchema = z.object({
   expiresAt: optionalDateSchema,
   certificateAttachmentId: optionalUuidSchema,
   status: occupationalStatusSchema.default("valid")
+});
+
+const safeConductTextSchema = (max = 3000) =>
+  z
+    .string()
+    .trim()
+    .max(max, "Texto muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Texto contem dado sensivel nao permitido."
+    )
+    .optional()
+    .or(emptyToUndefined);
+
+export const employeeConductRecordsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  employeeId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  conductType: employeeConductTypeSchema.optional().or(emptyToUndefined),
+  status: employeeConductStatusSchema.optional().or(emptyToUndefined),
+  severity: employeeConductSeveritySchema.optional().or(emptyToUndefined),
+  from: optionalDateSchema,
+  to: optionalDateSchema,
+  search: z.string().trim().max(120, "Busca muito longa.").optional().or(emptyToUndefined)
+});
+
+export const employeeConductRecordPayloadSchema = z.object({
+  employeeId: z.string().uuid("Colaborador invalido."),
+  conductType: employeeConductTypeSchema,
+  occurrenceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Use datas no formato YYYY-MM-DD."),
+  title: safeConductTextSchema(180),
+  description: safeConductTextSchema(3000),
+  actionTaken: safeConductTextSchema(2000),
+  status: employeeConductStatusSchema.default("active"),
+  severity: employeeConductSeveritySchema.optional(),
+  attachmentId: optionalUuidSchema,
+  isSensitive: z.boolean().optional()
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({
