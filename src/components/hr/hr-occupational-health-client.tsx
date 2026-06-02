@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert, X } from "lucide-react";
+import { Activity, BarChart3, Download, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 
 type OccupationalRecord = {
   id: string;
+  unit: { id: string; code: string; name: string; label: string } | null;
   employeeId: string;
   employeeName: string;
   recordType: string;
@@ -33,6 +34,7 @@ type OccupationalRecord = {
 
 type NrCertification = {
   id: string;
+  unit: { id: string; code: string; name: string; label: string } | null;
   employeeId: string;
   employeeName: string;
   nrCode: string;
@@ -90,6 +92,18 @@ type NrForm = {
   expiresAt: string;
   certificateAttachmentId: string;
   status: string;
+};
+
+type OccupationalReportRow = {
+  id: string;
+  source: "ASO/Exame" | "NR";
+  unitLabel: string;
+  employeeName: string;
+  typeLabel: string;
+  statusLabel: string;
+  dueDate: string;
+  alertLabel: string;
+  priority: "critical" | "warning" | "info" | "normal";
 };
 
 const recordTypes = [
@@ -172,6 +186,38 @@ function nrExpiration(nr: NrCertification) {
   return nr.expiration ?? expirationState(nr.expiresAt, nr.status);
 }
 
+function unitLabel(unit: OccupationalRecord["unit"] | NrCertification["unit"]) {
+  return unit?.label || [unit?.code, unit?.name].filter(Boolean).join(" - ") || "Sem unidade";
+}
+
+function reportPriorityTone(priority: OccupationalReportRow["priority"]) {
+  if (priority === "critical") return "danger" as const;
+  if (priority === "warning") return "warning" as const;
+  if (priority === "info") return "info" as const;
+  return "visual" as const;
+}
+
+function csvCell(value: string | number | null | undefined) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: OccupationalReportRow[]) {
+  const header = ["Origem", "Unidade", "Colaborador", "Tipo", "Status", "Validade", "Alerta"];
+  const lines = [
+    header.map(csvCell).join(","),
+    ...rows.map((row) => [row.source, row.unitLabel, row.employeeName, row.typeLabel, row.statusLabel, row.dueDate, row.alertLabel].map(csvCell).join(","))
+  ];
+  const blob = new Blob([`\uFEFF${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 function recordPayload(form: RecordForm) {
   return {
     employeeId: form.employeeId,
@@ -204,6 +250,7 @@ export function HrOccupationalHealthClient() {
   const [filters, setFilters] = useState({ unitId: "", employeeId: "", recordType: "", status: "", search: "", quick: "" });
   const [recordForm, setRecordForm] = useState<RecordForm>(emptyRecordForm);
   const [nrForm, setNrForm] = useState<NrForm>(emptyNrForm);
+  const [groupBy, setGroupBy] = useState<"unit" | "type" | "status">("unit");
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showNrForm, setShowNrForm] = useState(false);
 
@@ -251,6 +298,61 @@ export function HrOccupationalHealthClient() {
     }),
     [nrs, records]
   );
+  const reportRows = useMemo<OccupationalReportRow[]>(() => {
+    const recordRows = filteredRecords.map((record) => {
+      const expiration = recordExpiration(record);
+      const isRestriction = record.recordType === "occupational_restriction" && record.status !== "cancelled";
+      const priority: OccupationalReportRow["priority"] = expiration.isExpired ? "critical" : expiration.expiresSoon || isRestriction ? "warning" : "normal";
+      return {
+        id: record.id,
+        source: "ASO/Exame" as const,
+        unitLabel: unitLabel(record.unit),
+        employeeName: record.employeeName || "-",
+        typeLabel: record.recordTypeLabel,
+        statusLabel: record.statusLabel,
+        dueDate: formatDate(record.expiresAt),
+        alertLabel: expiration.isExpired ? "Vencido" : expiration.expiresSoon ? "A vencer" : isRestriction ? "Restricao ativa" : "Sem pendencia",
+        priority
+      };
+    });
+
+    const nrRows = filteredNrs.map((nr) => {
+      const expiration = nrExpiration(nr);
+      const priority: OccupationalReportRow["priority"] = expiration.isExpired ? "critical" : expiration.expiresSoon ? "warning" : "normal";
+      return {
+        id: nr.id,
+        source: "NR" as const,
+        unitLabel: unitLabel(nr.unit),
+        employeeName: nr.employeeName || "-",
+        typeLabel: nr.nrCode,
+        statusLabel: nr.statusLabel,
+        dueDate: formatDate(nr.expiresAt),
+        alertLabel: expiration.isExpired ? "NR vencida" : expiration.expiresSoon ? "NR a vencer" : "Sem pendencia",
+        priority
+      };
+    });
+
+    return [...recordRows, ...nrRows].sort((a, b) => {
+      const priorityOrder = { critical: 0, warning: 1, info: 2, normal: 3 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority] || a.unitLabel.localeCompare(b.unitLabel) || a.employeeName.localeCompare(b.employeeName);
+    });
+  }, [filteredNrs, filteredRecords]);
+  const pendingRows = useMemo(() => reportRows.filter((row) => row.priority !== "normal"), [reportRows]);
+  const groupedReport = useMemo(() => {
+    const groups = new Map<string, { label: string; total: number; critical: number; warning: number; normal: number }>();
+
+    for (const row of reportRows) {
+      const label = groupBy === "unit" ? row.unitLabel : groupBy === "type" ? row.typeLabel : row.statusLabel;
+      const current = groups.get(label) ?? { label, total: 0, critical: 0, warning: 0, normal: 0 };
+      current.total += 1;
+      if (row.priority === "critical") current.critical += 1;
+      else if (row.priority === "warning") current.warning += 1;
+      else current.normal += 1;
+      groups.set(label, current);
+    }
+
+    return Array.from(groups.values()).sort((a, b) => b.critical - a.critical || b.warning - a.warning || b.total - a.total || a.label.localeCompare(b.label));
+  }, [groupBy, reportRows]);
 
   const recordMutation = useMutation({
     mutationFn: async (form: RecordForm) =>
@@ -312,6 +414,8 @@ export function HrOccupationalHealthClient() {
             <p className="mt-1 text-sm text-muted-foreground">ASOs, exames ocupacionais, restricoes e certificacoes NR com dados restritos.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => downloadCsv("pendencias-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendencias</Button>
+            <Button size="sm" variant="outline" onClick={() => downloadCsv("relatorio-saude-ocupacional.csv", reportRows)} disabled={!reportRows.length}><Download className="h-4 w-4" />Exportar CSV</Button>
             <Button size="sm" variant="outline" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
             <Button size="sm" onClick={() => { setRecordForm(emptyRecordForm); setShowRecordForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
             <Button size="sm" variant="outline" onClick={() => { setNrForm(emptyNrForm); setShowNrForm(true); }}><Plus className="h-4 w-4" />Nova NR</Button>
@@ -350,6 +454,73 @@ export function HrOccupationalHealthClient() {
           <Input placeholder="Buscar fornecedor ou treinamento" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} />
         </div>
       </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatorio operacional</h2></div>
+              <p className="mt-1 text-xs text-muted-foreground">Agrupamento das pendencias e registros ocupacionais conforme filtros atuais.</p>
+            </div>
+            <SelectField value={groupBy} onChange={(event) => setGroupBy(event.target.value as "unit" | "type" | "status")}>
+              <option value="unit">Agrupar por unidade</option>
+              <option value="type">Agrupar por tipo</option>
+              <option value="status">Agrupar por status</option>
+            </SelectField>
+          </div>
+          <div className="mt-4 space-y-2">
+            {!groupedReport.length ? <EmptyState title="Nenhum agrupamento encontrado" description="Ajuste os filtros para consultar outros registros ocupacionais." /> : null}
+            {groupedReport.map((group) => (
+              <div key={group.label} className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <p className="break-words font-medium text-foreground">{group.label}</p>
+                  <p className="text-xs text-muted-foreground">{group.total} registro(s) no recorte atual</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge status={group.critical ? "danger" : "visual"} label={`Vencidos: ${group.critical}`} />
+                  <StatusBadge status={group.warning ? "warning" : "visual"} label={`Alertas: ${group.warning}`} />
+                  <StatusBadge status="visual" label={`Ok: ${group.normal}`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
+          <div className="border-b p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Pendencias ocupacionais</h2>
+                <p className="mt-1 text-xs text-muted-foreground">ASOs vencidos, NRs vencidas, vencimentos proximos e restricoes ativas.</p>
+              </div>
+              <StatusBadge status={pendingRows.length ? "warning" : "success"} label={`${pendingRows.length} pendencia(s)`} />
+            </div>
+          </div>
+          {!pendingRows.length ? <EmptyState title="Nenhuma pendencia no recorte" description="Nao ha vencimentos ou restricoes ativas nos filtros atuais." /> : null}
+          {pendingRows.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-[880px] w-full text-sm">
+                <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                  <tr><th className="px-4 py-3">Alerta</th><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Unidade</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Validade</th></tr>
+                </thead>
+                <tbody className="divide-y">
+                  {pendingRows.map((row) => (
+                    <tr key={`${row.source}-${row.id}`} className="align-top">
+                      <td className="px-4 py-3"><StatusBadge status={reportPriorityTone(row.priority)} label={row.alertLabel} /></td>
+                      <td className="px-4 py-3">{row.employeeName}</td>
+                      <td className="px-4 py-3">{row.unitLabel}</td>
+                      <td className="px-4 py-3">{row.source}</td>
+                      <td className="px-4 py-3">{row.typeLabel}</td>
+                      <td className="px-4 py-3">{row.statusLabel}</td>
+                      <td className="px-4 py-3">{row.dueDate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </Card>
+      </div>
 
       {showRecordForm ? (
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
