@@ -1,4 +1,5 @@
 import { PageTitle } from "@/components/common/page-title";
+import { HrExecutiveDashboardClient } from "@/components/hr/hr-executive-dashboard-client";
 import { HrOperationalDashboardClient } from "@/components/hr/hr-operational-dashboard-client";
 
 export default function RhPage() {
@@ -6,8 +7,9 @@ export default function RhPage() {
     <div className="space-y-6">
       <PageTitle
         title="Painel do RH"
-        description="Visao das pendencias, prazos e decisoes do RH administrativo para a rotina diaria."
+        description="Visao executiva, pendencias, prazos e decisoes do RH administrativo para a rotina diaria."
       />
+      <HrExecutiveDashboardClient />
       <HrOperationalDashboardClient />
     </div>
   );

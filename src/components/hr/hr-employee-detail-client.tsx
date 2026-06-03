@@ -37,6 +37,7 @@ import { HrEmployeeDevelopmentPlansCard } from "@/components/hr/hr-employee-deve
 import { HrEmployeeEvaluationsCard } from "@/components/hr/hr-employee-evaluations-card";
 import { HrEmployeeOnboardingCard } from "@/components/hr/hr-employee-onboarding-card";
 import { HrEmployeeOccupationalHealthCard } from "@/components/hr/hr-employee-occupational-health-card";
+import { HrEmployeeRhSummaryCard } from "@/components/hr/hr-employee-rh-summary-card";
 import { HrEmployeeTerminationsCard } from "@/components/hr/hr-employee-terminations-card";
 import { HrEmployeeTrainingsCard } from "@/components/hr/hr-employee-trainings-card";
 import { cn } from "@/lib/utils";
@@ -757,23 +758,26 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
       </Card>
 
       {activeTab === "summary" ? (
-        <Card className="border-border/80 p-5 shadow-sm shadow-primary/5">
-          <div className="mb-4 flex items-center gap-2">
-            <UserRound className="h-4 w-4 text-primary" />
-            <h3 className="text-base font-semibold">Resumo administrativo</h3>
-          </div>
-          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <InfoTile label="Nome completo" value={employee.fullName} icon={UserRound} />
-            <InfoTile label="Nome preferencial" value={employee.preferredName || "-"} icon={UserRound} />
-            <InfoTile label="Status" value={recordStatusLabel(employee.status)} icon={ShieldCheck} />
-            <InfoTile label="Unidade" value={metaLabel(employee.unit)} icon={Building2} />
-            <InfoTile label="Departamento" value={metaLabel(employee.department)} icon={Building2} />
-            <InfoTile label="Cargo" value={metaLabel(employee.jobPosition)} icon={UserRound} />
-            <InfoTile label="E-mail corporativo" value={employee.corporateEmail || "-"} icon={Mail} />
-            <InfoTile label="Data de admissao" value={formatDate(employee.hireDate)} icon={CalendarClock} />
-            <InfoTile label="Ultima atualizacao" value={formatDateTime(employee.updatedAt)} icon={CalendarClock} />
-          </div>
-        </Card>
+        <div className="space-y-4">
+          <Card className="border-border/80 p-5 shadow-sm shadow-primary/5">
+            <div className="mb-4 flex items-center gap-2">
+              <UserRound className="h-4 w-4 text-primary" />
+              <h3 className="text-base font-semibold">Resumo administrativo</h3>
+            </div>
+            <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <InfoTile label="Nome completo" value={employee.fullName} icon={UserRound} />
+              <InfoTile label="Nome preferencial" value={employee.preferredName || "-"} icon={UserRound} />
+              <InfoTile label="Status" value={recordStatusLabel(employee.status)} icon={ShieldCheck} />
+              <InfoTile label="Unidade" value={metaLabel(employee.unit)} icon={Building2} />
+              <InfoTile label="Departamento" value={metaLabel(employee.department)} icon={Building2} />
+              <InfoTile label="Cargo" value={metaLabel(employee.jobPosition)} icon={UserRound} />
+              <InfoTile label="E-mail corporativo" value={employee.corporateEmail || "-"} icon={Mail} />
+              <InfoTile label="Data de admissao" value={formatDate(employee.hireDate)} icon={CalendarClock} />
+              <InfoTile label="Ultima atualizacao" value={formatDateTime(employee.updatedAt)} icon={CalendarClock} />
+            </div>
+          </Card>
+          <HrEmployeeRhSummaryCard employeeId={employeeId} />
+        </div>
       ) : null}
 
       {activeTab === "sensitive" ? (
