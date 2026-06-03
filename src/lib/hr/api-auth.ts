@@ -38,6 +38,7 @@ export const HR_PERMISSIONS = {
   occupationalSensitiveView: "HR:occupational.sensitive.view",
   conductView: "HR:conduct.view",
   conductManage: "HR:conduct.manage",
+  conductReview: "HR:conduct.review",
   conductSensitiveView: "HR:conduct.sensitive.view",
   historyView: "HR:history.view",
   historySensitiveView: "HR:history.sensitive.view",

@@ -25,8 +25,17 @@ type ConductRecord = {
   actionTaken: string;
   severity: string;
   hasAttachment: boolean;
+  evidenceCount: number;
   isSensitive: boolean;
   redacted: boolean;
+  reviews: Array<{
+    id: string;
+    action: string;
+    actionLabel: string;
+    comments: string;
+    actorUserId: string;
+    createdAt: string;
+  }>;
 };
 
 type EmployeeOption = { id: string; fullName: string; preferredName: string };
@@ -57,7 +66,7 @@ const conductTypes = [
   ["formal_guidance", "Orientacao formal"],
   ["formal_conversation", "Conversa formal"]
 ];
-const statuses = [["active", "Ativo"], ["resolved", "Resolvido"], ["archived", "Arquivado"], ["cancelled", "Cancelado"]];
+const statuses = [["draft", "Rascunho"], ["pending_review", "Aguardando revisao"], ["reviewed", "Revisado"], ["rejected", "Rejeitado"], ["cancelled", "Cancelado"]];
 const severities = [["info", "Info"], ["notice", "Aviso"], ["warning", "Alerta"], ["critical", "Critico"]];
 const emptyForm: ConductForm = {
   id: "",
@@ -67,7 +76,7 @@ const emptyForm: ConductForm = {
   title: "",
   description: "",
   actionTaken: "",
-  status: "active",
+  status: "draft",
   severity: "",
   attachmentId: "",
   isSensitive: "true"
@@ -103,8 +112,9 @@ function severityTone(severity: string) {
 
 function statusTone(status: string) {
   if (status === "cancelled") return "danger" as const;
-  if (status === "resolved") return "success" as const;
-  if (status === "active") return "warning" as const;
+  if (status === "reviewed") return "success" as const;
+  if (status === "pending_review" || status === "draft") return "warning" as const;
+  if (status === "rejected") return "danger" as const;
   return "visual" as const;
 }
 
@@ -127,6 +137,7 @@ export function HrConductClient() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ unitId: "", employeeId: "", conductType: "", status: "", severity: "", search: "" });
   const [form, setForm] = useState<ConductForm>(emptyForm);
+  const [actionComments, setActionComments] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const conductQuery = useQuery({ queryKey: ["hr", "conduct", filters], queryFn: async () => requestJson<ConductResponse>(buildUrl("/api/hr/conduct", { ...filters, pageSize: "100" })) });
@@ -140,6 +151,11 @@ export function HrConductClient() {
       negative: records.filter((item) => ["warning", "suspension", "complaint"].includes(item.conductType)).length,
       positive: records.filter((item) => item.conductType === "compliment").length,
       formal: records.filter((item) => ["formal_guidance", "formal_conversation"].includes(item.conductType)).length,
+      pendingReview: records.filter((item) => item.status === "pending_review").length,
+      criticalPending: records.filter((item) => item.status === "pending_review" && item.severity === "critical").length,
+      reviewed: records.filter((item) => item.status === "reviewed").length,
+      rejected: records.filter((item) => item.status === "rejected").length,
+      cancelled: records.filter((item) => item.status === "cancelled").length,
       sensitive: records.filter((item) => item.isSensitive).length
     }),
     [records]
@@ -157,6 +173,22 @@ export function HrConductClient() {
       await queryClient.invalidateQueries({ queryKey: ["hr", "conduct"] });
     }
   });
+
+  const actionMutation = useMutation({
+    mutationFn: async ({ id, action, comments }: { id: string; action: "submit" | "approve" | "reject" | "cancel"; comments: string }) =>
+      requestJson(`/api/hr/conduct/${id}/${action}`, {
+        method: "POST",
+        body: JSON.stringify({ comments })
+      }),
+    onSuccess: async () => {
+      setActionComments("");
+      await queryClient.invalidateQueries({ queryKey: ["hr", "conduct"] });
+    }
+  });
+
+  function runAction(record: ConductRecord, action: "submit" | "approve" | "reject" | "cancel") {
+    actionMutation.mutate({ id: record.id, action, comments: actionComments });
+  }
 
   function edit(record: ConductRecord) {
     setForm({
@@ -188,11 +220,11 @@ export function HrConductClient() {
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <ConductStat title="Total" value={summary.total} tone="info" />
-        <ConductStat title="Advertencias e reclamacoes" value={summary.negative} tone={summary.negative ? "warning" : "visual"} />
-        <ConductStat title="Elogios" value={summary.positive} tone="success" />
-        <ConductStat title="Conversas e orientacoes" value={summary.formal} tone="visual" />
-        <ConductStat title="Restritos" value={summary.sensitive} tone={summary.sensitive ? "warning" : "visual"} />
+        <ConductStat title="Pendentes de revisao" value={summary.pendingReview} tone={summary.pendingReview ? "warning" : "visual"} />
+        <ConductStat title="Aprovados" value={summary.reviewed} tone="success" />
+        <ConductStat title="Rejeitados" value={summary.rejected} tone={summary.rejected ? "warning" : "visual"} />
+        <ConductStat title="Cancelados" value={summary.cancelled} tone={summary.cancelled ? "warning" : "visual"} />
+        <ConductStat title="Criticos aguardando analise" value={summary.criticalPending} tone={summary.criticalPending ? "warning" : "visual"} />
       </div>
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -214,7 +246,7 @@ export function HrConductClient() {
             <Field label="Colaborador"><SelectField value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="Tipo"><SelectField value={form.conductType} onChange={(event) => setForm((current) => ({ ...current, conductType: event.target.value }))}>{conductTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             <Field label="Data"><Input type="date" value={form.occurrenceDate} onChange={(event) => setForm((current) => ({ ...current, occurrenceDate: event.target.value }))} /></Field>
-            <Field label="Status"><SelectField value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
+            <Field label="Status"><SelectField value={form.status} disabled><option value="draft">Rascunho</option></SelectField></Field>
             <Field label="Severidade"><SelectField value={form.severity} onChange={(event) => setForm((current) => ({ ...current, severity: event.target.value }))}><option value="">Padrao do tipo</option>{severities.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             <Field label="Restrito?"><SelectField value={form.isSensitive} onChange={(event) => setForm((current) => ({ ...current, isSensitive: event.target.value }))}><option value="true">Sim</option><option value="false">Nao</option></SelectField></Field>
             <Field label="Anexo"><Input value={form.attachmentId} onChange={(event) => setForm((current) => ({ ...current, attachmentId: event.target.value }))} placeholder="ID do anexo" /></Field>
@@ -229,7 +261,11 @@ export function HrConductClient() {
 
       {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
       {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Erro ao carregar conduta."} /> : null}
-      <ConductTable records={records} onEdit={edit} />
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <Field label="Comentario da proxima acao"><TextArea value={actionComments} onChange={(event) => setActionComments(event.target.value)} /></Field>
+        {actionMutation.error ? <div className="mt-3"><ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Erro ao executar acao."} /></div> : null}
+      </Card>
+      <ConductTable records={records} onEdit={edit} onAction={runAction} actionPending={actionMutation.isPending} />
     </div>
   );
 }
@@ -243,14 +279,26 @@ function ConductStat({ title, value, tone }: { title: string; value: number; ton
   );
 }
 
-function ConductTable({ records, onEdit }: { records: ConductRecord[]; onEdit: (record: ConductRecord) => void }) {
+function ConductTable({ records, onEdit, onAction, actionPending }: { records: ConductRecord[]; onEdit: (record: ConductRecord) => void; onAction: (record: ConductRecord, action: "submit" | "approve" | "reject" | "cancel") => void; actionPending: boolean }) {
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Registros de conduta</h2></div>
       {!records.length ? <EmptyState title="Nenhum registro de conduta" description="Advertencias, elogios e conversas formais aparecerao aqui." /> : null}
       {records.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[1040px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Acao</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.actionTaken || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[1240px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Evidencias</th><th className="px-4 py-3">Timeline</th><th className="px-4 py-3">Acoes</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3"><StatusBadge status={record.evidenceCount ? "success" : "visual"} label={`${record.evidenceCount ?? 0} evidencia(s)`} /></td><td className="px-4 py-3"><ConductTimeline reviews={record.reviews} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button>{record.status === "draft" ? <Button size="sm" onClick={() => onAction(record, "submit")} disabled={actionPending}>Enviar</Button> : null}{record.status === "pending_review" ? <Button size="sm" onClick={() => onAction(record, "approve")} disabled={actionPending}>Aprovar</Button> : null}{record.status === "pending_review" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "reject")} disabled={actionPending}>Rejeitar</Button> : null}{record.status !== "cancelled" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "cancel")} disabled={actionPending}>Cancelar</Button> : null}</div></td></tr>)}</tbody></table></div>
       ) : null}
     </Card>
+  );
+}
+
+function ConductTimeline({ reviews }: { reviews: ConductRecord["reviews"] }) {
+  const steps = reviews.length ? reviews : [];
+  return (
+    <div className="min-w-48 space-y-1 text-xs text-muted-foreground">
+      <p className="font-medium text-foreground">Criado</p>
+      {steps.map((review) => (
+        <p key={review.id}>{review.actionLabel} - {formatDate(review.createdAt)}</p>
+      ))}
+    </div>
   );
 }

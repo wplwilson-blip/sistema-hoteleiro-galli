@@ -92,9 +92,11 @@ export const employeeConductTypeSchema = z.enum([
   "formal_conversation"
 ]);
 
-export const employeeConductStatusSchema = z.enum(["active", "cancelled", "resolved", "archived"]);
+export const employeeConductStatusSchema = z.enum(["draft", "pending_review", "reviewed", "rejected", "cancelled"]);
 
 export const employeeConductSeveritySchema = z.enum(["info", "notice", "warning", "critical"]);
+
+export const employeeConductReviewActionSchema = z.enum(["submitted", "approved", "rejected", "cancelled"]);
 
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
@@ -705,10 +707,37 @@ export const employeeConductRecordPayloadSchema = z.object({
   title: safeConductTextSchema(180),
   description: safeConductTextSchema(3000),
   actionTaken: safeConductTextSchema(2000),
-  status: employeeConductStatusSchema.default("active"),
+  status: employeeConductStatusSchema.default("draft"),
   severity: employeeConductSeveritySchema.optional(),
   attachmentId: optionalUuidSchema,
   isSensitive: z.boolean().optional()
+});
+
+const safeConductReviewTextSchema = z
+  .string()
+  .trim()
+  .max(3000, "Comentario muito longo.")
+  .refine(
+    (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+    "Comentario contem dado sensivel nao permitido."
+  )
+  .optional()
+  .or(emptyToUndefined);
+
+export const employeeConductDecisionPayloadSchema = z.object({
+  comments: safeConductReviewTextSchema
+});
+
+export const employeeConductRejectPayloadSchema = z.object({
+  comments: z
+    .string()
+    .trim()
+    .min(3, "Informe o motivo da rejeicao.")
+    .max(3000, "Comentario muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Comentario contem dado sensivel nao permitido."
+    )
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getHrAccessibleUnitIds, handleHrRouteError, HR_PERMISSIONS, hrApiError, logHrApiError, requireHrPermission } from "@/lib/hr/api-auth";
-import { conductListSelect, prepareEmployeeConductWrite, publishEmployeeConductEvent, redactEmployeeConduct, type EmployeeConductRow } from "@/lib/hr/employee-conduct";
+import { conductListSelect, prepareEmployeeConductWrite, redactEmployeeConduct, type EmployeeConductRow } from "@/lib/hr/employee-conduct";
 import { employeeConductRecordPayloadSchema, employeeConductRecordsQuerySchema, parseSearchParams } from "@/lib/hr/schemas";
 
 function escapeIlikePattern(value: string) {
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = employeeConductRecordPayloadSchema.parse(await request.json());
+    if (payload.status !== "draft") return hrApiError("Registro de conduta deve nascer como rascunho.", 422);
     const insertPayload = await prepareEmployeeConductWrite(context, payload);
     const { data, error } = await context.supabase
       .from("employee_conduct_records")
@@ -67,8 +68,6 @@ export async function POST(request: Request) {
     }
 
     const conduct = data as unknown as EmployeeConductRow;
-    await publishEmployeeConductEvent({ context, conduct, created: true });
-
     return NextResponse.json({ ok: true, data: redactEmployeeConduct(conduct, true) }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);

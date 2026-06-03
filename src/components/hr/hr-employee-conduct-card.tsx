@@ -17,8 +17,15 @@ type ConductRecord = {
   actionTaken: string;
   severity: string;
   hasAttachment: boolean;
+  evidenceCount: number;
   isSensitive: boolean;
   redacted: boolean;
+  reviews: Array<{
+    id: string;
+    actionLabel: string;
+    comments: string;
+    createdAt: string;
+  }>;
 };
 
 type ConductResponse = { ok: true; data: ConductRecord[] };
@@ -46,8 +53,9 @@ function severityTone(severity: string) {
 
 function statusTone(status: string) {
   if (status === "cancelled") return "danger" as const;
-  if (status === "resolved") return "success" as const;
-  if (status === "active") return "warning" as const;
+  if (status === "reviewed") return "success" as const;
+  if (status === "pending_review" || status === "draft") return "warning" as const;
+  if (status === "rejected") return "danger" as const;
   return "visual" as const;
 }
 
@@ -76,8 +84,8 @@ export function HrEmployeeConductCard({ employeeId }: { employeeId: string }) {
         {records.length ? (
           <div className="overflow-x-auto rounded-md border">
             <table className="min-w-[860px] w-full text-sm">
-              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Acao tomada</th><th className="px-4 py-3">Anexo</th></tr></thead>
-              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.actionTaken || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td></tr>)}</tbody>
+              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Acao tomada</th><th className="px-4 py-3">Evidencias</th><th className="px-4 py-3">Revisao</th></tr></thead>
+              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.actionTaken || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.evidenceCount ? "success" : "visual"} label={`${record.evidenceCount ?? 0} evidencia(s)`} /></td><td className="px-4 py-3"><ConductTimeline reviews={record.reviews} /></td></tr>)}</tbody>
             </table>
           </div>
         ) : null}
@@ -87,5 +95,16 @@ export function HrEmployeeConductCard({ employeeId }: { employeeId: string }) {
         </div>
       </div>
     </Card>
+  );
+}
+
+function ConductTimeline({ reviews }: { reviews: ConductRecord["reviews"] }) {
+  return (
+    <div className="min-w-44 space-y-1 text-xs text-muted-foreground">
+      <p className="font-medium text-foreground">Criado</p>
+      {reviews.map((review) => (
+        <p key={review.id}>{review.actionLabel} - {formatDate(review.createdAt)}</p>
+      ))}
+    </div>
   );
 }

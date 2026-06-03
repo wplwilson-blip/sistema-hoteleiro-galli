@@ -31,6 +31,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (!existing) return hrApiError("Registro de conduta nao encontrado.", 404);
 
     const partial = employeeConductRecordPayloadSchema.partial().parse(await request.json());
+    if (partial.status && partial.status !== existing.status) {
+      return hrApiError("Status de conduta deve ser alterado pelo fluxo formal de revisao.", 422);
+    }
     const merged = employeeConductRecordPayloadSchema.parse({
       employeeId: partial.employeeId ?? existing.employee_id,
       conductType: partial.conductType ?? existing.conduct_type,
