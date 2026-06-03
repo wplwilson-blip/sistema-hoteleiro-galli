@@ -14,6 +14,7 @@ import {
   HeartPulse,
   Inbox,
   ListChecks,
+  LogOut,
   MessageSquareText,
   Settings2,
   ShieldAlert,
@@ -147,6 +148,14 @@ managementLinks.push({
   href: "/rh/gestao/conduta",
   icon: MessageSquareText,
   badge: "Conduta"
+});
+
+managementLinks.push({
+  title: "Desligamentos",
+  description: "Controle solicitacoes, aprovacoes, checklist e efetivacao administrativa.",
+  href: "/rh/gestao/desligamentos",
+  icon: LogOut,
+  badge: "Restrito"
 });
 
 function ManagementHubCard({

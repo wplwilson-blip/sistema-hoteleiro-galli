@@ -16,6 +16,7 @@ import {
   GraduationCap,
   History,
   HeartPulse,
+  LogOut,
   Lock,
   Mail,
   MessageSquareText,
@@ -36,6 +37,7 @@ import { HrEmployeeDevelopmentPlansCard } from "@/components/hr/hr-employee-deve
 import { HrEmployeeEvaluationsCard } from "@/components/hr/hr-employee-evaluations-card";
 import { HrEmployeeOnboardingCard } from "@/components/hr/hr-employee-onboarding-card";
 import { HrEmployeeOccupationalHealthCard } from "@/components/hr/hr-employee-occupational-health-card";
+import { HrEmployeeTerminationsCard } from "@/components/hr/hr-employee-terminations-card";
 import { HrEmployeeTrainingsCard } from "@/components/hr/hr-employee-trainings-card";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +89,8 @@ type HrEmployeePermissions = {
   canViewSensitiveOccupational?: boolean;
   canViewConduct?: boolean;
   canViewSensitiveConduct?: boolean;
+  canViewTerminations?: boolean;
+  canViewSensitiveTerminations?: boolean;
 };
 
 type HrEmployeeDetailResponse = {
@@ -160,7 +164,7 @@ type HrCareerResponse = {
   data: HrCareerMovement[];
 };
 
-type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "career" | "trainings" | "occupational" | "conduct" | "history";
+type DetailTab = "summary" | "sensitive" | "documents" | "onboarding" | "evaluations" | "development" | "career" | "trainings" | "occupational" | "conduct" | "termination" | "history";
 type TimelineCategory =
   | "all"
   | "registration"
@@ -179,7 +183,7 @@ type TimelinePeriod = "all" | "today" | "7d" | "30d" | "90d" | "custom";
 type TimelineSeverity = "all" | "info" | "notice" | "warning" | "critical";
 type TimelineSensitiveFilter = "all" | "only_sensitive" | "hide_sensitive";
 
-const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "career", "trainings", "occupational", "conduct", "history"];
+const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "career", "trainings", "occupational", "conduct", "termination", "history"];
 const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
   { value: "all", label: "Todos" },
   { value: "registration", label: "Cadastro" },
@@ -493,6 +497,7 @@ function sourceLabel(event: HrFunctionalEvent) {
     employee_occupational_record: "Saude Ocupacional",
     employee_nr_certification: "Saude Ocupacional",
     employee_conduct_record: "Conduta",
+    employee_termination: "Desligamento",
     hr_workflow: "Workflow RH",
     hr_workflow_event: "Workflow RH"
   };
@@ -511,6 +516,7 @@ function sourceHref(employeeId: string, event: HrFunctionalEvent) {
   if (event.sourceEntityType === "employee_training") return `/rh/employees/${employeeId}?tab=trainings`;
   if (event.sourceEntityType === "employee_occupational_record" || event.sourceEntityType === "employee_nr_certification") return `/rh/employees/${employeeId}?tab=occupational`;
   if (event.sourceEntityType === "employee_conduct_record") return `/rh/employees/${employeeId}?tab=conduct`;
+  if (event.sourceEntityType === "employee_termination") return `/rh/employees/${employeeId}?tab=termination`;
   if (event.sourceEntityType === "employee_onboarding" || event.sourceEntityType === "employee_onboarding_item") return `/rh/employees/${employeeId}?tab=onboarding`;
   if (event.sourceEntityType === "hr_workflow") return `/rh/workflows/${event.sourceEntityId}`;
   return "";
@@ -623,6 +629,8 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   const canViewSensitiveOccupational = Boolean(permissions.canViewSensitiveOccupational);
   const canViewConduct = Boolean(permissions.canViewConduct);
   const canViewSensitiveConduct = Boolean(permissions.canViewSensitiveConduct);
+  const canViewTerminations = Boolean(permissions.canViewTerminations);
+  const canViewSensitiveTerminations = Boolean(permissions.canViewSensitiveTerminations);
 
   const tabs = useMemo(
     () =>
@@ -637,9 +645,10 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "trainings" as const, label: "Treinamentos", enabled: canViewTrainings },
         { value: "occupational" as const, label: "Saude Ocupacional", enabled: canViewOccupational },
         { value: "conduct" as const, label: "Conduta", enabled: canViewConduct },
+        { value: "termination" as const, label: "Desligamento", enabled: canViewTerminations },
         { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory }
       ].filter((tab) => tab.enabled),
-    [canViewConduct, canViewDocuments, canViewHistory, canViewMovements, canViewOccupational, canViewSensitive, canViewTrainings]
+    [canViewConduct, canViewDocuments, canViewHistory, canViewMovements, canViewOccupational, canViewSensitive, canViewTerminations, canViewTrainings]
   );
 
   useEffect(() => {
@@ -732,6 +741,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           <StatusBadge status={canViewTrainings ? "success" : "visual"} label={canViewTrainings ? "Treinamentos liberados" : "Treinamentos restritos"} />
           <StatusBadge status={canViewOccupational ? "success" : "visual"} label={canViewOccupational ? "Saude ocupacional liberada" : "Saude ocupacional restrita"} />
           <StatusBadge status={canViewConduct ? "success" : "visual"} label={canViewConduct ? "Conduta liberada" : "Conduta restrita"} />
+          <StatusBadge status={canViewTerminations ? "success" : "visual"} label={canViewTerminations ? "Desligamento liberado" : "Desligamento restrito"} />
           <StatusBadge status={canViewHistory ? "success" : "visual"} label={canViewHistory ? "Vida funcional liberada" : "Vida funcional restrita"} />
         </div>
       </div>
@@ -837,6 +847,20 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
           </div>
         ) : (
           <RestrictedState title="Conduta restrita" description="Seu perfil nao possui permissao para consultar registros de conduta deste colaborador." />
+        )
+      ) : null}
+
+      {activeTab === "termination" ? (
+        canViewTerminations ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
+              <LogOut className="h-4 w-4 text-primary" />
+              <StatusBadge status={canViewSensitiveTerminations ? "info" : "visual"} label={canViewSensitiveTerminations ? "Dados de desligamento permitidos" : "Dados de desligamento redigidos"} />
+            </div>
+            <HrEmployeeTerminationsCard employeeId={employeeId} />
+          </div>
+        ) : (
+          <RestrictedState title="Desligamento restrito" description="Seu perfil nao possui permissao para consultar processos de desligamento deste colaborador." />
         )
       ) : null}
 

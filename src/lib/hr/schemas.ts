@@ -98,6 +98,10 @@ export const employeeConductSeveritySchema = z.enum(["info", "notice", "warning"
 
 export const employeeConductReviewActionSchema = z.enum(["submitted", "approved", "rejected", "cancelled"]);
 
+export const employeeTerminationTypeSchema = z.enum(["voluntary", "involuntary", "mutual", "retirement", "end_of_contract", "other"]);
+
+export const employeeTerminationStatusSchema = z.enum(["draft", "pending_review", "approved", "implemented", "cancelled"]);
+
 export const hrOnboardingQueueTypeSchema = z.enum([
   "blocked",
   "critical",
@@ -738,6 +742,70 @@ export const employeeConductRejectPayloadSchema = z.object({
       (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
       "Comentario contem dado sensivel nao permitido."
     )
+});
+
+const safeTerminationTextSchema = (max = 3000) =>
+  z
+    .string()
+    .trim()
+    .max(max, "Texto muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Texto contem dado sensivel nao permitido."
+    )
+    .optional()
+    .or(emptyToUndefined);
+
+export const employeeTerminationsQuerySchema = z.object({
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(20, 100),
+  employeeId: optionalUuidSchema,
+  unitId: optionalUuidSchema,
+  terminationType: employeeTerminationTypeSchema.optional().or(emptyToUndefined),
+  status: employeeTerminationStatusSchema.optional().or(emptyToUndefined),
+  from: optionalDateSchema,
+  to: optionalDateSchema,
+  search: z.string().trim().max(120, "Busca muito longa.").optional().or(emptyToUndefined)
+});
+
+export const employeeTerminationPayloadSchema = z.object({
+  employeeId: z.string().uuid("Colaborador invalido."),
+  terminationType: employeeTerminationTypeSchema.default("other"),
+  status: employeeTerminationStatusSchema.default("draft"),
+  terminationReason: z
+    .string()
+    .trim()
+    .min(3, "Informe o motivo do desligamento.")
+    .max(3000, "Motivo muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Motivo contem dado sensivel nao permitido."
+    ),
+  effectiveDate: optionalDateSchema,
+  notes: safeTerminationTextSchema(3000)
+});
+
+export const employeeTerminationDecisionPayloadSchema = z.object({
+  comments: safeTerminationTextSchema(3000)
+});
+
+export const employeeTerminationChecklistPayloadSchema = z.object({
+  itemName: z
+    .string()
+    .trim()
+    .min(2, "Informe o item do checklist.")
+    .max(180, "Item muito longo.")
+    .refine(
+      (value) => !/(cpf|rg|ctps|pis|cid|diagnostico|diagnóstico|laudo|medical|medico|médico|file_path|storage_path|signed_url|token|senha|password|auth_email)/i.test(value),
+      "Item contem dado sensivel nao permitido."
+    ),
+  isRequired: z.boolean().default(true),
+  isCompleted: z.boolean().default(false),
+  notes: safeTerminationTextSchema(1000)
+});
+
+export const employeeTerminationChecklistUpdateSchema = employeeTerminationChecklistPayloadSchema.partial().extend({
+  isCompleted: z.boolean().optional()
 });
 
 export const hrWorkflowNotificationsQuerySchema = z.object({
