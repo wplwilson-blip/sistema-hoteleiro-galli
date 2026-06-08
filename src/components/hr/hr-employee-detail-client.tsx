@@ -184,7 +184,7 @@ type TimelinePeriod = "all" | "today" | "7d" | "30d" | "90d" | "custom";
 type TimelineSeverity = "all" | "info" | "notice" | "warning" | "critical";
 type TimelineSensitiveFilter = "all" | "only_sensitive" | "hide_sensitive";
 
-const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "career", "trainings", "occupational", "conduct", "termination", "history"];
+const detailTabs: DetailTab[] = ["summary", "sensitive", "documents", "onboarding", "evaluations", "development", "history", "career", "trainings", "occupational", "conduct", "termination"];
 const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
   { value: "all", label: "Todos" },
   { value: "registration", label: "Cadastro" },
@@ -636,18 +636,18 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
   const tabs = useMemo(
     () =>
       [
-        { value: "summary" as const, label: "Resumo", enabled: true },
+        { value: "summary" as const, label: "Dados", enabled: true },
         { value: "sensitive" as const, label: "Dados protegidos", enabled: canViewSensitive },
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
         { value: "onboarding" as const, label: "Onboarding", enabled: true },
         { value: "evaluations" as const, label: "Avaliacoes", enabled: true },
-        { value: "development" as const, label: "Desenvolvimento", enabled: true },
+        { value: "development" as const, label: "PDI", enabled: true },
+        { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory },
         { value: "career" as const, label: "Carreira", enabled: canViewMovements },
         { value: "trainings" as const, label: "Treinamentos", enabled: canViewTrainings },
         { value: "occupational" as const, label: "Saude Ocupacional", enabled: canViewOccupational },
         { value: "conduct" as const, label: "Conduta", enabled: canViewConduct },
-        { value: "termination" as const, label: "Desligamento", enabled: canViewTerminations },
-        { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory }
+        { value: "termination" as const, label: "Desligamento", enabled: canViewTerminations }
       ].filter((tab) => tab.enabled),
     [canViewConduct, canViewDocuments, canViewHistory, canViewMovements, canViewOccupational, canViewSensitive, canViewTerminations, canViewTrainings]
   );

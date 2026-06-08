@@ -21,6 +21,7 @@ import {
   Landmark,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   MessageSquareText,
   ShieldCheck,
   Shuffle,
@@ -139,6 +140,7 @@ rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Treinamentos", href
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" });
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList, match: "exact" });
 rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact" });
+rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Desligamentos", href: "/rh/gestao/desligamentos", icon: LogOut, match: "exact" });
 
 const footerItems: SidebarLink[] = [{ label: "Relatórios", href: "/relatorios", icon: FileText }];
 
