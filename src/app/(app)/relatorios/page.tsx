@@ -10,9 +10,10 @@ const cards = [
   },
   {
     title: "RH",
-    description: "Relatórios de colaboradores, documentos e treinamentos serão ativados em próxima etapa.",
+    description: "Relatorios consolidados de colaboradores, treinamentos, saude ocupacional, movimentacoes, conduta e desligamentos.",
     icon: Users,
-    status: "Em breve" as const
+    href: "/rh",
+    status: "Disponível" as const
   },
   {
     title: "Manutenção",
