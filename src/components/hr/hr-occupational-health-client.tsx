@@ -80,7 +80,6 @@ type RecordForm = {
   doctorName: string;
   certificateNumber: string;
   restrictionNotes: string;
-  attachmentId: string;
 };
 
 type NrForm = {
@@ -90,7 +89,6 @@ type NrForm = {
   trainingName: string;
   issuedAt: string;
   expiresAt: string;
-  certificateAttachmentId: string;
   status: string;
 };
 
@@ -133,8 +131,8 @@ const quickFilters = [
   ["nr", "NR"],
   ["restrictions", "Restricoes"]
 ];
-const emptyRecordForm: RecordForm = { id: "", employeeId: "", recordType: "aso_periodic", status: "valid", examDate: "", expiresAt: "", providerName: "", doctorName: "", certificateNumber: "", restrictionNotes: "", attachmentId: "" };
-const emptyNrForm: NrForm = { id: "", employeeId: "", nrCode: "NR-06", trainingName: "", issuedAt: "", expiresAt: "", certificateAttachmentId: "", status: "valid" };
+const emptyRecordForm: RecordForm = { id: "", employeeId: "", recordType: "aso_periodic", status: "valid", examDate: "", expiresAt: "", providerName: "", doctorName: "", certificateNumber: "", restrictionNotes: "" };
+const emptyNrForm: NrForm = { id: "", employeeId: "", nrCode: "NR-06", trainingName: "", issuedAt: "", expiresAt: "", status: "valid" };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
@@ -228,8 +226,7 @@ function recordPayload(form: RecordForm) {
     providerName: form.providerName,
     doctorName: form.doctorName,
     certificateNumber: form.certificateNumber,
-    restrictionNotes: form.restrictionNotes,
-    attachmentId: form.attachmentId
+    restrictionNotes: form.restrictionNotes
   };
 }
 
@@ -240,7 +237,6 @@ function nrPayload(form: NrForm) {
     trainingName: form.trainingName,
     issuedAt: form.issuedAt,
     expiresAt: form.expiresAt,
-    certificateAttachmentId: form.certificateAttachmentId,
     status: form.status
   };
 }
@@ -396,12 +392,12 @@ export function HrOccupationalHealthClient() {
   });
 
   function editRecord(record: OccupationalRecord) {
-    setRecordForm({ id: record.id, employeeId: record.employeeId, recordType: record.recordType, status: record.status, examDate: record.examDate, expiresAt: record.expiresAt, providerName: record.providerName, doctorName: record.doctorName, certificateNumber: "", restrictionNotes: record.restrictionNotes, attachmentId: "" });
+    setRecordForm({ id: record.id, employeeId: record.employeeId, recordType: record.recordType, status: record.status, examDate: record.examDate, expiresAt: record.expiresAt, providerName: record.providerName, doctorName: record.doctorName, certificateNumber: "", restrictionNotes: record.restrictionNotes });
     setShowRecordForm(true);
   }
 
   function editNr(row: NrCertification) {
-    setNrForm({ id: row.id, employeeId: row.employeeId, nrCode: row.nrCode, trainingName: row.trainingName, issuedAt: row.issuedAt, expiresAt: row.expiresAt, certificateAttachmentId: "", status: row.status });
+    setNrForm({ id: row.id, employeeId: row.employeeId, nrCode: row.nrCode, trainingName: row.trainingName, issuedAt: row.issuedAt, expiresAt: row.expiresAt, status: row.status });
     setShowNrForm(true);
   }
 
@@ -533,10 +529,14 @@ export function HrOccupationalHealthClient() {
             <Field label="Validade"><Input type="date" value={recordForm.expiresAt} onChange={(event) => setRecordForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
             <Field label="Fornecedor"><Input value={recordForm.providerName} onChange={(event) => setRecordForm((current) => ({ ...current, providerName: event.target.value }))} /></Field>
             <Field label="Medico"><Input value={recordForm.doctorName} onChange={(event) => setRecordForm((current) => ({ ...current, doctorName: event.target.value }))} /></Field>
-            <Field label="Anexo"><Input value={recordForm.attachmentId} onChange={(event) => setRecordForm((current) => ({ ...current, attachmentId: event.target.value }))} placeholder="ID do anexo" /></Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium text-foreground">Anexo medico</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. Documentos ocupacionais devem ser vinculados pelo fluxo seguro de documentos.</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular anexo</Button>
+            </div>
             <Field label="Restricoes"><TextArea value={recordForm.restrictionNotes} onChange={(event) => setRecordForm((current) => ({ ...current, restrictionNotes: event.target.value }))} /></Field>
           </div>
-          {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Erro ao salvar."} /></div> : null}
+          {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Nao foi possivel salvar o registro ocupacional. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => recordMutation.mutate(recordForm)} disabled={recordMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
         </Card>
       ) : null}
@@ -551,16 +551,20 @@ export function HrOccupationalHealthClient() {
             <Field label="Emissao"><Input type="date" value={nrForm.issuedAt} onChange={(event) => setNrForm((current) => ({ ...current, issuedAt: event.target.value }))} /></Field>
             <Field label="Validade"><Input type="date" value={nrForm.expiresAt} onChange={(event) => setNrForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
             <Field label="Status"><SelectField value={nrForm.status} onChange={(event) => setNrForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
-            <Field label="Certificado"><Input value={nrForm.certificateAttachmentId} onChange={(event) => setNrForm((current) => ({ ...current, certificateAttachmentId: event.target.value }))} placeholder="ID do anexo" /></Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium text-foreground">Certificado</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. O certificado deve ser vinculado pelo fluxo seguro de documentos.</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular certificado</Button>
+            </div>
           </div>
-          {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Erro ao salvar NR."} /></div> : null}
+          {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Nao foi possivel salvar a certificacao NR. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => nrMutation.mutate(nrForm)} disabled={nrMutation.isPending}><Save className="h-4 w-4" />Salvar NR</Button>
         </Card>
       ) : null}
 
       {(recordsQuery.isLoading || nrQuery.isLoading) ? <LoadingTable label="Carregando Saude Ocupacional..." /> : null}
-      {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Erro ao carregar registros."} /> : null}
-      {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Erro ao carregar NRs."} /> : null}
+      {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Nao foi possivel carregar os registros ocupacionais. Tente atualizar a pagina."} /> : null}
+      {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Nao foi possivel carregar as certificacoes NR. Tente atualizar a pagina."} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <OccupationalRecordsTable records={filteredRecords} onEdit={editRecord} />

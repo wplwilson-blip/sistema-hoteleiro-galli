@@ -94,7 +94,6 @@ type VerifyForm = {
   status: string;
   attendanceConfirmed: string;
   completedAt: string;
-  certificateAttachmentId: string;
   expiresAt: string;
   notes: string;
 };
@@ -162,7 +161,6 @@ const emptyVerifyForm: VerifyForm = {
   status: "completed",
   attendanceConfirmed: "true",
   completedAt: "",
-  certificateAttachmentId: "",
   expiresAt: "",
   notes: ""
 };
@@ -306,7 +304,6 @@ export function HrTrainingsClient() {
           status: form.status,
           attendanceConfirmed: form.attendanceConfirmed === "true",
           completedAt: form.completedAt ? new Date(`${form.completedAt}T12:00:00.000Z`).toISOString() : "",
-          certificateAttachmentId: form.certificateAttachmentId,
           expiresAt: form.expiresAt ? new Date(`${form.expiresAt}T12:00:00.000Z`).toISOString() : "",
           notes: form.notes
         })
@@ -355,7 +352,6 @@ export function HrTrainingsClient() {
       status: "completed",
       attendanceConfirmed: "true",
       completedAt: new Date().toISOString().slice(0, 10),
-      certificateAttachmentId: "",
       expiresAt: "",
       notes: ""
     });
@@ -452,7 +448,7 @@ export function HrTrainingsClient() {
             <Field label="Status"><SelectField value={trainingForm.status} onChange={(e) => setTrainingForm((f) => ({ ...f, status: e.target.value }))}><option value="active">Ativo</option><option value="inactive">Inativo</option><option value="archived">Arquivado</option></SelectField></Field>
             <Field label="Descrição"><TextArea value={trainingForm.description} onChange={(e) => setTrainingForm((f) => ({ ...f, description: e.target.value }))} /></Field>
           </div>
-          {trainingMutation.error ? <div className="mt-3"><ErrorMessage message={trainingMutation.error instanceof Error ? trainingMutation.error.message : "Erro ao salvar."} /></div> : null}
+          {trainingMutation.error ? <div className="mt-3"><ErrorMessage message={trainingMutation.error instanceof Error ? trainingMutation.error.message : "Nao foi possivel salvar o treinamento. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => trainingMutation.mutate(trainingForm)} disabled={trainingMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
         </Card>
       ) : null}
@@ -478,7 +474,11 @@ export function HrTrainingsClient() {
             <Field label="Status"><SelectField value={verifyForm.status} onChange={(e) => setVerifyForm((f) => ({ ...f, status: e.target.value }))}>{employeeStatuses.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</SelectField></Field>
             <Field label="Presença confirmada"><SelectField value={verifyForm.attendanceConfirmed} onChange={(e) => setVerifyForm((f) => ({ ...f, attendanceConfirmed: e.target.value }))}><option value="true">Sim</option><option value="false">Não</option></SelectField></Field>
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
-            <Field label="Certificado/anexo"><Input value={verifyForm.certificateAttachmentId} onChange={(e) => setVerifyForm((f) => ({ ...f, certificateAttachmentId: e.target.value }))} placeholder="ID do anexo" /></Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium text-foreground">Certificado</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. O certificado deve ser vinculado pelo fluxo seguro de documentos.</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular certificado</Button>
+            </div>
             <Field label="Validade até"><Input type="date" value={verifyForm.expiresAt} onChange={(e) => setVerifyForm((f) => ({ ...f, expiresAt: e.target.value }))} /></Field>
             <Field label="Observação"><Input value={verifyForm.notes} onChange={(e) => setVerifyForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
@@ -488,8 +488,8 @@ export function HrTrainingsClient() {
       ) : null}
 
       {(trainingsQuery.isLoading || assignmentsQuery.isLoading) ? <LoadingTable label="Carregando treinamentos..." /> : null}
-      {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Erro ao carregar catálogo."} /> : null}
-      {assignmentsQuery.error ? <ErrorMessage message={assignmentsQuery.error instanceof Error ? assignmentsQuery.error.message : "Erro ao carregar atribuições."} /> : null}
+      {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Nao foi possivel carregar o catalogo de treinamentos. Tente atualizar a pagina."} /> : null}
+      {assignmentsQuery.error ? <ErrorMessage message={assignmentsQuery.error instanceof Error ? assignmentsQuery.error.message : "Nao foi possivel carregar os treinamentos atribuidos. Tente atualizar a pagina."} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">

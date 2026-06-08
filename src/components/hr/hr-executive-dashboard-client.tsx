@@ -150,7 +150,7 @@ export function HrExecutiveDashboardClient() {
       </Card>
 
       {dashboardQuery.isLoading ? <LoadingTable label="Carregando dashboard executivo..." /> : null}
-      {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Erro ao carregar dashboard executivo."} /> : null}
+      {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Nao foi possivel carregar o dashboard executivo. Tente atualizar a pagina."} /> : null}
 
       {indicators ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -194,8 +194,8 @@ export function HrExecutiveDashboardClient() {
           </SelectField>
         </div>
         {pendingQuery.isLoading ? <LoadingTable label="Carregando central de pendencias..." /> : null}
-        {pendingQuery.error ? <ErrorMessage message={pendingQuery.error instanceof Error ? pendingQuery.error.message : "Erro ao carregar pendencias."} /> : null}
-        {!pendingQuery.isLoading && !pendencies.length ? <EmptyState title="Nenhuma pendencia consolidada" description="Quando algum modulo gerar pendencia operacional, ela aparecera aqui." /> : null}
+        {pendingQuery.error ? <ErrorMessage message={pendingQuery.error instanceof Error ? pendingQuery.error.message : "Nao foi possivel carregar a central de pendencias. Tente atualizar a pagina."} /> : null}
+        {!pendingQuery.isLoading && !pendencies.length ? <EmptyState title="Nenhuma pendencia encontrada" description="Quando houver documentos, treinamentos, saude ocupacional ou processos pendentes, eles aparecerao aqui." /> : null}
         {pendencies.length ? (
           <div className="mt-4 overflow-x-auto rounded-md border">
             <table className="min-w-[980px] w-full text-sm">

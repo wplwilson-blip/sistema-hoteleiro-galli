@@ -54,7 +54,6 @@ type ConductForm = {
   actionTaken: string;
   status: string;
   severity: string;
-  attachmentId: string;
   isSensitive: string;
 };
 
@@ -78,7 +77,6 @@ const emptyForm: ConductForm = {
   actionTaken: "",
   status: "draft",
   severity: "",
-  attachmentId: "",
   isSensitive: "true"
 };
 
@@ -118,6 +116,15 @@ function statusTone(status: string) {
   return "visual" as const;
 }
 
+function nextActionLabel(status: string) {
+  if (status === "draft") return "Envie para revisao quando estiver pronto.";
+  if (status === "pending_review") return "Aguardando aprovacao do responsavel.";
+  if (status === "reviewed") return "Registro revisado e publicado na Vida Funcional.";
+  if (status === "rejected") return "Registro rejeitado. Revise antes de qualquer nova acao.";
+  if (status === "cancelled") return "Registro cancelado.";
+  return "Acompanhe o status do registro.";
+}
+
 function payload(form: ConductForm) {
   return {
     employeeId: form.employeeId,
@@ -128,7 +135,6 @@ function payload(form: ConductForm) {
     actionTaken: form.actionTaken,
     status: form.status,
     severity: form.severity || undefined,
-    attachmentId: form.attachmentId,
     isSensitive: form.isSensitive === "true"
   };
 }
@@ -201,7 +207,6 @@ export function HrConductClient() {
       actionTaken: record.redacted ? "" : record.actionTaken,
       status: record.status,
       severity: record.severity,
-      attachmentId: "",
       isSensitive: String(record.isSensitive)
     });
     setShowForm(true);
@@ -248,22 +253,26 @@ export function HrConductClient() {
             <Field label="Data"><Input type="date" value={form.occurrenceDate} onChange={(event) => setForm((current) => ({ ...current, occurrenceDate: event.target.value }))} /></Field>
             <Field label="Status"><SelectField value={form.status} disabled><option value="draft">Rascunho</option></SelectField></Field>
             <Field label="Severidade"><SelectField value={form.severity} onChange={(event) => setForm((current) => ({ ...current, severity: event.target.value }))}><option value="">Padrao do tipo</option>{severities.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
-            <Field label="Restrito?"><SelectField value={form.isSensitive} onChange={(event) => setForm((current) => ({ ...current, isSensitive: event.target.value }))}><option value="true">Sim</option><option value="false">Nao</option></SelectField></Field>
-            <Field label="Anexo"><Input value={form.attachmentId} onChange={(event) => setForm((current) => ({ ...current, attachmentId: event.target.value }))} placeholder="ID do anexo" /></Field>
+            <Field label="Visibilidade"><SelectField value={form.isSensitive} onChange={(event) => setForm((current) => ({ ...current, isSensitive: event.target.value }))}><option value="true">Restrito</option><option value="false">Operacional</option></SelectField></Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium text-foreground">Evidencias</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. Evidencias devem ser vinculadas pelo fluxo seguro de anexos.</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular evidencia</Button>
+            </div>
             <Field label="Titulo"><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field>
             <Field label="Descricao"><TextArea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></Field>
             <Field label="Acao tomada"><TextArea value={form.actionTaken} onChange={(event) => setForm((current) => ({ ...current, actionTaken: event.target.value }))} /></Field>
           </div>
-          {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Erro ao salvar conduta."} /></div> : null}
+          {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar o registro de conduta. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
         </Card>
       ) : null}
 
       {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
-      {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Erro ao carregar conduta."} /> : null}
+      {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Nao foi possivel carregar os registros de conduta. Tente atualizar a pagina."} /> : null}
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <Field label="Comentario da proxima acao"><TextArea value={actionComments} onChange={(event) => setActionComments(event.target.value)} /></Field>
-        {actionMutation.error ? <div className="mt-3"><ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Erro ao executar acao."} /></div> : null}
+        {actionMutation.error ? <div className="mt-3"><ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel executar a acao. Confira o status do registro e tente novamente."} /></div> : null}
       </Card>
       <ConductTable records={records} onEdit={edit} onAction={runAction} actionPending={actionMutation.isPending} />
     </div>
@@ -283,9 +292,9 @@ function ConductTable({ records, onEdit, onAction, actionPending }: { records: C
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Registros de conduta</h2></div>
-      {!records.length ? <EmptyState title="Nenhum registro de conduta" description="Advertencias, elogios e conversas formais aparecerao aqui." /> : null}
+      {!records.length ? <EmptyState title="Nenhuma ocorrencia de conduta registrada" description="Use Novo registro para registrar advertencias, suspensoes, reclamacoes, elogios ou conversas formais." /> : null}
       {records.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[1240px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Evidencias</th><th className="px-4 py-3">Timeline</th><th className="px-4 py-3">Acoes</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3"><StatusBadge status={record.evidenceCount ? "success" : "visual"} label={`${record.evidenceCount ?? 0} evidencia(s)`} /></td><td className="px-4 py-3"><ConductTimeline reviews={record.reviews} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button>{record.status === "draft" ? <Button size="sm" onClick={() => onAction(record, "submit")} disabled={actionPending}>Enviar</Button> : null}{record.status === "pending_review" ? <Button size="sm" onClick={() => onAction(record, "approve")} disabled={actionPending}>Aprovar</Button> : null}{record.status === "pending_review" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "reject")} disabled={actionPending}>Rejeitar</Button> : null}{record.status !== "cancelled" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "cancel")} disabled={actionPending}>Cancelar</Button> : null}</div></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[1240px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Evidencias</th><th className="px-4 py-3">Timeline</th><th className="px-4 py-3">Acoes</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informacao sensivel"} /> : null}</div></td><td className="px-4 py-3"><div className="space-y-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /><p className="max-w-[220px] text-xs leading-5 text-muted-foreground">{nextActionLabel(record.status)}</p></div></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3"><StatusBadge status={record.evidenceCount ? "success" : "visual"} label={`${record.evidenceCount ?? 0} evidencia(s)`} /></td><td className="px-4 py-3"><ConductTimeline reviews={record.reviews} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button>{record.status === "draft" ? <Button size="sm" onClick={() => onAction(record, "submit")} disabled={actionPending}>Enviar para revisao</Button> : null}{record.status === "pending_review" ? <Button size="sm" onClick={() => onAction(record, "approve")} disabled={actionPending}>Aprovar</Button> : null}{record.status === "pending_review" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "reject")} disabled={actionPending}>Rejeitar</Button> : null}{record.status !== "cancelled" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "cancel")} disabled={actionPending}>Cancelar</Button> : null}</div></td></tr>)}</tbody></table></div>
       ) : null}
     </Card>
   );

@@ -125,10 +125,10 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
       </div>
       <div className="space-y-5 p-5">
         {recordsQuery.isLoading || nrQuery.isLoading ? <LoadingTable label="Carregando Saude Ocupacional..." /> : null}
-        {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Erro ao carregar registros ocupacionais."} /> : null}
-        {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Erro ao carregar certificacoes NR."} /> : null}
+        {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Nao foi possivel carregar os registros ocupacionais. Tente atualizar a pagina."} /> : null}
+        {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Nao foi possivel carregar as certificacoes NR. Tente atualizar a pagina."} /> : null}
         {!recordsQuery.isLoading && !nrQuery.isLoading && recordsQuery.data && nrQuery.data && !records.length && !nrs.length ? (
-          <EmptyState title="Nenhum registro ocupacional" description="ASOs, exames, restricoes e certificacoes NR do colaborador aparecerao aqui." />
+          <EmptyState title="Nenhum ASO registrado" description="ASOs, exames ocupacionais, restricoes e certificacoes NR do colaborador aparecerao aqui." />
         ) : null}
 
         {records.length ? (
@@ -157,7 +157,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                         {expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}
                         {expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}
                         {record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restricao ativa" /> : null}
-                        {record.redacted ? <StatusBadge status="warning" label="Restrito" /> : null}
+                        {record.redacted ? <StatusBadge status="warning" label="Registro restrito" /> : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">{formatDate(record.examDate)}</td>
@@ -203,7 +203,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                         {expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}
                         {expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}
                         <StatusBadge status={nr.hasCertificate ? "success" : "visual"} label={nr.hasCertificate ? "Anexado" : "Pendente"} />
-                        {nr.redacted ? <StatusBadge status="warning" label="Restrito" /> : null}
+                        {nr.redacted ? <StatusBadge status="warning" label="Registro restrito" /> : null}
                       </div>
                     </td>
                   </tr>

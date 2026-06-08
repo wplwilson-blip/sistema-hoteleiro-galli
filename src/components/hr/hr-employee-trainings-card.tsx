@@ -72,9 +72,9 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
       </div>
       <div className="p-5">
         {trainingsQuery.isLoading ? <LoadingTable label="Carregando treinamentos..." /> : null}
-        {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Erro ao carregar treinamentos."} /> : null}
+        {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Nao foi possivel carregar os treinamentos do colaborador. Tente atualizar a pagina."} /> : null}
         {!trainingsQuery.isLoading && trainingsQuery.data && !trainings.length ? (
-          <EmptyState title="Nenhum treinamento atribuido" description="Treinamentos internos, externos e obrigatorios do colaborador aparecerao aqui." />
+          <EmptyState title="Nenhum treinamento atribuido" description="Quando um treinamento for atribuido ao colaborador, ele aparecera aqui com prazo, conclusao e certificado." />
         ) : null}
         {trainings.length ? (
           <div className="overflow-x-auto">

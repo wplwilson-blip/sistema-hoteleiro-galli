@@ -994,7 +994,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
                             <td className="px-4 py-3">
                               <div className="flex flex-wrap gap-2">
                                 <StatusBadge status="info" label={movement.movementTypeLabel} />
-                                {movement.isSensitive ? <StatusBadge status="warning" label={movement.redacted ? "Informacao restrita" : "Sensivel"} /> : null}
+                                {movement.isSensitive ? <StatusBadge status="warning" label={movement.redacted ? "Informacao restrita" : "Informacao sensivel"} /> : null}
                               </div>
                             </td>
                             <td className="px-4 py-3"><StatusBadge status={movementStatusTone(movement.status)} label={movement.statusLabel} /></td>
@@ -1156,7 +1156,7 @@ function TimelineEventCard({ event, employeeId }: { event: HrFunctionalEvent; em
             <StatusBadge status={eventCategoryTone(category)} label={eventCategoryLabel(category)} />
             <StatusBadge status={eventSeverityTone(event.severity)} label={eventSeverityLabel(event.severity)} />
             <StatusBadge status="visual" label={eventStatusLabel(event.status)} />
-            {event.isSensitive ? <StatusBadge status="warning" label={event.redacted ? "Evento restrito" : "Restrito"} /> : null}
+            {event.isSensitive ? <StatusBadge status="warning" label={event.redacted ? "Evento restrito" : "Visivel apenas para usuarios autorizados"} /> : null}
           </div>
           <h4 className="mt-2 break-words text-sm font-semibold text-foreground">{eventTypeLabel(event.eventType)}</h4>
           <p className="mt-1 break-words text-sm leading-6 text-foreground">{event.title}</p>

@@ -76,13 +76,13 @@ export function HrEmployeeTerminationsCard({ employeeId }: { employeeId: string 
       </div>
       <div className="p-5">
         {terminationsQuery.isLoading ? <LoadingTable label="Carregando desligamentos..." /> : null}
-        {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Erro ao carregar desligamentos."} /> : null}
-        {!terminationsQuery.isLoading && terminationsQuery.data && !records.length ? <EmptyState title="Nenhum desligamento registrado" description="Processos administrativos de desligamento do colaborador aparecerao aqui." /> : null}
+        {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Nao foi possivel carregar os desligamentos do colaborador. Tente atualizar a pagina."} /> : null}
+        {!terminationsQuery.isLoading && terminationsQuery.data && !records.length ? <EmptyState title="Nenhum desligamento em andamento" description="Processos administrativos de desligamento do colaborador aparecerao aqui." /> : null}
         {records.length ? (
           <div className="overflow-x-auto rounded-md border">
             <table className="min-w-[960px] w-full text-sm">
               <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Solicitado</th><th className="px-4 py-3">Data efetiva</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Checklist</th></tr></thead>
-              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.requestedAt)}</td><td className="px-4 py-3">{formatDate(record.effectiveDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.terminationTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3">{record.terminationReason}</td><td className="px-4 py-3"><TerminationChecklist record={record} /></td></tr>)}</tbody>
+              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.requestedAt)}</td><td className="px-4 py-3">{formatDate(record.effectiveDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.terminationTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informacao sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.terminationReason}</td><td className="px-4 py-3"><TerminationChecklist record={record} /></td></tr>)}</tbody>
             </table>
           </div>
         ) : null}

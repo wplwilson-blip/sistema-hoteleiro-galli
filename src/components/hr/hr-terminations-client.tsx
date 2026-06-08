@@ -111,6 +111,15 @@ function statusTone(status: string) {
   return "visual" as const;
 }
 
+function nextActionLabel(record: TerminationRecord) {
+  if (record.status === "draft") return "Envie para revisao quando estiver pronto.";
+  if (record.status === "pending_review") return "Aguardando aprovacao do responsavel.";
+  if (record.status === "approved") return record.pendingCount > 0 ? "Conclua as pendencias antes de efetivar." : "Pronto para efetivacao.";
+  if (record.status === "implemented") return "Processo concluido.";
+  if (record.status === "cancelled") return "Processo cancelado.";
+  return "Acompanhe o status do desligamento.";
+}
+
 function payload(form: TerminationForm) {
   return {
     employeeId: form.employeeId,
@@ -246,16 +255,16 @@ export function HrTerminationsClient() {
             <Field label="Motivo"><TextArea value={form.terminationReason} onChange={(event) => setForm((current) => ({ ...current, terminationReason: event.target.value }))} /></Field>
             <Field label="Observacao"><TextArea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field>
           </div>
-          {saveMutation.error ? <div className="mt-3"><ErrorMessage message={saveMutation.error instanceof Error ? saveMutation.error.message : "Erro ao salvar desligamento."} /></div> : null}
+          {saveMutation.error ? <div className="mt-3"><ErrorMessage message={saveMutation.error instanceof Error ? saveMutation.error.message : "Nao foi possivel salvar o desligamento. Confira colaborador, tipo, motivo e data efetiva."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
         </Card>
       ) : null}
 
       {terminationsQuery.isLoading ? <LoadingTable label="Carregando desligamentos..." /> : null}
-      {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Erro ao carregar desligamentos."} /> : null}
-      {actionMutation.error ? <ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Erro ao executar acao."} /> : null}
-      {checklistMutation.error ? <ErrorMessage message={checklistMutation.error instanceof Error ? checklistMutation.error.message : "Erro ao atualizar checklist."} /> : null}
-      {addChecklistMutation.error ? <ErrorMessage message={addChecklistMutation.error instanceof Error ? addChecklistMutation.error.message : "Erro ao adicionar pendencia."} /> : null}
+      {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Nao foi possivel carregar os desligamentos. Tente atualizar a pagina."} /> : null}
+      {actionMutation.error ? <ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel executar a acao. Confira o status do processo e tente novamente."} /> : null}
+      {checklistMutation.error ? <ErrorMessage message={checklistMutation.error instanceof Error ? checklistMutation.error.message : "Nao foi possivel atualizar o checklist. Tente novamente."} /> : null}
+      {addChecklistMutation.error ? <ErrorMessage message={addChecklistMutation.error instanceof Error ? addChecklistMutation.error.message : "Nao foi possivel adicionar a pendencia. Informe o nome do item e tente novamente."} /> : null}
 
       <TerminationTable
         records={records}
@@ -302,9 +311,9 @@ function TerminationTable({
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Processos de desligamento</h2></div>
-      {!records.length ? <EmptyState title="Nenhum desligamento registrado" description="Solicitacoes e checklists de desligamento aparecerao aqui." /> : null}
+      {!records.length ? <EmptyState title="Nenhum desligamento em andamento" description="Use Novo desligamento para iniciar uma solicitacao administrativa com checklist e revisao." /> : null}
       {records.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[1280px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data efetiva</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Checklist</th><th className="px-4 py-3">Acoes</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.terminationTypeLabel} /><StatusBadge status="warning" label={record.redacted ? "Restrito" : "Sensivel"} /></div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3">{formatDate(record.effectiveDate)}</td><td className="px-4 py-3">{record.terminationReason}</td><td className="px-4 py-3"><TerminationChecklist record={record} checklistName={checklistName} onChecklistName={onChecklistName} onToggle={onToggleChecklist} onAdd={onAddChecklist} pending={pending} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Button variant="outline" size="sm" onClick={() => onEdit(record)} disabled={record.status !== "draft"}>Editar</Button>{record.status === "draft" ? <Button size="sm" onClick={() => onAction(record, "submit")} disabled={pending}>Enviar</Button> : null}{record.status === "pending_review" ? <Button size="sm" onClick={() => onAction(record, "approve")} disabled={pending}>Aprovar</Button> : null}{record.status === "approved" ? <Button size="sm" onClick={() => onAction(record, "implement")} disabled={pending || record.pendingCount > 0}>Efetivar</Button> : null}{record.status !== "implemented" && record.status !== "cancelled" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "cancel")} disabled={pending}>Cancelar</Button> : null}</div></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[1280px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data efetiva</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Checklist</th><th className="px-4 py-3">Acoes</th></tr></thead><tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.terminationTypeLabel} /><StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informacao sensivel"} /></div></td><td className="px-4 py-3"><div className="space-y-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /><p className="max-w-[220px] text-xs leading-5 text-muted-foreground">{nextActionLabel(record)}</p></div></td><td className="px-4 py-3">{formatDate(record.effectiveDate)}</td><td className="px-4 py-3">{record.redacted ? "Informacao sensivel" : record.terminationReason}</td><td className="px-4 py-3"><TerminationChecklist record={record} checklistName={checklistName} onChecklistName={onChecklistName} onToggle={onToggleChecklist} onAdd={onAddChecklist} pending={pending} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><Button variant="outline" size="sm" onClick={() => onEdit(record)} disabled={record.status !== "draft"}>Editar</Button>{record.status === "draft" ? <Button size="sm" onClick={() => onAction(record, "submit")} disabled={pending}>Enviar para revisao</Button> : null}{record.status === "pending_review" ? <Button size="sm" onClick={() => onAction(record, "approve")} disabled={pending}>Aprovar</Button> : null}{record.status === "approved" ? <Button size="sm" onClick={() => onAction(record, "implement")} disabled={pending || record.pendingCount > 0}>Efetivar</Button> : null}{record.status !== "implemented" && record.status !== "cancelled" ? <Button variant="outline" size="sm" onClick={() => onAction(record, "cancel")} disabled={pending}>Cancelar</Button> : null}</div></td></tr>)}</tbody></table></div>
       ) : null}
     </Card>
   );
