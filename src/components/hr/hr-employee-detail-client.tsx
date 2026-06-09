@@ -747,6 +747,8 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         </div>
       </div>
 
+      <HrEmployeeRhSummaryCard employeeId={employeeId} />
+
       <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
         <div className="flex flex-wrap gap-2">
           {tabs.map((tab) => (
@@ -776,7 +778,6 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
               <InfoTile label="Ultima atualizacao" value={formatDateTime(employee.updatedAt)} icon={CalendarClock} />
             </div>
           </Card>
-          <HrEmployeeRhSummaryCard employeeId={employeeId} />
         </div>
       ) : null}
 
