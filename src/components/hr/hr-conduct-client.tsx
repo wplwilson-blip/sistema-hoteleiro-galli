@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Filter, MessageSquareText, Plus, Save, ShieldAlert, X } from "lucide-react";
+import { Filter, MessageSquareText, Plus, Save, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
+import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -218,7 +219,7 @@ export function HrConductClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Conduta e Ocorrencias</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Advertencias, suspensoes, reclamacoes, elogios, orientacoes e conversas formais.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ocorrencias como rascunho e envie para revisao antes de entrar na Vida Funcional.</p>
           </div>
           <Button size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
         </div>
@@ -244,20 +245,25 @@ export function HrConductClient() {
         </div>
       </Card>
 
-      {showForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">{form.id ? "Editar registro de conduta" : "Novo registro de conduta"}</h2><Button variant="outline" size="sm" onClick={() => setShowForm(false)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={showForm}
+        title={form.id ? "Editar registro de conduta" : "Novo registro de conduta"}
+        description={form.id ? "Atualize o registro sem mudar o fluxo de revisao." : "O registro nasce como rascunho. Envie para revisao quando estiver pronto."}
+        onClose={() => setShowForm(false)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="Tipo"><SelectField value={form.conductType} onChange={(event) => setForm((current) => ({ ...current, conductType: event.target.value }))}>{conductTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             <Field label="Data"><Input type="date" value={form.occurrenceDate} onChange={(event) => setForm((current) => ({ ...current, occurrenceDate: event.target.value }))} /></Field>
-            <Field label="Status"><SelectField value={form.status} disabled><option value="draft">Rascunho</option></SelectField></Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium text-foreground">Status inicial: Rascunho</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Depois de salvar, use Enviar para revisao para continuar o fluxo.</p>
+            </div>
             <Field label="Severidade"><SelectField value={form.severity} onChange={(event) => setForm((current) => ({ ...current, severity: event.target.value }))}><option value="">Padrao do tipo</option>{severities.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             <Field label="Visibilidade"><SelectField value={form.isSensitive} onChange={(event) => setForm((current) => ({ ...current, isSensitive: event.target.value }))}><option value="true">Restrito</option><option value="false">Operacional</option></SelectField></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Evidencias</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. Evidencias devem ser vinculadas pelo fluxo seguro de anexos.</p>
-              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular evidencia</Button>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Evidencias serao vinculadas pelo modulo Documentos em uma proxima etapa. Nao informe IDs manualmente.</p>
             </div>
             <Field label="Titulo"><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field>
             <Field label="Descricao"><TextArea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></Field>
@@ -265,8 +271,7 @@ export function HrConductClient() {
           </div>
           {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar o registro de conduta. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
       {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
       {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Nao foi possivel carregar os registros de conduta. Tente atualizar a pagina."} /> : null}

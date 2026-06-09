@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Award, CalendarClock, CheckCircle2, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert, X } from "lucide-react";
+import { Award, CalendarClock, CheckCircle2, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
+import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -366,7 +367,7 @@ export function HrTrainingsClient() {
               <Award className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Gestão de treinamentos</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">Catalogo, atribuicoes, presenca, certificados e validade sem criar modulo de saude ocupacional.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Cadastre treinamentos, atribua aos colaboradores e acompanhe vencimentos.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Novo treinamento</Button>
@@ -431,10 +432,13 @@ export function HrTrainingsClient() {
         </div>
       </Card>
 
-      {showTrainingForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">{trainingForm.id ? "Editar treinamento" : "Novo treinamento"}</h2><Button variant="outline" size="sm" onClick={() => setShowTrainingForm(false)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={showTrainingForm}
+        title={trainingForm.id ? "Editar treinamento" : "Novo treinamento"}
+        description={trainingForm.id ? "Atualize os dados do treinamento sem alterar o historico dos colaboradores." : "Cadastre o treinamento uma vez para depois atribuir aos colaboradores."}
+        onClose={() => setShowTrainingForm(false)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Título"><Input value={trainingForm.title} onChange={(e) => setTrainingForm((f) => ({ ...f, title: e.target.value }))} /></Field>
             <Field label="Unidade"><SelectField value={trainingForm.unitId} onChange={(e) => setTrainingForm((f) => ({ ...f, unitId: e.target.value }))}><option value="">Rede/todas</option>{(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</SelectField></Field>
             <Field label="Tipo"><SelectField value={trainingForm.trainingType} onChange={(e) => setTrainingForm((f) => ({ ...f, trainingType: e.target.value }))}>{trainingTypes.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</SelectField></Field>
@@ -445,18 +449,27 @@ export function HrTrainingsClient() {
             <Field label="Exige certificado?"><SelectField value={trainingForm.requiresCertificate} onChange={(e) => setTrainingForm((f) => ({ ...f, requiresCertificate: e.target.value }))}><option value="false">Não</option><option value="true">Sim</option></SelectField></Field>
             <Field label="Possui validade?"><SelectField value={trainingForm.hasExpiration} onChange={(e) => setTrainingForm((f) => ({ ...f, hasExpiration: e.target.value }))}><option value="false">Não</option><option value="true">Sim</option></SelectField></Field>
             <Field label="Validade em dias"><Input type="number" min="1" value={trainingForm.validityDays} onChange={(e) => setTrainingForm((f) => ({ ...f, validityDays: e.target.value }))} disabled={trainingForm.hasExpiration !== "true"} /></Field>
-            <Field label="Status"><SelectField value={trainingForm.status} onChange={(e) => setTrainingForm((f) => ({ ...f, status: e.target.value }))}><option value="active">Ativo</option><option value="inactive">Inativo</option><option value="archived">Arquivado</option></SelectField></Field>
+            {trainingForm.id ? (
+              <Field label="Status"><SelectField value={trainingForm.status} onChange={(e) => setTrainingForm((f) => ({ ...f, status: e.target.value }))}><option value="active">Ativo</option><option value="inactive">Inativo</option><option value="archived">Arquivado</option></SelectField></Field>
+            ) : (
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <p className="font-medium text-foreground">Status inicial: Ativo</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Novos treinamentos ficam disponiveis para atribuicao. O status pode ser alterado depois, se necessario.</p>
+              </div>
+            )}
             <Field label="Descrição"><TextArea value={trainingForm.description} onChange={(e) => setTrainingForm((f) => ({ ...f, description: e.target.value }))} /></Field>
           </div>
           {trainingMutation.error ? <div className="mt-3"><ErrorMessage message={trainingMutation.error instanceof Error ? trainingMutation.error.message : "Nao foi possivel salvar o treinamento. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => trainingMutation.mutate(trainingForm)} disabled={trainingMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
-      {showAssignForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">Atribuir treinamento</h2><Button variant="outline" size="sm" onClick={() => setShowAssignForm(false)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={showAssignForm}
+        title="Atribuir treinamento"
+        description="Escolha o colaborador, o treinamento e o prazo para acompanhamento operacional."
+        onClose={() => setShowAssignForm(false)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={assignForm.employeeId} onChange={(e) => setAssignForm((f) => ({ ...f, employeeId: e.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="Treinamento"><SelectField value={assignForm.trainingId} onChange={(e) => setAssignForm((f) => ({ ...f, trainingId: e.target.value }))}><option value="">Selecione</option>{trainings.map((training) => <option key={training.id} value={training.id}>{training.title}</option>)}</SelectField></Field>
             <Field label="Prazo"><Input type="date" value={assignForm.dueDate} onChange={(e) => setAssignForm((f) => ({ ...f, dueDate: e.target.value }))} /></Field>
@@ -464,28 +477,28 @@ export function HrTrainingsClient() {
           </div>
           {assignMutation.error ? <div className="mt-3"><ErrorMessage message={assignMutation.error instanceof Error ? assignMutation.error.message : "Erro ao atribuir."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => assignMutation.mutate(assignForm)} disabled={assignMutation.isPending}><Save className="h-4 w-4" />Atribuir</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
-      {verifyForm.employeeTrainingId ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">Concluir/validar treinamento</h2><Button variant="outline" size="sm" onClick={() => setVerifyForm(emptyVerifyForm)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={Boolean(verifyForm.employeeTrainingId)}
+        title="Concluir ou validar treinamento"
+        description="Informe presenca, conclusao e validade. Certificados continuarao vinculados pelo fluxo seguro de documentos."
+        onClose={() => setVerifyForm(emptyVerifyForm)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Status"><SelectField value={verifyForm.status} onChange={(e) => setVerifyForm((f) => ({ ...f, status: e.target.value }))}>{employeeStatuses.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</SelectField></Field>
             <Field label="Presença confirmada"><SelectField value={verifyForm.attendanceConfirmed} onChange={(e) => setVerifyForm((f) => ({ ...f, attendanceConfirmed: e.target.value }))}><option value="true">Sim</option><option value="false">Não</option></SelectField></Field>
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Certificado</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. O certificado deve ser vinculado pelo fluxo seguro de documentos.</p>
-              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular certificado</Button>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificados serao vinculados pelo modulo Documentos em uma proxima etapa. Registre aqui a conclusao e a validade.</p>
             </div>
             <Field label="Validade até"><Input type="date" value={verifyForm.expiresAt} onChange={(e) => setVerifyForm((f) => ({ ...f, expiresAt: e.target.value }))} /></Field>
             <Field label="Observação"><Input value={verifyForm.notes} onChange={(e) => setVerifyForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
           {verifyMutation.error ? <div className="mt-3"><ErrorMessage message={verifyMutation.error instanceof Error ? verifyMutation.error.message : "Erro ao validar."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => verifyMutation.mutate(verifyForm)} disabled={verifyMutation.isPending}><FileCheck2 className="h-4 w-4" />Salvar validação</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
       {(trainingsQuery.isLoading || assignmentsQuery.isLoading) ? <LoadingTable label="Carregando treinamentos..." /> : null}
       {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Nao foi possivel carregar o catalogo de treinamentos. Tente atualizar a pagina."} /> : null}

@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, Download, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert, X } from "lucide-react";
+import { Activity, BarChart3, Download, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
+import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -407,7 +408,7 @@ export function HrOccupationalHealthClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Saude Ocupacional</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">ASOs, exames ocupacionais, restricoes e certificacoes NR com dados restritos.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restricoes. Use Atualizar vencimentos para recalcular pendencias.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => downloadCsv("pendencias-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendencias</Button>
@@ -518,49 +519,65 @@ export function HrOccupationalHealthClient() {
         </Card>
       </div>
 
-      {showRecordForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">{recordForm.id ? "Editar registro ocupacional" : "Novo registro ocupacional"}</h2><Button variant="outline" size="sm" onClick={() => setShowRecordForm(false)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={showRecordForm}
+        title={recordForm.id ? "Editar registro ocupacional" : "Novo registro ocupacional"}
+        description={recordForm.id ? "Atualize dados administrativos do registro ocupacional mantendo acesso restrito." : "Registre ASO, exame ou restricao com acesso restrito para usuarios autorizados."}
+        onClose={() => setShowRecordForm(false)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={recordForm.employeeId} onChange={(event) => setRecordForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="Tipo"><SelectField value={recordForm.recordType} onChange={(event) => setRecordForm((current) => ({ ...current, recordType: event.target.value }))}>{recordTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
-            <Field label="Status"><SelectField value={recordForm.status} onChange={(event) => setRecordForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
+            {recordForm.id ? (
+              <Field label="Status"><SelectField value={recordForm.status} onChange={(event) => setRecordForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
+            ) : (
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <p className="font-medium text-foreground">Status inicial: Valido</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">O status pode ser recalculado pelos vencimentos ou ajustado depois em edicao.</p>
+              </div>
+            )}
             <Field label="Data"><Input type="date" value={recordForm.examDate} onChange={(event) => setRecordForm((current) => ({ ...current, examDate: event.target.value }))} /></Field>
             <Field label="Validade"><Input type="date" value={recordForm.expiresAt} onChange={(event) => setRecordForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
             <Field label="Fornecedor"><Input value={recordForm.providerName} onChange={(event) => setRecordForm((current) => ({ ...current, providerName: event.target.value }))} /></Field>
             <Field label="Medico"><Input value={recordForm.doctorName} onChange={(event) => setRecordForm((current) => ({ ...current, doctorName: event.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Anexo medico</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. Documentos ocupacionais devem ser vinculados pelo fluxo seguro de documentos.</p>
-              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular anexo</Button>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexos serao vinculados pelo modulo Documentos em uma proxima etapa. Nao informe IDs manualmente.</p>
             </div>
             <Field label="Restricoes"><TextArea value={recordForm.restrictionNotes} onChange={(event) => setRecordForm((current) => ({ ...current, restrictionNotes: event.target.value }))} /></Field>
           </div>
           {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Nao foi possivel salvar o registro ocupacional. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => recordMutation.mutate(recordForm)} disabled={recordMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
-      {showNrForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">{nrForm.id ? "Editar certificacao NR" : "Nova certificacao NR"}</h2><Button variant="outline" size="sm" onClick={() => setShowNrForm(false)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={showNrForm}
+        title={nrForm.id ? "Editar certificacao NR" : "Nova certificacao NR"}
+        description={nrForm.id ? "Atualize a certificacao NR e seus vencimentos." : "Registre a NR, o treinamento, a emissao e a validade do colaborador."}
+        onClose={() => setShowNrForm(false)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={nrForm.employeeId} onChange={(event) => setNrForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="NR"><SelectField value={nrForm.nrCode} onChange={(event) => setNrForm((current) => ({ ...current, nrCode: event.target.value }))}>{nrCodes.map((code) => <option key={code} value={code}>{code}</option>)}</SelectField></Field>
             <Field label="Treinamento"><Input value={nrForm.trainingName} onChange={(event) => setNrForm((current) => ({ ...current, trainingName: event.target.value }))} /></Field>
             <Field label="Emissao"><Input type="date" value={nrForm.issuedAt} onChange={(event) => setNrForm((current) => ({ ...current, issuedAt: event.target.value }))} /></Field>
             <Field label="Validade"><Input type="date" value={nrForm.expiresAt} onChange={(event) => setNrForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
-            <Field label="Status"><SelectField value={nrForm.status} onChange={(event) => setNrForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
+            {nrForm.id ? (
+              <Field label="Status"><SelectField value={nrForm.status} onChange={(event) => setNrForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
+            ) : (
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <p className="font-medium text-foreground">Status inicial: Valido</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">A situacao de vencimento sera acompanhada pela validade informada.</p>
+              </div>
+            )}
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Certificado</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Nenhum arquivo anexado. O certificado deve ser vinculado pelo fluxo seguro de documentos.</p>
-              <Button type="button" variant="outline" size="sm" className="mt-3" disabled>Vincular certificado</Button>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificados serao vinculados pelo modulo Documentos em uma proxima etapa. Nao informe IDs manualmente.</p>
             </div>
           </div>
           {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Nao foi possivel salvar a certificacao NR. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => nrMutation.mutate(nrForm)} disabled={nrMutation.isPending}><Save className="h-4 w-4" />Salvar NR</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
       {(recordsQuery.isLoading || nrQuery.isLoading) ? <LoadingTable label="Carregando Saude Ocupacional..." /> : null}
       {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Nao foi possivel carregar os registros ocupacionais. Tente atualizar a pagina."} /> : null}

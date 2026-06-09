@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Filter, LogOut, Plus, Save, X } from "lucide-react";
+import { ClipboardList, Filter, LogOut, Plus, Save } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
+import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -218,7 +219,7 @@ export function HrTerminationsClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><LogOut className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Desligamentos</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Solicitacoes, checklist, pendencias, aprovacao e efetivacao administrativa.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Crie o desligamento, conclua o checklist e efetive somente apos aprovacao.</p>
           </div>
           <Button size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo desligamento</Button>
         </div>
@@ -244,21 +245,26 @@ export function HrTerminationsClient() {
         </div>
       </Card>
 
-      {showForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex justify-between gap-3"><h2 className="text-sm font-semibold">{form.id ? "Editar desligamento" : "Novo desligamento"}</h2><Button variant="outline" size="sm" onClick={() => setShowForm(false)}><X className="h-4 w-4" />Fechar</Button></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <HrOperationalModal
+        open={showForm}
+        title={form.id ? "Editar desligamento" : "Novo desligamento"}
+        description={form.id ? "Atualize o rascunho do desligamento sem alterar o fluxo de aprovacao." : "O desligamento nasce como rascunho. Depois, envie para revisao e efetive somente apos aprovacao."}
+        onClose={() => setShowForm(false)}
+      >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="Tipo"><SelectField value={form.terminationType} onChange={(event) => setForm((current) => ({ ...current, terminationType: event.target.value }))}>{terminationTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             <Field label="Data efetiva"><Input type="date" value={form.effectiveDate} onChange={(event) => setForm((current) => ({ ...current, effectiveDate: event.target.value }))} /></Field>
-            <Field label="Status"><SelectField value={form.status} disabled><option value="draft">Rascunho</option></SelectField></Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium text-foreground">Status inicial: Rascunho</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">O status muda pelo fluxo: revisao, aprovacao e efetivacao.</p>
+            </div>
             <Field label="Motivo"><TextArea value={form.terminationReason} onChange={(event) => setForm((current) => ({ ...current, terminationReason: event.target.value }))} /></Field>
             <Field label="Observacao"><TextArea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field>
           </div>
           {saveMutation.error ? <div className="mt-3"><ErrorMessage message={saveMutation.error instanceof Error ? saveMutation.error.message : "Nao foi possivel salvar o desligamento. Confira colaborador, tipo, motivo e data efetiva."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
-        </Card>
-      ) : null}
+      </HrOperationalModal>
 
       {terminationsQuery.isLoading ? <LoadingTable label="Carregando desligamentos..." /> : null}
       {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Nao foi possivel carregar os desligamentos. Tente atualizar a pagina."} /> : null}
