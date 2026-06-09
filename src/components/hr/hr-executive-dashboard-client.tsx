@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BarChart3, Building2, Download, FileText, Filter, ShieldAlert, UsersRound } from "lucide-react";
+import { AlertTriangle, BarChart3, Building2, Download, FileText, Filter, ShieldAlert, UserRound, UsersRound } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -57,7 +57,9 @@ type Pendency = {
   id: string;
   type: string;
   typeLabel: string;
+  employeeId: string;
   employeeName: string;
+  departmentLabel: string;
   unitLabel: string;
   priority: "critical" | "high" | "medium" | "low";
   date: string;
@@ -111,6 +113,18 @@ function priorityLabel(priority: string) {
   return "Baixa";
 }
 
+function irregularityLevel(priority: Pendency["priority"]) {
+  return priority === "critical" ? "critical" : "attention";
+}
+
+function irregularityTone(level: string) {
+  return level === "critical" ? "danger" as const : "warning" as const;
+}
+
+function irregularityLabel(level: string) {
+  return level === "critical" ? "Critico" : "Atencao";
+}
+
 function formatDate(value: string) {
   if (!value) return "-";
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -121,12 +135,31 @@ function formatDate(value: string) {
 export function HrExecutiveDashboardClient() {
   const [unitId, setUnitId] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [irregularDepartment, setIrregularDepartment] = useState("");
+  const [irregularType, setIrregularType] = useState("");
+  const [irregularLevel, setIrregularLevel] = useState("");
   const params = { unitId };
   const dashboardQuery = useQuery({ queryKey: ["hr", "executive-dashboard", params], queryFn: async () => requestJson<DashboardResponse>(buildUrl("/api/hr/executive-dashboard", params)) });
   const pendingQuery = useQuery({ queryKey: ["hr", "pending-center", params], queryFn: async () => requestJson<PendingResponse>(buildUrl("/api/hr/pending-center", params)) });
   const unitsQuery = useQuery({ queryKey: ["base", "units", "executive-dashboard"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
   const indicators = dashboardQuery.data?.data.indicators;
   const pendencies = useMemo(() => (pendingQuery.data?.data ?? []).filter((item) => !typeFilter || item.type === typeFilter), [pendingQuery.data?.data, typeFilter]);
+  const irregularities = useMemo(
+    () =>
+      (pendingQuery.data?.data ?? [])
+        .filter((item) => item.priority === "critical" || item.priority === "high" || item.priority === "medium")
+        .filter((item) => !irregularDepartment || item.departmentLabel === irregularDepartment)
+        .filter((item) => !irregularType || item.type === irregularType)
+        .filter((item) => !irregularLevel || irregularityLevel(item.priority) === irregularLevel),
+    [irregularDepartment, irregularLevel, irregularType, pendingQuery.data?.data]
+  );
+  const irregularDepartments = useMemo(
+    () => Array.from(new Set((pendingQuery.data?.data ?? []).map((item) => item.departmentLabel).filter(Boolean))).sort(),
+    [pendingQuery.data?.data]
+  );
+  const irregularTotal = irregularities.length;
+  const irregularCritical = irregularities.filter((item) => irregularityLevel(item.priority) === "critical").length;
+  const irregularAttention = irregularities.filter((item) => irregularityLevel(item.priority) === "attention").length;
   const byUnit = dashboardQuery.data?.data.byUnit ?? [];
 
   return (
@@ -173,6 +206,76 @@ export function HrExecutiveDashboardClient() {
           <StatCard title="Desligamentos em andamento" value={String(indicators.terminationsInProgress)} icon={ShieldAlert} tone={indicators.terminationsInProgress ? "warning" : "neutral"} />
         </div>
       ) : null}
+
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Quem Está Irregular Hoje</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Colaboradores que precisam de atencao do RH por documentos, avaliacoes, PDI, treinamentos, saude ocupacional, conduta, movimentacoes ou desligamento.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <SelectField value={irregularDepartment} onChange={(event) => setIrregularDepartment(event.target.value)}>
+              <option value="">Todos os departamentos</option>
+              {irregularDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
+            </SelectField>
+            <SelectField value={irregularType} onChange={(event) => setIrregularType(event.target.value)}>
+              <option value="">Todos os tipos</option>
+              <option value="documents">Documentos</option>
+              <option value="evaluations">Avaliacoes</option>
+              <option value="development">PDI</option>
+              <option value="trainings">Treinamentos</option>
+              <option value="occupational">Saude Ocupacional</option>
+              <option value="movements">Movimentacoes</option>
+              <option value="conduct">Conduta</option>
+              <option value="terminations">Desligamentos</option>
+            </SelectField>
+            <SelectField value={irregularLevel} onChange={(event) => setIrregularLevel(event.target.value)}>
+              <option value="">Todas as criticidades</option>
+              <option value="critical">Critico</option>
+              <option value="attention">Atencao</option>
+            </SelectField>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-md border bg-background p-3"><p className="text-xs text-muted-foreground">Total irregulares</p><p className="mt-1 text-2xl font-semibold">{irregularTotal}</p></div>
+          <div className="rounded-md border bg-red-50/60 p-3"><p className="text-xs text-muted-foreground">Criticos</p><p className="mt-1 text-2xl font-semibold">{irregularCritical}</p></div>
+          <div className="rounded-md border bg-amber-50/60 p-3"><p className="text-xs text-muted-foreground">Atencao</p><p className="mt-1 text-2xl font-semibold">{irregularAttention}</p></div>
+        </div>
+
+        {pendingQuery.isLoading ? <LoadingTable label="Carregando irregularidades de hoje..." /> : null}
+        {pendingQuery.error ? <div className="mt-4"><ErrorMessage message={pendingQuery.error instanceof Error ? pendingQuery.error.message : "Nao foi possivel carregar irregularidades. Tente atualizar a pagina."} /></div> : null}
+        {!pendingQuery.isLoading && !pendingQuery.error && !irregularities.length ? (
+          <EmptyState title="Nenhum colaborador irregular nos filtros atuais" description="Quando houver pendencias criticas ou de atencao, elas aparecerao automaticamente aqui." />
+        ) : null}
+        {irregularities.length ? (
+          <div className="mt-4 overflow-x-auto rounded-md border">
+            <table className="min-w-[920px] w-full text-sm">
+              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                <tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Departamento</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Criticidade</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Acao</th></tr>
+              </thead>
+              <tbody className="divide-y">
+                {irregularities.slice(0, 50).map((item) => {
+                  const level = irregularityLevel(item.priority);
+                  return (
+                    <tr key={`irregular:${item.type}:${item.id}`} className="align-top">
+                      <td className="px-4 py-3 font-medium">{item.employeeName}</td>
+                      <td className="px-4 py-3">{item.departmentLabel}</td>
+                      <td className="px-4 py-3">{item.typeLabel}</td>
+                      <td className="px-4 py-3"><StatusBadge status={irregularityTone(level)} label={irregularityLabel(level)} /></td>
+                      <td className="px-4 py-3">{formatDate(item.date)}</td>
+                      <td className="px-4 py-3"><Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${item.employeeId}`}><UserRound className="h-4 w-4" />Ver colaborador</Link></Button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </Card>
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
