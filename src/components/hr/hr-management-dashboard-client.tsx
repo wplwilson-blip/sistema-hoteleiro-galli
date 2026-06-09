@@ -51,6 +51,14 @@ type JobsResponse = {
 
 type SignalTone = "visual" | "warning" | "danger" | "success" | "info";
 
+type ManagementLink = {
+  title: string;
+  description: string;
+  href: string;
+  icon: typeof BarChart3;
+  badge: string;
+};
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -64,7 +72,7 @@ function buildUrl(path: string, unitId?: string) {
   return unitId ? `${path}?unit_id=${unitId}` : path;
 }
 
-const managementLinks = [
+const managementLinks: ManagementLink[] = [
   {
     title: "Indicadores do RH",
     description: "Resumo executivo da operação, prazos e pontos que pedem atenção.",
@@ -157,6 +165,86 @@ managementLinks.push({
   icon: LogOut,
   badge: "Restrito"
 });
+
+const linkByHref = (href: string) => managementLinks.find((item) => item.href === href);
+
+function isManagementLink(item: ManagementLink | undefined): item is ManagementLink {
+  return Boolean(item);
+}
+
+const journeyManagementSections = [
+  {
+    title: "Admissão",
+    description: "Entrada do colaborador: documentos e integração.",
+    links: [linkByHref("/rh/gestao/documentos"), linkByHref("/rh/gestao/onboarding")]
+  },
+  {
+    title: "Desenvolvimento",
+    description: "Avaliações, PDI e capacitação.",
+    links: [
+      linkByHref("/rh/gestao/avaliacoes"),
+      {
+        title: "PDI",
+        description: "Acompanhe ações de desenvolvimento pelo prontuário do colaborador.",
+        href: "/rh/employees?tab=development",
+        icon: ClipboardList,
+        badge: "PDI"
+      },
+      linkByHref("/rh/gestao/treinamentos")
+    ]
+  },
+  {
+    title: "Vida Funcional",
+    description: "Carreira e saúde ocupacional.",
+    links: [linkByHref("/rh/gestao/movimentacoes"), linkByHref("/rh/gestao/saude-ocupacional")]
+  },
+  {
+    title: "Conduta",
+    description: "Ocorrências e registros formais.",
+    links: [linkByHref("/rh/gestao/conduta")]
+  },
+  {
+    title: "Desligamento",
+    description: "Encerramento administrativo do ciclo.",
+    links: [linkByHref("/rh/gestao/desligamentos")]
+  },
+  {
+    title: "Gestão RH",
+    description: "Painéis, filas, relatórios e rotinas.",
+    links: [
+      {
+        title: "Painel RH",
+        description: "Visão diária de pendências, prazos e decisões do RH.",
+        href: "/rh",
+        icon: BarChart3,
+        badge: "Painel"
+      },
+      {
+        title: "Fila RH",
+        description: "Tarefas e aprovações que precisam de ação operacional.",
+        href: "/rh/inbox",
+        icon: Inbox,
+        badge: "Fila"
+      },
+      {
+        title: "Dashboard Executivo",
+        description: "Indicadores consolidados por pessoas, riscos e unidades.",
+        href: "/rh#dashboard-executivo",
+        icon: BarChart3,
+        badge: "Indicadores"
+      },
+      {
+        title: "Relatórios RH",
+        description: "Exportações consolidadas em CSV para acompanhamento operacional.",
+        href: "/rh#relatorios-rh",
+        icon: FileText,
+        badge: "CSV"
+      },
+      linkByHref("/rh/gestao/auditoria"),
+      linkByHref("/rh/gestao/jobs")
+    ]
+  }
+];
 
 function ManagementHubCard({
   title,
@@ -294,10 +382,24 @@ export function HrManagementDashboardClient() {
           </Button>
         </div>
 
-        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {managementLinks.map((item) => (
-            <ManagementHubCard key={item.href} {...item} />
-          ))}
+        <div className="mt-4 space-y-4">
+          {journeyManagementSections.map((section) => {
+            const links = section.links.filter(isManagementLink);
+
+            return (
+              <section key={section.title} className="space-y-2">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{section.description}</p>
+                </div>
+                <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {links.map((item) => (
+                    <ManagementHubCard key={item.href} {...item} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       </Card>
 

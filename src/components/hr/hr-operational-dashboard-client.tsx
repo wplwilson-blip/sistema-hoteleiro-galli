@@ -17,8 +17,13 @@ import {
   FileClock,
   FileWarning,
   Gauge,
+  GraduationCap,
+  HeartPulse,
   Inbox,
+  LogOut,
+  MessageSquareText,
   ShieldAlert,
+  Shuffle,
   UserPlus,
   UserRound,
   type LucideIcon
@@ -483,6 +488,35 @@ function OperationalActionCard({
   );
 }
 
+function JourneyShortcutCard({
+  group,
+  title,
+  description,
+  href,
+  icon: Icon
+}: {
+  group: string;
+  title: string;
+  description: string;
+  href: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <Link href={href} className="group rounded-md border bg-background p-3 transition-colors hover:border-primary/40 hover:bg-muted/30">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">{group}</p>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">{title}</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 function WorkflowList({
   title,
   description,
@@ -767,6 +801,24 @@ export function HrOperationalDashboardClient() {
               </Link>
             </Button>
           </div>
+        </div>
+      </Card>
+
+      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="mb-3">
+          <div className="flex items-center gap-2">
+            <Gauge className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Jornada do colaborador</h2>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Atalhos organizados na ordem em que o RH normalmente acompanha uma pessoa no hotel.</p>
+        </div>
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <JourneyShortcutCard group="Admissão" title="Vagas e documentos" description="Abrir vaga, revisar documentos e acompanhar onboarding." href="/rh/vagas" icon={BriefcaseBusiness} />
+          <JourneyShortcutCard group="Desenvolvimento" title="Avaliações, PDI e treinamentos" description="Acompanhar desempenho, ações de desenvolvimento e capacitação." href="/rh/gestao/avaliacoes" icon={GraduationCap} />
+          <JourneyShortcutCard group="Vida Funcional" title="Movimentações e saúde ocupacional" description="Ver mudanças de carreira, ASOs, NRs e vencimentos ocupacionais." href="/rh/gestao/movimentacoes" icon={Shuffle} />
+          <JourneyShortcutCard group="Conduta" title="Conduta" description="Registrar e revisar ocorrências formais do colaborador." href="/rh/gestao/conduta" icon={MessageSquareText} />
+          <JourneyShortcutCard group="Desligamento" title="Desligamentos" description="Acompanhar solicitação, checklist, aprovação e efetivação." href="/rh/gestao/desligamentos" icon={LogOut} />
+          <JourneyShortcutCard group="Gestão RH" title="Painel, fila e relatórios" description="Acessar fila RH, dashboard executivo e exportações consolidadas." href="/rh/gestao" icon={BarChart3} />
         </div>
       </Card>
 

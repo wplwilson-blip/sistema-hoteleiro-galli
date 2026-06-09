@@ -36,17 +36,25 @@ import {
 import { cn } from "@/lib/utils";
 
 type SidebarLink = {
+  type?: "link";
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
   match?: "exact" | "prefix";
 };
 
+type SidebarSection = {
+  type: "section";
+  label: string;
+};
+
+type SidebarEntry = SidebarLink | SidebarSection;
+
 type SidebarGroup = {
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
-  items: SidebarLink[];
+  items: SidebarEntry[];
 };
 
 const mainItems: SidebarLink[] = [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }];
@@ -83,13 +91,29 @@ const menuGroups: SidebarGroup[] = [
     href: "/rh",
     icon: Users,
     items: [
-      { label: "Painel do RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
-      { label: "Fila de RH", href: "/rh/inbox", icon: Inbox },
+      { type: "section", label: "COLABORADORES" },
       { label: "Colaboradores", href: "/rh/employees", icon: UserRound },
-      { label: "Vagas e candidatos", href: "/rh/vagas", icon: BriefcaseBusiness },
+      { type: "section", label: "ADMISSÃO" },
+      { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
       { label: "Documentos", href: "/rh/pendencias-documentais", icon: FileWarning },
       { label: "Onboarding", href: "/rh/onboarding", icon: ClipboardCheck },
-      { label: "Gestão do RH", href: "/rh/gestao", icon: BarChart3, match: "exact" }
+      { type: "section", label: "DESENVOLVIMENTO" },
+      { label: "Avaliações", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" },
+      { label: "PDI", href: "/rh/employees?tab=development", icon: ClipboardList },
+      { label: "Treinamentos", href: "/rh/gestao/treinamentos", icon: GraduationCap, match: "exact" },
+      { type: "section", label: "VIDA FUNCIONAL" },
+      { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact" },
+      { label: "Saúde Ocupacional", href: "/rh/gestao/saude-ocupacional", icon: HeartPulse, match: "exact" },
+      { type: "section", label: "CONDUTA" },
+      { label: "Conduta", href: "/rh/gestao/conduta", icon: MessageSquareText, match: "exact" },
+      { type: "section", label: "DESLIGAMENTO" },
+      { label: "Desligamentos", href: "/rh/gestao/desligamentos", icon: LogOut, match: "exact" },
+      { type: "section", label: "GESTÃO RH" },
+      { label: "Painel RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
+      { label: "Fila RH", href: "/rh/inbox", icon: Inbox },
+      { label: "Dashboard Executivo", href: "/rh#dashboard-executivo", icon: BarChart3 },
+      { label: "Relatórios RH", href: "/rh#relatorios-rh", icon: FileText },
+      { label: "Gestão RH", href: "/rh/gestao", icon: BarChart3, match: "exact" }
     ]
   },
   {
@@ -133,15 +157,6 @@ const menuGroups: SidebarGroup[] = [
   }
 ];
 
-const rhGroup = menuGroups.find((group) => group.href === "/rh");
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Conduta", href: "/rh/gestao/conduta", icon: MessageSquareText, match: "exact" });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Saude Ocupacional", href: "/rh/gestao/saude-ocupacional", icon: HeartPulse, match: "exact" });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Treinamentos", href: "/rh/gestao/treinamentos", icon: GraduationCap, match: "exact" });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Modelos de avaliação", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Relatórios de avaliações", href: "/rh/gestao/avaliacoes/relatorios", icon: ClipboardList, match: "exact" });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact" });
-rhGroup?.items.splice(rhGroup.items.length - 1, 0, { label: "Desligamentos", href: "/rh/gestao/desligamentos", icon: LogOut, match: "exact" });
-
 const footerItems: SidebarLink[] = [{ label: "Relatórios", href: "/relatorios", icon: FileText }];
 
 function isPathActive(pathname: string, href: string) {
@@ -150,6 +165,10 @@ function isPathActive(pathname: string, href: string) {
 
 function isLinkActive(pathname: string, item: SidebarLink) {
   return item.match === "exact" ? pathname === item.href : isPathActive(pathname, item.href);
+}
+
+function isSidebarLink(item: SidebarEntry): item is SidebarLink {
+  return item.type !== "section";
 }
 
 function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
@@ -172,7 +191,10 @@ function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
 export function AppSidebar() {
   const pathname = usePathname();
   const activeGroups = useMemo(
-    () => menuGroups.filter((group) => isPathActive(pathname, group.href) || group.items.some((item) => isLinkActive(pathname, item))).map((group) => group.label),
+    () =>
+      menuGroups
+        .filter((group) => isPathActive(pathname, group.href) || group.items.some((item) => isSidebarLink(item) && isLinkActive(pathname, item)))
+        .map((group) => group.label),
     [pathname]
   );
   const [openGroups, setOpenGroups] = useState<string[]>(activeGroups);
@@ -200,7 +222,7 @@ export function AppSidebar() {
 
         {menuGroups.map((group) => {
           const Icon = group.icon;
-          const isGroupActive = isPathActive(pathname, group.href) || group.items.some((item) => isLinkActive(pathname, item));
+          const isGroupActive = isPathActive(pathname, group.href) || group.items.some((item) => isSidebarLink(item) && isLinkActive(pathname, item));
           const isOpen = openGroups.includes(group.label) || activeGroups.includes(group.label);
 
           return (
@@ -220,9 +242,15 @@ export function AppSidebar() {
 
               {isOpen ? (
                 <div className="ml-4 space-y-1 border-l border-border/80 pl-2">
-                  {group.items.map((item) => (
-                    <SidebarItem key={`${group.label}-${item.label}`} item={item} active={isLinkActive(pathname, item)} />
-                  ))}
+                  {group.items.map((item) =>
+                    isSidebarLink(item) ? (
+                      <SidebarItem key={`${group.label}-${item.label}`} item={item} active={isLinkActive(pathname, item)} />
+                    ) : (
+                      <div key={`${group.label}-${item.label}`} className="px-3 pt-3 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {item.label}
+                      </div>
+                    )
+                  )}
                 </div>
               ) : null}
             </div>

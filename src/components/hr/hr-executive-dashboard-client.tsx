@@ -131,7 +131,7 @@ export function HrExecutiveDashboardClient() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+      <Card id="dashboard-executivo" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -219,8 +219,8 @@ export function HrExecutiveDashboardClient() {
           </div>
         </Card>
 
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatorios CSV</h2></div>
+        <Card id="relatorios-rh" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatorios RH</h2></div>
           <p className="mt-1 text-xs text-muted-foreground">Exportacao simples dos dados consolidados da visao atual.</p>
           <div className="mt-3 grid gap-2">
             {reportTypes.map(([type, label]) => (
