@@ -125,6 +125,37 @@ function irregularityLabel(level: string) {
   return level === "critical" ? "Critico" : "Atencao";
 }
 
+type ActionOwner = "hr" | "manager" | "employee";
+
+function actionOwner(item: Pendency): ActionOwner {
+  if (item.type === "evaluations" || item.type === "development" || item.type === "movements" || item.type === "conduct") return "manager";
+  if (item.type === "onboarding") return "employee";
+  return "hr";
+}
+
+function actionOwnerLabel(item: Pendency) {
+  const owner = actionOwner(item);
+  if (owner === "hr") return "RH";
+  if (owner === "employee") return "Colaborador";
+  return item.departmentLabel && item.departmentLabel !== "Sem departamento" ? `Gestor - ${item.departmentLabel}` : "Gestor";
+}
+
+function nextActionText(item: Pendency) {
+  const label = item.typeLabel.toLowerCase();
+  if (item.type === "documents") return "Solicitar documento pendente.";
+  if (item.type === "trainings" && label.includes("reciclagem")) return "Agendar reciclagem obrigatoria.";
+  if (item.type === "trainings") return label.includes("vencido") ? "Agendar treinamento obrigatorio." : "Cobrar conclusao do treinamento.";
+  if (item.type === "occupational" && label.includes("aso")) return "Agendar exame ocupacional.";
+  if (item.type === "occupational" && label.includes("nr")) return "Renovar certificacao obrigatoria.";
+  if (item.type === "evaluations") return "Realizar avaliacao pendente.";
+  if (item.type === "development") return "Concluir acao de desenvolvimento.";
+  if (item.type === "movements") return "Aprovar ou efetivar movimentacao.";
+  if (item.type === "conduct") return "Revisar ocorrencia pendente.";
+  if (item.type === "terminations") return "Concluir checklist obrigatorio.";
+  if (item.type === "onboarding") return "Concluir etapa de onboarding.";
+  return "Verificar pendencia.";
+}
+
 function formatDate(value: string) {
   if (!value) return "-";
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -138,6 +169,10 @@ export function HrExecutiveDashboardClient() {
   const [irregularDepartment, setIrregularDepartment] = useState("");
   const [irregularType, setIrregularType] = useState("");
   const [irregularLevel, setIrregularLevel] = useState("");
+  const [actionOwnerFilter, setActionOwnerFilter] = useState("");
+  const [actionTypeFilter, setActionTypeFilter] = useState("");
+  const [actionUrgencyFilter, setActionUrgencyFilter] = useState("");
+  const [actionDepartmentFilter, setActionDepartmentFilter] = useState("");
   const params = { unitId };
   const dashboardQuery = useQuery({ queryKey: ["hr", "executive-dashboard", params], queryFn: async () => requestJson<DashboardResponse>(buildUrl("/api/hr/executive-dashboard", params)) });
   const pendingQuery = useQuery({ queryKey: ["hr", "pending-center", params], queryFn: async () => requestJson<PendingResponse>(buildUrl("/api/hr/pending-center", params)) });
@@ -160,6 +195,25 @@ export function HrExecutiveDashboardClient() {
   const irregularTotal = irregularities.length;
   const irregularCritical = irregularities.filter((item) => irregularityLevel(item.priority) === "critical").length;
   const irregularAttention = irregularities.filter((item) => irregularityLevel(item.priority) === "attention").length;
+  const actionItems = useMemo(
+    () =>
+      (pendingQuery.data?.data ?? [])
+        .filter((item) => item.priority === "critical" || item.priority === "high" || item.priority === "medium")
+        .filter((item) => !actionOwnerFilter || actionOwner(item) === actionOwnerFilter)
+        .filter((item) => !actionTypeFilter || item.type === actionTypeFilter)
+        .filter((item) => !actionUrgencyFilter || irregularityLevel(item.priority) === actionUrgencyFilter)
+        .filter((item) => !actionDepartmentFilter || item.departmentLabel === actionDepartmentFilter),
+    [actionDepartmentFilter, actionOwnerFilter, actionTypeFilter, actionUrgencyFilter, pendingQuery.data?.data]
+  );
+  const actionDepartments = useMemo(
+    () => Array.from(new Set((pendingQuery.data?.data ?? []).map((item) => item.departmentLabel).filter(Boolean))).sort(),
+    [pendingQuery.data?.data]
+  );
+  const actionHrTotal = actionItems.filter((item) => actionOwner(item) === "hr").length;
+  const actionManagerTotal = actionItems.filter((item) => actionOwner(item) === "manager").length;
+  const actionEmployeeTotal = actionItems.filter((item) => actionOwner(item) === "employee").length;
+  const actionCriticalTotal = actionItems.filter((item) => irregularityLevel(item.priority) === "critical").length;
+  const actionAttentionTotal = actionItems.filter((item) => irregularityLevel(item.priority) === "attention").length;
   const byUnit = dashboardQuery.data?.data.byUnit ?? [];
 
   return (
@@ -268,6 +322,85 @@ export function HrExecutiveDashboardClient() {
                       <td className="px-4 py-3"><StatusBadge status={irregularityTone(level)} label={irregularityLabel(level)} /></td>
                       <td className="px-4 py-3">{formatDate(item.date)}</td>
                       <td className="px-4 py-3"><Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${item.employeeId}`}><UserRound className="h-4 w-4" />Ver colaborador</Link></Button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Centro de Ação RH</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Transforma pendencias em acao: problema, responsavel, proximo passo e urgencia em uma unica leitura.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <SelectField value={actionOwnerFilter} onChange={(event) => setActionOwnerFilter(event.target.value)}>
+              <option value="">Todos os responsaveis</option>
+              <option value="hr">RH</option>
+              <option value="manager">Gestor</option>
+              <option value="employee">Colaborador</option>
+            </SelectField>
+            <SelectField value={actionTypeFilter} onChange={(event) => setActionTypeFilter(event.target.value)}>
+              <option value="">Todos os tipos</option>
+              <option value="documents">Documentos</option>
+              <option value="onboarding">Onboarding</option>
+              <option value="evaluations">Avaliacoes</option>
+              <option value="development">PDI</option>
+              <option value="trainings">Treinamentos</option>
+              <option value="occupational">Saude Ocupacional</option>
+              <option value="movements">Movimentacoes</option>
+              <option value="conduct">Conduta</option>
+              <option value="terminations">Desligamentos</option>
+            </SelectField>
+            <SelectField value={actionUrgencyFilter} onChange={(event) => setActionUrgencyFilter(event.target.value)}>
+              <option value="">Todas as urgencias</option>
+              <option value="critical">Critico</option>
+              <option value="attention">Atencao</option>
+            </SelectField>
+            <SelectField value={actionDepartmentFilter} onChange={(event) => setActionDepartmentFilter(event.target.value)}>
+              <option value="">Todos os departamentos</option>
+              {actionDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
+            </SelectField>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-md border bg-background p-3"><p className="text-xs text-muted-foreground">Acoes RH</p><p className="mt-1 text-2xl font-semibold">{actionHrTotal}</p></div>
+          <div className="rounded-md border bg-background p-3"><p className="text-xs text-muted-foreground">Acoes gestores</p><p className="mt-1 text-2xl font-semibold">{actionManagerTotal}</p></div>
+          <div className="rounded-md border bg-background p-3"><p className="text-xs text-muted-foreground">Acoes colaboradores</p><p className="mt-1 text-2xl font-semibold">{actionEmployeeTotal}</p></div>
+          <div className="rounded-md border bg-red-50/60 p-3"><p className="text-xs text-muted-foreground">Criticas</p><p className="mt-1 text-2xl font-semibold">{actionCriticalTotal}</p></div>
+          <div className="rounded-md border bg-amber-50/60 p-3"><p className="text-xs text-muted-foreground">Atencao</p><p className="mt-1 text-2xl font-semibold">{actionAttentionTotal}</p></div>
+        </div>
+
+        {pendingQuery.isLoading ? <LoadingTable label="Carregando centro de acao..." /> : null}
+        {pendingQuery.error ? <div className="mt-4"><ErrorMessage message={pendingQuery.error instanceof Error ? pendingQuery.error.message : "Nao foi possivel carregar o centro de acao. Tente atualizar a pagina."} /></div> : null}
+        {!pendingQuery.isLoading && !pendingQuery.error && !actionItems.length ? (
+          <EmptyState title="Nenhuma acao pendente nos filtros atuais" description="Quando houver algo para RH, gestores ou colaboradores resolverem, o proximo passo aparecera aqui." />
+        ) : null}
+        {actionItems.length ? (
+          <div className="mt-4 overflow-x-auto rounded-md border">
+            <table className="min-w-[1080px] w-full text-sm">
+              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                <tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Problema</th><th className="px-4 py-3">Responsavel</th><th className="px-4 py-3">Proxima acao</th><th className="px-4 py-3">Urgencia</th><th className="px-4 py-3">Acao</th></tr>
+              </thead>
+              <tbody className="divide-y">
+                {actionItems.slice(0, 50).map((item) => {
+                  const level = irregularityLevel(item.priority);
+                  return (
+                    <tr key={`action:${item.type}:${item.id}`} className="align-top">
+                      <td className="px-4 py-3"><p className="font-medium">{item.employeeName}</p><p className="mt-1 text-xs text-muted-foreground">{item.departmentLabel}</p></td>
+                      <td className="px-4 py-3">{item.typeLabel}</td>
+                      <td className="px-4 py-3">{actionOwnerLabel(item)}</td>
+                      <td className="px-4 py-3">{nextActionText(item)}</td>
+                      <td className="px-4 py-3"><StatusBadge status={irregularityTone(level)} label={irregularityLabel(level)} /></td>
+                      <td className="px-4 py-3"><Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${item.employeeId}`}><UserRound className="h-4 w-4" />Abrir colaborador</Link></Button></td>
                     </tr>
                   );
                 })}
