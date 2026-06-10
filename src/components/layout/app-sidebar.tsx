@@ -99,7 +99,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Onboarding", href: "/rh/onboarding", icon: ClipboardCheck },
       { type: "section", label: "DESENVOLVIMENTO" },
       { label: "Avaliações", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" },
-      { label: "PDI", href: "/rh/employees?tab=development", icon: ClipboardList },
+      { label: "Plano de Desenvolvimento (PDI)", href: "/rh/employees?tab=development", icon: ClipboardList },
       { label: "Treinamentos", href: "/rh/gestao/treinamentos", icon: GraduationCap, match: "exact" },
       { type: "section", label: "VIDA FUNCIONAL" },
       { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact" },

@@ -80,7 +80,7 @@ export function HrEmployeeConductCard({ employeeId }: { employeeId: string }) {
       <div className="p-5">
         {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
         {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Nao foi possivel carregar a conduta do colaborador. Tente atualizar a pagina."} /> : null}
-        {!conductQuery.isLoading && conductQuery.data && !records.length ? <EmptyState title="Nenhuma ocorrencia de conduta registrada" description="Advertencias, suspensoes, reclamacoes, elogios e conversas formais aparecerao aqui." /> : null}
+        {!conductQuery.isLoading && conductQuery.data && !records.length ? <EmptyState title="Nenhuma ocorrência de conduta registrada" description="Advertências, suspensões, reclamações, elogios e conversas formais aparecerão aqui." /> : null}
         {records.length ? (
           <div className="overflow-x-auto rounded-md border">
             <table className="min-w-[860px] w-full text-sm">

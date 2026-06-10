@@ -128,7 +128,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
         {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Nao foi possivel carregar os registros ocupacionais. Tente atualizar a pagina."} /> : null}
         {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Nao foi possivel carregar as certificacoes NR. Tente atualizar a pagina."} /> : null}
         {!recordsQuery.isLoading && !nrQuery.isLoading && recordsQuery.data && nrQuery.data && !records.length && !nrs.length ? (
-          <EmptyState title="Nenhum ASO registrado" description="ASOs, exames ocupacionais, restricoes e certificacoes NR do colaborador aparecerao aqui." />
+          <EmptyState title="Nenhum ASO registrado" description="ASOs, exames ocupacionais, restrições e certificações NR do colaborador aparecerão aqui." />
         ) : null}
 
         {records.length ? (

@@ -308,7 +308,7 @@ export function HrOccupationalHealthClient() {
         typeLabel: record.recordTypeLabel,
         statusLabel: record.statusLabel,
         dueDate: formatDate(record.expiresAt),
-        alertLabel: expiration.isExpired ? "Vencido" : expiration.expiresSoon ? "A vencer" : isRestriction ? "Restricao ativa" : "Sem pendencia",
+        alertLabel: expiration.isExpired ? "Vencido" : expiration.expiresSoon ? "A vencer" : isRestriction ? "Restrição ativa" : "Sem pendência",
         priority
       };
     });
@@ -324,7 +324,7 @@ export function HrOccupationalHealthClient() {
         typeLabel: nr.nrCode,
         statusLabel: nr.statusLabel,
         dueDate: formatDate(nr.expiresAt),
-        alertLabel: expiration.isExpired ? "NR vencida" : expiration.expiresSoon ? "NR a vencer" : "Sem pendencia",
+        alertLabel: expiration.isExpired ? "NR vencida" : expiration.expiresSoon ? "NR a vencer" : "Sem pendência",
         priority
       };
     });
@@ -604,7 +604,7 @@ function OccupationalRecordsTable({ records, onEdit }: { records: OccupationalRe
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">ASOs, exames e restricoes</h2></div>
-      {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="ASOs, exames e restricoes ocupacionais aparecerao aqui." /> : null}
+      {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="ASOs, exames e restrições ocupacionais aparecerão aqui." /> : null}
       {records.length ? (
         <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Medico</th><th className="px-4 py-3">Restricoes</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{records.map((record) => { const expiration = recordExpiration(record); return <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span>{record.recordTypeLabel}</span>{record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restricao ativa" /> : null}</div></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}</div></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
@@ -616,7 +616,7 @@ function NrTable({ rows, onEdit }: { rows: NrCertification[]; onEdit: (row: NrCe
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Certificacoes NR</h2></div>
-      {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Certificacoes obrigatorias e seus vencimentos aparecerao aqui." /> : null}
+      {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Certificações obrigatórias e seus vencimentos aparecerão aqui." /> : null}
       {rows.length ? (
         <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissao</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{rows.map((row) => { const expiration = nrExpiration(row); return <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}</div></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}

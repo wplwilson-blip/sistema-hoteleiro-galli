@@ -27,20 +27,20 @@ type PendingResponse = {
 
 const modules = [
   { type: "documents", label: "Documentos", ok: "Todos os documentos entregues", warning: "documento(s) pendente(s)" },
-  { type: "onboarding", label: "Onboarding", ok: "Concluido", warning: "etapa(s) pendente(s)" },
-  { type: "evaluations", label: "Avaliacoes", ok: "Em dia", warning: "avaliacao(oes) pendente(s)" },
-  { type: "development", label: "PDI", ok: "Sem pendencias", warning: "acao(oes) pendente(s)" },
-  { type: "trainings", label: "Treinamentos", ok: "Todos validos", warning: "treinamento(s) pendente(s)" },
-  { type: "occupational", label: "Saude Ocupacional", ok: "ASO e NRs em dia", warning: "pendencia(s) ocupacional(is)" },
-  { type: "movements", label: "Movimentacoes", ok: "Sem pendencias", warning: "movimentacao(oes) aguardando acao" },
-  { type: "conduct", label: "Conduta", ok: "Sem ocorrencias abertas", warning: "ocorrencia(s) em revisao" },
-  { type: "terminations", label: "Desligamento", ok: "Nao aplicavel", warning: "desligamento(s) em andamento" }
+  { type: "onboarding", label: "Onboarding", ok: "Concluído", warning: "etapa(s) pendente(s)" },
+  { type: "evaluations", label: "Avaliações", ok: "Em dia", warning: "avaliação(ões) pendente(s)" },
+  { type: "development", label: "Plano de Desenvolvimento (PDI)", ok: "Sem pendências", warning: "ação(ões) pendente(s)" },
+  { type: "trainings", label: "Treinamentos", ok: "Todos válidos", warning: "treinamento(s) pendente(s)" },
+  { type: "occupational", label: "Saúde Ocupacional", ok: "ASO e NRs em dia", warning: "pendência(s) ocupacional(is)" },
+  { type: "movements", label: "Movimentações", ok: "Sem pendências", warning: "movimentação(ões) aguardando ação" },
+  { type: "conduct", label: "Conduta", ok: "Sem ocorrências abertas", warning: "ocorrência(s) em revisão" },
+  { type: "terminations", label: "Desligamento", ok: "Não aplicável", warning: "desligamento(s) em andamento" }
 ] as const;
 
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel carregar resumo RH.");
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível carregar resumo RH.");
   return payload as T;
 }
 
@@ -65,9 +65,9 @@ function priorityTone(priority: PendingItem["priority"]) {
 }
 
 function priorityLabel(priority: PendingItem["priority"]) {
-  if (priority === "critical") return "Critico";
+  if (priority === "critical") return "Crítico";
   if (priority === "high") return "Alerta";
-  if (priority === "medium") return "Atencao";
+  if (priority === "medium") return "Atenção";
   return "OK";
 }
 
@@ -75,8 +75,8 @@ function moduleMessage(type: string, items: PendingItem[], fallback: string) {
   if (!items.length) return fallback;
   if (type === "documents") return `${items.length} documento(s) pendente(s)`;
   if (type === "onboarding") return `${items.length} etapa(s) pendente(s)`;
-  if (type === "evaluations") return items.length === 1 ? "Avaliacao pendente" : `${items.length} avaliacoes pendentes`;
-  if (type === "development") return `${items.length} acao(oes) pendente(s)`;
+  if (type === "evaluations") return items.length === 1 ? "Avaliação pendente" : `${items.length} avaliações pendentes`;
+  if (type === "development") return `${items.length} ação(ões) pendente(s)`;
   if (type === "trainings") {
     if (items.some((item) => item.priority === "critical" || item.typeLabel.toLowerCase().includes("vencido"))) return "Treinamento vencido";
     return "Treinamento pendente ou a vencer";
@@ -85,21 +85,21 @@ function moduleMessage(type: string, items: PendingItem[], fallback: string) {
     if (items.some((item) => item.priority === "critical")) return "ASO ou exame vencido";
     return "ASO ou NR vence em breve";
   }
-  if (type === "movements") return "Movimentacao aguardando aprovacao";
-  if (type === "conduct") return "Ocorrencia em revisao";
+  if (type === "movements") return "Movimentação aguardando aprovação";
+  if (type === "conduct") return "Ocorrência em revisão";
   if (type === "terminations") return "Desligamento em andamento";
-  return `${items.length} pendencia(s)`;
+  return `${items.length} pendência(s)`;
 }
 
 function actionLabel(item: PendingItem) {
   if (item.type === "documents") return "Regularizar documento pendente";
   if (item.type === "onboarding") return "Concluir etapa de onboarding";
-  if (item.type === "evaluations") return "Finalizar avaliacao pendente";
-  if (item.type === "development") return "Atualizar acao do PDI";
-  if (item.type === "trainings") return item.priority === "critical" ? "Regularizar treinamento vencido" : "Concluir treinamento obrigatorio";
+  if (item.type === "evaluations") return "Finalizar avaliação pendente";
+  if (item.type === "development") return "Atualizar ação do Plano de Desenvolvimento (PDI)";
+  if (item.type === "trainings") return item.priority === "critical" ? "Regularizar treinamento vencido" : "Concluir treinamento obrigatório";
   if (item.type === "occupational") return item.priority === "critical" ? "Renovar ASO ou exame vencido" : "Acompanhar vencimento ocupacional";
-  if (item.type === "movements") return "Aprovar ou efetivar movimentacao";
-  if (item.type === "conduct") return "Revisar ocorrencia de conduta";
+  if (item.type === "movements") return "Aprovar ou efetivar movimentação";
+  if (item.type === "conduct") return "Revisar ocorrência de conduta";
   if (item.type === "terminations") return "Acompanhar desligamento em andamento";
   return item.typeLabel;
 }

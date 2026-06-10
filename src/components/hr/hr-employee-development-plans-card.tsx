@@ -66,7 +66,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers }
   });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Nao foi possivel atualizar o PDI.");
+  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Não foi possível atualizar o Plano de Desenvolvimento (PDI).");
   return payload as T;
 }
 
@@ -234,7 +234,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
         method: "PATCH",
         body: JSON.stringify({
           status,
-          completionNotes: status === "completed" ? completionNotes[item.id]?.trim() || "Concluido no acompanhamento do PDI." : undefined
+          completionNotes: status === "completed" ? completionNotes[item.id]?.trim() || "Concluído no acompanhamento do Plano de Desenvolvimento (PDI)." : undefined
         })
       }),
     onSuccess: async () => {
@@ -251,16 +251,16 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
             <div className="flex flex-wrap items-center gap-2">
               <ListChecks className="h-4 w-4 text-primary" />
               <h3 className="text-base font-semibold">Desenvolvimento</h3>
-              <StatusBadge status="visual" label="PDI não é advertência" />
+              <StatusBadge status="visual" label="Plano de Desenvolvimento (PDI) não é advertência" />
               <HelpHint text="Plano simples de ações para desenvolver ou acompanhar pontos combinados." />
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Use o PDI para combinar ações práticas de melhoria, prazos e acompanhamento. Ele não representa punição disciplinar.
+              Use o Plano de Desenvolvimento (PDI) para combinar ações práticas de melhoria, prazos e acompanhamento. Ele não representa punição disciplinar.
             </p>
           </div>
           <Button type="button" size="sm" onClick={() => setShowCreate((current) => !current)}>
             <PlusCircle className="h-4 w-4" />
-            Novo PDI
+            Novo Plano de Desenvolvimento (PDI)
           </Button>
         </div>
       </div>
@@ -268,9 +268,9 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
       <div className="space-y-4 p-4">
         {plansQuery.isLoading ? <LoadingTable label="Carregando PDIs..." /> : null}
         {plansQuery.error ? <ErrorMessage message={plansQuery.error instanceof Error ? plansQuery.error.message : "Nao foi possivel carregar PDIs."} /> : null}
-        {createMutation.error ? <ErrorMessage message={createMutation.error instanceof Error ? createMutation.error.message : "Nao foi possivel criar PDI."} /> : null}
-        {createItemMutation.error ? <ErrorMessage message={createItemMutation.error instanceof Error ? createItemMutation.error.message : "Nao foi possivel criar item do PDI."} /> : null}
-        {updateItemMutation.error ? <ErrorMessage message={updateItemMutation.error instanceof Error ? updateItemMutation.error.message : "Nao foi possivel atualizar item do PDI."} /> : null}
+        {createMutation.error ? <ErrorMessage message={createMutation.error instanceof Error ? createMutation.error.message : "Não foi possível criar o Plano de Desenvolvimento (PDI)."} /> : null}
+        {createItemMutation.error ? <ErrorMessage message={createItemMutation.error instanceof Error ? createItemMutation.error.message : "Não foi possível criar item do Plano de Desenvolvimento (PDI)."} /> : null}
+        {updateItemMutation.error ? <ErrorMessage message={updateItemMutation.error instanceof Error ? updateItemMutation.error.message : "Não foi possível atualizar item do Plano de Desenvolvimento (PDI)."} /> : null}
 
         {showCreate ? (
           <form
@@ -306,7 +306,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
                 Cancelar
               </Button>
               <Button type="submit" disabled={createMutation.isPending || planForm.title.trim().length < 3}>
-                Criar PDI
+                Criar Plano de Desenvolvimento (PDI)
               </Button>
             </div>
           </form>
@@ -315,7 +315,7 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
         {!plansQuery.isLoading && !plansQuery.error && !(plansQuery.data?.data ?? []).length ? (
           <EmptyState
             title="Nenhum plano de desenvolvimento aberto."
-            description="Use o PDI para combinar ações práticas de melhoria, prazos e responsáveis."
+            description="Use o Plano de Desenvolvimento (PDI) para combinar ações práticas de melhoria, prazos e responsáveis."
           />
         ) : null}
 
@@ -340,8 +340,8 @@ export function HrEmployeeDevelopmentPlansCard({ employeeId }: { employeeId: str
             </div>
 
             <div className="min-w-0 rounded-md border bg-background p-4">
-              {!detail ? <LoadingTable label="Carregando PDI selecionado..." /> : null}
-              {detail?.redacted ? <EmptyState title="PDI protegido" description="Seu perfil pode ver o registro, mas o conteúdo sensível está restrito." /> : null}
+              {!detail ? <LoadingTable label="Carregando Plano de Desenvolvimento (PDI) selecionado..." /> : null}
+              {detail?.redacted ? <EmptyState title="Plano de Desenvolvimento (PDI) protegido" description="Seu perfil pode ver o registro, mas o conteúdo sensível está restrito." /> : null}
               {detail && !detail.redacted ? (
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center gap-2">

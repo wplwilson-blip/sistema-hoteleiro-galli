@@ -200,7 +200,7 @@ export function HrEvaluationReportsClient() {
         <StatCard title="Concluídas no mês" value={String(summary?.closedThisMonth ?? 0)} icon={Target} tone="neutral" />
         <StatCard title="Nota de atenção" value={String(summary?.lowScore ?? 0)} icon={AlertTriangle} tone={(summary?.lowScore ?? 0) ? "danger" : "neutral"} />
         <StatCard title="Com critério crítico" value={String(summary?.withCritical ?? 0)} icon={ShieldAlert} tone={(summary?.withCritical ?? 0) ? "warning" : "neutral"} />
-        <StatCard title="Com PDI" value={String(summary?.withPdi ?? 0)} icon={ListChecks} tone={(summary?.withPdi ?? 0) ? "info" : "neutral"} />
+        <StatCard title="Com Plano de Desenvolvimento (PDI)" value={String(summary?.withPdi ?? 0)} icon={ListChecks} tone={(summary?.withPdi ?? 0) ? "info" : "neutral"} />
         <StatCard title="Atrasadas" value={String(summary?.overdue ?? 0)} icon={AlertTriangle} tone={(summary?.overdue ?? 0) ? "danger" : "neutral"} />
       </div>
 
@@ -257,7 +257,7 @@ export function HrEvaluationReportsClient() {
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={filters.pdiOnly} onChange={(event) => updateFilter("pdiOnly", event.target.checked)} />
-              Com PDI
+              Com Plano de Desenvolvimento (PDI)
             </label>
           </div>
         </div>
@@ -323,7 +323,7 @@ export function HrEvaluationReportsClient() {
                           <HelpHint text="Avaliação com nota baixa ou ponto crítico que merece acompanhamento do RH ou gestor." />
                         </span>
                       ) : null}
-                      {row.hasPdi ? <StatusBadge status="info" label={`${row.openPdiCount || row.pdiCount} PDI`} /> : null}
+                      {row.hasPdi ? <StatusBadge status="info" label={`${row.openPdiCount || row.pdiCount} plano(s) de desenvolvimento`} /> : null}
                       {!row.criticalLowScoreCount && !row.lowScoreCount && !row.hasPdi ? <StatusBadge status="success" label="Sem alerta" /> : null}
                     </div>
                   </td>

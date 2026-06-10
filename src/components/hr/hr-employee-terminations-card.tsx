@@ -77,7 +77,7 @@ export function HrEmployeeTerminationsCard({ employeeId }: { employeeId: string 
       <div className="p-5">
         {terminationsQuery.isLoading ? <LoadingTable label="Carregando desligamentos..." /> : null}
         {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Nao foi possivel carregar os desligamentos do colaborador. Tente atualizar a pagina."} /> : null}
-        {!terminationsQuery.isLoading && terminationsQuery.data && !records.length ? <EmptyState title="Nenhum desligamento em andamento" description="Processos administrativos de desligamento do colaborador aparecerao aqui." /> : null}
+        {!terminationsQuery.isLoading && terminationsQuery.data && !records.length ? <EmptyState title="Nenhum desligamento em andamento" description="Processos administrativos de desligamento do colaborador aparecerão aqui." /> : null}
         {records.length ? (
           <div className="overflow-x-auto rounded-md border">
             <table className="min-w-[960px] w-full text-sm">

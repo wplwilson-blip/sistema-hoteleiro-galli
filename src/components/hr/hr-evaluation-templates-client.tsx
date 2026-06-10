@@ -1126,18 +1126,22 @@ export function HrEvaluationTemplatesClient() {
 
       {currentError ? <ErrorMessage message={currentError instanceof Error ? currentError.message : "Nao foi possivel atualizar os modelos."} /> : null}
       {showCreate ? (
-        <TemplateFormPanel
-          form={templateFormState}
-          setForm={setTemplateFormState}
-          units={units}
-          departments={departments}
-          positions={positions}
-          isSaving={createTemplateMutation.isPending}
-          title="Novo modelo"
-          submitLabel="Criar modelo"
-          onSubmit={() => createTemplateMutation.mutate()}
-          onCancel={() => setShowCreate(false)}
-        />
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/80 p-4 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true">
+          <div className="max-h-[calc(100vh-2rem)] w-full max-w-5xl overflow-y-auto">
+            <TemplateFormPanel
+              form={templateFormState}
+              setForm={setTemplateFormState}
+              units={units}
+              departments={departments}
+              positions={positions}
+              isSaving={createTemplateMutation.isPending}
+              title="Novo modelo"
+              submitLabel="Criar modelo"
+              onSubmit={() => createTemplateMutation.mutate()}
+              onCancel={() => setShowCreate(false)}
+            />
+          </div>
+        </div>
       ) : null}
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">

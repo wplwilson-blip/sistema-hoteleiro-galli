@@ -128,7 +128,7 @@ managementLinks.push({
 
 managementLinks.push({
   title: "Movimentações funcionais",
-  description: "Registre promocoes, transferencias e mudancas administrativas de carreira.",
+  description: "Registre promoções, transferências e mudanças administrativas de carreira.",
   href: "/rh/gestao/movimentacoes",
   icon: Shuffle,
   badge: "Carreira"
@@ -180,15 +180,15 @@ const journeyManagementSections = [
   },
   {
     title: "Desenvolvimento",
-    description: "Avaliações, PDI e capacitação.",
+    description: "Avaliações, Plano de Desenvolvimento (PDI) e capacitação.",
     links: [
       linkByHref("/rh/gestao/avaliacoes"),
       {
-        title: "PDI",
+        title: "Plano de Desenvolvimento (PDI)",
         description: "Acompanhe ações de desenvolvimento pelo prontuário do colaborador.",
         href: "/rh/employees?tab=development",
         icon: ClipboardList,
-        badge: "PDI"
+        badge: "Plano de Desenvolvimento"
       },
       linkByHref("/rh/gestao/treinamentos")
     ]

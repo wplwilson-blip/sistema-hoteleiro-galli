@@ -487,7 +487,7 @@ export function HrEmployeeEvaluationsCard({
   const closedDone = Boolean(detail?.status === "closed");
   const nextStepText = (() => {
     if (!detail) return "Selecione uma avaliação para continuar.";
-    if (isLocked) return "Avaliação concluída. As notas ficam bloqueadas e o PDI segue separado.";
+    if (isLocked) return "Avaliação concluída. As notas ficam bloqueadas e o Plano de Desenvolvimento (PDI) segue separado.";
     if (hasScorePendencies) return "Preencha as notas obrigatórias e salve as notas antes de avançar.";
     if (["draft", "in_progress"].includes(detail.status)) return "Marque a avaliação como pronta para devolutiva.";
     if (detail.status === "submitted" || detail.status === "reviewed") return "Registre a devolutiva com data e resumo da conversa.";
@@ -881,7 +881,7 @@ export function HrEmployeeEvaluationsCard({
                   >
                     {isLocked ? (
                       <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                        Avaliação encerrada. As notas e critérios ficam bloqueados para edição operacional; o PDI continua em acompanhamento separado.
+                        Avaliação encerrada. As notas e critérios ficam bloqueados para edição operacional; o Plano de Desenvolvimento (PDI) continua em acompanhamento separado.
                       </div>
                     ) : (
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -897,9 +897,9 @@ export function HrEmployeeEvaluationsCard({
 
                   {onOpenDevelopment && scoreSummary.lowScores > 0 ? (
                     <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                      <span>Há pontos de atenção. Depois da devolutiva, o RH pode abrir um PDI vinculado a esta avaliação.</span>
+                      <span>Há pontos de atenção. Depois da devolutiva, o RH pode abrir um Plano de Desenvolvimento (PDI) vinculado a esta avaliação.</span>
                       <Button type="button" variant="outline" size="sm" onClick={onOpenDevelopment}>
-                        Criar PDI
+                        Criar Plano de Desenvolvimento (PDI)
                       </Button>
                     </div>
                   ) : null}

@@ -156,7 +156,7 @@ function nextActionText(item: Pendency) {
   if (item.type === "occupational" && label.includes("nr")) return "Renovar certificacao obrigatoria.";
   if (item.type === "evaluations") return "Realizar avaliacao pendente.";
   if (item.type === "development") return "Concluir acao de desenvolvimento.";
-  if (item.type === "movements") return "Aprovar ou efetivar movimentacao.";
+  if (item.type === "movements") return "Aprovar ou efetivar movimentação.";
   if (item.type === "conduct") return "Revisar ocorrencia pendente.";
   if (item.type === "terminations") return "Concluir checklist obrigatorio.";
   if (item.type === "onboarding") return "Concluir etapa de onboarding.";
@@ -402,7 +402,7 @@ export function HrExecutiveDashboardClient() {
               <option value="documents">Documentos</option>
               <option value="onboarding">Onboarding</option>
               <option value="evaluations">Avaliacoes</option>
-              <option value="development">PDI</option>
+              <option value="development">Plano de Desenvolvimento (PDI)</option>
               <option value="trainings">Treinamentos</option>
               <option value="occupational">Saude Ocupacional</option>
               <option value="movements">Movimentacoes</option>
@@ -596,7 +596,7 @@ export function HrExecutiveDashboardClient() {
               <option value="documents">Documentos</option>
               <option value="onboarding">Onboarding</option>
               <option value="evaluations">Avaliacoes</option>
-              <option value="development">PDI</option>
+              <option value="development">Plano de Desenvolvimento (PDI)</option>
               <option value="trainings">Treinamentos</option>
               <option value="occupational">Saude Ocupacional</option>
               <option value="movements">Movimentacoes</option>
@@ -604,7 +604,7 @@ export function HrExecutiveDashboardClient() {
               <option value="terminations">Desligamentos</option>
             </SelectField>
           </div>
-          {!pendingQuery.isLoading && !pendencies.length ? <EmptyState title="Nenhuma pendencia encontrada" description="Quando houver documentos, treinamentos, saude ocupacional ou processos pendentes, eles aparecerao aqui." /> : null}
+          {!pendingQuery.isLoading && !pendencies.length ? <EmptyState title="Nenhuma pendência encontrada" description="Quando houver documentos, treinamentos, saúde ocupacional ou processos pendentes, eles aparecerão aqui." /> : null}
           {pendencies.length ? (
             <div className="mt-4 overflow-x-auto rounded-md border">
               <table className="min-w-[980px] w-full text-sm">

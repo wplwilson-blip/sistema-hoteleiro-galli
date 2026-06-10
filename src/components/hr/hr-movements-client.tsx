@@ -130,7 +130,7 @@ const emptyForm: MovementForm = {
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel processar a movimentacao funcional.");
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível processar a movimentação funcional.");
   return payload as T;
 }
 
@@ -303,6 +303,11 @@ export function HrMovementsClient() {
     actionMutation.mutate({ id: row.id, action, comments: commentsByAction[key] });
   }
 
+  function closeForm() {
+    setShowForm(false);
+    setForm(emptyForm);
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -313,28 +318,28 @@ export function HrMovementsClient() {
               <h2 className="text-sm font-semibold">Carreira administrativa</h2>
             </div>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Registre movimentacoes funcionais com aprovacao simples e rastreabilidade na Vida Funcional, sem impacto automatico em folha ou ponto.
+              Registre movimentações funcionais com aprovação simples e rastreabilidade na Vida Funcional, sem impacto automático em folha ou ponto.
             </p>
           </div>
           <Button type="button" size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}>
             <Plus className="h-4 w-4" />
-            Nova movimentacao
+            Nova movimentação
           </Button>
         </div>
       </Card>
 
       <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <MovementStatCard title="Total de movimentacoes" value={summary.total} icon={BarChart3} tone="info" />
-        <MovementStatCard title="Aguardando aprovacao" value={summary.pendingApproval} icon={ShieldAlert} tone={summary.pendingApproval ? "warning" : "visual"} />
-        <MovementStatCard title="Aprovadas" value={summary.approved} icon={CheckCircle2} tone={summary.approved ? "success" : "visual"} />
-        <MovementStatCard title="Efetivadas" value={summary.implemented} icon={PlayCircle} tone={summary.implemented ? "success" : "visual"} />
-        <MovementStatCard title="Rejeitadas" value={summary.rejected} icon={XCircle} tone={summary.rejected ? "danger" : "visual"} />
+        <MovementStatCard title="Total de movimentações" value={summary.total} icon={BarChart3} tone="info" hasError={Boolean(movementsQuery.error)} />
+        <MovementStatCard title="Aguardando aprovação" value={summary.pendingApproval} icon={ShieldAlert} tone={summary.pendingApproval ? "warning" : "visual"} hasError={Boolean(movementsQuery.error)} />
+        <MovementStatCard title="Aprovadas" value={summary.approved} icon={CheckCircle2} tone={summary.approved ? "success" : "visual"} hasError={Boolean(movementsQuery.error)} />
+        <MovementStatCard title="Efetivadas" value={summary.implemented} icon={PlayCircle} tone={summary.implemented ? "success" : "visual"} hasError={Boolean(movementsQuery.error)} />
+        <MovementStatCard title="Rejeitadas" value={summary.rejected} icon={XCircle} tone={summary.rejected ? "danger" : "visual"} hasError={Boolean(movementsQuery.error)} />
       </div>
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Movimentacoes por tipo</h2>
+          <h2 className="text-sm font-semibold">Movimentações por tipo</h2>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {summary.byType.map((type) => (
@@ -387,13 +392,14 @@ export function HrMovementsClient() {
       </Card>
 
       {showForm ? (
-        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/80 p-4 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true">
+          <Card className="max-h-[calc(100vh-2rem)] w-full max-w-5xl overflow-y-auto border-border/80 p-4 shadow-xl shadow-primary/10">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{form.id ? "Editar movimentacao" : "Nova movimentacao funcional"}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Campos sensiveis, como salario, ficam restritos por permissao.</p>
+              <h2 className="text-sm font-semibold">{form.id ? "Editar movimentação" : "Nova movimentação funcional"}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Campos sensíveis, como salário, ficam restritos por permissão. O registro nasce como rascunho.</p>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => { setShowForm(false); setForm(emptyForm); }}>
+            <Button type="button" variant="outline" size="sm" onClick={closeForm}>
               <X className="h-4 w-4" />
               Fechar
             </Button>
@@ -424,8 +430,8 @@ export function HrMovementsClient() {
             <Field label="Motivo">
               <Input value={form.reason} onChange={(event) => updateForm("reason", event.target.value)} placeholder="Motivo operacional" />
             </Field>
-            <Field label="Observacao">
-              <TextArea value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} placeholder="Observacao administrativa opcional" />
+            <Field label="Observação">
+              <TextArea value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} placeholder="Observação administrativa opcional" />
             </Field>
           </div>
 
@@ -450,8 +456,8 @@ export function HrMovementsClient() {
             ) : null}
             {showSalaryFields ? (
               <>
-                <Field label="Salario anterior"><Input type="number" min="0" step="0.01" value={form.oldSalary} onChange={(event) => updateForm("oldSalary", event.target.value)} /></Field>
-                <Field label="Salario novo"><Input type="number" min="0" step="0.01" value={form.newSalary} onChange={(event) => updateForm("newSalary", event.target.value)} /></Field>
+                <Field label="Salário anterior"><Input type="number" min="0" step="0.01" value={form.oldSalary} onChange={(event) => updateForm("oldSalary", event.target.value)} /></Field>
+                <Field label="Salário novo"><Input type="number" min="0" step="0.01" value={form.newSalary} onChange={(event) => updateForm("newSalary", event.target.value)} /></Field>
               </>
             ) : null}
           </div>
@@ -464,22 +470,23 @@ export function HrMovementsClient() {
             </div>
           ) : null}
 
-          {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel salvar."} /></div> : null}
-          {actionMutation.error ? <div className="mt-3"><ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Nao foi possivel executar a acao."} /></div> : null}
+          {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível salvar."} /></div> : null}
+          {actionMutation.error ? <div className="mt-3"><ErrorMessage message={actionMutation.error instanceof Error ? actionMutation.error.message : "Não foi possível executar a ação."} /></div> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
               <Save className="h-4 w-4" />
               Salvar
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => { setShowForm(false); setForm(emptyForm); }}>Cancelar</Button>
+            <Button type="button" variant="outline" size="sm" onClick={closeForm}>Cancelar</Button>
           </div>
         </Card>
+        </div>
       ) : null}
 
-      {movementsQuery.isLoading ? <LoadingTable label="Carregando movimentacoes funcionais..." /> : null}
-      {movementsQuery.error ? <ErrorMessage message={movementsQuery.error instanceof Error ? movementsQuery.error.message : "Erro ao carregar movimentacoes."} /> : null}
-      {!movementsQuery.isLoading && !rows.length ? (
-        <EmptyState title="Nenhuma movimentacao funcional registrada" description="Promocoes, transferencias e mudancas administrativas do colaborador aparecerao aqui." />
+      {movementsQuery.isLoading ? <LoadingTable label="Carregando movimentações funcionais..." /> : null}
+      {movementsQuery.error ? <ErrorMessage message={movementsQuery.error instanceof Error ? movementsQuery.error.message : "Erro ao carregar movimentações."} /> : null}
+      {!movementsQuery.isLoading && !movementsQuery.error && !rows.length ? (
+        <EmptyState title="Nenhuma movimentação funcional registrada" description="Promoções, transferências e mudanças administrativas do colaborador aparecerão aqui." />
       ) : null}
 
       {rows.length ? (
@@ -494,7 +501,7 @@ export function HrMovementsClient() {
                   <th className="px-4 py-3">Data efetiva</th>
                   <th className="px-4 py-3">Unidade</th>
                   <th className="px-4 py-3">Departamento</th>
-                  <th className="px-4 py-3">Acao</th>
+                  <th className="px-4 py-3">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -520,7 +527,7 @@ export function HrMovementsClient() {
                       </div>
                       {row.movementType === "salary_change" ? (
                         <p className="mt-2 text-xs text-muted-foreground">
-                          {row.redacted ? "Informacao restrita" : `${moneyLabel(row.oldSalary)} para ${moneyLabel(row.newSalary)}`}
+                          {row.redacted ? "Informação restrita" : `${moneyLabel(row.oldSalary)} para ${moneyLabel(row.newSalary)}`}
                         </p>
                       ) : null}
                     </td>
@@ -555,12 +562,14 @@ function MovementStatCard({
   title,
   value,
   icon: Icon,
-  tone
+  tone,
+  hasError = false
 }: {
   title: string;
   value: number;
   icon: typeof BarChart3;
   tone: "visual" | "info" | "warning" | "success" | "danger";
+  hasError?: boolean;
 }) {
   return (
     <Card className="min-w-0 border-border/80 p-3 shadow-sm shadow-primary/5">
@@ -574,7 +583,7 @@ function MovementStatCard({
         </div>
       </div>
       <div className="mt-2">
-        <StatusBadge status={tone} label={value ? "Acompanhar" : "Sem pendencia"} />
+        <StatusBadge status={hasError ? "danger" : tone} label={hasError ? "Erro ao carregar" : value ? "Acompanhar" : "Sem pendência"} />
       </div>
     </Card>
   );
@@ -594,7 +603,7 @@ function MovementActions({
   pending: boolean;
 }) {
   const allActions: Array<{ key: MovementActionKey; label: string; icon: typeof Send; visible: boolean; variant?: "default" | "outline" }> = [
-    { key: "submit", label: "Enviar aprovacao", icon: Send, visible: row.status === "draft", variant: "default" },
+    { key: "submit", label: "Enviar aprovação", icon: Send, visible: row.status === "draft", variant: "default" },
     { key: "approve", label: "Aprovar", icon: CheckCircle2, visible: row.status === "pending_approval", variant: "default" },
     { key: "reject", label: "Rejeitar", icon: XCircle, visible: row.status === "pending_approval", variant: "outline" },
     { key: "implement", label: "Efetivar", icon: PlayCircle, visible: row.status === "approved", variant: "default" }
@@ -616,7 +625,7 @@ function MovementActions({
               [commentKey]: event.target.value
             }))
           }
-          placeholder={actions[0].key === "reject" ? "Motivo da rejeicao" : "Comentario opcional"}
+          placeholder={actions[0].key === "reject" ? "Motivo da rejeição" : "Comentário opcional"}
         />
       ) : null}
       <div className="flex flex-wrap gap-2">

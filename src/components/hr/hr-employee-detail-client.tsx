@@ -192,7 +192,7 @@ const timelineCategories: Array<{ value: TimelineCategory; label: string }> = [
   { value: "admission", label: "Admissao" },
   { value: "onboarding", label: "Onboarding" },
   { value: "evaluations", label: "Avaliacoes" },
-  { value: "development", label: "PDI" },
+  { value: "development", label: "Plano de Desenvolvimento (PDI)" },
   { value: "termination", label: "Desligamento" },
   { value: "movement", label: "Movimentacoes" },
   { value: "conduct", label: "Conduta" },
@@ -259,13 +259,13 @@ const eventTypeLabels: Record<string, string> = {
   evaluation_acknowledged: "Ciencia do colaborador registrada",
   evaluation_closed: "Avaliacao encerrada",
   evaluation_cancelled: "Avaliacao cancelada",
-  development_plan_created: "PDI criado",
-  development_plan_item_created: "Item de PDI criado",
-  development_plan_item_completed: "Item de PDI concluido",
-  development_plan_item_overdue: "Item de PDI em atraso",
-  development_plan_reviewed: "PDI revisado",
-  development_plan_completed: "PDI concluido",
-  development_plan_cancelled: "PDI cancelado",
+  development_plan_created: "Plano de Desenvolvimento (PDI) criado",
+  development_plan_item_created: "Item do Plano de Desenvolvimento (PDI) criado",
+  development_plan_item_completed: "Item do Plano de Desenvolvimento (PDI) concluído",
+  development_plan_item_overdue: "Item do Plano de Desenvolvimento (PDI) em atraso",
+  development_plan_reviewed: "Plano de Desenvolvimento (PDI) revisado",
+  development_plan_completed: "Plano de Desenvolvimento (PDI) concluído",
+  development_plan_cancelled: "Plano de Desenvolvimento (PDI) cancelado",
   salary_changed: "Salario alterado",
   promotion_registered: "Promocao registrada",
   transfer_registered: "Transferencia registrada",
@@ -492,7 +492,7 @@ function sourceLabel(event: HrFunctionalEvent) {
     employee_onboarding: "Onboarding",
     employee_onboarding_item: "Onboarding",
     employee_evaluation: "Avaliacoes",
-    employee_development_plan: "PDI",
+    employee_development_plan: "Plano de Desenvolvimento (PDI)",
     employee_movement: "Movimentacoes",
     employee_training: "Treinamentos",
     employee_occupational_record: "Saude Ocupacional",
@@ -641,7 +641,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
         { value: "documents" as const, label: "Documentos", enabled: canViewDocuments },
         { value: "onboarding" as const, label: "Onboarding", enabled: true },
         { value: "evaluations" as const, label: "Avaliacoes", enabled: true },
-        { value: "development" as const, label: "PDI", enabled: true },
+        { value: "development" as const, label: "Plano de Desenvolvimento (PDI)", enabled: true },
         { value: "history" as const, label: "Vida Funcional", enabled: canViewHistory },
         { value: "career" as const, label: "Carreira", enabled: canViewMovements },
         { value: "trainings" as const, label: "Treinamentos", enabled: canViewTrainings },
@@ -892,16 +892,16 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
               {careerQuery.isLoading ? <LoadingTable label="Carregando carreira..." /> : null}
               {careerQuery.error ? <ErrorMessage message={careerQuery.error instanceof Error ? careerQuery.error.message : "Nao foi possivel carregar carreira."} /> : null}
               {!careerQuery.isLoading && careerQuery.data && !careerQuery.data.data.length ? (
-                <EmptyState title="Nenhuma movimentacao registrada" description="Promocoes, transferencias e mudancas administrativas do colaborador aparecerao aqui." />
+                <EmptyState title="Nenhuma movimentação registrada" description="Promoções, transferências e mudanças administrativas do colaborador aparecerão aqui." />
               ) : null}
 
               <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <CareerSummaryTile label="Cargo atual" value={metaLabel(employee.jobPosition)} icon={UserRound} tone="info" />
                 <CareerSummaryTile label="Departamento atual" value={metaLabel(employee.department)} icon={Building2} tone="visual" />
                 <CareerSummaryTile label="Unidade atual" value={metaLabel(employee.unit)} icon={Building2} tone="visual" />
-                <CareerSummaryTile label="Ultima movimentacao" value={latestCareerMovement ? `${latestCareerMovement.movementTypeLabel} em ${formatDate(latestCareerMovement.effectiveDate)}` : "Nenhuma movimentacao"} icon={GitBranch} tone={latestCareerMovement ? "info" : "visual"} />
+                <CareerSummaryTile label="Última movimentação" value={latestCareerMovement ? `${latestCareerMovement.movementTypeLabel} em ${formatDate(latestCareerMovement.effectiveDate)}` : "Nenhuma movimentação"} icon={GitBranch} tone={latestCareerMovement ? "info" : "visual"} />
                 <CareerSummaryTile label="Movimentacoes pendentes" value={String(careerPending.length)} icon={ShieldAlert} tone={careerPending.length ? "warning" : "success"} />
-                <CareerSummaryTile label="Tempo desde ultima movimentacao" value={daysSince(latestImplementedMovement?.effectiveDate)} icon={Clock3} tone="visual" />
+                <CareerSummaryTile label="Tempo desde última movimentação" value={daysSince(latestImplementedMovement?.effectiveDate)} icon={Clock3} tone="visual" />
               </div>
 
               {careerPending.length || careerRecentRejected.length ? (
@@ -924,7 +924,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">Nenhuma movimentacao aguardando acao.</p>
+                      <p className="text-sm text-muted-foreground">Nenhuma movimentação aguardando ação.</p>
                     )}
                   </div>
                   <div className="rounded-md border bg-background p-4">
@@ -1055,7 +1055,7 @@ export function HrEmployeeDetailClient({ employeeId }: { employeeId: string }) {
               {historyQuery.isLoading ? <LoadingTable label="Carregando vida funcional..." /> : null}
               {historyQuery.error ? <ErrorMessage message={historyQuery.error instanceof Error ? historyQuery.error.message : "Nao foi possivel carregar a vida funcional."} /> : null}
               {!historyQuery.isLoading && historyQuery.data && !historyQuery.data.data.length ? (
-                <EmptyState title="Nenhum evento funcional registrado" description="Os principais acontecimentos da vida funcional do colaborador aparecerao aqui." />
+                <EmptyState title="Nenhum evento funcional registrado" description="Os principais acontecimentos da vida funcional do colaborador aparecerão aqui." />
               ) : null}
               {!historyQuery.isLoading && historyQuery.data?.data.length && !filteredHistoryEvents.length ? (
                 <EmptyState title="Nenhum evento encontrado" description="Ajuste os filtros para consultar outros registros da vida funcional." />

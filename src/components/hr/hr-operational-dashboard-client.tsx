@@ -814,7 +814,7 @@ export function HrOperationalDashboardClient() {
         </div>
         <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
           <JourneyShortcutCard group="Admissão" title="Vagas e documentos" description="Abrir vaga, revisar documentos e acompanhar onboarding." href="/rh/vagas" icon={BriefcaseBusiness} />
-          <JourneyShortcutCard group="Desenvolvimento" title="Avaliações, PDI e treinamentos" description="Acompanhar desempenho, ações de desenvolvimento e capacitação." href="/rh/gestao/avaliacoes" icon={GraduationCap} />
+          <JourneyShortcutCard group="Desenvolvimento" title="Avaliações, Plano de Desenvolvimento (PDI) e treinamentos" description="Acompanhar desempenho, ações de desenvolvimento e capacitação." href="/rh/gestao/avaliacoes" icon={GraduationCap} />
           <JourneyShortcutCard group="Vida Funcional" title="Movimentações e saúde ocupacional" description="Ver mudanças de carreira, ASOs, NRs e vencimentos ocupacionais." href="/rh/gestao/movimentacoes" icon={Shuffle} />
           <JourneyShortcutCard group="Conduta" title="Conduta" description="Registrar e revisar ocorrências formais do colaborador." href="/rh/gestao/conduta" icon={MessageSquareText} />
           <JourneyShortcutCard group="Desligamento" title="Desligamentos" description="Acompanhar solicitação, checklist, aprovação e efetivação." href="/rh/gestao/desligamentos" icon={LogOut} />
@@ -832,7 +832,7 @@ export function HrOperationalDashboardClient() {
               <h2 className="text-sm font-semibold text-foreground">Pendencias de hoje</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Atalhos para o que normalmente pede acao do RH: documentos, onboarding, avaliacoes e PDI.
+              Atalhos para o que normalmente pede ação do RH: documentos, onboarding, avaliações e Plano de Desenvolvimento (PDI).
             </p>
           </div>
           <Button asChild variant="outline" size="sm">
@@ -870,7 +870,7 @@ export function HrOperationalDashboardClient() {
               tone={evaluationActionTotal ? "warning" : "visual"}
             />
             <OperationalActionCard
-              title="PDI para acompanhar"
+              title="Plano de Desenvolvimento (PDI) para acompanhar"
               value={pdiActionTotal}
               description="Acompanhar acoes atrasadas ou planos em revisao."
               href="/rh/employees"
@@ -919,7 +919,7 @@ export function HrOperationalDashboardClient() {
       ) : null}
 
       {developmentPlansQuery.error ? (
-        <ErrorMessage message={developmentPlansQuery.error instanceof Error ? developmentPlansQuery.error.message : "Erro ao carregar PDI operacional."} />
+        <ErrorMessage message={developmentPlansQuery.error instanceof Error ? developmentPlansQuery.error.message : "Erro ao carregar Plano de Desenvolvimento (PDI) operacional."} />
       ) : null}
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -1045,7 +1045,7 @@ export function HrOperationalDashboardClient() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">PDI</h2>
+                <h2 className="text-sm font-semibold text-foreground">Plano de Desenvolvimento (PDI)</h2>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">Planos abertos, revisoes e prazos de desenvolvimento dos colaboradores.</p>
             </div>
@@ -1056,7 +1056,7 @@ export function HrOperationalDashboardClient() {
               </Link>
             </Button>
           </div>
-          {developmentPlansQuery.isLoading ? <LoadingTable label="Carregando PDI operacional..." /> : null}
+          {developmentPlansQuery.isLoading ? <LoadingTable label="Carregando Plano de Desenvolvimento (PDI) operacional..." /> : null}
           {!developmentPlansQuery.isLoading && !developmentPlansQuery.error ? (
             <div className="grid min-w-0 gap-3 md:grid-cols-2">
               <div className={cn("rounded-md border bg-background p-3", openDevelopmentPlans.length > 0 && "border-blue-200 bg-blue-50/60")}>
