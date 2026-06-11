@@ -107,17 +107,17 @@ type OccupationalReportRow = {
 
 const recordTypes = [
   ["aso_admission", "ASO admissional"],
-  ["aso_periodic", "ASO periodico"],
+  ["aso_periodic", "ASO periódico"],
   ["aso_return", "ASO retorno ao trabalho"],
-  ["aso_role_change", "ASO mudanca de funcao"],
+  ["aso_role_change", "ASO mudança de função"],
   ["aso_termination", "ASO demissional"],
   ["occupational_exam", "Exame ocupacional"],
-  ["occupational_restriction", "Restricao ocupacional"],
-  ["nr_certification", "Certificacao NR"]
+  ["occupational_restriction", "Restrição ocupacional"],
+  ["nr_certification", "Certificação NR"]
 ];
 
 const statuses = [
-  ["valid", "Valido"],
+  ["valid", "Válido"],
   ["expiring", "A vencer"],
   ["expired", "Vencido"],
   ["cancelled", "Cancelado"]
@@ -125,12 +125,12 @@ const statuses = [
 
 const nrCodes = ["NR-05", "NR-06", "NR-10", "NR-12", "NR-17", "NR-23", "NR-35"];
 const quickFilters = [
-  ["", "Todas as pendencias"],
+  ["", "Todas as pendências"],
   ["expired", "Vencidos"],
   ["expiring", "A vencer"],
   ["aso", "ASO"],
   ["nr", "NR"],
-  ["restrictions", "Restricoes"]
+  ["restrictions", "Restrições"]
 ];
 const emptyRecordForm: RecordForm = { id: "", employeeId: "", recordType: "aso_periodic", status: "valid", examDate: "", expiresAt: "", providerName: "", doctorName: "", certificateNumber: "", restrictionNotes: "" };
 const emptyNrForm: NrForm = { id: "", employeeId: "", nrCode: "NR-06", trainingName: "", issuedAt: "", expiresAt: "", status: "valid" };
@@ -138,7 +138,7 @@ const emptyNrForm: NrForm = { id: "", employeeId: "", nrCode: "NR-06", trainingN
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel processar Saude Ocupacional.");
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível processar Saúde Ocupacional.");
   return payload as T;
 }
 
@@ -147,6 +147,10 @@ function buildUrl(path: string, filters: Record<string, string>) {
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
   const query = params.toString();
   return `${path}${query ? `?${query}` : ""}`;
+}
+
+function employeeDocumentsHref(employeeId: string) {
+  return `/rh/employees/${employeeId}?tab=documents`;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -407,11 +411,11 @@ export function HrOccupationalHealthClient() {
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Saude Ocupacional</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restricoes. Use Atualizar vencimentos para recalcular pendencias.</p>
+            <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Saúde Ocupacional</h2></div>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Use Atualizar vencimentos para recalcular pendências.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => downloadCsv("pendencias-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendencias</Button>
+            <Button size="sm" variant="outline" onClick={() => downloadCsv("pendências-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendências</Button>
             <Button size="sm" variant="outline" onClick={() => downloadCsv("relatorio-saude-ocupacional.csv", reportRows)} disabled={!reportRows.length}><Download className="h-4 w-4" />Exportar CSV</Button>
             <Button size="sm" variant="outline" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
             <Button size="sm" onClick={() => { setRecordForm(emptyRecordForm); setShowRecordForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
@@ -431,13 +435,13 @@ export function HrOccupationalHealthClient() {
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-        <OccupationalStat title="ASOs validos" value={summary.asoValid} icon={FileCheck2} tone="success" />
+        <OccupationalStat title="ASOs válidos" value={summary.asoValid} icon={FileCheck2} tone="success" />
         <OccupationalStat title="ASOs a vencer" value={summary.asoExpiring} icon={Activity} tone={summary.asoExpiring ? "warning" : "visual"} />
         <OccupationalStat title="ASOs vencidos" value={summary.asoExpired} icon={ShieldAlert} tone={summary.asoExpired ? "danger" : "visual"} />
-        <OccupationalStat title="NRs validas" value={summary.nrValid} icon={FileCheck2} tone="success" />
+        <OccupationalStat title="NRs válidas" value={summary.nrValid} icon={FileCheck2} tone="success" />
         <OccupationalStat title="NRs a vencer" value={summary.nrExpiring} icon={Activity} tone={summary.nrExpiring ? "warning" : "visual"} />
         <OccupationalStat title="NRs vencidas" value={summary.nrExpired} icon={ShieldAlert} tone={summary.nrExpired ? "danger" : "visual"} />
-        <OccupationalStat title="Restricoes ativas" value={summary.restrictions} icon={ShieldAlert} tone={summary.restrictions ? "warning" : "visual"} />
+        <OccupationalStat title="Restrições ativas" value={summary.restrictions} icon={ShieldAlert} tone={summary.restrictions ? "warning" : "visual"} />
       </div>
 
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -456,8 +460,8 @@ export function HrOccupationalHealthClient() {
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatorio operacional</h2></div>
-              <p className="mt-1 text-xs text-muted-foreground">Agrupamento das pendencias e registros ocupacionais conforme filtros atuais.</p>
+              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatório operacional</h2></div>
+              <p className="mt-1 text-xs text-muted-foreground">Agrupamento das pendências e registros ocupacionais conforme filtros atuais.</p>
             </div>
             <SelectField value={groupBy} onChange={(event) => setGroupBy(event.target.value as "unit" | "type" | "status")}>
               <option value="unit">Agrupar por unidade</option>
@@ -471,7 +475,7 @@ export function HrOccupationalHealthClient() {
               <div key={group.label} className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
                 <div className="min-w-0">
                   <p className="break-words font-medium text-foreground">{group.label}</p>
-                  <p className="text-xs text-muted-foreground">{group.total} registro(s) no recorte atual</p>
+                <p className="text-xs text-muted-foreground">{group.total} registro(s) no recorte atual</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge status={group.critical ? "danger" : "visual"} label={`Vencidos: ${group.critical}`} />
@@ -487,13 +491,13 @@ export function HrOccupationalHealthClient() {
           <div className="border-b p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold">Pendencias ocupacionais</h2>
-                <p className="mt-1 text-xs text-muted-foreground">ASOs vencidos, NRs vencidas, vencimentos proximos e restricoes ativas.</p>
+                <h2 className="text-sm font-semibold">Pendências ocupacionais</h2>
+                <p className="mt-1 text-xs text-muted-foreground">ASOs vencidos, NRs vencidas, vencimentos próximos e restrições ativas.</p>
               </div>
-              <StatusBadge status={pendingRows.length ? "warning" : "success"} label={`${pendingRows.length} pendencia(s)`} />
+              <StatusBadge status={pendingRows.length ? "warning" : "success"} label={`${pendingRows.length} pendência(s)`} />
             </div>
           </div>
-          {!pendingRows.length ? <EmptyState title="Nenhuma pendencia no recorte" description="Nao ha vencimentos ou restricoes ativas nos filtros atuais." /> : null}
+          {!pendingRows.length ? <EmptyState title="Nenhuma pendência no recorte" description="Não há vencimentos ou restrições ativas nos filtros atuais." /> : null}
           {pendingRows.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-[880px] w-full text-sm">
@@ -532,56 +536,70 @@ export function HrOccupationalHealthClient() {
               <Field label="Status"><SelectField value={recordForm.status} onChange={(event) => setRecordForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             ) : (
               <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                <p className="font-medium text-foreground">Status inicial: Valido</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">O status pode ser recalculado pelos vencimentos ou ajustado depois em edicao.</p>
+                <p className="font-medium text-foreground">Status inicial: Válido</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">O status pode ser recalculado pelos vencimentos ou ajustado depois em edição.</p>
               </div>
             )}
             <Field label="Data"><Input type="date" value={recordForm.examDate} onChange={(event) => setRecordForm((current) => ({ ...current, examDate: event.target.value }))} /></Field>
             <Field label="Validade"><Input type="date" value={recordForm.expiresAt} onChange={(event) => setRecordForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
             <Field label="Fornecedor"><Input value={recordForm.providerName} onChange={(event) => setRecordForm((current) => ({ ...current, providerName: event.target.value }))} /></Field>
-            <Field label="Medico"><Input value={recordForm.doctorName} onChange={(event) => setRecordForm((current) => ({ ...current, doctorName: event.target.value }))} /></Field>
+            <Field label="Médico"><Input value={recordForm.doctorName} onChange={(event) => setRecordForm((current) => ({ ...current, doctorName: event.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">Anexo medico</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexos serao vinculados pelo modulo Documentos em uma proxima etapa. Nao informe IDs manualmente.</p>
+              <p className="font-medium text-foreground">Anexo médico</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe ASO, exame ou restrição pela aba Documentos do colaborador. Esta tela registra datas, validade e controle operacional.</p>
+              {recordForm.employeeId ? (
+                <Button asChild className="mt-3" variant="outline" size="sm">
+                  <a href={employeeDocumentsHref(recordForm.employeeId)}>Abrir Documentos do colaborador</a>
+                </Button>
+              ) : (
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
+              )}
             </div>
-            <Field label="Restricoes"><TextArea value={recordForm.restrictionNotes} onChange={(event) => setRecordForm((current) => ({ ...current, restrictionNotes: event.target.value }))} /></Field>
+            <Field label="Restrições"><TextArea value={recordForm.restrictionNotes} onChange={(event) => setRecordForm((current) => ({ ...current, restrictionNotes: event.target.value }))} /></Field>
           </div>
-          {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Nao foi possivel salvar o registro ocupacional. Confira os campos obrigatorios."} /></div> : null}
+          {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Não foi possível salvar o registro ocupacional. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => recordMutation.mutate(recordForm)} disabled={recordMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
       </HrOperationalModal>
 
       <HrOperationalModal
         open={showNrForm}
-        title={nrForm.id ? "Editar certificacao NR" : "Nova certificacao NR"}
-        description={nrForm.id ? "Atualize a certificacao NR e seus vencimentos." : "Registre a NR, o treinamento, a emissao e a validade do colaborador."}
+        title={nrForm.id ? "Editar certificação NR" : "Nova certificação NR"}
+        description={nrForm.id ? "Atualize a certificação NR e seus vencimentos." : "Registre a NR, o treinamento, a emissão e a validade do colaborador."}
         onClose={() => setShowNrForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={nrForm.employeeId} onChange={(event) => setNrForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="NR"><SelectField value={nrForm.nrCode} onChange={(event) => setNrForm((current) => ({ ...current, nrCode: event.target.value }))}>{nrCodes.map((code) => <option key={code} value={code}>{code}</option>)}</SelectField></Field>
             <Field label="Treinamento"><Input value={nrForm.trainingName} onChange={(event) => setNrForm((current) => ({ ...current, trainingName: event.target.value }))} /></Field>
-            <Field label="Emissao"><Input type="date" value={nrForm.issuedAt} onChange={(event) => setNrForm((current) => ({ ...current, issuedAt: event.target.value }))} /></Field>
+            <Field label="Emissão"><Input type="date" value={nrForm.issuedAt} onChange={(event) => setNrForm((current) => ({ ...current, issuedAt: event.target.value }))} /></Field>
             <Field label="Validade"><Input type="date" value={nrForm.expiresAt} onChange={(event) => setNrForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
             {nrForm.id ? (
               <Field label="Status"><SelectField value={nrForm.status} onChange={(event) => setNrForm((current) => ({ ...current, status: event.target.value }))}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             ) : (
               <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                <p className="font-medium text-foreground">Status inicial: Valido</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">A situacao de vencimento sera acompanhada pela validade informada.</p>
+                <p className="font-medium text-foreground">Status inicial: Válido</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">A situação de vencimento será acompanhada pela validade informada.</p>
               </div>
             )}
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">Certificado</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificados serao vinculados pelo modulo Documentos em uma proxima etapa. Nao informe IDs manualmente.</p>
+              <p className="font-medium text-foreground">Certificado NR</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe o certificado NR pela aba Documentos do colaborador. Esta tela registra a NR, emissão e validade.</p>
+              {nrForm.employeeId ? (
+                <Button asChild className="mt-3" variant="outline" size="sm">
+                  <a href={employeeDocumentsHref(nrForm.employeeId)}>Abrir Documentos do colaborador</a>
+                </Button>
+              ) : (
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
+              )}
             </div>
           </div>
-          {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Nao foi possivel salvar a certificacao NR. Confira os campos obrigatorios."} /></div> : null}
+          {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Não foi possível salvar a certificação NR. Confira os campos obrigatorios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => nrMutation.mutate(nrForm)} disabled={nrMutation.isPending}><Save className="h-4 w-4" />Salvar NR</Button>
       </HrOperationalModal>
 
-      {(recordsQuery.isLoading || nrQuery.isLoading) ? <LoadingTable label="Carregando Saude Ocupacional..." /> : null}
-      {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Nao foi possivel carregar os registros ocupacionais. Tente atualizar a pagina."} /> : null}
-      {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Nao foi possivel carregar as certificacoes NR. Tente atualizar a pagina."} /> : null}
+      {(recordsQuery.isLoading || nrQuery.isLoading) ? <LoadingTable label="Carregando Saúde Ocupacional..." /> : null}
+      {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Não foi possível carregar os registros ocupacionais. Tente atualizar a página."} /> : null}
+      {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Não foi possível carregar as certificações NR. Tente atualizar a página."} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <OccupationalRecordsTable records={filteredRecords} onEdit={editRecord} />
@@ -603,10 +621,10 @@ function OccupationalStat({ title, value, icon: Icon, tone }: { title: string; v
 function OccupationalRecordsTable({ records, onEdit }: { records: OccupationalRecord[]; onEdit: (record: OccupationalRecord) => void }) {
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-      <div className="border-b p-4"><h2 className="text-sm font-semibold">ASOs, exames e restricoes</h2></div>
+      <div className="border-b p-4"><h2 className="text-sm font-semibold">ASOs, exames e restrições</h2></div>
       {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="ASOs, exames e restrições ocupacionais aparecerão aqui." /> : null}
       {records.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Medico</th><th className="px-4 py-3">Restricoes</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{records.map((record) => { const expiration = recordExpiration(record); return <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span>{record.recordTypeLabel}</span>{record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restricao ativa" /> : null}</div></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}</div></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>; })}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Médico</th><th className="px-4 py-3">Restrições</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Ação</th></tr></thead><tbody className="divide-y">{records.map((record) => { const expiration = recordExpiration(record); return <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span>{record.recordTypeLabel}</span>{record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restrição ativa" /> : null}</div></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}</div></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
     </Card>
   );
@@ -615,10 +633,10 @@ function OccupationalRecordsTable({ records, onEdit }: { records: OccupationalRe
 function NrTable({ rows, onEdit }: { rows: NrCertification[]; onEdit: (row: NrCertification) => void }) {
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-      <div className="border-b p-4"><h2 className="text-sm font-semibold">Certificacoes NR</h2></div>
+      <div className="border-b p-4"><h2 className="text-sm font-semibold">Certificações NR</h2></div>
       {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Certificações obrigatórias e seus vencimentos aparecerão aqui." /> : null}
       {rows.length ? (
-        <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissao</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Acao</th></tr></thead><tbody className="divide-y">{rows.map((row) => { const expiration = nrExpiration(row); return <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}</div></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>; })}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead><tbody className="divide-y">{rows.map((row) => { const expiration = nrExpiration(row); return <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}</div></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
     </Card>
   );

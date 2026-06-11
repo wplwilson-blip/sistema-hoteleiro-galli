@@ -124,13 +124,13 @@ const employeeStatuses = [
   ["in_progress", "Em andamento"],
   ["completed", "Concluído"],
   ["expired", "Vencido"],
-  ["retraining_required", "Reciclagem necessaria"],
+  ["retraining_required", "Reciclagem necessária"],
   ["waived", "Dispensado"],
   ["cancelled", "Cancelado"]
 ];
 
 const quickFilters = [
-  ["", "Todas as pendencias"],
+  ["", "Todas as pendências"],
   ["expired", "Vencidos"],
   ["expiring", "A vencer"],
   ["retraining", "Reciclagem"],
@@ -169,7 +169,7 @@ const emptyVerifyForm: VerifyForm = {
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel processar treinamentos.");
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível processar treinamentos.");
   return payload as T;
 }
 
@@ -193,6 +193,10 @@ function buildUrl(path: string, filters: Record<string, string>) {
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
   const query = params.toString();
   return `${path}${query ? `?${query}` : ""}`;
+}
+
+function employeeDocumentsHref(employeeId: string) {
+  return `/rh/employees/${employeeId}?tab=documents`;
 }
 
 function trainingPayload(form: TrainingForm) {
@@ -371,7 +375,7 @@ export function HrTrainingsClient() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Novo treinamento</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignForm(true)}><Plus className="h-4 w-4" />Atribuir</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignForm(true)}><Plus className="h-4 w-4" />Atribuir treinamento</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
           </div>
         </div>
@@ -382,14 +386,14 @@ export function HrTrainingsClient() {
         <TrainingStat title="Obrigatorios pendentes" value={summary.mandatoryPending} icon={ShieldAlert} tone={summary.mandatoryPending ? "warning" : "visual"} />
         <TrainingStat title="A vencer" value={summary.expiring} icon={CalendarClock} tone={summary.expiring ? "warning" : "visual"} />
         <TrainingStat title="Vencidos" value={summary.expired} icon={ShieldAlert} tone={summary.expired ? "danger" : "visual"} />
-        <TrainingStat title="Reciclagem necessaria" value={summary.retraining} icon={RefreshCw} tone={summary.retraining ? "warning" : "visual"} />
+        <TrainingStat title="Reciclagem necessária" value={summary.retraining} icon={RefreshCw} tone={summary.retraining ? "warning" : "visual"} />
         <TrainingStat title="Certificados pendentes" value={summary.certificatePending} icon={FileCheck2} tone={summary.certificatePending ? "warning" : "visual"} />
         <TrainingStat title="Concluidos" value={summary.completed} icon={CheckCircle2} tone={summary.completed ? "success" : "visual"} />
       </div>
       {processMutation.error ? <ErrorMessage message={processMutation.error instanceof Error ? processMutation.error.message : "Erro ao atualizar vencimentos."} /> : null}
       {processMutation.data?.data ? (
         <Card className="border-border/80 p-3 text-sm shadow-sm shadow-primary/5">
-          Processamento concluido: {processMutation.data.data.processedCount} registro(s) avaliados, {processMutation.data.data.expiredCount} vencido(s), {processMutation.data.data.expiringCount} a vencer e {processMutation.data.data.retrainingCount} com reciclagem necessaria.
+          Processamento concluído: {processMutation.data.data.processedCount} registro(s) avaliados, {processMutation.data.data.expiredCount} vencido(s), {processMutation.data.data.expiringCount} a vencer e {processMutation.data.data.retrainingCount} com reciclagem necessária.
         </Card>
       ) : null}
 
@@ -435,7 +439,7 @@ export function HrTrainingsClient() {
       <HrOperationalModal
         open={showTrainingForm}
         title={trainingForm.id ? "Editar treinamento" : "Novo treinamento"}
-        description={trainingForm.id ? "Atualize os dados do treinamento sem alterar o historico dos colaboradores." : "Cadastre o treinamento uma vez para depois atribuir aos colaboradores."}
+        description={trainingForm.id ? "Atualize os dados do treinamento sem alterar o histórico dos colaboradores." : "Cadastre o treinamento uma vez para depois atribuir aos colaboradores."}
         onClose={() => setShowTrainingForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -454,12 +458,12 @@ export function HrTrainingsClient() {
             ) : (
               <div className="rounded-md border bg-muted/30 p-3 text-sm">
                 <p className="font-medium text-foreground">Status inicial: Ativo</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">Novos treinamentos ficam disponiveis para atribuicao. O status pode ser alterado depois, se necessario.</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Novos treinamentos ficam disponíveis para atribuição. O status pode ser alterado depois, se necessário.</p>
               </div>
             )}
             <Field label="Descrição"><TextArea value={trainingForm.description} onChange={(e) => setTrainingForm((f) => ({ ...f, description: e.target.value }))} /></Field>
           </div>
-          {trainingMutation.error ? <div className="mt-3"><ErrorMessage message={trainingMutation.error instanceof Error ? trainingMutation.error.message : "Nao foi possivel salvar o treinamento. Confira os campos obrigatorios."} /></div> : null}
+          {trainingMutation.error ? <div className="mt-3"><ErrorMessage message={trainingMutation.error instanceof Error ? trainingMutation.error.message : "Não foi possível salvar o treinamento. Confira os campos obrigatórios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => trainingMutation.mutate(trainingForm)} disabled={trainingMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
       </HrOperationalModal>
 
@@ -482,7 +486,7 @@ export function HrTrainingsClient() {
       <HrOperationalModal
         open={Boolean(verifyForm.employeeTrainingId)}
         title="Concluir ou validar treinamento"
-        description="Informe presenca, conclusao e validade. Certificados continuarao vinculados pelo fluxo seguro de documentos."
+        description="Informe presença, conclusão e validade. Certificados e listas de presença devem ficar no fluxo seguro de documentos."
         onClose={() => setVerifyForm(emptyVerifyForm)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -490,8 +494,15 @@ export function HrTrainingsClient() {
             <Field label="Presença confirmada"><SelectField value={verifyForm.attendanceConfirmed} onChange={(e) => setVerifyForm((f) => ({ ...f, attendanceConfirmed: e.target.value }))}><option value="true">Sim</option><option value="false">Não</option></SelectField></Field>
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">Certificado</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificados serao vinculados pelo modulo Documentos em uma proxima etapa. Registre aqui a conclusao e a validade.</p>
+              <p className="font-medium text-foreground">Certificado e lista de presença</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe certificado, lista de presença ou comprovante pela aba Documentos do colaborador. Nesta tela registre presença, conclusão e validade.</p>
+              {verifyForm.employeeId ? (
+                <Button asChild className="mt-3" variant="outline" size="sm">
+                  <a href={employeeDocumentsHref(verifyForm.employeeId)}>Abrir Documentos do colaborador</a>
+                </Button>
+              ) : (
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
+              )}
             </div>
             <Field label="Validade até"><Input type="date" value={verifyForm.expiresAt} onChange={(e) => setVerifyForm((f) => ({ ...f, expiresAt: e.target.value }))} /></Field>
             <Field label="Observação"><Input value={verifyForm.notes} onChange={(e) => setVerifyForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
@@ -501,8 +512,8 @@ export function HrTrainingsClient() {
       </HrOperationalModal>
 
       {(trainingsQuery.isLoading || assignmentsQuery.isLoading) ? <LoadingTable label="Carregando treinamentos..." /> : null}
-      {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Nao foi possivel carregar o catalogo de treinamentos. Tente atualizar a pagina."} /> : null}
-      {assignmentsQuery.error ? <ErrorMessage message={assignmentsQuery.error instanceof Error ? assignmentsQuery.error.message : "Nao foi possivel carregar os treinamentos atribuidos. Tente atualizar a pagina."} /> : null}
+      {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Não foi possível carregar o catálogo de treinamentos. Tente atualizar a página."} /> : null}
+      {assignmentsQuery.error ? <ErrorMessage message={assignmentsQuery.error instanceof Error ? assignmentsQuery.error.message : "Não foi possível carregar os treinamentos atribuídos. Tente atualizar a página."} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
@@ -525,7 +536,7 @@ export function HrTrainingsClient() {
             <div className="overflow-x-auto">
               <table className="min-w-[920px] w-full text-sm">
                 <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prazo</th><th className="px-4 py-3">Conclusão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead>
-                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatorio" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessaria" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Validar</Button></td></tr>)}</tbody>
+                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessária" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Validar</Button></td></tr>)}</tbody>
               </table>
             </div>
           ) : null}

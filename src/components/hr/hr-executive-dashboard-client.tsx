@@ -81,11 +81,11 @@ type ActionView = "employee" | "action";
 const reportTypes = [
   ["colaboradores", "Colaboradores"],
   ["treinamentos", "Treinamentos"],
-  ["saude_ocupacional", "Saude Ocupacional"],
-  ["movimentacoes", "Movimentacoes"],
+  ["saude_ocupacional", "Saúde Ocupacional"],
+  ["movimentacoes", "Movimentações"],
   ["conduta", "Conduta"],
   ["desligamentos", "Desligamentos"]
-];
+] as const;
 
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -99,6 +99,10 @@ function buildUrl(path: string, params: Record<string, string>) {
   for (const [key, value] of Object.entries(params)) if (value) search.set(key, value);
   const query = search.toString();
   return query ? `${path}?${query}` : path;
+}
+
+function downloadConsolidatedReport(type: string, unitId: string) {
+  window.location.assign(buildUrl("/api/hr/consolidated-reports", { type, unitId }));
 }
 
 function priorityTone(priority: string) {
@@ -533,7 +537,7 @@ export function HrExecutiveDashboardClient() {
       </div>
 
       <details className="rounded-lg border bg-card p-4 shadow-sm shadow-primary/5">
-        <summary className="cursor-pointer text-sm font-semibold">Indicadores detalhados e relatorios</summary>
+        <summary className="cursor-pointer text-sm font-semibold">Indicadores detalhados e relatórios</summary>
         {indicators ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <StatCard title="Headcount total" value={String(indicators.headcountTotal)} icon={UsersRound} tone="info" />
@@ -570,15 +574,13 @@ export function HrExecutiveDashboardClient() {
           </Card>
 
           <Card id="relatorios-rh" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
-            <div className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatorios RH</h2></div>
-            <p className="mt-1 text-xs text-muted-foreground">Exportacao simples dos dados consolidados da visao atual.</p>
+            <div className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatórios RH</h2></div>
+            <p className="mt-1 text-xs text-muted-foreground">Baixe um CSV real com os dados consolidados da visão atual.</p>
             <div className="mt-3 grid gap-2">
               {reportTypes.map(([type, label]) => (
-                <Button key={type} asChild variant="outline" size="sm">
-                  <a href={buildUrl("/api/hr/consolidated-reports", { type, unitId })}>
-                    <Download className="h-4 w-4" />
-                    Exportar {label}
-                  </a>
+                <Button key={type} type="button" variant="outline" size="sm" onClick={() => downloadConsolidatedReport(type, unitId)} title={`Exportar CSV de ${label}`}>
+                  <Download className="h-4 w-4" />
+                  Exportar CSV - {label}
                 </Button>
               ))}
             </div>
