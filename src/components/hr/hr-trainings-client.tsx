@@ -362,6 +362,20 @@ export function HrTrainingsClient() {
     });
   }
 
+  function confirmProcessExpirations() {
+    const confirmed = window.confirm(
+      "Atualizar vencimentos de treinamentos?\n\nO sistema vai recalcular treinamentos vencidos, a vencer e reciclagens necessárias.\n\nEsta ação não cria certificados nem anexa arquivos; certificados e listas de presença continuam em Documentos do colaborador."
+    );
+    if (confirmed) processMutation.mutate();
+  }
+
+  function confirmTrainingVerification() {
+    const confirmed = window.confirm(
+      "Confirmar conclusão deste treinamento?\n\nEsta ação registra presença/conclusão operacional e atualiza validade quando informada.\n\nConfira antes se certificado, lista de presença ou comprovante estão em Documentos do colaborador, quando exigido."
+    );
+    if (confirmed) verifyMutation.mutate(verifyForm);
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -371,12 +385,12 @@ export function HrTrainingsClient() {
               <Award className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Gestão de treinamentos</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">Cadastre treinamentos, atribua aos colaboradores e acompanhe vencimentos. Certificados e listas de presença devem ser anexados em Documentos do colaborador.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Cadastre treinamentos, atribua aos colaboradores e acompanhe vencimentos. Confirmar conclusão registra presença/conclusão operacional; certificados e listas de presença ficam em Documentos do colaborador.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Novo treinamento</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignForm(true)}><Plus className="h-4 w-4" />Atribuir treinamento</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
+            <Button type="button" variant="outline" size="sm" onClick={confirmProcessExpirations} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
           </div>
         </div>
       </Card>
@@ -424,7 +438,7 @@ export function HrTrainingsClient() {
             {quickFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </SelectField>
           <SelectField value={filters.mandatory} onChange={(event) => setFilters((current) => ({ ...current, mandatory: event.target.value }))}>
-            <option value="">Obrigatorio?</option>
+            <option value="">Obrigatório?</option>
             <option value="true">Somente obrigatórios</option>
             <option value="false">Não obrigatórios</option>
           </SelectField>
@@ -486,7 +500,7 @@ export function HrTrainingsClient() {
       <HrOperationalModal
         open={Boolean(verifyForm.employeeTrainingId)}
         title="Concluir ou validar treinamento"
-        description="Confirme presença, conclusão e validade. Certificados e listas de presença devem ser anexados em Documentos do colaborador."
+        description="Confirme presença, conclusão e validade. Esta ação atualiza o controle operacional do colaborador; certificados e listas de presença devem estar em Documentos do colaborador."
         onClose={() => setVerifyForm(emptyVerifyForm)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -495,7 +509,7 @@ export function HrTrainingsClient() {
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Certificado e lista de presença</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado, lista de presença ou comprovante devem ser anexados na aba Documentos do colaborador. Nesta tela registre presença, conclusão e validade.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado, lista de presença ou comprovante devem ser anexados na aba Documentos do colaborador. Nesta tela registre apenas presença, conclusão e validade.</p>
               {verifyForm.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
                   <a href={employeeDocumentsHref(verifyForm.employeeId)}>Abrir Documentos do colaborador</a>
@@ -508,7 +522,7 @@ export function HrTrainingsClient() {
             <Field label="Observação"><Input value={verifyForm.notes} onChange={(e) => setVerifyForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
           {verifyMutation.error ? <div className="mt-3"><ErrorMessage message={verifyMutation.error instanceof Error ? verifyMutation.error.message : "Erro ao validar."} /></div> : null}
-          <Button className="mt-4" size="sm" onClick={() => verifyMutation.mutate(verifyForm)} disabled={verifyMutation.isPending}><FileCheck2 className="h-4 w-4" />Salvar validação</Button>
+          <Button className="mt-4" size="sm" onClick={confirmTrainingVerification} disabled={verifyMutation.isPending}><FileCheck2 className="h-4 w-4" />Salvar confirmação</Button>
       </HrOperationalModal>
 
       {(trainingsQuery.isLoading || assignmentsQuery.isLoading) ? <LoadingTable label="Carregando treinamentos..." /> : null}

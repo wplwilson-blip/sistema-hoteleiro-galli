@@ -406,18 +406,25 @@ export function HrOccupationalHealthClient() {
     setShowNrForm(true);
   }
 
+  function confirmProcessExpirations() {
+    const confirmed = window.confirm(
+      "Atualizar vencimentos de Saúde Ocupacional?\n\nO sistema vai recalcular ASOs, exames, restrições e certificações NR vencidas ou a vencer.\n\nEsta ação não cria documento, não envia eSocial e não altera folha."
+    );
+    if (confirmed) processMutation.mutate();
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Saúde Ocupacional</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Anexe ASO, exames, restrições e certificados NR em Documentos do colaborador. Use Atualizar vencimentos para recalcular pendências.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Anexe ASO, exames, restrições e certificados NR em Documentos do colaborador. Atualizar vencimentos apenas recalcula pendências e alertas operacionais.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => downloadCsv("pendências-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendências</Button>
             <Button size="sm" variant="outline" onClick={() => downloadCsv("relatorio-saude-ocupacional.csv", reportRows)} disabled={!reportRows.length}><Download className="h-4 w-4" />Exportar CSV</Button>
-            <Button size="sm" variant="outline" onClick={() => processMutation.mutate()} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
+            <Button size="sm" variant="outline" onClick={confirmProcessExpirations} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
             <Button size="sm" onClick={() => { setRecordForm(emptyRecordForm); setShowRecordForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
             <Button size="sm" variant="outline" onClick={() => { setNrForm(emptyNrForm); setShowNrForm(true); }}><Plus className="h-4 w-4" />Nova NR</Button>
           </div>
@@ -537,7 +544,7 @@ export function HrOccupationalHealthClient() {
             ) : (
               <div className="rounded-md border bg-muted/30 p-3 text-sm">
                 <p className="font-medium text-foreground">Status inicial: Válido</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">O status pode ser recalculado pelos vencimentos ou ajustado depois em edição.</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">O status pode ser recalculado pelos vencimentos ou ajustado depois em edição. Use Atualizar vencimentos para revisar alertas.</p>
               </div>
             )}
             <Field label="Data"><Input type="date" value={recordForm.examDate} onChange={(event) => setRecordForm((current) => ({ ...current, examDate: event.target.value }))} /></Field>

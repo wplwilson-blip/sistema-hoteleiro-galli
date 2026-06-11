@@ -58,9 +58,9 @@ type TerminationForm = {
 };
 
 const terminationTypes = [
-  ["voluntary", "Pedido de demissao"],
+  ["voluntary", "Pedido de demissão"],
   ["involuntary", "Desligamento pela empresa"],
-  ["mutual", "Acordo mutuo"],
+  ["mutual", "Acordo mútuo"],
   ["retirement", "Aposentadoria"],
   ["end_of_contract", "Fim de contrato"],
   ["other", "Outro"]
@@ -123,6 +123,26 @@ function nextActionLabel(record: TerminationRecord) {
   if (record.status === "implemented") return "Processo concluído.";
   if (record.status === "cancelled") return "Processo cancelado.";
   return "Acompanhe o status do desligamento.";
+}
+
+function terminationActionMessage(record: TerminationRecord, action: "submit" | "approve" | "implement" | "cancel") {
+  if (action === "submit") {
+    return `Enviar este desligamento para revisão?\n\nConfira motivo, data efetiva, checklist e documentos de saída antes de continuar.`;
+  }
+
+  if (action === "approve") {
+    return `Aprovar este desligamento?\n\nO processo ficará pronto para efetivação quando as pendências forem concluídas. Confira com Andreia antes de aprovar.`;
+  }
+
+  if (action === "implement") {
+    return `Efetivar desligamento?\n\nEsta ação registra o encerramento no prontuário e na Vida Funcional do colaborador.\n\nConfira checklist e documentos de saída antes de continuar.`;
+  }
+
+  if (action === "cancel") {
+    return `Cancelar este desligamento?\n\nO histórico administrativo será mantido e o processo não deve ser tratado como ativo.`;
+  }
+
+  return `Executar ação no desligamento de ${record.employeeName || "colaborador"}?`;
 }
 
 function payload(form: TerminationForm) {
@@ -217,6 +237,11 @@ export function HrTerminationsClient() {
     setShowForm(true);
   }
 
+  function runTerminationAction(record: TerminationRecord, action: "submit" | "approve" | "implement" | "cancel") {
+    if (!window.confirm(terminationActionMessage(record, action))) return;
+    actionMutation.mutate({ id: record.id, action });
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -268,7 +293,7 @@ export function HrTerminationsClient() {
             <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2">
               <p className="font-medium text-foreground">Documentos de saída</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">Documentos de saída, devolução de uniforme, crachá, chaves ou checklist assinado devem ser anexados na aba Documentos do colaborador. Esta tela controla o processo e as pendências administrativas.</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">Confira o processo com Andreia antes de aprovar ou efetivar. Esta tela não calcula verbas, folha ou eSocial.</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">Confira o processo com Andreia antes de aprovar ou efetivar. Esta tela controla apenas checklist, aprovação e registro administrativo.</p>
               {form.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
                   <a href={employeeDocumentsHref(form.employeeId)}>Abrir Documentos do colaborador</a>
@@ -293,7 +318,7 @@ export function HrTerminationsClient() {
         checklistName={checklistName}
         onChecklistName={setChecklistName}
         onEdit={edit}
-        onAction={(record, action) => actionMutation.mutate({ id: record.id, action })}
+        onAction={runTerminationAction}
         onToggleChecklist={(record, item, completed) => checklistMutation.mutate({ terminationId: record.id, itemId: item.id, completed })}
         onAddChecklist={(record) => addChecklistMutation.mutate(record.id)}
         pending={actionMutation.isPending || checklistMutation.isPending || addChecklistMutation.isPending}

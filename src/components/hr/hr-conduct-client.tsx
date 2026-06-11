@@ -68,6 +68,7 @@ const conductTypes = [
 ];
 const statuses = [["draft", "Rascunho"], ["pending_review", "Aguardando revisão"], ["reviewed", "Revisado"], ["rejected", "Rejeitado"], ["cancelled", "Cancelado"]];
 const severities = [["info", "Info"], ["notice", "Aviso"], ["warning", "Alerta"], ["critical", "Crítico"]];
+const sensitiveConductTypes = new Set(["warning", "suspension", "complaint", "formal_conversation"]);
 const emptyForm: ConductForm = {
   id: "",
   employeeId: "",
@@ -128,6 +129,30 @@ function nextActionLabel(status: string) {
   if (status === "rejected") return "Registro rejeitado. Revise antes de qualquer nova ação.";
   if (status === "cancelled") return "Registro cancelado.";
   return "Acompanhe o status do registro.";
+}
+
+function conductTypeLabel(value: string) {
+  return conductTypes.find(([type]) => type === value)?.[1] ?? "Ocorrência";
+}
+
+function conductActionMessage(record: ConductRecord, action: "submit" | "approve" | "reject" | "cancel") {
+  if (action === "submit") {
+    return `Enviar esta ocorrência para revisão?\n\nEla ficará aguardando análise do responsável. Confira se as evidências estão em Documentos do colaborador antes de continuar.`;
+  }
+
+  if (action === "approve") {
+    return `Aprovar esta ocorrência?\n\nEla poderá aparecer no prontuário e na Vida Funcional conforme a visibilidade definida.\n\nConfira com Andreia antes de aprovar ocorrência sensível.`;
+  }
+
+  if (action === "reject") {
+    return `Rejeitar esta ocorrência?\n\nRegistre o motivo no campo Comentário da próxima ação para manter a auditoria clara.`;
+  }
+
+  if (action === "cancel") {
+    return `Cancelar esta ocorrência?\n\nO histórico de revisão será mantido e o registro não deve ser tratado como ocorrência ativa.`;
+  }
+
+  return `Executar ação em ${record.conductTypeLabel || "ocorrência"}?`;
 }
 
 function payload(form: ConductForm) {
@@ -197,7 +222,19 @@ export function HrConductClient() {
     }
   });
 
+  function saveConductRecord() {
+    if (!form.id && sensitiveConductTypes.has(form.conductType)) {
+      const confirmed = window.confirm(
+        `Salvar ${conductTypeLabel(form.conductType).toLowerCase()} como rascunho?\n\nEste registro é sensível. Anexe evidências em Documentos do colaborador e confira com Andreia antes da aprovação.`
+      );
+      if (!confirmed) return;
+    }
+
+    mutation.mutate(form);
+  }
+
   function runAction(record: ConductRecord, action: "submit" | "approve" | "reject" | "cancel") {
+    if (!window.confirm(conductActionMessage(record, action))) return;
     actionMutation.mutate({ id: record.id, action, comments: actionComments });
   }
 
@@ -282,7 +319,7 @@ export function HrConductClient() {
             <Field label="Ação tomada"><TextArea value={form.actionTaken} onChange={(event) => setForm((current) => ({ ...current, actionTaken: event.target.value }))} /></Field>
           </div>
           {mutation.error ? <div className="mt-3"><ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível salvar o registro de conduta. Confira os campos obrigatórios."} /></div> : null}
-          <Button className="mt-4" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
+          <Button className="mt-4" size="sm" onClick={saveConductRecord} disabled={mutation.isPending}><Save className="h-4 w-4" />Salvar rascunho</Button>
       </HrOperationalModal>
 
       {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
