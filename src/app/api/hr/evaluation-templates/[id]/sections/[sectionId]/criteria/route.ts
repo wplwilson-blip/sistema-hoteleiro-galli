@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleHrRouteError, HR_PERMISSIONS, hrApiError, logHrApiError, requireHrPermission } from "@/lib/hr/api-auth";
 import { assertCanAccessEvaluationTemplate, loadEvaluationTemplate, prepareEvaluationCriterionWrite } from "@/lib/hr/evaluation-actions";
 import { evaluationCriterionSelect, mapEvaluationTemplateCriterion, type EvaluationTemplateCriterionRow } from "@/lib/hr/evaluations";
-import { evaluationTemplateCriterionPayloadSchema } from "@/lib/hr/evaluation-validation";
+import { evaluationTemplateCriterionPayloadSchema, formatEvaluationValidationError } from "@/lib/hr/evaluation-validation";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
 
 type RouteParams = { params: { id: string; sectionId: string } };
@@ -42,7 +42,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
     return NextResponse.json({ ok: true, data: mapEvaluationTemplateCriterion(data as unknown as EvaluationTemplateCriterionRow) }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
+    if (error instanceof z.ZodError) return hrApiError(formatEvaluationValidationError(error), 422);
     return handleHrRouteError(error, "Nao foi possivel criar criterio do modelo.");
   }
 }

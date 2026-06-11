@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleHrRouteError, HR_PERMISSIONS, hrApiError, logHrApiError, requireHrPermission } from "@/lib/hr/api-auth";
 import { assertCanAccessEvaluationTemplate, prepareEvaluationTemplateWrite } from "@/lib/hr/evaluation-actions";
 import { evaluationTemplateListSelect, mapEvaluationTemplate, type EvaluationTemplateRow } from "@/lib/hr/evaluations";
-import { evaluationTemplatePayloadSchema, evaluationTemplatesQuerySchema } from "@/lib/hr/evaluation-validation";
+import { evaluationTemplatePayloadSchema, evaluationTemplatesQuerySchema, formatEvaluationValidationError } from "@/lib/hr/evaluation-validation";
 import { parseSearchParams } from "@/lib/hr/schemas";
 
 export async function GET(request: Request) {
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ ok: true, data: rows.map((row) => mapEvaluationTemplate(row)) });
   } catch (error) {
-    if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
+    if (error instanceof z.ZodError) return hrApiError(formatEvaluationValidationError(error), 422);
     return handleHrRouteError(error, "Nao foi possivel carregar modelos de avaliacao.");
   }
 }
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, data: mapEvaluationTemplate(data as unknown as EvaluationTemplateRow) }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
+    if (error instanceof z.ZodError) return hrApiError(formatEvaluationValidationError(error), 422);
     return handleHrRouteError(error, "Nao foi possivel criar modelo de avaliacao.");
   }
 }

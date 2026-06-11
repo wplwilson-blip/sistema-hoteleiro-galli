@@ -7,7 +7,7 @@ import {
   prepareEvaluationSectionWrite
 } from "@/lib/hr/evaluation-actions";
 import { evaluationSectionSelect, mapEvaluationTemplateSection, type EvaluationTemplateSectionRow } from "@/lib/hr/evaluations";
-import { evaluationTemplateSectionPayloadSchema } from "@/lib/hr/evaluation-validation";
+import { evaluationTemplateSectionPayloadSchema, formatEvaluationValidationError } from "@/lib/hr/evaluation-validation";
 import { hrIdParamSchema } from "@/lib/hr/schemas";
 
 type RouteParams = { params: { id: string } };
@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     return NextResponse.json({ ok: true, data: mapEvaluationTemplateSection(data as unknown as EvaluationTemplateSectionRow) }, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
+    if (error instanceof z.ZodError) return hrApiError(formatEvaluationValidationError(error), 422);
     return handleHrRouteError(error, "Nao foi possivel criar secao do modelo.");
   }
 }

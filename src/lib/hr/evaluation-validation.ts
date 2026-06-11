@@ -27,15 +27,68 @@ const optionalNumberSchema = (min: number, max: number) =>
 const pageNumber = (defaultValue: number, maxValue: number) =>
   z.preprocess((value) => (value === "" || value == null ? undefined : value), z.coerce.number().int().min(1).max(maxValue).default(defaultValue));
 
+const sensitiveEvaluationTextMessage =
+  "Revise este campo: nao informe CPF, RG, CTPS, PIS/PASEP, e-mail, telefone pessoal, salario, laudo, CID, diagnostico ou caminho tecnico de arquivo.";
+
+const cpfNumberPattern = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/;
+const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const formattedPhonePattern = /\b(?:(?:\+?55[\s.-]?)?\(?\d{2}\)?[\s.-]?(?:9[\s.-]?)?\d{4}[\s.-]?\d{4}|\d{4}[-\s]\d{4})\b/;
+const contactLabelWithValuePattern = /\b(?:telefone|tel\.?|celular|whatsapp|e-?mail)\b\s*[:#-]?\s*(?:\+?\d|[A-Z0-9._%+-]+@)/i;
+const sensitiveLabelPattern =
+  /\b(?:cpf|rg|r\.g\.|registro\s+geral|ctps|pis|pasep|nis|sal[aá]rio|salary|cid|laudo|diagn[oó]stico|diagnostico)\b/i;
+const clinicalDataPattern = /\b(?:dados?\s+m[eé]dicos?|informac(?:ao|oes|ão|ões)\s+cl[ií]nica?s?|observac(?:ao|oes|ão|ões)\s+cl[ií]nica?s?)\b/i;
+const technicalSensitiveTokens = ["file_path", "storage_path", "signed_url", "document_number", "auth_email", "token"];
+
+export function containsSensitiveEvaluationText(value: string) {
+  const text = value.trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+
+  return (
+    cpfNumberPattern.test(text) ||
+    emailPattern.test(text) ||
+    formattedPhonePattern.test(text) ||
+    contactLabelWithValuePattern.test(text) ||
+    sensitiveLabelPattern.test(text) ||
+    clinicalDataPattern.test(text) ||
+    technicalSensitiveTokens.some((token) => lower.includes(token))
+  );
+}
+
+const evaluationValidationFieldLabels: Record<string, string> = {
+  search: "Busca",
+  code: "Codigo",
+  name: "Nome",
+  description: "Descricao",
+  title: "Titulo",
+  expectedBehavior: "Comportamento esperado",
+  resultLabel: "Resultado",
+  summary: "Resumo",
+  strengths: "Pontos fortes",
+  developmentPoints: "Pontos de desenvolvimento",
+  employeeComments: "Comentarios do colaborador",
+  comment: "Comentario",
+  evidenceNote: "Evidencia",
+  reason: "Motivo",
+  completionNotes: "Observacao de conclusao"
+};
+
+export function formatEvaluationValidationError(error: z.ZodError) {
+  const issue = error.errors[0];
+  if (!issue) return "Dados invalidos.";
+
+  const lastPathPart = String(issue.path[issue.path.length - 1] ?? "");
+  const label = evaluationValidationFieldLabels[issue.path.join(".")] ?? evaluationValidationFieldLabels[lastPathPart];
+
+  return label ? `${label}: ${issue.message}` : issue.message;
+}
+
 const safeText = (max = 3000) =>
   z
     .string()
     .trim()
     .max(max, "Texto muito longo.")
-    .refine(
-      (value) => !/(cpf|rg|ctps|pis|salary|salario|medical|cid|file_path|storage_path|signed_url|document_number)/i.test(value),
-      "Texto contem dado sensivel nao permitido."
-    )
+    .refine((value) => !containsSensitiveEvaluationText(value), sensitiveEvaluationTextMessage)
     .optional()
     .or(emptyToUndefined);
 
