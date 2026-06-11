@@ -6,7 +6,7 @@ export default function RhPage() {
     <div className="space-y-6">
       <PageTitle
         title="Painel do RH"
-        description="Situacao geral, riscos, acoes prioritarias e caminhos rapidos para a rotina diaria do RH."
+        description="Rotina diaria da Viviane: pendencias criticas, proximas acoes e caminhos rapidos para resolver o que precisa de atencao hoje."
       />
       <HrExecutiveDashboardClient />
     </div>

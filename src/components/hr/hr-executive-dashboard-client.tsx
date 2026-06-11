@@ -77,6 +77,7 @@ type UnitOption = { id: string; code: string; name: string };
 type UnitsResponse = { ok: true; units: UnitOption[] };
 type ActionOwner = "hr" | "manager" | "employee";
 type ActionView = "employee" | "action";
+type DashboardMode = "operational" | "executive" | "reports";
 
 const reportTypes = [
   ["colaboradores", "Colaboradores"],
@@ -86,6 +87,11 @@ const reportTypes = [
   ["conduta", "Conduta"],
   ["desligamentos", "Desligamentos"]
 ] as const;
+
+const preparedReportTypes = [
+  { label: "Documentos", description: "Relatorio preparado para uma futura exportacao dedicada de documentos." },
+  { label: "Avaliacoes e Plano de Desenvolvimento (PDI)", description: "Relatorio preparado para uma futura exportacao dedicada de avaliacoes e planos." }
+];
 
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -103,6 +109,16 @@ function buildUrl(path: string, params: Record<string, string>) {
 
 function downloadConsolidatedReport(type: string, unitId: string) {
   window.location.assign(buildUrl("/api/hr/consolidated-reports", { type, unitId }));
+}
+
+function reportDescription(type: string) {
+  if (type === "colaboradores") return "Quadro por unidade, avaliacoes pendentes e desligamentos.";
+  if (type === "treinamentos") return "Pendencias, vencimentos e reciclagens que pedem acompanhamento.";
+  if (type === "saude_ocupacional") return "ASOs, NRs e controles ocupacionais vencidos ou pendentes.";
+  if (type === "movimentacoes") return "Movimentacoes funcionais em andamento ou pendentes.";
+  if (type === "conduta") return "Ocorrencias que exigem revisao ou acompanhamento.";
+  if (type === "desligamentos") return "Processos de desligamento e pendencias relacionadas.";
+  return "Relatorio consolidado do RH.";
 }
 
 function priorityTone(priority: string) {
@@ -209,7 +225,7 @@ function DecisionCard({ title, value, description, tooltip, tone = "neutral" }: 
   );
 }
 
-export function HrExecutiveDashboardClient() {
+export function HrExecutiveDashboardClient({ mode = "operational" }: { mode?: DashboardMode }) {
   const [unitId, setUnitId] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [actionOwnerFilter, setActionOwnerFilter] = useState("");
@@ -294,6 +310,35 @@ export function HrExecutiveDashboardClient() {
   const complianceScore = indicators ? Math.max(0, Math.min(100, Math.round(100 - ((actionCriticalTotal * 2 + actionAttentionTotal) / Math.max(indicators.activeEmployees, 1)) * 10))) : 0;
   const complianceTone = complianceScore < 75 ? "danger" : complianceScore < 90 ? "warning" : "success";
   const topActions = baseActionItems.slice(0, 5);
+  const isOperational = mode === "operational";
+  const isExecutive = mode === "executive";
+  const isReports = mode === "reports";
+  const headerCopy =
+    mode === "executive"
+      ? {
+          title: "Dashboard Executivo RH",
+          description: "Indicadores, riscos por unidade/departamento e leitura gerencial para Andreia e Wilson."
+        }
+      : mode === "reports"
+        ? {
+            title: "Relatorios RH",
+            description: "Consulta, filtros e exportacoes CSV com dados consolidados do RH."
+          }
+        : {
+            title: "Painel RH de rotina",
+            description: "O que a Viviane precisa resolver hoje: alertas reais, proximas acoes e caminhos rapidos."
+          };
+  const riskThemeRows = indicators
+    ? [
+        { label: "Documentos pendentes", value: baseActionItems.filter((item) => item.type === "documents").length },
+        { label: "Treinamentos vencidos", value: indicators.trainingsExpired },
+        { label: "ASO/NR vencidos", value: indicators.asoExpired + indicators.nrExpired },
+        { label: "Avaliacoes e Plano de Desenvolvimento (PDI)", value: indicators.evaluationsPending + indicators.developmentPlansPending },
+        { label: "Condutas abertas", value: indicators.conductOpen },
+        { label: "Desligamentos em andamento", value: indicators.terminationsInProgress }
+      ]
+    : [];
+  const maxRiskThemeValue = Math.max(1, ...riskThemeRows.map((item) => item.value));
 
   return (
     <div className="space-y-4">
@@ -302,9 +347,9 @@ export function HrExecutiveDashboardClient() {
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Painel RH de Decisao</h2>
+              <h2 className="text-sm font-semibold">{headerCopy.title}</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">Situacao geral, riscos por departamento e o que precisa ser resolvido agora.</p>
+            <p className="mt-1 text-sm text-muted-foreground">{headerCopy.description}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <SelectField value={unitId} onChange={(event) => setUnitId(event.target.value)}>
@@ -319,7 +364,7 @@ export function HrExecutiveDashboardClient() {
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Nao foi possivel carregar o painel do RH. Tente atualizar a pagina."} /> : null}
       {pendingQuery.error ? <ErrorMessage message={pendingQuery.error instanceof Error ? pendingQuery.error.message : "Nao foi possivel carregar pendencias do RH. Tente atualizar a pagina."} /> : null}
 
-      {indicators ? (
+      {!isReports && indicators ? (
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-primary" />
@@ -358,6 +403,7 @@ export function HrExecutiveDashboardClient() {
         </Card>
       ) : null}
 
+      {isExecutive ? (
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
@@ -383,7 +429,9 @@ export function HrExecutiveDashboardClient() {
           </div>
         )}
       </Card>
+      ) : null}
 
+      {isOperational ? (
       <Card id="centro-acao-rh" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -489,7 +537,9 @@ export function HrExecutiveDashboardClient() {
           </div>
         ) : null}
       </Card>
+      ) : null}
 
+      {isOperational ? (
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex items-center gap-2">
@@ -527,7 +577,7 @@ export function HrExecutiveDashboardClient() {
           <p className="mt-1 text-xs text-muted-foreground">Caminhos rapidos para resolver pendencias sem procurar no menu.</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <Button asChild variant="outline" size="sm"><Link href="/rh/employees">Ver colaborador</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link href="#centro-acao-rh">Abrir pendencias</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/rh/inbox">Abrir Fila RH</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/treinamentos">Abrir treinamentos</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/saude-ocupacional">Abrir saude ocupacional</Link></Button>
             <Button asChild variant="outline" size="sm"><Link href="/rh/gestao/conduta">Abrir conduta</Link></Button>
@@ -536,8 +586,17 @@ export function HrExecutiveDashboardClient() {
         </Card>
       </div>
 
-      <details className="rounded-lg border bg-card p-4 shadow-sm shadow-primary/5">
-        <summary className="cursor-pointer text-sm font-semibold">Indicadores detalhados e relatórios</summary>
+      ) : null}
+
+      {isExecutive ? (
+      <div className="space-y-4">
+        <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold">Indicadores executivos</h2>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Visao para decisao: quadro, vencimentos, conduta, movimentacoes e desligamentos.</p>
+        </Card>
         {indicators ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <StatCard title="Headcount total" value={String(indicators.headcountTotal)} icon={UsersRound} tone="info" />
@@ -573,19 +632,69 @@ export function HrExecutiveDashboardClient() {
             </div>
           </Card>
 
-          <Card id="relatorios-rh" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
-            <div className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Relatórios RH</h2></div>
-            <p className="mt-1 text-xs text-muted-foreground">Baixe um CSV real com os dados consolidados da visão atual.</p>
-            <div className="mt-3 grid gap-2">
-              {reportTypes.map(([type, label]) => (
-                <Button key={type} type="button" variant="outline" size="sm" onClick={() => downloadConsolidatedReport(type, unitId)} title={`Exportar CSV de ${label}`}>
-                  <Download className="h-4 w-4" />
-                  Exportar CSV - {label}
-                </Button>
+          <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Riscos por tema</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Leitura rapida dos temas que mais pedem decisao ou acompanhamento.</p>
+            <div className="mt-4 space-y-3">
+              {riskThemeRows.map((item) => (
+                <div key={item.label} className="space-y-1">
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="font-medium">{item.label}</span>
+                    <span className="text-muted-foreground">{item.value}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(4, (item.value / maxRiskThemeValue) * 100)}%` }} />
+                  </div>
+                </div>
               ))}
             </div>
           </Card>
         </div>
+
+      </div>
+      ) : null}
+
+      {isReports ? (
+      <div className="space-y-4">
+        <Card id="relatorios-rh" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="flex items-center gap-2">
+            <Download className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold">Relatorios RH</h2>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Escolha um tema para baixar um CSV real ou consultar pendencias consolidadas.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {reportTypes.map(([type, label]) => (
+              <div key={type} className="rounded-md border bg-background p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{label}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{reportDescription(type)}</p>
+                  </div>
+                  <StatusBadge status="success" label="CSV" />
+                </div>
+                <Button className="mt-3 w-full" type="button" variant="outline" size="sm" onClick={() => downloadConsolidatedReport(type, unitId)} title={`Exportar CSV de ${label}`}>
+                  <Download className="h-4 w-4" />
+                  Exportar CSV
+                </Button>
+              </div>
+            ))}
+            {preparedReportTypes.map((item) => (
+              <div key={item.label} className="rounded-md border bg-muted/30 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <StatusBadge status="visual" label="Preparado" />
+                </div>
+                <p className="mt-3 rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">Sem botao de exportacao enquanto nao houver CSV real para este tema.</p>
+              </div>
+            ))}
+          </div>
+        </Card>
 
         <Card className="mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -616,7 +725,8 @@ export function HrExecutiveDashboardClient() {
             </div>
           ) : null}
         </Card>
-      </details>
+      </div>
+      ) : null}
     </div>
   );
 }

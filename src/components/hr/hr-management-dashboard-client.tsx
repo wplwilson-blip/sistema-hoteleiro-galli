@@ -229,14 +229,14 @@ const journeyManagementSections = [
       {
         title: "Dashboard Executivo",
         description: "Indicadores consolidados por pessoas, riscos e unidades.",
-        href: "/rh#dashboard-executivo",
+        href: "/rh/dashboard-executivo",
         icon: BarChart3,
         badge: "Indicadores"
       },
       {
         title: "Relatórios RH",
         description: "Exportações consolidadas em CSV para acompanhamento operacional.",
-        href: "/rh#relatorios-rh",
+        href: "/rh/relatorios",
         icon: FileText,
         badge: "CSV"
       },

@@ -111,8 +111,8 @@ const menuGroups: SidebarGroup[] = [
       { type: "section", label: "GESTÃO RH" },
       { label: "Painel RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
       { label: "Fila RH", href: "/rh/inbox", icon: Inbox },
-      { label: "Dashboard Executivo", href: "/rh#dashboard-executivo", icon: BarChart3 },
-      { label: "Relatórios RH", href: "/rh#relatorios-rh", icon: FileText },
+      { label: "Dashboard Executivo", href: "/rh/dashboard-executivo", icon: BarChart3, match: "exact" },
+      { label: "Relatórios RH", href: "/rh/relatorios", icon: FileText, match: "exact" },
       { label: "Gestão RH", href: "/rh/gestao", icon: BarChart3, match: "exact" }
     ]
   },
