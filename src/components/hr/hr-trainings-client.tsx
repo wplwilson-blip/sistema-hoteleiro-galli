@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Award, CalendarClock, CheckCircle2, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert } from "lucide-react";
+import { Award, BookOpen, CalendarClock, CheckCircle2, ClipboardCheck, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
@@ -188,6 +188,13 @@ function statusTone(status: string) {
   return "visual" as const;
 }
 
+function catalogStatusLabel(status: string) {
+  if (status === "active") return "Ativo";
+  if (status === "inactive") return "Inativo";
+  if (status === "archived") return "Arquivado";
+  return status;
+}
+
 function buildUrl(path: string, filters: Record<string, string>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
@@ -219,6 +226,7 @@ function trainingPayload(form: TrainingForm) {
 export function HrTrainingsClient() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ status: "", trainingType: "", deliveryMode: "", mandatory: "", unitId: "", employeeId: "", expiresTo: "", search: "", quick: "" });
+  const [activeTrainingView, setActiveTrainingView] = useState<"assignments" | "catalog">("assignments");
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [verifyForm, setVerifyForm] = useState<VerifyForm>(emptyVerifyForm);
@@ -385,15 +393,47 @@ export function HrTrainingsClient() {
               <Award className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Gestão de treinamentos</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">Cadastre treinamentos, atribua aos colaboradores e acompanhe vencimentos. Confirmar conclusão registra presença/conclusão operacional; certificados e listas de presença ficam em Documentos do colaborador.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use o catálogo para cadastrar treinamentos disponíveis. Use atribuições para acompanhar o que cada colaborador precisa concluir, validar presença e controlar vencimentos.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Novo treinamento</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignForm(true)}><Plus className="h-4 w-4" />Atribuir treinamento</Button>
+            <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Cadastrar treinamento</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignForm(true)}><Plus className="h-4 w-4" />Atribuir a colaborador</Button>
             <Button type="button" variant="outline" size="sm" onClick={confirmProcessExpirations} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
           </div>
         </div>
       </Card>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
+          <div className="flex items-start gap-3">
+            <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Catálogo</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Treinamentos cadastrados para depois atribuir aos colaboradores.</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
+          <div className="flex items-start gap-3">
+            <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Atribuições</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Treinamentos vinculados aos colaboradores, com prazo para conclusão, validade e próxima ação.</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="border-border/80 p-3 shadow-sm shadow-primary/5">
+          <div className="flex items-start gap-3">
+            <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-semibold">Certificados e presença</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado e lista de presença ficam em Documentos do colaborador. Aqui o RH confirma conclusão e validade.</p>
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
         <TrainingStat title="Total treinamentos" value={summary.totalTrainings} icon={Award} tone="info" />
@@ -452,7 +492,7 @@ export function HrTrainingsClient() {
 
       <HrOperationalModal
         open={showTrainingForm}
-        title={trainingForm.id ? "Editar treinamento" : "Novo treinamento"}
+        title={trainingForm.id ? "Editar treinamento" : "Cadastrar treinamento"}
         description={trainingForm.id ? "Atualize os dados do treinamento sem alterar o histórico dos colaboradores." : "Cadastre o treinamento uma vez para depois atribuir aos colaboradores."}
         onClose={() => setShowTrainingForm(false)}
       >
@@ -478,29 +518,35 @@ export function HrTrainingsClient() {
             <Field label="Descrição"><TextArea value={trainingForm.description} onChange={(e) => setTrainingForm((f) => ({ ...f, description: e.target.value }))} /></Field>
           </div>
           {trainingMutation.error ? <div className="mt-3"><ErrorMessage message={trainingMutation.error instanceof Error ? trainingMutation.error.message : "Não foi possível salvar o treinamento. Confira os campos obrigatórios."} /></div> : null}
-          <Button className="mt-4" size="sm" onClick={() => trainingMutation.mutate(trainingForm)} disabled={trainingMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
+          <Button className="mt-4" size="sm" onClick={() => trainingMutation.mutate(trainingForm)} disabled={trainingMutation.isPending}><Save className="h-4 w-4" />Salvar treinamento</Button>
       </HrOperationalModal>
 
       <HrOperationalModal
         open={showAssignForm}
-        title="Atribuir treinamento"
-        description="Escolha o colaborador, o treinamento e o prazo para acompanhamento operacional."
+        title="Atribuir treinamento a colaborador"
+        description="Escolha o colaborador, o treinamento e o prazo para conclusão. A validade do treinamento ou certificado será informada na confirmação da conclusão."
         onClose={() => setShowAssignForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={assignForm.employeeId} onChange={(e) => setAssignForm((f) => ({ ...f, employeeId: e.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
             <Field label="Treinamento"><SelectField value={assignForm.trainingId} onChange={(e) => setAssignForm((f) => ({ ...f, trainingId: e.target.value }))}><option value="">Selecione</option>{trainings.map((training) => <option key={training.id} value={training.id}>{training.title}</option>)}</SelectField></Field>
-            <Field label="Prazo"><Input type="date" value={assignForm.dueDate} onChange={(e) => setAssignForm((f) => ({ ...f, dueDate: e.target.value }))} /></Field>
+            <Field label="Prazo para conclusão">
+              <Input type="date" value={assignForm.dueDate} onChange={(e) => setAssignForm((f) => ({ ...f, dueDate: e.target.value }))} />
+              <p className="text-xs leading-5 text-muted-foreground">Data limite para o colaborador concluir este treinamento. Não é a validade do certificado.</p>
+            </Field>
             <Field label="Observações"><Input value={assignForm.notes} onChange={(e) => setAssignForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
-          {assignMutation.error ? <div className="mt-3"><ErrorMessage message={assignMutation.error instanceof Error ? assignMutation.error.message : "Erro ao atribuir."} /></div> : null}
-          <Button className="mt-4" size="sm" onClick={() => assignMutation.mutate(assignForm)} disabled={assignMutation.isPending}><Save className="h-4 w-4" />Atribuir</Button>
+          <div className="mt-3 rounded-md border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+            A validade do treinamento ou certificado deve ser informada somente ao confirmar a conclusão. Certificado e lista de presença ficam em Documentos do colaborador.
+          </div>
+          {assignMutation.error ? <div className="mt-3"><ErrorMessage message={assignMutation.error instanceof Error ? assignMutation.error.message : "Não foi possível atribuir o treinamento. Confira colaborador, treinamento e prazo para conclusão."} /></div> : null}
+          <Button className="mt-4" size="sm" onClick={() => assignMutation.mutate(assignForm)} disabled={assignMutation.isPending}><Save className="h-4 w-4" />Atribuir a colaborador</Button>
       </HrOperationalModal>
 
       <HrOperationalModal
         open={Boolean(verifyForm.employeeTrainingId)}
-        title="Concluir ou validar treinamento"
-        description="Confirme presença, conclusão e validade. Esta ação atualiza o controle operacional do colaborador; certificados e listas de presença devem estar em Documentos do colaborador."
+        title="Confirmar conclusão do treinamento"
+        description="Confirme presença/conclusão operacional e informe a validade quando houver. Esta ação atualiza o controle do colaborador; certificados e listas de presença devem estar em Documentos do colaborador."
         onClose={() => setVerifyForm(emptyVerifyForm)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -518,44 +564,72 @@ export function HrTrainingsClient() {
                 <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
               )}
             </div>
-            <Field label="Validade até"><Input type="date" value={verifyForm.expiresAt} onChange={(e) => setVerifyForm((f) => ({ ...f, expiresAt: e.target.value }))} /></Field>
+            <Field label="Validade do treinamento/certificado">
+              <Input type="date" value={verifyForm.expiresAt} onChange={(e) => setVerifyForm((f) => ({ ...f, expiresAt: e.target.value }))} />
+              <p className="text-xs leading-5 text-muted-foreground">Use este campo para a data de vencimento. Ele é diferente do prazo para conclusão.</p>
+            </Field>
             <Field label="Observação"><Input value={verifyForm.notes} onChange={(e) => setVerifyForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
           {verifyMutation.error ? <div className="mt-3"><ErrorMessage message={verifyMutation.error instanceof Error ? verifyMutation.error.message : "Erro ao validar."} /></div> : null}
-          <Button className="mt-4" size="sm" onClick={confirmTrainingVerification} disabled={verifyMutation.isPending}><FileCheck2 className="h-4 w-4" />Salvar confirmação</Button>
+          <Button className="mt-4" size="sm" onClick={confirmTrainingVerification} disabled={verifyMutation.isPending}><FileCheck2 className="h-4 w-4" />Confirmar conclusão</Button>
       </HrOperationalModal>
 
       {(trainingsQuery.isLoading || assignmentsQuery.isLoading) ? <LoadingTable label="Carregando treinamentos..." /> : null}
       {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Não foi possível carregar o catálogo de treinamentos. Tente atualizar a página."} /> : null}
       {assignmentsQuery.error ? <ErrorMessage message={assignmentsQuery.error instanceof Error ? assignmentsQuery.error.message : "Não foi possível carregar os treinamentos atribuídos. Tente atualizar a página."} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Escolha a visão de trabalho</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Catálogo é cadastro. Atribuições são acompanhamentos de colaboradores.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant={activeTrainingView === "assignments" ? "default" : "outline"} aria-pressed={activeTrainingView === "assignments"} onClick={() => setActiveTrainingView("assignments")}>
+              <ClipboardCheck className="h-4 w-4" />
+              Atribuições
+            </Button>
+            <Button type="button" size="sm" variant={activeTrainingView === "catalog" ? "default" : "outline"} aria-pressed={activeTrainingView === "catalog"} onClick={() => setActiveTrainingView("catalog")}>
+              <BookOpen className="h-4 w-4" />
+              Catálogo
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {activeTrainingView === "catalog" ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-          <div className="border-b p-4"><h2 className="text-sm font-semibold">Catálogo de treinamentos</h2></div>
-          {!trainings.length && !trainingsQuery.isLoading ? <EmptyState title="Nenhum treinamento cadastrado" description="Crie treinamentos internos, externos ou obrigatórios para atribuir aos colaboradores." /> : null}
+          <div className="border-b p-4">
+            <h2 className="text-sm font-semibold">Catálogo de treinamentos</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Cadastre aqui os treinamentos disponíveis para depois atribuir aos colaboradores.</p>
+          </div>
+          {!trainings.length && !trainingsQuery.isLoading ? <EmptyState title="Nenhum treinamento cadastrado." description="Cadastre o primeiro treinamento para depois atribuir aos colaboradores." /> : null}
           {trainings.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-[760px] w-full text-sm">
                 <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Modalidade</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Ação</th></tr></thead>
-                <tbody className="divide-y">{trainings.map((training) => <tr key={training.id} className="align-top"><td className="px-4 py-3"><div className="font-medium">{training.title}</div>{training.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}</td><td className="px-4 py-3">{training.trainingTypeLabel}</td><td className="px-4 py-3">{training.deliveryModeLabel}</td><td className="px-4 py-3"><StatusBadge status={training.status === "active" ? "success" : "visual"} label={training.status === "active" ? "Ativo" : training.status} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startEdit(training)}>Editar</Button></td></tr>)}</tbody>
+                <tbody className="divide-y">{trainings.map((training) => <tr key={training.id} className="align-top"><td className="px-4 py-3"><div className="font-medium">{training.title}</div>{training.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}</td><td className="px-4 py-3">{training.trainingTypeLabel}</td><td className="px-4 py-3">{training.deliveryModeLabel}</td><td className="px-4 py-3"><StatusBadge status={training.status === "active" ? "success" : "visual"} label={catalogStatusLabel(training.status)} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startEdit(training)}>Editar treinamento</Button></td></tr>)}</tbody>
               </table>
             </div>
           ) : null}
         </Card>
-
+      ) : (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-          <div className="border-b p-4"><h2 className="text-sm font-semibold">Treinamentos atribuídos</h2></div>
-          {!visibleAssignments.length && !assignmentsQuery.isLoading ? <EmptyState title="Nenhum treinamento atribuído" description="As atribuições de treinamento dos colaboradores aparecerão aqui." /> : null}
+          <div className="border-b p-4">
+            <h2 className="text-sm font-semibold">Treinamentos dos colaboradores</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Acompanhe treinamentos já atribuídos, prazo para conclusão, vencimentos e confirmações.</p>
+          </div>
+          {!visibleAssignments.length && !assignmentsQuery.isLoading ? <EmptyState title="Nenhum treinamento atribuído." description="Use o catálogo para cadastrar treinamentos e depois atribua aos colaboradores." /> : null}
           {visibleAssignments.length ? (
             <div className="overflow-x-auto">
-              <table className="min-w-[920px] w-full text-sm">
-                <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prazo</th><th className="px-4 py-3">Conclusão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead>
-                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessária" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Confirmar conclusão</Button></td></tr>)}</tbody>
+              <table className="min-w-[980px] w-full text-sm">
+                <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prazo para conclusão</th><th className="px-4 py-3">Conclusão</th><th className="px-4 py-3">Validade do treinamento</th><th className="px-4 py-3">Certificado/lista</th><th className="px-4 py-3">Ação</th></tr></thead>
+                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessária" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : row.requiresCertificate ? "warning" : "visual"} label={row.hasCertificate ? "Anexado" : row.requiresCertificate ? "Conferir Documentos" : "Não exigido"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Confirmar conclusão</Button></td></tr>)}</tbody>
               </table>
             </div>
           ) : null}
         </Card>
-      </div>
+      )}
     </div>
   );
 }
