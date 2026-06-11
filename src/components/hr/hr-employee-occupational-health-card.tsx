@@ -48,7 +48,7 @@ type NrResponse = { ok: true; data: NrCertification[] };
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Nao foi possivel carregar Saude Ocupacional.");
+  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Não foi possível carregar Saúde Ocupacional.");
   return payload as T;
 }
 
@@ -89,7 +89,7 @@ function nrExpiration(nr: NrCertification) {
 }
 
 function restrictedValue(value: string, redacted: boolean) {
-  if (redacted) return "Informacao restrita";
+  if (redacted) return "Informação restrita";
   return value || "-";
 }
 
@@ -114,19 +114,19 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <HeartPulse className="h-4 w-4 text-primary" />
-              <h3 className="text-base font-semibold">Saude Ocupacional</h3>
+              <h3 className="text-base font-semibold">Saúde Ocupacional</h3>
               <StatusBadge status="warning" label="Dados restritos" />
-              {activeRestrictions ? <StatusBadge status="warning" label={`${activeRestrictions} restricao(oes)`} /> : null}
+              {activeRestrictions ? <StatusBadge status="warning" label={`${activeRestrictions} restrição(ões)`} /> : null}
             </div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">ASOs, exames, restricoes e certificacoes NR do colaborador.</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">ASOs, exames, restrições e certificações NR do colaborador. Arquivos e certificados ficam na aba Documentos.</p>
           </div>
           <StatusBadge status="info" label={`${records.length + nrs.length} registro(s)`} />
         </div>
       </div>
       <div className="space-y-5 p-5">
-        {recordsQuery.isLoading || nrQuery.isLoading ? <LoadingTable label="Carregando Saude Ocupacional..." /> : null}
-        {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Nao foi possivel carregar os registros ocupacionais. Tente atualizar a pagina."} /> : null}
-        {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Nao foi possivel carregar as certificacoes NR. Tente atualizar a pagina."} /> : null}
+        {recordsQuery.isLoading || nrQuery.isLoading ? <LoadingTable label="Carregando Saúde Ocupacional..." /> : null}
+        {recordsQuery.error ? <ErrorMessage message={recordsQuery.error instanceof Error ? recordsQuery.error.message : "Não foi possível carregar os registros ocupacionais. Tente atualizar a página."} /> : null}
+        {nrQuery.error ? <ErrorMessage message={nrQuery.error instanceof Error ? nrQuery.error.message : "Não foi possível carregar as certificações NR. Tente atualizar a página."} /> : null}
         {!recordsQuery.isLoading && !nrQuery.isLoading && recordsQuery.data && nrQuery.data && !records.length && !nrs.length ? (
           <EmptyState title="Nenhum ASO registrado" description="ASOs, exames ocupacionais, restrições e certificações NR do colaborador aparecerão aqui." />
         ) : null}
@@ -141,8 +141,8 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                   <th className="px-4 py-3">Validade</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Fornecedor</th>
-                  <th className="px-4 py-3">Medico</th>
-                  <th className="px-4 py-3">Restricoes</th>
+                  <th className="px-4 py-3">Médico</th>
+                  <th className="px-4 py-3">Restrições</th>
                   <th className="px-4 py-3">Anexo</th>
                 </tr>
               </thead>
@@ -156,7 +156,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                         <StatusBadge status="info" label={record.recordTypeLabel} />
                         {expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}
                         {expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}
-                        {record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restricao ativa" /> : null}
+                        {record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restrição ativa" /> : null}
                         {record.redacted ? <StatusBadge status="warning" label="Registro restrito" /> : null}
                       </div>
                     </td>
@@ -182,7 +182,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
                 <tr>
                   <th className="px-4 py-3">NR</th>
                   <th className="px-4 py-3">Treinamento</th>
-                  <th className="px-4 py-3">Emissao</th>
+                  <th className="px-4 py-3">Emissão</th>
                   <th className="px-4 py-3">Validade</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Certificado</th>
@@ -216,7 +216,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
 
         <div className="flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Dados ocupacionais sao tratados como restritos. Conteudos clinicos detalhados, laudos e diagnosticos nao sao exibidos nem enviados para a Vida Funcional.
+          Dados ocupacionais são tratados como restritos. Conteúdos clínicos detalhados, laudos e diagnósticos não são exibidos nem enviados para a Vida Funcional. ASOs, exames e certificados NR devem ser anexados na aba Documentos.
         </div>
       </div>
     </Card>

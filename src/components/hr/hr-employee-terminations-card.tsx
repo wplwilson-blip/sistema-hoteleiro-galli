@@ -36,7 +36,7 @@ type TerminationsResponse = { ok: true; data: TerminationRecord[] };
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Nao foi possivel carregar desligamentos.");
+  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Não foi possível carregar desligamentos.");
   return payload as T;
 }
 
@@ -70,25 +70,25 @@ export function HrEmployeeTerminationsCard({ employeeId }: { employeeId: string 
           <h3 className="text-base font-semibold">Desligamento</h3>
           <StatusBadge status="warning" label="Dados restritos" />
           <StatusBadge status="info" label={`${records.length} processo(s)`} />
-          {openPendencies ? <StatusBadge status="warning" label={`${openPendencies} pendencia(s)`} /> : null}
+          {openPendencies ? <StatusBadge status="warning" label={`${openPendencies} pendência(s)`} /> : null}
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Historico de desligamentos, status, checklist, motivo e data efetiva.</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Histórico de desligamentos, status, checklist, motivo e data efetiva. Documentos de saída ficam na aba Documentos.</p>
       </div>
       <div className="p-5">
         {terminationsQuery.isLoading ? <LoadingTable label="Carregando desligamentos..." /> : null}
-        {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Nao foi possivel carregar os desligamentos do colaborador. Tente atualizar a pagina."} /> : null}
+        {terminationsQuery.error ? <ErrorMessage message={terminationsQuery.error instanceof Error ? terminationsQuery.error.message : "Não foi possível carregar os desligamentos do colaborador. Tente atualizar a página."} /> : null}
         {!terminationsQuery.isLoading && terminationsQuery.data && !records.length ? <EmptyState title="Nenhum desligamento em andamento" description="Processos administrativos de desligamento do colaborador aparecerão aqui." /> : null}
         {records.length ? (
           <div className="overflow-x-auto rounded-md border">
             <table className="min-w-[960px] w-full text-sm">
               <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Solicitado</th><th className="px-4 py-3">Data efetiva</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Motivo</th><th className="px-4 py-3">Checklist</th></tr></thead>
-              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.requestedAt)}</td><td className="px-4 py-3">{formatDate(record.effectiveDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.terminationTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informacao sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.terminationReason}</td><td className="px-4 py-3"><TerminationChecklist record={record} /></td></tr>)}</tbody>
+              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.requestedAt)}</td><td className="px-4 py-3">{formatDate(record.effectiveDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.terminationTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informação sensível"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.terminationReason}</td><td className="px-4 py-3"><TerminationChecklist record={record} /></td></tr>)}</tbody>
             </table>
           </div>
         ) : null}
         <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Dados de desligamento sao sempre restritos e aparecem redigidos conforme permissao do usuario.
+          Dados de desligamento são sempre restritos e aparecem redigidos conforme permissão do usuário. Documentos de saída devem ser consultados na aba Documentos.
         </div>
       </div>
     </Card>
@@ -99,7 +99,7 @@ function TerminationChecklist({ record }: { record: TerminationRecord }) {
   return (
     <div className="min-w-60 space-y-2">
       <div className="flex flex-wrap gap-1">
-        <StatusBadge status={record.pendingCount ? "warning" : "success"} label={`${record.checklistCompletedCount}/${record.checklistCount} concluido(s)`} />
+        <StatusBadge status={record.pendingCount ? "warning" : "success"} label={`${record.checklistCompletedCount}/${record.checklistCount} concluído(s)`} />
         {record.pendingCount ? <StatusBadge status="warning" label={`${record.pendingCount} pendente(s)`} /> : null}
       </div>
       <div className="space-y-1 text-xs text-muted-foreground">

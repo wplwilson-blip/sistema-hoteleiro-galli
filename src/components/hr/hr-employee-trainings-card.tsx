@@ -33,7 +33,7 @@ type TrainingsResponse = { ok: true; data: EmployeeTraining[] };
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Nao foi possivel carregar treinamentos.");
+  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Não foi possível carregar treinamentos.");
   return payload as T;
 }
 
@@ -68,13 +68,13 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
           <h3 className="text-base font-semibold">Treinamentos</h3>
           <StatusBadge status="info" label={`${trainings.length} registro(s)`} />
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Capacitacoes atribuidas, presenca, certificados e validade.</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Capacitações atribuídas, presença, certificados e validade. Certificados e listas de presença ficam na aba Documentos.</p>
       </div>
       <div className="p-5">
         {trainingsQuery.isLoading ? <LoadingTable label="Carregando treinamentos..." /> : null}
-        {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Nao foi possivel carregar os treinamentos do colaborador. Tente atualizar a pagina."} /> : null}
+        {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Não foi possível carregar os treinamentos do colaborador. Tente atualizar a página."} /> : null}
         {!trainingsQuery.isLoading && trainingsQuery.data && !trainings.length ? (
-          <EmptyState title="Nenhum treinamento atribuido" description="Quando um treinamento for atribuido ao colaborador, ele aparecera aqui com prazo, conclusao e certificado." />
+          <EmptyState title="Nenhum treinamento atribuído" description="Quando um treinamento for atribuído ao colaborador, ele aparecerá aqui com prazo, conclusão e certificado. O arquivo do certificado deve ficar em Documentos." />
         ) : null}
         {trainings.length ? (
           <div className="overflow-x-auto">
@@ -84,9 +84,9 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
                   <th className="px-4 py-3">Treinamento</th>
                   <th className="px-4 py-3">Tipo</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Atribuido</th>
+                  <th className="px-4 py-3">Atribuído</th>
                   <th className="px-4 py-3">Prazo</th>
-                  <th className="px-4 py-3">Conclusao</th>
+                  <th className="px-4 py-3">Conclusão</th>
                   <th className="px-4 py-3">Validade</th>
                   <th className="px-4 py-3">Certificado</th>
                 </tr>
@@ -97,10 +97,10 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{training.trainingTitle || "-"}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {training.isMandatory ? <StatusBadge status="warning" label="Obrigatorio" /> : null}
+                        {training.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}
                         {training.expiration?.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}
                         {training.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}
-                        {training.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessaria" /> : null}
+                        {training.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessária" /> : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">{training.trainingTypeLabel || "-"}</td>
@@ -118,7 +118,7 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
         ) : null}
         <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Certificados aparecem como vinculo de anexo quando informados pela rotina de verificacao.
+          Certificados e listas de presença devem ser anexados na aba Documentos do colaborador; esta aba mostra o controle de treinamento, prazo e validade.
         </div>
       </div>
     </Card>

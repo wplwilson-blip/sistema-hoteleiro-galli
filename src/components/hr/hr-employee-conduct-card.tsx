@@ -33,7 +33,7 @@ type ConductResponse = { ok: true; data: ConductRecord[] };
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Nao foi possivel carregar conduta.");
+  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Não foi possível carregar conduta.");
   return payload as T;
 }
 
@@ -75,23 +75,23 @@ export function HrEmployeeConductCard({ employeeId }: { employeeId: string }) {
           <StatusBadge status="warning" label="Dados restritos" />
           <StatusBadge status="info" label={`${records.length} registro(s)`} />
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Advertencias, suspensoes, reclamacoes, elogios, orientacoes e conversas formais.</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Advertências, suspensões, reclamações, elogios, orientações e conversas formais. Evidências ficam na aba Documentos.</p>
       </div>
       <div className="p-5">
         {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
-        {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Nao foi possivel carregar a conduta do colaborador. Tente atualizar a pagina."} /> : null}
+        {conductQuery.error ? <ErrorMessage message={conductQuery.error instanceof Error ? conductQuery.error.message : "Não foi possível carregar a conduta do colaborador. Tente atualizar a página."} /> : null}
         {!conductQuery.isLoading && conductQuery.data && !records.length ? <EmptyState title="Nenhuma ocorrência de conduta registrada" description="Advertências, suspensões, reclamações, elogios e conversas formais aparecerão aqui." /> : null}
         {records.length ? (
           <div className="overflow-x-auto rounded-md border">
             <table className="min-w-[860px] w-full text-sm">
-              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Titulo</th><th className="px-4 py-3">Acao tomada</th><th className="px-4 py-3">Evidencias</th><th className="px-4 py-3">Revisao</th></tr></thead>
-              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informacao sensivel"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3">{record.redacted ? "Informacao restrita" : record.actionTaken || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.evidenceCount ? "success" : "visual"} label={`${record.evidenceCount ?? 0} evidencia(s)`} /></td><td className="px-4 py-3"><ConductTimeline reviews={record.reviews} /></td></tr>)}</tbody>
+              <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Data</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Severidade</th><th className="px-4 py-3">Título</th><th className="px-4 py-3">Ação tomada</th><th className="px-4 py-3">Evidências</th><th className="px-4 py-3">Revisão</th></tr></thead>
+              <tbody className="divide-y">{records.map((record) => <tr key={record.id} className="align-top"><td className="px-4 py-3">{formatDate(record.occurrenceDate)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status="info" label={record.conductTypeLabel} />{record.isSensitive ? <StatusBadge status="warning" label={record.redacted ? "Registro restrito" : "Informação sensível"} /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} /></td><td className="px-4 py-3"><StatusBadge status={severityTone(record.severity)} label={record.severity} /></td><td className="px-4 py-3">{record.title}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.actionTaken || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.evidenceCount ? "success" : "visual"} label={`${record.evidenceCount ?? 0} evidência(s)`} /></td><td className="px-4 py-3"><ConductTimeline reviews={record.reviews} /></td></tr>)}</tbody>
             </table>
           </div>
         ) : null}
         <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Registros sensiveis sao redigidos conforme permissao do usuario.
+          Registros sensíveis são redigidos conforme permissão do usuário. Evidências devem ser consultadas na aba Documentos do colaborador.
         </div>
       </div>
     </Card>

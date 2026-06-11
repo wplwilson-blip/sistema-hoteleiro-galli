@@ -412,7 +412,7 @@ export function HrOccupationalHealthClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Saúde Ocupacional</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Use Atualizar vencimentos para recalcular pendências.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Anexe ASO, exames, restrições e certificados NR em Documentos do colaborador. Use Atualizar vencimentos para recalcular pendências.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => downloadCsv("pendências-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendências</Button>
@@ -526,7 +526,7 @@ export function HrOccupationalHealthClient() {
       <HrOperationalModal
         open={showRecordForm}
         title={recordForm.id ? "Editar registro ocupacional" : "Novo registro ocupacional"}
-        description={recordForm.id ? "Atualize dados administrativos do registro ocupacional mantendo acesso restrito." : "Registre ASO, exame ou restricao com acesso restrito para usuarios autorizados."}
+        description={recordForm.id ? "Atualize dados administrativos do registro ocupacional mantendo acesso restrito." : "Registre ASO, exame ou restrição com acesso restrito para usuários autorizados. O arquivo deve ficar em Documentos do colaborador."}
         onClose={() => setShowRecordForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -546,7 +546,7 @@ export function HrOccupationalHealthClient() {
             <Field label="Médico"><Input value={recordForm.doctorName} onChange={(event) => setRecordForm((current) => ({ ...current, doctorName: event.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Anexo médico</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe ASO, exame ou restrição pela aba Documentos do colaborador. Esta tela registra datas, validade e controle operacional.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">O ASO, exame ou documento de restrição deve ser anexado na aba Documentos do colaborador. Esta tela registra datas, validade e controle operacional.</p>
               {recordForm.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
                   <a href={employeeDocumentsHref(recordForm.employeeId)}>Abrir Documentos do colaborador</a>
@@ -557,7 +557,7 @@ export function HrOccupationalHealthClient() {
             </div>
             <Field label="Restrições"><TextArea value={recordForm.restrictionNotes} onChange={(event) => setRecordForm((current) => ({ ...current, restrictionNotes: event.target.value }))} /></Field>
           </div>
-          {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Não foi possível salvar o registro ocupacional. Confira os campos obrigatorios."} /></div> : null}
+          {recordMutation.error ? <div className="mt-3"><ErrorMessage message={recordMutation.error instanceof Error ? recordMutation.error.message : "Não foi possível salvar o registro ocupacional. Confira os campos obrigatórios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => recordMutation.mutate(recordForm)} disabled={recordMutation.isPending}><Save className="h-4 w-4" />Salvar</Button>
       </HrOperationalModal>
 
@@ -583,7 +583,7 @@ export function HrOccupationalHealthClient() {
             )}
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Certificado NR</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe o certificado NR pela aba Documentos do colaborador. Esta tela registra a NR, emissão e validade.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">O certificado NR deve ser anexado na aba Documentos do colaborador. Esta tela registra a NR, emissão e validade.</p>
               {nrForm.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
                   <a href={employeeDocumentsHref(nrForm.employeeId)}>Abrir Documentos do colaborador</a>
@@ -593,7 +593,7 @@ export function HrOccupationalHealthClient() {
               )}
             </div>
           </div>
-          {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Não foi possível salvar a certificação NR. Confira os campos obrigatorios."} /></div> : null}
+          {nrMutation.error ? <div className="mt-3"><ErrorMessage message={nrMutation.error instanceof Error ? nrMutation.error.message : "Não foi possível salvar a certificação NR. Confira os campos obrigatórios."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => nrMutation.mutate(nrForm)} disabled={nrMutation.isPending}><Save className="h-4 w-4" />Salvar NR</Button>
       </HrOperationalModal>
 
@@ -622,7 +622,7 @@ function OccupationalRecordsTable({ records, onEdit }: { records: OccupationalRe
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">ASOs, exames e restrições</h2></div>
-      {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="ASOs, exames e restrições ocupacionais aparecerão aqui." /> : null}
+      {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="Use Novo registro para cadastrar ASO, exame ou restrição. O arquivo correspondente deve ser anexado em Documentos do colaborador." /> : null}
       {records.length ? (
         <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Médico</th><th className="px-4 py-3">Restrições</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Ação</th></tr></thead><tbody className="divide-y">{records.map((record) => { const expiration = recordExpiration(record); return <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span>{record.recordTypeLabel}</span>{record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restrição ativa" /> : null}</div></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}</div></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
@@ -634,7 +634,7 @@ function NrTable({ rows, onEdit }: { rows: NrCertification[]; onEdit: (row: NrCe
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Certificações NR</h2></div>
-      {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Certificações obrigatórias e seus vencimentos aparecerão aqui." /> : null}
+      {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Use Nova NR para registrar a certificação. O certificado deve ser anexado em Documentos do colaborador." /> : null}
       {rows.length ? (
         <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead><tbody className="divide-y">{rows.map((row) => { const expiration = nrExpiration(row); return <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}</div></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}

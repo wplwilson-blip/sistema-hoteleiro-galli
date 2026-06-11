@@ -223,7 +223,7 @@ export function HrConductClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Conduta e Ocorrências</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Registre ocorrências como rascunho e envie para revisão antes de entrar na Vida Funcional.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ocorrências como rascunho, anexe evidências em Documentos do colaborador e envie para revisão antes de entrar na Vida Funcional.</p>
           </div>
           <Button size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
         </div>
@@ -252,7 +252,7 @@ export function HrConductClient() {
       <HrOperationalModal
         open={showForm}
         title={form.id ? "Editar registro de conduta" : "Novo registro de conduta"}
-        description={form.id ? "Atualize o registro sem mudar o fluxo de revisão." : "O registro nasce como rascunho. Envie para revisão quando estiver pronto."}
+        description={form.id ? "Atualize o registro sem mudar o fluxo de revisão. Evidências continuam na aba Documentos do colaborador." : "O registro nasce como rascunho. Anexe evidências em Documentos do colaborador e envie para revisão quando estiver pronto."}
         onClose={() => setShowForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -267,7 +267,8 @@ export function HrConductClient() {
             <Field label="Visibilidade"><SelectField value={form.isSensitive} onChange={(event) => setForm((current) => ({ ...current, isSensitive: event.target.value }))}><option value="true">Restrito</option><option value="false">Operacional</option></SelectField></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Evidências</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe advertências assinadas, reclamações, fotos ou comprovantes pela aba Documentos do colaborador. Depois registre aqui o resumo da ocorrência.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">As evidências devem ser anexadas na aba Documentos do colaborador. Aqui registre apenas o resumo da ocorrência e a ação tomada.</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">Advertências, suspensões, reclamações e conversas formais devem ser conferidas com Andreia antes da aprovação.</p>
               {form.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
                   <a href={employeeDocumentsHref(form.employeeId)}>Abrir Documentos do colaborador</a>

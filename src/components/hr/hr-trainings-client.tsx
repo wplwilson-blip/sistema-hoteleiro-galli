@@ -134,9 +134,9 @@ const quickFilters = [
   ["expired", "Vencidos"],
   ["expiring", "A vencer"],
   ["retraining", "Reciclagem"],
-  ["mandatory_pending", "Obrigatorios pendentes"],
+  ["mandatory_pending", "Obrigatórios pendentes"],
   ["pending", "Pendentes"],
-  ["completed", "Concluidos"]
+  ["completed", "Concluídos"]
 ];
 
 const emptyTrainingForm: TrainingForm = {
@@ -371,7 +371,7 @@ export function HrTrainingsClient() {
               <Award className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Gestão de treinamentos</h2>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">Cadastre treinamentos, atribua aos colaboradores e acompanhe vencimentos.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Cadastre treinamentos, atribua aos colaboradores e acompanhe vencimentos. Certificados e listas de presença devem ser anexados em Documentos do colaborador.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => { setTrainingForm(emptyTrainingForm); setShowTrainingForm(true); }}><Plus className="h-4 w-4" />Novo treinamento</Button>
@@ -383,12 +383,12 @@ export function HrTrainingsClient() {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
         <TrainingStat title="Total treinamentos" value={summary.totalTrainings} icon={Award} tone="info" />
-        <TrainingStat title="Obrigatorios pendentes" value={summary.mandatoryPending} icon={ShieldAlert} tone={summary.mandatoryPending ? "warning" : "visual"} />
+        <TrainingStat title="Obrigatórios pendentes" value={summary.mandatoryPending} icon={ShieldAlert} tone={summary.mandatoryPending ? "warning" : "visual"} />
         <TrainingStat title="A vencer" value={summary.expiring} icon={CalendarClock} tone={summary.expiring ? "warning" : "visual"} />
         <TrainingStat title="Vencidos" value={summary.expired} icon={ShieldAlert} tone={summary.expired ? "danger" : "visual"} />
         <TrainingStat title="Reciclagem necessária" value={summary.retraining} icon={RefreshCw} tone={summary.retraining ? "warning" : "visual"} />
         <TrainingStat title="Certificados pendentes" value={summary.certificatePending} icon={FileCheck2} tone={summary.certificatePending ? "warning" : "visual"} />
-        <TrainingStat title="Concluidos" value={summary.completed} icon={CheckCircle2} tone={summary.completed ? "success" : "visual"} />
+        <TrainingStat title="Concluídos" value={summary.completed} icon={CheckCircle2} tone={summary.completed ? "success" : "visual"} />
       </div>
       {processMutation.error ? <ErrorMessage message={processMutation.error instanceof Error ? processMutation.error.message : "Erro ao atualizar vencimentos."} /> : null}
       {processMutation.data?.data ? (
@@ -425,8 +425,8 @@ export function HrTrainingsClient() {
           </SelectField>
           <SelectField value={filters.mandatory} onChange={(event) => setFilters((current) => ({ ...current, mandatory: event.target.value }))}>
             <option value="">Obrigatorio?</option>
-            <option value="true">Somente obrigatorios</option>
-            <option value="false">Nao obrigatorios</option>
+            <option value="true">Somente obrigatórios</option>
+            <option value="false">Não obrigatórios</option>
           </SelectField>
           <Input type="date" value={filters.expiresTo} onChange={(event) => setFilters((current) => ({ ...current, expiresTo: event.target.value }))} />
           <div className="relative">
@@ -486,7 +486,7 @@ export function HrTrainingsClient() {
       <HrOperationalModal
         open={Boolean(verifyForm.employeeTrainingId)}
         title="Concluir ou validar treinamento"
-        description="Informe presença, conclusão e validade. Certificados e listas de presença devem ficar no fluxo seguro de documentos."
+        description="Confirme presença, conclusão e validade. Certificados e listas de presença devem ser anexados em Documentos do colaborador."
         onClose={() => setVerifyForm(emptyVerifyForm)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -495,7 +495,7 @@ export function HrTrainingsClient() {
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Certificado e lista de presença</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe certificado, lista de presença ou comprovante pela aba Documentos do colaborador. Nesta tela registre presença, conclusão e validade.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado, lista de presença ou comprovante devem ser anexados na aba Documentos do colaborador. Nesta tela registre presença, conclusão e validade.</p>
               {verifyForm.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
                   <a href={employeeDocumentsHref(verifyForm.employeeId)}>Abrir Documentos do colaborador</a>
@@ -536,7 +536,7 @@ export function HrTrainingsClient() {
             <div className="overflow-x-auto">
               <table className="min-w-[920px] w-full text-sm">
                 <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Prazo</th><th className="px-4 py-3">Conclusão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead>
-                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessária" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Validar</Button></td></tr>)}</tbody>
+                <tbody className="divide-y">{visibleAssignments.map((row) => <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3"><div className="font-medium">{row.trainingTitle}</div><div className="mt-1 flex flex-wrap gap-1">{row.isMandatory ? <StatusBadge status="warning" label="Obrigatório" /> : null}{row.expiration?.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}{row.expiration?.needsRetraining ? <StatusBadge status="warning" label="Reciclagem necessária" /> : null}</div></td><td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td><td className="px-4 py-3">{formatDate(row.dueDate)}</td><td className="px-4 py-3">{formatDate(row.completedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => startVerify(row)}>Confirmar conclusão</Button></td></tr>)}</tbody>
               </table>
             </div>
           ) : null}

@@ -174,16 +174,16 @@ function canReviewDocument(document: HrEmployeeDocument) {
 }
 
 function documentOperationalHint(document: HrEmployeeDocument) {
-  if (document.status === "approved") return "Documento aprovado e resolvido. Ele permanece no dossie como historico.";
-  if (document.status === "waived") return "Documento dispensado pelo RH. Ele nao conta como pendencia.";
-  if (document.status === "rejected") return "Documento rejeitado. Anexe um novo arquivo corrigido para nova conferencia.";
-  if (!document.hasCurrentAttachment) return "Anexe o arquivo para conferencia ou dispense este documento se ele nao se aplicar.";
-  if (document.status === "received" || document.status === "under_review") return "Arquivo anexado. O RH pode aprovar ou rejeitar apos conferir.";
+  if (document.status === "approved") return "Documento aprovado e resolvido. Ele permanece no dossiê como histórico.";
+  if (document.status === "waived") return "Documento dispensado pelo RH. Ele não conta como pendência.";
+  if (document.status === "rejected") return "Documento rejeitado. Anexe um novo arquivo corrigido para nova conferência.";
+  if (!document.hasCurrentAttachment) return "Anexe o arquivo para conferência ou dispense este documento se ele não se aplicar.";
+  if (document.status === "received" || document.status === "under_review") return "Arquivo anexado. O RH pode aprovar ou rejeitar após conferir.";
   return "";
 }
 
 function documentDisplayStatusLabel(document: HrEmployeeDocument) {
-  if (document.status === "received" || document.status === "under_review") return "Aguardando conferencia";
+  if (document.status === "received" || document.status === "under_review") return "Aguardando conferência";
   return documentStatusLabel(document.status);
 }
 
@@ -331,14 +331,14 @@ export function HrEmployeeDocumentsCard({
               <StatusBadge status={canViewSensitiveDocuments ? "info" : "visual"} label={canViewSensitiveDocuments ? "Arquivos liberados" : "Arquivos protegidos"} />
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Controle operacional dos documentos do colaborador. Arquivos ficam em armazenamento privado e não expõem caminho técnico.
+              Área oficial para documentos obrigatórios, evidências de conduta, ASO, exames, restrições, certificados NR, certificados/listas de presença e documentos de saída. Arquivos ficam em armazenamento privado e não expõem caminho técnico.
             </p>
           </div>
           {canManageDocuments ? (
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={ensureDossier} disabled={actionMutation.isPending}>
                 <FileCheck2 className="h-4 w-4" />
-                Criar dossie padrao
+                Criar dossiê padrão
               </Button>
               <Button type="button" size="sm" onClick={() => setShowCreate((current) => !current)} disabled={actionMutation.isPending}>
                 <FilePlus2 className="h-4 w-4" />
@@ -357,13 +357,13 @@ export function HrEmployeeDocumentsCard({
         {uploadFeedback ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-5 text-emerald-900">
             <p className="font-medium">Arquivo anexado com sucesso.</p>
-            <p className="mt-1 text-xs">Documento aguardando conferencia do RH: {uploadFeedback.fileName}</p>
+            <p className="mt-1 text-xs">Documento aguardando conferência do RH: {uploadFeedback.fileName}</p>
           </div>
         ) : null}
 
         {documents.length ? (
           <div className="rounded-md border bg-muted/25 px-3 py-2 text-xs leading-5 text-muted-foreground">
-            <span className="font-medium text-foreground">Leitura rapida:</span> obrigatorio precisa ser resolvido; condicional deve ser conferido e dispensado se nao se aplicar; operacional e controle interno do hotel.
+            <span className="font-medium text-foreground">Leitura rápida:</span> obrigatório precisa ser resolvido; condicional deve ser conferido e dispensado se não se aplicar; operacional é controle interno do hotel. Use também para evidências, certificados, ASO, NR, listas de presença e documentos de saída.
           </div>
         ) : null}
 
@@ -418,14 +418,14 @@ export function HrEmployeeDocumentsCard({
         {!documentsQuery.isLoading && !documentsQuery.error && !documents.length ? (
           <div className="space-y-3">
             <EmptyState
-              title="Nenhuma pendencia documental criada"
-              description="Crie o dossie padrao para acompanhar documentos obrigatorios, envios, conferencias, dispensas e vencimentos do colaborador."
+              title="Nenhuma pendência documental criada"
+              description="Crie o dossiê padrão para acompanhar documentos obrigatórios, evidências, certificados, ASO, NR, documentos de saída, envios, conferências, dispensas e vencimentos do colaborador."
             />
             {canManageDocuments ? (
               <div className="flex justify-center">
                 <Button type="button" onClick={ensureDossier} disabled={actionMutation.isPending}>
                   <FileCheck2 className="h-4 w-4" />
-                  Criar dossie padrao
+                  Criar dossiê padrão
                 </Button>
               </div>
             ) : null}
@@ -498,7 +498,7 @@ export function HrEmployeeDocumentsCard({
                       </div>
                     ) : (
                       <div className="rounded-md border bg-muted/25 p-3 text-sm text-muted-foreground">
-                        Nenhum arquivo anexado. Anexe para aprovar ou dispense se nao se aplicar.
+                        Nenhum arquivo anexado. Use Anexar arquivo para incluir o documento, evidência ou certificado; dispense apenas quando não se aplicar.
                       </div>
                     )}
                   </div>
