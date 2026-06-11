@@ -93,6 +93,7 @@ type EmployeeOnboardingItemRow = {
   owner_area: string;
   due_at: string | null;
   status: string;
+  is_required: boolean;
   is_critical: boolean;
   blocks_operational_release: boolean;
   updated_at: string;
@@ -114,16 +115,16 @@ const onboardingSelect =
   "id, organization_id, unit_id, employee_id, plan_id, status, operational_release_status, started_at, expected_release_at, released_at, completed_at, blocked_reason, notes, created_at, updated_at";
 
 const onboardingItemSelect =
-  "id, onboarding_id, employee_id, unit_id, title, category, owner_area, due_at, status, is_critical, blocks_operational_release, updated_at";
+  "id, onboarding_id, employee_id, unit_id, title, category, owner_area, due_at, status, is_required, is_critical, blocks_operational_release, updated_at";
 
 const resolvedItemStatuses = new Set(["completed", "waived", "cancelled"]);
 const openOnboardingStatuses = new Set(["not_started", "in_progress"]);
 const openItemStatuses = new Set(["pending", "in_progress", "blocked"]);
 
 const onboardingStatusLabels: Record<string, string> = {
-  not_started: "Nao iniciado",
+  not_started: "Não iniciado",
   in_progress: "Em andamento",
-  completed: "Concluido",
+  completed: "Concluído",
   cancelled: "Cancelado"
 };
 
@@ -131,7 +132,7 @@ const releaseStatusLabels: Record<string, string> = {
   blocked: "Bloqueado",
   partial: "Parcialmente liberado",
   released: "Liberado",
-  critical_pending: "Pendencia critica"
+  critical_pending: "Pendência crítica"
 };
 
 const ownerAreaLabels: Record<string, string> = {
@@ -176,6 +177,10 @@ function isResolved(status: string) {
 
 function isOpenItem(item: EmployeeOnboardingItemRow) {
   return openItemStatuses.has(item.status) && !isResolved(item.status);
+}
+
+function isActionableOpenItem(item: EmployeeOnboardingItemRow) {
+  return isOpenItem(item) && (item.is_required || item.is_critical || item.blocks_operational_release);
 }
 
 function isOverdue(item: EmployeeOnboardingItemRow, today: Date) {
@@ -303,6 +308,7 @@ function mapQueueItem(input: {
   today: Date;
 }) {
   const openItems = input.items.filter(isOpenItem);
+  const actionableOpenItems = openItems.filter(isActionableOpenItem);
   const resolvedItems = input.items.filter((item) => isResolved(item.status));
   const totalItems = input.items.length;
   const progressPercent = totalItems ? Math.round((resolvedItems.length / totalItems) * 100) : 0;
@@ -311,8 +317,8 @@ function mapQueueItem(input: {
     (item) => item.status === "blocked" || item.blocks_operational_release || item.is_critical
   ).length;
   const overdueItems = openItems.filter((item) => isOverdue(item, input.today)).length;
-  const ownerAreas = unique(openItems.map((item) => item.owner_area));
-  const nextItem = [...openItems].sort((left, right) => {
+  const ownerAreas = unique(actionableOpenItems.map((item) => item.owner_area));
+  const nextItem = [...actionableOpenItems].sort((left, right) => {
     if (left.due_at && right.due_at) return left.due_at.localeCompare(right.due_at);
     if (left.due_at) return -1;
     if (right.due_at) return 1;
@@ -320,15 +326,15 @@ function mapQueueItem(input: {
   })[0];
 
   const queueTypes: HrOnboardingQueueType[] = [];
-  if (input.onboarding.operational_release_status === "blocked" || blockingOpenItems > 0 || openItems.some((item) => item.status === "blocked")) {
+  if (blockingOpenItems > 0 || openItems.some((item) => item.status === "blocked")) {
     queueTypes.push("blocked");
   }
-  if (input.onboarding.operational_release_status === "critical_pending" || criticalOpenItems > 0) queueTypes.push("critical");
+  if (criticalOpenItems > 0) queueTypes.push("critical");
   if (overdueItems > 0) queueTypes.push("overdue");
-  if (openItems.some((item) => item.owner_area === "RH")) queueTypes.push("waiting_rh");
-  if (openItems.some((item) => item.owner_area === "GESTOR")) queueTypes.push("waiting_manager");
-  if (openItems.some((item) => item.owner_area === "TI")) queueTypes.push("waiting_ti");
-  if (progressPercent >= 80 && input.onboarding.status !== "completed") queueTypes.push("almost_done");
+  if (actionableOpenItems.some((item) => item.owner_area === "RH")) queueTypes.push("waiting_rh");
+  if (actionableOpenItems.some((item) => item.owner_area === "GESTOR")) queueTypes.push("waiting_manager");
+  if (actionableOpenItems.some((item) => item.owner_area === "TI")) queueTypes.push("waiting_ti");
+  if (actionableOpenItems.length > 0 && progressPercent >= 80 && input.onboarding.status !== "completed") queueTypes.push("almost_done");
 
   const primaryOwnerArea = nextItem?.owner_area ?? ownerAreas[0] ?? "";
 
@@ -347,14 +353,14 @@ function mapQueueItem(input: {
     progressPercent,
     totalItems,
     resolvedItems: resolvedItems.length,
-    openItems: openItems.length,
+    openItems: actionableOpenItems.length,
     criticalOpenItems,
     blockingOpenItems,
     overdueItems,
     ownerAreas,
     primaryOwnerArea,
     primaryOwnerAreaLabel: primaryOwnerArea ? ownerAreaLabel(primaryOwnerArea) : "Sem area definida",
-    nextAction: nextItem?.title ?? "Sem pendencia aberta",
+    nextAction: nextItem?.title ?? "Sem pendência aberta",
     nextActionDueAt: nextItem?.due_at ?? "",
     startedAt: input.onboarding.started_at ?? "",
     expectedReleaseAt: input.onboarding.expected_release_at ?? "",
@@ -415,7 +421,7 @@ export async function loadHrOnboardingDashboard(context: HrRequestContext, filte
       today
     });
 
-    if (passesFilters(item, rawItems, filters)) queueItems.push(item);
+    if (item.openItems > 0 && passesFilters(item, rawItems, filters)) queueItems.push(item);
   }
 
   return queueItems.sort(sortQueue);
@@ -439,7 +445,7 @@ export function summarizeHrOnboardingDashboard(items: HrOnboardingDashboardItem[
   const byUnit = new Map<string, { unitId: string; unitName: string; total: number }>();
 
   for (const item of items) {
-    if (item.status === "in_progress" || item.status === "not_started") summary.totalInProgress += 1;
+    if (item.openItems > 0 && (item.status === "in_progress" || item.status === "not_started")) summary.totalInProgress += 1;
     if (item.queueTypes.includes("blocked")) summary.blocked += 1;
     if (item.queueTypes.includes("critical")) summary.critical += 1;
     if (item.queueTypes.includes("overdue")) summary.overdue += 1;

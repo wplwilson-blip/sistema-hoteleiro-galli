@@ -8,6 +8,17 @@ type DepartmentMeta = { id: string; code: string | null; name: string | null };
 type DocumentTypeMeta = { name: string | null; is_required: boolean | null };
 type EmployeeLite = { id: string; unit_id: string | null; full_name: string | null; preferred_name: string | null; status: string | null; hire_date?: string | null; termination_date?: string | null };
 type RowLite = { id: string; unit_id: string | null; employee_id?: string | null; status?: string | null; due_at?: string | null; due_date?: string | null; period_end?: string | null; valid_until?: string | null; expires_at?: string | null; requested_at?: string | null; occurrence_date?: string | null; effective_date?: string | null; record_type?: string | null; conduct_type?: string | null; termination_type?: string | null; movement_type?: string | null; title?: string | null; training_id?: string | null; employee?: EmployeeMeta | null; employees?: EmployeeMeta | null; units?: UnitMeta | null; unit?: UnitMeta | null; hr_document_types?: DocumentTypeMeta | null };
+type OnboardingItemLite = {
+  id: string;
+  onboarding_id: string;
+  title: string | null;
+  status: string | null;
+  due_at: string | null;
+  is_required: boolean | null;
+  is_critical: boolean | null;
+  blocks_operational_release: boolean | null;
+  updated_at: string | null;
+};
 
 export type HrExecutivePendency = {
   id: string;
@@ -60,6 +71,26 @@ function departmentLabel(department?: DepartmentMeta | null) {
 
 function countBy<T>(rows: T[], predicate: (row: T) => boolean) {
   return rows.filter(predicate).length;
+}
+
+const openOnboardingItemStatuses = new Set(["pending", "in_progress", "blocked"]);
+const resolvedOnboardingItemStatuses = new Set(["completed", "waived", "cancelled"]);
+
+function isOpenOnboardingItem(item: OnboardingItemLite) {
+  const status = item.status ?? "";
+  return openOnboardingItemStatuses.has(status) && !resolvedOnboardingItemStatuses.has(status);
+}
+
+function isActionableOnboardingItem(item: OnboardingItemLite) {
+  return isOpenOnboardingItem(item) && Boolean(item.is_required || item.is_critical || item.blocks_operational_release);
+}
+
+function sortOnboardingItems(left: OnboardingItemLite, right: OnboardingItemLite) {
+  if (left.is_critical !== right.is_critical) return left.is_critical ? -1 : 1;
+  if (left.due_at && right.due_at) return left.due_at.localeCompare(right.due_at);
+  if (left.due_at) return -1;
+  if (right.due_at) return 1;
+  return (left.updated_at ?? "").localeCompare(right.updated_at ?? "");
 }
 
 async function selectRows<T>(context: HrRequestContext, table: string, select: string, unitIds: string[], filters?: (query: any) => any) {
@@ -199,6 +230,29 @@ export async function loadHrPendingCenter(context: HrRequestContext, unitId?: st
     selectRows<DepartmentMeta>(context, "departments", "id, code, name", unitIds, (query) => query.is("deleted_at", null))
   ]);
   const departmentsById = new Map(departments.map((department) => [department.id, department]));
+  const onboardingIds = onboarding.map((row) => row.id);
+  let onboardingItems: OnboardingItemLite[] = [];
+  if (onboardingIds.length) {
+    let onboardingItemsQuery = context.supabase
+      .from("employee_onboarding_items")
+      .select("id, onboarding_id, title, status, due_at, is_required, is_critical, blocks_operational_release, updated_at")
+      .in("onboarding_id", onboardingIds)
+      .is("deleted_at", null);
+
+    if (unitIds.length) onboardingItemsQuery = onboardingItemsQuery.in("unit_id", unitIds);
+
+    const { data, error } = await onboardingItemsQuery.limit(5000);
+    if (error) {
+      logHrApiError("executive.employee_onboarding_items_failed", error);
+      throw new Error("Nao foi possivel carregar os itens do onboarding para consolidar as pendencias.");
+    }
+    onboardingItems = (data ?? []) as OnboardingItemLite[];
+  }
+  const openItemsByOnboarding = new Map<string, OnboardingItemLite[]>();
+
+  for (const item of onboardingItems.filter(isActionableOnboardingItem)) {
+    openItemsByOnboarding.set(item.onboarding_id, [...(openItemsByOnboarding.get(item.onboarding_id) ?? []), item]);
+  }
 
   const pendencies: HrExecutivePendency[] = [
     ...documents.map((row) => {
@@ -206,7 +260,28 @@ export async function loadHrPendingCenter(context: HrRequestContext, unitId?: st
       const isCritical = isRequired || row.status === "expired" || row.status === "rejected";
       return makePendency({ id: row.id, type: "documents", typeLabel: isRequired ? "Documento obrigatorio pendente" : "Documento pendente", employeeId: row.employee_id, employee: row.employees, departmentsById, unitId: row.unit_id, unit: row.units, priority: isCritical ? "critical" : "high", date: row.valid_until, origin: "Documentos", href: `/rh/employees/${row.employee_id}?tab=documents` });
     }),
-    ...onboarding.map((row) => makePendency({ id: row.id, type: "onboarding", typeLabel: "Onboarding pendente", employeeId: row.employee_id, employee: row.employees, departmentsById, unitId: row.unit_id, unit: row.units, priority: "medium", date: "", origin: "Onboarding", href: `/rh/employees/${row.employee_id}?tab=onboarding` })),
+    ...onboarding.flatMap((row) => {
+      const openItems = (openItemsByOnboarding.get(row.id) ?? []).sort(sortOnboardingItems);
+      const nextItem = openItems[0];
+      if (!nextItem) return [];
+
+      return [
+        makePendency({
+          id: nextItem.id,
+          type: "onboarding",
+          typeLabel: `Onboarding: ${nextItem.title ?? "etapa pendente"}`,
+          employeeId: row.employee_id,
+          employee: row.employees,
+          departmentsById,
+          unitId: row.unit_id,
+          unit: row.units,
+          priority: nextItem.is_critical ? "critical" : "medium",
+          date: nextItem.due_at,
+          origin: "Onboarding",
+          href: `/rh/employees/${row.employee_id}?tab=onboarding`
+        })
+      ];
+    }),
     ...evaluations.map((row) => makePendency({ id: row.id, type: "evaluations", typeLabel: row.period_end && row.period_end.slice(0, 10) < now ? "Avaliacao atrasada" : "Avaliacao pendente", employeeId: row.employee_id, employee: row.employees, departmentsById, unitId: row.unit_id, unit: row.units, priority: row.period_end && row.period_end.slice(0, 10) < now ? "high" : "medium", date: row.period_end, origin: "Avaliacoes", href: `/rh/employees/${row.employee_id}?tab=evaluations` })),
     ...developmentPlans.map((row) => makePendency({ id: row.id, type: "development", typeLabel: row.due_at && row.due_at.slice(0, 10) < now ? "PDI atrasado" : "PDI pendente", employeeId: row.employee_id, employee: row.employees, departmentsById, unitId: row.unit_id, unit: row.units, priority: row.due_at && row.due_at.slice(0, 10) < now ? "high" : "medium", date: row.due_at, origin: "PDI", href: `/rh/employees/${row.employee_id}?tab=development` })),
     ...trainings.map((row) => makePendency({ id: row.id, type: "trainings", typeLabel: row.status === "retraining_required" ? "Reciclagem necessaria" : row.status === "expired" || (row.expires_at && row.expires_at.slice(0, 10) < now) ? "Treinamento vencido" : "Treinamento obrigatorio pendente", employeeId: row.employee_id, employee: row.employees, departmentsById, unitId: row.unit_id, unit: row.units, priority: row.status === "expired" || row.status === "retraining_required" || (row.expires_at && row.expires_at.slice(0, 10) < now) ? "critical" : "medium", date: row.expires_at ?? row.due_date, origin: "Treinamentos", href: `/rh/employees/${row.employee_id}?tab=trainings` })),

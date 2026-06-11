@@ -163,7 +163,7 @@ function nextActionText(item: Pendency) {
   if (item.type === "movements") return "Aprovar ou efetivar movimentação.";
   if (item.type === "conduct") return "Revisar ocorrencia pendente.";
   if (item.type === "terminations") return "Concluir checklist obrigatorio.";
-  if (item.type === "onboarding") return "Concluir etapa de onboarding.";
+  if (item.type === "onboarding") return item.typeLabel ? `Concluir ${item.typeLabel.replace(/^Onboarding:\s*/i, "").toLowerCase()}.` : "Concluir etapa de onboarding.";
   return "Verificar pendencia.";
 }
 

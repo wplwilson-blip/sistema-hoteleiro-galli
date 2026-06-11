@@ -112,9 +112,9 @@ function formatDate(value: string | null | undefined) {
 
 function onboardingStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    not_started: "Nao iniciado",
+    not_started: "Não iniciado",
     in_progress: "Em andamento",
-    completed: "Concluido",
+    completed: "Concluído",
     cancelled: "Cancelado"
   };
 
@@ -123,20 +123,32 @@ function onboardingStatusLabel(status: string) {
 
 function releaseStatusLabel(status: string) {
   const labels: Record<string, string> = {
+    completed: "Onboarding concluído",
     blocked: "Bloqueado",
     partial: "Parcialmente liberado",
     released: "Liberado",
-    critical_pending: "Pendencia critica"
+    critical_pending: "Pendência crítica"
   };
 
   return labels[status] ?? status;
+}
+
+function displayReleaseStatus(onboarding: HrEmployeeOnboarding) {
+  const unresolvedRequiredItems = onboarding.items.filter(
+    (item) => item.isRequired && !["completed", "waived", "cancelled"].includes(item.status)
+  );
+
+  if (onboarding.progress.totalItems > 0 && unresolvedRequiredItems.length === 0 && onboarding.progress.criticalOpenItems === 0) {
+    return "completed";
+  }
+  return onboarding.operationalReleaseStatus;
 }
 
 function itemStatusLabel(status: string) {
   const labels: Record<string, string> = {
     pending: "Pendente",
     in_progress: "Em andamento",
-    completed: "Concluido",
+    completed: "Concluído",
     waived: "Dispensado",
     blocked: "Bloqueado",
     cancelled: "Cancelado"
@@ -186,6 +198,7 @@ function itemTone(status: string) {
 }
 
 function releaseTone(status: string) {
+  if (status === "completed") return "success" as const;
   if (status === "released") return "success" as const;
   if (status === "critical_pending" || status === "blocked") return "danger" as const;
   if (status === "partial") return "warning" as const;
@@ -215,11 +228,11 @@ function actionDescription(action: NonNullable<ActiveItemAction>["action"]) {
 }
 
 function itemOperationalHint(item: HrOnboardingItem) {
-  if (item.status === "pending") return "Item preparado no checklist. Clique em Iniciar quando o RH ou responsavel comecar esta etapa.";
+  if (item.status === "pending") return "Item preparado no checklist. Clique em Iniciar quando o RH ou responsável começar esta etapa.";
   if (item.status === "in_progress") return "Item em andamento. Conclua somente depois que a etapa tiver sido realizada.";
-  if (item.status === "completed") return "Item concluido. Ele permanece no historico do onboarding.";
-  if (item.status === "waived") return "Item dispensado com justificativa. Ele nao conta como pendencia.";
-  if (item.status === "blocked") return "Item bloqueado. Revise o motivo antes de seguir com a liberacao operacional.";
+  if (item.status === "completed") return "Item concluído. Ele permanece no histórico do onboarding.";
+  if (item.status === "waived") return "Item dispensado com justificativa. Ele não conta como pendência.";
+  if (item.status === "blocked") return "Item bloqueado. Revise o motivo antes de seguir com a liberação operacional.";
   return "";
 }
 
@@ -235,6 +248,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
   });
 
   const onboarding = onboardingQuery.data?.data ?? null;
+  const releaseStatus = onboarding ? displayReleaseStatus(onboarding) : "";
   const applicablePlans = onboardingQuery.data?.applicablePlans ?? [];
   const emptyState = onboardingQuery.data?.emptyState;
   const canManageOnboarding = Boolean(onboardingQuery.data?.permissions.canManageOnboarding);
@@ -294,16 +308,16 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
             <div className="flex flex-wrap items-center gap-2">
               <ClipboardCheck className="h-4 w-4 text-primary" />
               <h3 className="text-base font-semibold">Onboarding operacional</h3>
-              {onboarding ? <StatusBadge status={releaseTone(onboarding.operationalReleaseStatus)} label={releaseStatusLabel(onboarding.operationalReleaseStatus)} /> : null}
+              {onboarding ? <StatusBadge status={releaseTone(releaseStatus)} label={releaseStatusLabel(releaseStatus)} /> : null}
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Checklist de liberacao operacional do colaborador, com pendencias por area, criticidade e prazos.
+              Checklist de liberação operacional do colaborador, com pendências por área, criticidade e prazos.
             </p>
           </div>
           {onboarding ? (
             <div className="flex flex-wrap gap-2">
               <StatusBadge status="info" label={onboardingStatusLabel(onboarding.status)} />
-              <StatusBadge status={onboarding.progress.criticalOpenItems ? "danger" : "success"} label={`${onboarding.progress.criticalOpenItems} critica(s)`} />
+              <StatusBadge status={onboarding.progress.criticalOpenItems ? "danger" : "success"} label={`${onboarding.progress.criticalOpenItems} crítica(s)`} />
               <StatusBadge status={onboarding.progress.blockingOpenItems ? "warning" : "success"} label={`${onboarding.progress.blockingOpenItems} bloqueante(s)`} />
             </div>
           ) : null}
@@ -332,7 +346,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
               title={emptyState?.title ?? "Onboarding ainda nao iniciado"}
               description={
                 emptyState?.description ??
-                "Quando houver um checklist operacional criado para este colaborador, o RH podera acompanhar prazos, responsaveis, itens criticos e liberacao operacional por aqui."
+                "Quando houver um checklist operacional criado para este colaborador, o RH poderá acompanhar prazos, responsáveis, itens críticos e liberação operacional por aqui."
               }
             />
 
@@ -392,12 +406,12 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
               <div className="mx-auto w-full max-w-2xl rounded-md border bg-background p-4">
                 <h4 className="text-sm font-semibold text-foreground">Checklist padrão do hotel</h4>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Nenhum plano especifico foi encontrado para este cargo ou setor. Crie o checklist padrao para acompanhar documentos, uniforme, acessos, orientacoes e liberacao operacional.
+                  Nenhum plano específico foi encontrado para este cargo ou setor. Crie o checklist padrão para acompanhar documentos, uniforme, acessos, orientações e liberação operacional.
                 </p>
                 <div className="mt-4 flex justify-end">
                   <Button type="button" onClick={() => startMutation.mutate("")} disabled={startMutation.isPending}>
                     <PlayCircle className="h-4 w-4" />
-                    Criar checklist padrao
+                    Criar checklist padrão
                   </Button>
                 </div>
               </div>
@@ -416,17 +430,17 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                 </p>
               </div>
               <div className="rounded-md border bg-background p-3">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Liberacao</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{releaseStatusLabel(onboarding.operationalReleaseStatus)}</p>
-                <p className="text-xs text-muted-foreground">Status informado pelo RH</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Liberação</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{releaseStatusLabel(releaseStatus)}</p>
+                <p className="text-xs text-muted-foreground">{releaseStatus === "completed" ? "Todos os itens obrigatórios foram resolvidos" : "Status operacional do onboarding"}</p>
               </div>
               <div className="rounded-md border bg-background p-3">
                 <p className="text-xs font-medium uppercase text-muted-foreground">Previsao</p>
                 <p className="mt-1 text-sm font-semibold text-foreground">{formatDate(onboarding.expectedReleaseAt)}</p>
-                <p className="text-xs text-muted-foreground">Liberacao esperada</p>
+                <p className="text-xs text-muted-foreground">Liberação esperada</p>
               </div>
               <div className="rounded-md border bg-background p-3">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Pendencias</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Pendências</p>
                 <p className="mt-1 text-sm font-semibold text-foreground">{groupedItems.open.length} em aberto</p>
                 <p className="text-xs text-muted-foreground">{groupedItems.done.length} resolvida(s)</p>
               </div>
@@ -436,7 +450,7 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
               <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>
-                  Existem itens criticos ou bloqueantes em aberto. A liberacao operacional deve ser revisada pelo RH antes de considerar o colaborador plenamente liberado.
+                  Existem itens críticos ou bloqueantes em aberto. A liberação operacional deve ser revisada pelo RH antes de considerar o colaborador plenamente liberado.
                 </p>
               </div>
             ) : null}
@@ -459,9 +473,9 @@ export function HrEmployeeOnboardingCard({ employeeId }: { employeeId: string })
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="break-words text-sm font-semibold text-foreground">{item.title}</h4>
                         <StatusBadge status={itemTone(item.status)} label={itemStatusLabel(item.status)} />
-                        {item.isCritical ? <StatusBadge status="danger" label="Critico" /> : null}
-                        {item.blocksOperationalRelease ? <StatusBadge status="warning" label="Bloqueia liberacao" /> : null}
-                        {item.isRequired ? <StatusBadge status="info" label="Obrigatorio" /> : null}
+                        {item.isCritical ? <StatusBadge status="danger" label="Crítico" /> : null}
+                        {item.blocksOperationalRelease ? <StatusBadge status="warning" label="Bloqueia liberação" /> : null}
+                        {item.isRequired ? <StatusBadge status="info" label="Obrigatório" /> : null}
                       </div>
                       {item.description ? <p className="break-words text-sm leading-6 text-muted-foreground">{item.description}</p> : null}
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

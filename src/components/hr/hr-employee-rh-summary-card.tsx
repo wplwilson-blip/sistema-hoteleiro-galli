@@ -93,7 +93,7 @@ function moduleMessage(type: string, items: PendingItem[], fallback: string) {
 
 function actionLabel(item: PendingItem) {
   if (item.type === "documents") return "Regularizar documento pendente";
-  if (item.type === "onboarding") return "Concluir etapa de onboarding";
+  if (item.type === "onboarding") return item.typeLabel ? `Concluir ${item.typeLabel.replace(/^Onboarding:\s*/i, "").toLowerCase()}` : "Concluir etapa de onboarding";
   if (item.type === "evaluations") return "Finalizar avaliação pendente";
   if (item.type === "development") return "Atualizar ação do Plano de Desenvolvimento (PDI)";
   if (item.type === "trainings") return item.priority === "critical" ? "Regularizar treinamento vencido" : "Concluir treinamento obrigatório";
