@@ -158,6 +158,21 @@ function statusTone(status: MovementStatus) {
   return "visual" as const;
 }
 
+function movementStatusDescription(status: MovementStatus) {
+  if (status === "draft") return "Ainda não enviado para aprovação.";
+  if (status === "pending_approval") return "Aguardando análise da liderança/RH.";
+  if (status === "approved") return "Aprovado e pronto para efetivação.";
+  if (status === "rejected") return "Rejeitado. Revise o motivo antes de criar nova solicitação.";
+  return "Movimentação aplicada na carreira e na vida funcional.";
+}
+
+function movementActionConfirmation(action: MovementActionKey) {
+  if (action === "submit") return "Enviar esta movimentação para aprovação? Depois disso, ela não deve ser tratada como rascunho.";
+  if (action === "approve") return "Aprovar esta movimentação? Ela ficará pronta para efetivação.";
+  if (action === "reject") return "Rejeitar esta movimentação? O motivo informado ficará registrado no histórico.";
+  return "Efetivar esta movimentação? Após a efetivação, ela será registrada na carreira e na vida funcional do colaborador.";
+}
+
 function buildMovementsUrl(filters: Record<string, string>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -299,6 +314,7 @@ export function HrMovementsClient() {
   }
 
   function runAction(row: MovementRow, action: MovementActionKey) {
+    if (!window.confirm(movementActionConfirmation(action))) return;
     const key = actionCommentKey(row);
     actionMutation.mutate({ id: row.id, action, comments: commentsByAction[key] });
   }
@@ -397,7 +413,8 @@ export function HrMovementsClient() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-sm font-semibold">{form.id ? "Editar movimentação" : "Nova movimentação funcional"}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Campos sensíveis, como salário, ficam restritos por permissão. O registro nasce como rascunho.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Movimentações nascem como rascunho. Depois devem ser enviadas para aprovação e só então efetivadas.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Campos sensíveis, como salário, ficam restritos por permissão.</p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={closeForm}>
               <X className="h-4 w-4" />
@@ -419,11 +436,13 @@ export function HrMovementsClient() {
                 {movementTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
               </SelectField>
             </Field>
-            <Field label="Status">
-              <SelectField value={form.status} onChange={(event) => updateForm("status", event.target.value as MovementStatus)} disabled>
-                {movementStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-              </SelectField>
-            </Field>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Status automático</span>
+                <StatusBadge status={statusTone(form.status)} label={movementStatuses.find((status) => status.value === form.status)?.label ?? form.status} />
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{movementStatusDescription(form.status)}</p>
+            </div>
             <Field label="Data efetiva">
               <Input type="date" value={form.effectiveDate} onChange={(event) => updateForm("effectiveDate", event.target.value)} />
             </Field>
@@ -475,7 +494,7 @@ export function HrMovementsClient() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => mutation.mutate(form)} disabled={mutation.isPending}>
               <Save className="h-4 w-4" />
-              Salvar
+              Salvar rascunho
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={closeForm}>Cancelar</Button>
           </div>
@@ -513,14 +532,19 @@ export function HrMovementsClient() {
                       <MovementTimeline approvals={row.approvals} />
                     </td>
                     <td className="px-4 py-3"><StatusBadge status="info" label={row.movementTypeLabel} />{row.isSensitive ? <div className="mt-1"><StatusBadge status="warning" label="Restrito" /></div> : null}</td>
-                    <td className="px-4 py-3"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} /></td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-1">
+                        <StatusBadge status={statusTone(row.status)} label={row.statusLabel} />
+                        <p className="max-w-[220px] text-xs leading-5 text-muted-foreground">{movementStatusDescription(row.status)}</p>
+                      </div>
+                    </td>
                     <td className="px-4 py-3"><div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-muted-foreground" />{formatDate(row.effectiveDate)}</div></td>
                     <td className="px-4 py-3">{row.newUnit?.label || row.oldUnit?.label || "-"}</td>
                     <td className="px-4 py-3">{row.newDepartment?.label || row.oldDepartment?.label || "-"}</td>
                     <td className="px-4 py-3">
                       <div className="space-y-2">
                         <div className="flex flex-wrap gap-2">
-                          <Button type="button" variant="outline" size="sm" onClick={() => startEdit(row)} disabled={row.status !== "draft"}>Editar</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => startEdit(row)} disabled={row.status !== "draft"}>Editar rascunho</Button>
                           <Button asChild variant="outline" size="sm"><Link href={`/rh/employees/${row.employeeId}?tab=career`}>Carreira<ArrowRight className="h-4 w-4" /></Link></Button>
                         </div>
                         <MovementActions row={row} commentsByAction={commentsByAction} setCommentsByAction={setCommentsByAction} onAction={runAction} pending={actionMutation.isPending} />
@@ -603,10 +627,10 @@ function MovementActions({
   pending: boolean;
 }) {
   const allActions: Array<{ key: MovementActionKey; label: string; icon: typeof Send; visible: boolean; variant?: "default" | "outline" }> = [
-    { key: "submit", label: "Enviar aprovação", icon: Send, visible: row.status === "draft", variant: "default" },
-    { key: "approve", label: "Aprovar", icon: CheckCircle2, visible: row.status === "pending_approval", variant: "default" },
-    { key: "reject", label: "Rejeitar", icon: XCircle, visible: row.status === "pending_approval", variant: "outline" },
-    { key: "implement", label: "Efetivar", icon: PlayCircle, visible: row.status === "approved", variant: "default" }
+    { key: "submit", label: "Enviar para aprovação", icon: Send, visible: row.status === "draft", variant: "default" },
+    { key: "approve", label: "Aprovar movimentação", icon: CheckCircle2, visible: row.status === "pending_approval", variant: "default" },
+    { key: "reject", label: "Rejeitar movimentação", icon: XCircle, visible: row.status === "pending_approval", variant: "outline" },
+    { key: "implement", label: "Efetivar movimentação", icon: PlayCircle, visible: row.status === "approved", variant: "default" }
   ];
   const actions = allActions.filter((action) => action.visible);
 
