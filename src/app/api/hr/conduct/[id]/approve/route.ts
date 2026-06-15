@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleHrRouteError, HR_PERMISSIONS, hrApiError, logHrApiError, requireHrPermission } from "@/lib/hr/api-auth";
-import { assertConductTransition, conductListSelect, loadEmployeeConduct, publishEmployeeConductEvent, redactEmployeeConduct, registerConductReview, statusForConductAction, type EmployeeConductRow } from "@/lib/hr/employee-conduct";
+import { assertConductTransition, conductListSelect, isConductEvidenceRequired, loadEmployeeConduct, publishEmployeeConductEvent, redactEmployeeConduct, registerConductReview, statusForConductAction, type EmployeeConductRow } from "@/lib/hr/employee-conduct";
 import { employeeConductDecisionPayloadSchema, hrIdParamSchema } from "@/lib/hr/schemas";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -14,6 +14,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const conduct = await loadEmployeeConduct(context, id);
     if (!conduct) return hrApiError("Registro de conduta nao encontrado.", 404);
     assertConductTransition(conduct.status, "approved");
+    if (isConductEvidenceRequired(conduct) && !conduct.attachment_id) {
+      return hrApiError("Esta ocorrencia exige evidencia anexada antes da aprovacao. Anexe a evidencia no fluxo de Conduta e tente novamente.", 422);
+    }
 
     const { data, error } = await context.supabase
       .from("employee_conduct_records")

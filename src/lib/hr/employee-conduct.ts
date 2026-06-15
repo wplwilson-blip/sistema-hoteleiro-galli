@@ -111,6 +111,11 @@ function defaultSensitive(conductType: string, isSensitive?: boolean) {
   return conductType !== "compliment";
 }
 
+export function isConductEvidenceRequired(conduct: { conduct_type: string; severity: string }) {
+  if (conduct.conduct_type === "warning" || conduct.conduct_type === "suspension") return true;
+  return conduct.conduct_type === "complaint" && conduct.severity === "critical";
+}
+
 export function redactEmployeeConduct(row: EmployeeConductRow, canViewSensitive: boolean) {
   const redacted = row.is_sensitive && !canViewSensitive;
 
@@ -133,6 +138,7 @@ export function redactEmployeeConduct(row: EmployeeConductRow, canViewSensitive:
     attachmentId: redacted ? "" : row.attachment_id ?? "",
     hasAttachment: Boolean(row.attachment_id),
     evidenceCount: row.attachment_id ? 1 : 0,
+    evidenceRequired: isConductEvidenceRequired(row),
     isSensitive: row.is_sensitive,
     visibilityScope: row.visibility_scope,
     reviews: (row.employee_conduct_reviews ?? []).map((review) => ({
