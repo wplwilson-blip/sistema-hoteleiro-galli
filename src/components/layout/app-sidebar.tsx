@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -177,6 +177,7 @@ function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
   return (
     <Link
       href={item.href}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
         active && "bg-primary text-primary-foreground shadow-sm shadow-primary/15 hover:bg-primary hover:text-primary-foreground"
@@ -190,6 +191,7 @@ function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement>(null);
   const activeGroups = useMemo(
     () =>
       menuGroups
@@ -203,6 +205,16 @@ export function AppSidebar() {
     setOpenGroups((current) => (current.includes(label) ? current.filter((item) => item !== label) : [...current, label]));
   }
 
+  useEffect(() => {
+    const nav = navRef.current;
+    const activeLink = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+
+    if (!nav || !activeLink) return;
+
+    const targetScrollTop = activeLink.offsetTop - nav.clientHeight / 2 + activeLink.clientHeight / 2;
+    nav.scrollTop = Math.max(0, targetScrollTop);
+  }, [pathname, activeGroups]);
+
   return (
     <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-border/80 bg-card lg:flex">
       <div className="flex h-20 shrink-0 items-center gap-3 border-b border-border/80 px-5">
@@ -215,7 +227,7 @@ export function AppSidebar() {
         </div>
       </div>
 
-      <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4">
+      <nav ref={navRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4">
         {mainItems.map((item) => (
           <SidebarItem key={item.label} item={item} active={isLinkActive(pathname, item)} />
         ))}

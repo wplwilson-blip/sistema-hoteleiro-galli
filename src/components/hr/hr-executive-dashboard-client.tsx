@@ -321,7 +321,7 @@ export function HrExecutiveDashboardClient({ mode = "operational" }: { mode?: Da
         }
       : mode === "reports"
         ? {
-            title: "Relatorios RH",
+            title: "Relatórios RH",
             description: "Consulta, filtros e exportacoes CSV com dados consolidados do RH."
           }
         : {
@@ -364,15 +364,15 @@ export function HrExecutiveDashboardClient({ mode = "operational" }: { mode?: Da
       {dashboardQuery.error ? <ErrorMessage message={dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "Nao foi possivel carregar o painel do RH. Tente atualizar a pagina."} /> : null}
       {pendingQuery.error ? <ErrorMessage message={pendingQuery.error instanceof Error ? pendingQuery.error.message : "Nao foi possivel carregar pendencias do RH. Tente atualizar a pagina."} /> : null}
 
-      {!isReports && indicators ? (
+      {isOperational && indicators ? (
         <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Situacao Geral do RH</h2>
+            <h2 className="text-sm font-semibold">Prioridades de hoje</h2>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <DecisionCard
-              title="Conformidade RH"
+              title="Conformidade da rotina"
               value={`${complianceScore}%`}
               description="Regularidade geral nos principais controles."
               tooltip="Mostra o quanto os colaboradores estao regulares em documentos, treinamentos, saude ocupacional e pendencias."
@@ -386,7 +386,7 @@ export function HrExecutiveDashboardClient({ mode = "operational" }: { mode?: Da
               tone={actionCriticalTotal ? "danger" : "success"}
             />
             <DecisionCard
-              title="Acoes pendentes"
+              title="Proximas acoes"
               value={String(baseActionItems.length)}
               description="Itens com proximo passo definido."
               tooltip="Lista pratica do que precisa ser resolvido, quem resolve e onde clicar."
@@ -662,7 +662,7 @@ export function HrExecutiveDashboardClient({ mode = "operational" }: { mode?: Da
         <Card id="relatorios-rh" className="scroll-mt-4 border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex items-center gap-2">
             <Download className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Relatorios RH</h2>
+            <h2 className="text-sm font-semibold">Relatórios RH</h2>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Escolha um tema para baixar um CSV real ou consultar pendencias consolidadas.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
