@@ -17,6 +17,41 @@ export const employeeDocumentStatusSchema = z.enum([
   "waived"
 ]);
 
+export const contextualDocumentSourceEntityTypeSchema = z.enum([
+  "conduct",
+  "occupational_health",
+  "nr_certification",
+  "training",
+  "termination",
+  "termination_checklist_item",
+  "onboarding",
+  "movement",
+  "evaluation"
+]);
+
+export const contextualDocumentRoleSchema = z.enum([
+  "evidence",
+  "aso",
+  "exam",
+  "restriction",
+  "nr_certificate",
+  "training_certificate",
+  "attendance_list",
+  "termination_document",
+  "other"
+]);
+
+export const contextualDocumentRequirementStatusSchema = z.enum([
+  "pending",
+  "attached",
+  "under_review",
+  "approved",
+  "rejected",
+  "waived"
+]);
+
+export const contextualDocumentVisibilityScopeSchema = z.enum(["restricted", "unit", "organization"]);
+
 export const hrDocumentPendingTypeSchema = z.enum([
   "missing_required",
   "pending",
@@ -330,7 +365,8 @@ export const hrDocumentTypesQuerySchema = z.object({
 export const hrEmployeeDocumentsQuerySchema = z.object({
   status: employeeDocumentStatusSchema.optional().or(emptyToUndefined),
   documentTypeId: optionalUuidSchema,
-  includeSensitive: optionalBooleanSchema
+  includeSensitive: optionalBooleanSchema,
+  source: contextualDocumentSourceEntityTypeSchema.optional().or(emptyToUndefined)
 });
 
 export const hrDocumentPendenciesQuerySchema = z.object({

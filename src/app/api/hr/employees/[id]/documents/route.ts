@@ -285,6 +285,34 @@ export async function GET(request: Request, { params }: RouteParams) {
     if (employee.unit_id) documentsQuery = documentsQuery.eq("unit_id", employee.unit_id);
     if (query.status) documentsQuery = documentsQuery.eq("status", query.status);
     if (query.documentTypeId) documentsQuery = documentsQuery.eq("document_type_id", query.documentTypeId);
+    if (query.source) {
+      const { data: linkedDocuments, error: linkedDocumentsError } = await context.supabase
+        .from("employee_document_links")
+        .select("employee_document_id")
+        .eq("employee_id", employee.id)
+        .eq("source_entity_type", query.source)
+        .is("deleted_at", null);
+
+      if (linkedDocumentsError) {
+        logHrApiError("employee_documents.contextual_links_lookup_failed", linkedDocumentsError);
+        return hrApiError("Nao foi possivel carregar os vinculos contextuais dos documentos.", 500);
+      }
+
+      const linkedDocumentIds = Array.from(new Set((linkedDocuments ?? []).map((link) => link.employee_document_id).filter(Boolean)));
+      if (!linkedDocumentIds.length) {
+        return NextResponse.json({
+          ok: true,
+          data: [],
+          permissions: {
+            canViewSensitiveDocuments,
+            canManageDocuments,
+            canVerifyDocuments
+          }
+        });
+      }
+
+      documentsQuery = documentsQuery.in("id", linkedDocumentIds);
+    }
 
     const { data, error } = await documentsQuery;
 
