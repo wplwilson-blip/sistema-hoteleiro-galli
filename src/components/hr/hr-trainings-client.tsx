@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Award, BookOpen, CalendarClock, CheckCircle2, ClipboardCheck, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert } from "lucide-react";
+import { Award, BookOpen, CalendarClock, CheckCircle2, ClipboardCheck, ExternalLink, FileCheck2, Filter, Plus, RefreshCw, Save, Search, ShieldAlert, Upload } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
@@ -49,6 +49,7 @@ type EmployeeTraining = {
   completedAt: string;
   expiresAt: string;
   hasCertificate: boolean;
+  certificateAttachmentId: string;
   redacted: boolean;
   expiration?: {
     isExpired: boolean;
@@ -65,6 +66,8 @@ type TrainingsResponse = { ok: true; data: Training[]; pagination: { total: numb
 type AssignmentsResponse = { ok: true; data: EmployeeTraining[] };
 type EmployeesResponse = { ok: true; data: EmployeeOption[] };
 type UnitsResponse = { ok: true; units: UnitOption[] };
+type DocumentTypeOption = { id: string; code: string; name: string; category: string };
+type DocumentTypesResponse = { ok: true; data: DocumentTypeOption[] };
 
 type TrainingForm = {
   id: string;
@@ -97,6 +100,16 @@ type VerifyForm = {
   completedAt: string;
   expiresAt: string;
   notes: string;
+};
+
+type TrainingAttachmentForm = {
+  file: File | null;
+  documentRole: "training_certificate" | "attendance_list";
+  status: "idle" | "uploading" | "uploaded" | "error";
+  message: string;
+  attachmentId: string;
+  documentId: string;
+  linkId: string;
 };
 
 const trainingTypes = [
@@ -165,12 +178,60 @@ const emptyVerifyForm: VerifyForm = {
   expiresAt: "",
   notes: ""
 };
+const emptyTrainingAttachmentForm: TrainingAttachmentForm = {
+  file: null,
+  documentRole: "training_certificate",
+  status: "idle",
+  message: "",
+  attachmentId: "",
+  documentId: "",
+  linkId: ""
+};
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível processar treinamentos.");
   return payload as T;
+}
+
+async function uploadTrainingDocument(input: {
+  employeeId: string;
+  employeeTrainingId: string;
+  documentTypeId: string;
+  documentRole: "training_certificate" | "attendance_list";
+  sourceContextLabel: string;
+  isRequired: boolean;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.set("employeeId", input.employeeId);
+  formData.set("documentTypeId", input.documentTypeId);
+  formData.set("sourceEntityType", "training");
+  formData.set("sourceEntityId", input.employeeTrainingId);
+  formData.set("documentRole", input.documentRole);
+  formData.set("sourceContextLabel", input.sourceContextLabel);
+  formData.set("notes", "Anexo enviado pelo fluxo de conclusão de treinamento.");
+  formData.set("isRequired", String(input.isRequired));
+  formData.set("isSensitive", "true");
+  formData.set("visibilityScope", "restricted");
+  formData.set("file", input.file);
+
+  const response = await fetch("/api/hr/contextual-documents", {
+    method: "POST",
+    body: formData,
+    headers: { Accept: "application/json" }
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível anexar certificado/lista.");
+  return payload as {
+    ok: true;
+    data: {
+      document: { id: string };
+      attachment: { id: string; fileName: string };
+      link: { id: string };
+    };
+  };
 }
 
 function formatDate(value: string | null | undefined) {
@@ -230,6 +291,7 @@ export function HrTrainingsClient() {
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [verifyForm, setVerifyForm] = useState<VerifyForm>(emptyVerifyForm);
+  const [trainingAttachmentForm, setTrainingAttachmentForm] = useState<TrainingAttachmentForm>(emptyTrainingAttachmentForm);
   const [trainingForm, setTrainingForm] = useState<TrainingForm>(emptyTrainingForm);
   const [assignForm, setAssignForm] = useState<AssignForm>(emptyAssignForm);
 
@@ -254,9 +316,21 @@ export function HrTrainingsClient() {
   });
   const employeesQuery = useQuery({ queryKey: ["hr", "employees", "training-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const unitsQuery = useQuery({ queryKey: ["base", "units", "training-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
+  const documentTypesQuery = useQuery({
+    queryKey: ["hr", "document-types", "training", "active"],
+    queryFn: async () => requestJson<DocumentTypesResponse>("/api/hr/document-types?status=active&category=training")
+  });
 
   const trainings = useMemo(() => trainingsQuery.data?.data ?? [], [trainingsQuery.data?.data]);
   const assignments = useMemo(() => assignmentsQuery.data?.data ?? [], [assignmentsQuery.data?.data]);
+  const selectedTrainingAssignment = useMemo(
+    () => assignments.find((item) => item.id === verifyForm.employeeTrainingId) ?? null,
+    [assignments, verifyForm.employeeTrainingId]
+  );
+  const trainingDocumentType = useMemo(
+    () => (documentTypesQuery.data?.data ?? []).find((item) => item.code === "CERTIFICADO_TREINAMENTO") ?? documentTypesQuery.data?.data?.[0] ?? null,
+    [documentTypesQuery.data?.data]
+  );
   const visibleAssignments = useMemo(() => {
     if (!filters.quick) return assignments;
     return assignments.filter((item) => {
@@ -323,7 +397,46 @@ export function HrTrainingsClient() {
       }),
     onSuccess: async () => {
       setVerifyForm(emptyVerifyForm);
+      setTrainingAttachmentForm(emptyTrainingAttachmentForm);
       await queryClient.invalidateQueries({ queryKey: ["hr", "training-assignments"] });
+    }
+  });
+
+  const contextualUploadMutation = useMutation({
+    mutationFn: async (input: { assignment: EmployeeTraining; file: File; documentRole: "training_certificate" | "attendance_list"; documentTypeId: string }) =>
+      uploadTrainingDocument({
+        employeeId: input.assignment.employeeId,
+        employeeTrainingId: input.assignment.id,
+        documentTypeId: input.documentTypeId,
+        documentRole: input.documentRole,
+        sourceContextLabel:
+          input.documentRole === "attendance_list"
+            ? `Lista de presença - ${input.assignment.trainingTitle}`
+            : `Certificado de treinamento - ${input.assignment.trainingTitle}`,
+        isRequired: input.assignment.requiresCertificate,
+        file: input.file
+      }),
+    onSuccess: async (payload) => {
+      setTrainingAttachmentForm((current) => ({
+        ...current,
+        status: "uploaded",
+        message: "Certificado/lista anexado",
+        attachmentId: payload.data.attachment.id,
+        documentId: payload.data.document.id,
+        linkId: payload.data.link.id,
+        file: null
+      }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["hr", "training-assignments"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "employees"] })
+      ]);
+    },
+    onError: (error) => {
+      setTrainingAttachmentForm((current) => ({
+        ...current,
+        status: "error",
+        message: error instanceof Error ? error.message : "Erro no upload do anexo."
+      }));
     }
   });
 
@@ -368,6 +481,12 @@ export function HrTrainingsClient() {
       expiresAt: "",
       notes: ""
     });
+    setTrainingAttachmentForm({
+      ...emptyTrainingAttachmentForm,
+      status: row.hasCertificate ? "uploaded" : "idle",
+      message: row.hasCertificate ? "Certificado/lista anexado" : "",
+      attachmentId: row.certificateAttachmentId ?? ""
+    });
   }
 
   function confirmProcessExpirations() {
@@ -378,10 +497,27 @@ export function HrTrainingsClient() {
   }
 
   function confirmTrainingVerification() {
+    const currentAssignment = assignments.find((item) => item.id === verifyForm.employeeTrainingId);
+    const hasContextualAttachment = Boolean(currentAssignment?.hasCertificate || trainingAttachmentForm.status === "uploaded" || trainingAttachmentForm.attachmentId);
+
+    if (verifyForm.status === "completed" && currentAssignment?.requiresCertificate && !hasContextualAttachment) {
+      setTrainingAttachmentForm((current) => ({
+        ...current,
+        status: "error",
+        message: "Este treinamento exige certificado ou lista de presença antes da conclusão."
+      }));
+      return;
+    }
+
     const confirmed = window.confirm(
       "Confirmar conclusão deste treinamento?\n\nEsta ação registra presença/conclusão operacional e atualiza validade quando informada.\n\nConfira antes se certificado, lista de presença ou comprovante estão no dossiê oficial do RH, quando exigido."
     );
     if (confirmed) verifyMutation.mutate(verifyForm);
+  }
+
+  function closeVerifyModal() {
+    setVerifyForm(emptyVerifyForm);
+    setTrainingAttachmentForm(emptyTrainingAttachmentForm);
   }
 
   return (
@@ -547,13 +683,71 @@ export function HrTrainingsClient() {
         open={Boolean(verifyForm.employeeTrainingId)}
         title="Confirmar conclusão do treinamento"
         description="Confirme presença/conclusão operacional e informe a validade quando houver. Esta ação atualiza o controle do colaborador; certificados e listas de presença devem estar no dossiê oficial do RH."
-        onClose={() => setVerifyForm(emptyVerifyForm)}
+        onClose={closeVerifyModal}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Status"><SelectField value={verifyForm.status} onChange={(e) => setVerifyForm((f) => ({ ...f, status: e.target.value }))}>{employeeStatuses.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</SelectField></Field>
             <Field label="Presença confirmada"><SelectField value={verifyForm.attendanceConfirmed} onChange={(e) => setVerifyForm((f) => ({ ...f, attendanceConfirmed: e.target.value }))}><option value="true">Sim</option><option value="false">Não</option></SelectField></Field>
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
-            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2 xl:col-span-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">Anexar certificado/lista de presença</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe aqui o certificado ou lista de presença. O arquivo também ficará no dossiê do colaborador.</p>
+                  {selectedTrainingAssignment?.requiresCertificate ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700">Este treinamento exige anexo para concluir.</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">Anexo opcional para este treinamento.</p>
+                  )}
+                </div>
+                {verifyForm.employeeId ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={employeeDocumentsHref(verifyForm.employeeId)}><ExternalLink className="h-4 w-4" />Ver no dossiê</a>
+                  </Button>
+                ) : null}
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-end">
+                <Field label="Tipo de anexo">
+                  <SelectField
+                    value={trainingAttachmentForm.documentRole}
+                    onChange={(event) => setTrainingAttachmentForm((current) => ({ ...current, documentRole: event.target.value as TrainingAttachmentForm["documentRole"], status: current.status === "error" ? "idle" : current.status, message: current.status === "error" ? "" : current.message }))}
+                    disabled={contextualUploadMutation.isPending || selectedTrainingAssignment?.hasCertificate}
+                  >
+                    <option value="training_certificate">Certificado</option>
+                    <option value="attendance_list">Lista de presença</option>
+                  </SelectField>
+                </Field>
+                <Field label="Arquivo">
+                  <Input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                    disabled={contextualUploadMutation.isPending || selectedTrainingAssignment?.hasCertificate}
+                    onChange={(event) => setTrainingAttachmentForm((current) => ({ ...current, file: event.target.files?.[0] ?? null, status: current.status === "error" ? "idle" : current.status, message: current.status === "error" ? "" : current.message }))}
+                  />
+                </Field>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={contextualUploadMutation.isPending || selectedTrainingAssignment?.hasCertificate || !selectedTrainingAssignment || !trainingDocumentType || !trainingAttachmentForm.file}
+                  onClick={() => {
+                    if (!selectedTrainingAssignment || !trainingDocumentType || !trainingAttachmentForm.file) return;
+                    setTrainingAttachmentForm((current) => ({ ...current, status: "uploading", message: "Enviando anexo..." }));
+                    contextualUploadMutation.mutate({ assignment: selectedTrainingAssignment, file: trainingAttachmentForm.file, documentRole: trainingAttachmentForm.documentRole, documentTypeId: trainingDocumentType.id });
+                  }}
+                >
+                  <Upload className="h-4 w-4" />Anexar
+                </Button>
+              </div>
+              {!trainingDocumentType && documentTypesQuery.isSuccess ? <p className="mt-2 text-xs font-medium text-destructive">Tipo documental de treinamento não encontrado.</p> : null}
+              {trainingAttachmentForm.status === "uploaded" || selectedTrainingAssignment?.hasCertificate ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="success" label="Certificado/lista anexado" /><span className="text-xs text-muted-foreground">Disponível também no dossiê do colaborador.</span></div>
+              ) : (
+                <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={selectedTrainingAssignment?.requiresCertificate ? "warning" : "visual"} label="Anexo pendente" /><span className="text-xs text-muted-foreground">{selectedTrainingAssignment?.requiresCertificate ? "Obrigatório para concluir." : "Opcional para este treinamento."}</span></div>
+              )}
+              {trainingAttachmentForm.status === "uploading" ? <p className="mt-2 text-xs text-muted-foreground">{trainingAttachmentForm.message}</p> : null}
+              {trainingAttachmentForm.status === "error" ? <p className="mt-2 text-xs font-medium text-destructive">{trainingAttachmentForm.message}</p> : null}
+            </div>
+            <div className="hidden rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium text-foreground">Certificado/lista no dossiê</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe certificado, lista de presença ou comprovante no dossiê oficial do RH, na aba Documentos do prontuário. Nesta tela registre apenas presença, conclusão e validade.</p>
               {verifyForm.employeeId ? (
@@ -571,7 +765,22 @@ export function HrTrainingsClient() {
             <Field label="Observação"><Input value={verifyForm.notes} onChange={(e) => setVerifyForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
           {verifyMutation.error ? <div className="mt-3"><ErrorMessage message={verifyMutation.error instanceof Error ? verifyMutation.error.message : "Erro ao validar."} /></div> : null}
-          <Button className="mt-4" size="sm" onClick={confirmTrainingVerification} disabled={verifyMutation.isPending}><FileCheck2 className="h-4 w-4" />Confirmar conclusão</Button>
+          <Button
+            className="mt-4"
+            size="sm"
+            onClick={confirmTrainingVerification}
+            disabled={
+              verifyMutation.isPending ||
+              contextualUploadMutation.isPending ||
+              (verifyForm.status === "completed" &&
+                Boolean(selectedTrainingAssignment?.requiresCertificate) &&
+                !selectedTrainingAssignment?.hasCertificate &&
+                trainingAttachmentForm.status !== "uploaded" &&
+                !trainingAttachmentForm.attachmentId)
+            }
+          >
+            <FileCheck2 className="h-4 w-4" />Confirmar conclusão
+          </Button>
       </HrOperationalModal>
 
       {(trainingsQuery.isLoading || assignmentsQuery.isLoading) ? <LoadingTable label="Carregando treinamentos..." /> : null}
