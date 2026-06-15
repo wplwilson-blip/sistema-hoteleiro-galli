@@ -68,13 +68,13 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
           <h3 className="text-base font-semibold">Treinamentos</h3>
           <StatusBadge status="info" label={`${trainings.length} registro(s)`} />
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Capacitações atribuídas, presença, certificados e validade. Certificados e listas de presença ficam na aba Documentos.</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Capacitações atribuídas, presença, certificados e validade. Certificados e listas de presença ficam no dossiê oficial do RH, na aba Documentos.</p>
       </div>
       <div className="p-5">
         {trainingsQuery.isLoading ? <LoadingTable label="Carregando treinamentos..." /> : null}
         {trainingsQuery.error ? <ErrorMessage message={trainingsQuery.error instanceof Error ? trainingsQuery.error.message : "Não foi possível carregar os treinamentos do colaborador. Tente atualizar a página."} /> : null}
         {!trainingsQuery.isLoading && trainingsQuery.data && !trainings.length ? (
-          <EmptyState title="Nenhum treinamento atribuído" description="Quando um treinamento for atribuído ao colaborador, ele aparecerá aqui com prazo, conclusão e certificado. O arquivo do certificado deve ficar em Documentos." />
+          <EmptyState title="Nenhum treinamento atribuído" description="Quando um treinamento for atribuído ao colaborador, ele aparecerá aqui com prazo, conclusão e certificado. O arquivo do certificado deve ficar no dossiê oficial do RH." />
         ) : null}
         {trainings.length ? (
           <div className="overflow-x-auto">
@@ -118,7 +118,7 @@ export function HrEmployeeTrainingsCard({ employeeId }: { employeeId: string }) 
         ) : null}
         <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Certificados e listas de presença devem ser anexados na aba Documentos do colaborador; esta aba mostra o controle de treinamento, prazo e validade.
+          Certificados e listas de presença devem ficar no dossiê oficial do RH, na aba Documentos; esta aba mostra o controle de treinamento, prazo e validade.
         </div>
       </div>
     </Card>

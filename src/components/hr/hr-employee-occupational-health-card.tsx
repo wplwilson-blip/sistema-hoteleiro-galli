@@ -118,7 +118,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
               <StatusBadge status="warning" label="Dados restritos" />
               {activeRestrictions ? <StatusBadge status="warning" label={`${activeRestrictions} restrição(ões)`} /> : null}
             </div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">ASOs, exames, restrições e certificações NR do colaborador. Arquivos e certificados ficam na aba Documentos.</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">ASOs, exames, restrições e certificações NR do colaborador. Arquivos e certificados ficam no dossiê oficial do RH, na aba Documentos.</p>
           </div>
           <StatusBadge status="info" label={`${records.length + nrs.length} registro(s)`} />
         </div>
@@ -216,7 +216,7 @@ export function HrEmployeeOccupationalHealthCard({ employeeId }: { employeeId: s
 
         <div className="flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Dados ocupacionais são tratados como restritos. Conteúdos clínicos detalhados, laudos e diagnósticos não são exibidos nem enviados para a Vida Funcional. ASOs, exames e certificados NR devem ser anexados na aba Documentos.
+          Dados ocupacionais são tratados como restritos. Conteúdos clínicos detalhados, laudos e diagnósticos não são exibidos nem enviados para a Vida Funcional. ASOs, exames e certificados NR devem ficar no dossiê oficial do RH, na aba Documentos.
         </div>
       </div>
     </Card>

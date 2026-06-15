@@ -72,7 +72,7 @@ export function HrEmployeeTerminationsCard({ employeeId }: { employeeId: string 
           <StatusBadge status="info" label={`${records.length} processo(s)`} />
           {openPendencies ? <StatusBadge status="warning" label={`${openPendencies} pendência(s)`} /> : null}
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Histórico de desligamentos, status, checklist, motivo e data efetiva. Documentos de saída ficam na aba Documentos.</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Histórico de desligamentos, status, checklist, motivo e data efetiva. Documentos de saída ficam no dossiê oficial do RH, na aba Documentos.</p>
       </div>
       <div className="p-5">
         {terminationsQuery.isLoading ? <LoadingTable label="Carregando desligamentos..." /> : null}
@@ -88,7 +88,7 @@ export function HrEmployeeTerminationsCard({ employeeId }: { employeeId: string 
         ) : null}
         <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Dados de desligamento são sempre restritos e aparecem redigidos conforme permissão do usuário. Documentos de saída devem ser consultados na aba Documentos.
+          Dados de desligamento são sempre restritos e aparecem redigidos conforme permissão do usuário. Documentos de saída devem ser consultados no dossiê oficial do RH, na aba Documentos.
         </div>
       </div>
     </Card>

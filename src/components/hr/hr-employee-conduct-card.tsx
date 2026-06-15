@@ -75,7 +75,7 @@ export function HrEmployeeConductCard({ employeeId }: { employeeId: string }) {
           <StatusBadge status="warning" label="Dados restritos" />
           <StatusBadge status="info" label={`${records.length} registro(s)`} />
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Advertências, suspensões, reclamações, elogios, orientações e conversas formais. Evidências ficam na aba Documentos.</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Advertências, suspensões, reclamações, elogios, orientações e conversas formais. Evidências ficam no dossiê oficial do RH, na aba Documentos.</p>
       </div>
       <div className="p-5">
         {conductQuery.isLoading ? <LoadingTable label="Carregando conduta..." /> : null}
@@ -91,7 +91,7 @@ export function HrEmployeeConductCard({ employeeId }: { employeeId: string }) {
         ) : null}
         <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
           <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Registros sensíveis são redigidos conforme permissão do usuário. Evidências devem ser consultadas na aba Documentos do colaborador.
+          Registros sensíveis são redigidos conforme permissão do usuário. Evidências devem ser consultadas no dossiê oficial do RH, na aba Documentos.
         </div>
       </div>
     </Card>

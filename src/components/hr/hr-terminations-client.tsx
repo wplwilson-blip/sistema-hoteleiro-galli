@@ -127,7 +127,7 @@ function nextActionLabel(record: TerminationRecord) {
 
 function terminationActionMessage(record: TerminationRecord, action: "submit" | "approve" | "implement" | "cancel") {
   if (action === "submit") {
-    return `Enviar este desligamento para revisão?\n\nConfira motivo, data efetiva, checklist e documentos de saída antes de continuar.`;
+    return `Enviar este desligamento para revisão?\n\nConfira motivo, data efetiva, checklist e use Anexar documentos de saída no dossiê antes de continuar.`;
   }
 
   if (action === "approve") {
@@ -135,7 +135,7 @@ function terminationActionMessage(record: TerminationRecord, action: "submit" | 
   }
 
   if (action === "implement") {
-    return `Efetivar desligamento?\n\nEsta ação registra o encerramento no prontuário e na Vida Funcional do colaborador.\n\nConfira checklist e documentos de saída antes de continuar.`;
+    return `Efetivar desligamento?\n\nEsta ação registra o encerramento no prontuário e na Vida Funcional do colaborador.\n\nConfira checklist e documentos de saída no dossiê antes de continuar.`;
   }
 
   if (action === "cancel") {
@@ -248,7 +248,7 @@ export function HrTerminationsClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><LogOut className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Desligamentos</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Crie o desligamento, conclua o checklist, anexe documentos de saída em Documentos do colaborador e efetive somente após aprovação.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Crie o desligamento, conclua o checklist, use Anexar documentos de saída no dossiê e efetive somente após aprovação.</p>
           </div>
           <Button size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo desligamento</Button>
         </div>
@@ -277,7 +277,7 @@ export function HrTerminationsClient() {
       <HrOperationalModal
         open={showForm}
         title={form.id ? "Editar desligamento" : "Novo desligamento"}
-        description={form.id ? "Atualize o rascunho do desligamento sem alterar o fluxo de aprovação. Documentos de saída continuam na aba Documentos do colaborador." : "O desligamento nasce como rascunho. Depois, envie para revisão e efetive somente após aprovação e conferência administrativa."}
+        description={form.id ? "Atualize o rascunho do desligamento sem alterar o fluxo de aprovação. Documentos de saída continuam no dossiê oficial do RH, na aba Documentos." : "O desligamento nasce como rascunho. Depois, envie para revisão e efetive somente após aprovação e conferência administrativa."}
         onClose={() => setShowForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -292,14 +292,14 @@ export function HrTerminationsClient() {
             <Field label="Observação"><TextArea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2">
               <p className="font-medium text-foreground">Documentos de saída</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Documentos de saída, devolução de uniforme, crachá, chaves ou checklist assinado devem ser anexados na aba Documentos do colaborador. Esta tela controla o processo e as pendências administrativas.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe documentos de saída, devolução de uniforme, crachá, chaves ou checklist assinado no dossiê oficial do RH, na aba Documentos do prontuário. Esta tela controla o processo e as pendências administrativas.</p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">Confira o processo com Andreia antes de aprovar ou efetivar. Esta tela controla apenas checklist, aprovação e registro administrativo.</p>
               {form.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
-                  <a href={employeeDocumentsHref(form.employeeId)}>Abrir Documentos do colaborador</a>
+                  <a href={employeeDocumentsHref(form.employeeId)}>Anexar documentos de saída no dossiê</a>
                 </Button>
               ) : (
-                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir o dossiê com a aba Documentos.</p>
               )}
             </div>
           </div>

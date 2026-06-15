@@ -372,14 +372,14 @@ export function HrTrainingsClient() {
 
   function confirmProcessExpirations() {
     const confirmed = window.confirm(
-      "Atualizar vencimentos de treinamentos?\n\nO sistema vai recalcular treinamentos vencidos, a vencer e reciclagens necessárias.\n\nEsta ação não cria certificados nem anexa arquivos; certificados e listas de presença continuam em Documentos do colaborador."
+      "Atualizar vencimentos de treinamentos?\n\nO sistema vai recalcular treinamentos vencidos, a vencer e reciclagens necessárias.\n\nEsta ação não cria certificados nem anexa arquivos; certificados e listas de presença continuam no dossiê oficial do RH."
     );
     if (confirmed) processMutation.mutate();
   }
 
   function confirmTrainingVerification() {
     const confirmed = window.confirm(
-      "Confirmar conclusão deste treinamento?\n\nEsta ação registra presença/conclusão operacional e atualiza validade quando informada.\n\nConfira antes se certificado, lista de presença ou comprovante estão em Documentos do colaborador, quando exigido."
+      "Confirmar conclusão deste treinamento?\n\nEsta ação registra presença/conclusão operacional e atualiza validade quando informada.\n\nConfira antes se certificado, lista de presença ou comprovante estão no dossiê oficial do RH, quando exigido."
     );
     if (confirmed) verifyMutation.mutate(verifyForm);
   }
@@ -394,7 +394,7 @@ export function HrTrainingsClient() {
               <h2 className="text-sm font-semibold">Gestão de treinamentos</h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use o catálogo para cadastrar treinamentos disponíveis. Use atribuições para acompanhar o que cada colaborador precisa concluir, validar presença e controlar vencimentos.
+              Use o catálogo para cadastrar treinamentos disponíveis. Use atribuições para acompanhar conclusão e validade. Use Anexar certificado/lista no dossiê para guardar o arquivo no dossiê oficial do RH.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -429,7 +429,7 @@ export function HrTrainingsClient() {
             <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div>
               <p className="text-sm font-semibold">Certificados e presença</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado e lista de presença ficam em Documentos do colaborador. Aqui o RH confirma conclusão e validade.</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado e lista de presença ficam no dossiê oficial do RH. Aqui o RH confirma conclusão e validade.</p>
             </div>
           </div>
         </Card>
@@ -537,7 +537,7 @@ export function HrTrainingsClient() {
             <Field label="Observações"><Input value={assignForm.notes} onChange={(e) => setAssignForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
           </div>
           <div className="mt-3 rounded-md border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-            A validade do treinamento ou certificado deve ser informada somente ao confirmar a conclusão. Certificado e lista de presença ficam em Documentos do colaborador.
+            A validade do treinamento ou certificado deve ser informada somente ao confirmar a conclusão. Certificado e lista de presença ficam no dossiê oficial do RH.
           </div>
           {assignMutation.error ? <div className="mt-3"><ErrorMessage message={assignMutation.error instanceof Error ? assignMutation.error.message : "Não foi possível atribuir o treinamento. Confira colaborador, treinamento e prazo para conclusão."} /></div> : null}
           <Button className="mt-4" size="sm" onClick={() => assignMutation.mutate(assignForm)} disabled={assignMutation.isPending}><Save className="h-4 w-4" />Atribuir a colaborador</Button>
@@ -546,7 +546,7 @@ export function HrTrainingsClient() {
       <HrOperationalModal
         open={Boolean(verifyForm.employeeTrainingId)}
         title="Confirmar conclusão do treinamento"
-        description="Confirme presença/conclusão operacional e informe a validade quando houver. Esta ação atualiza o controle do colaborador; certificados e listas de presença devem estar em Documentos do colaborador."
+        description="Confirme presença/conclusão operacional e informe a validade quando houver. Esta ação atualiza o controle do colaborador; certificados e listas de presença devem estar no dossiê oficial do RH."
         onClose={() => setVerifyForm(emptyVerifyForm)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -554,14 +554,14 @@ export function HrTrainingsClient() {
             <Field label="Presença confirmada"><SelectField value={verifyForm.attendanceConfirmed} onChange={(e) => setVerifyForm((f) => ({ ...f, attendanceConfirmed: e.target.value }))}><option value="true">Sim</option><option value="false">Não</option></SelectField></Field>
             <Field label="Data de conclusão"><Input type="date" value={verifyForm.completedAt} onChange={(e) => setVerifyForm((f) => ({ ...f, completedAt: e.target.value }))} /></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">Certificado e lista de presença</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Certificado, lista de presença ou comprovante devem ser anexados na aba Documentos do colaborador. Nesta tela registre apenas presença, conclusão e validade.</p>
+              <p className="font-medium text-foreground">Certificado/lista no dossiê</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe certificado, lista de presença ou comprovante no dossiê oficial do RH, na aba Documentos do prontuário. Nesta tela registre apenas presença, conclusão e validade.</p>
               {verifyForm.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
-                  <a href={employeeDocumentsHref(verifyForm.employeeId)}>Abrir Documentos do colaborador</a>
+                  <a href={employeeDocumentsHref(verifyForm.employeeId)}>Anexar certificado/lista no dossiê</a>
                 </Button>
               ) : (
-                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir o dossiê com a aba Documentos.</p>
               )}
             </div>
             <Field label="Validade do treinamento/certificado">

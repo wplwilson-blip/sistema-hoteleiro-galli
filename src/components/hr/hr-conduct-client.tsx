@@ -137,7 +137,7 @@ function conductTypeLabel(value: string) {
 
 function conductActionMessage(record: ConductRecord, action: "submit" | "approve" | "reject" | "cancel") {
   if (action === "submit") {
-    return `Enviar esta ocorrência para revisão?\n\nEla ficará aguardando análise do responsável. Confira se as evidências estão em Documentos do colaborador antes de continuar.`;
+    return `Enviar esta ocorrência para revisão?\n\nEla ficará aguardando análise do responsável. Confira se as evidências foram incluídas pelo atalho Anexar evidência no dossiê antes de continuar.`;
   }
 
   if (action === "approve") {
@@ -225,7 +225,7 @@ export function HrConductClient() {
   function saveConductRecord() {
     if (!form.id && sensitiveConductTypes.has(form.conductType)) {
       const confirmed = window.confirm(
-        `Salvar ${conductTypeLabel(form.conductType).toLowerCase()} como rascunho?\n\nEste registro é sensível. Anexe evidências em Documentos do colaborador e confira com Andreia antes da aprovação.`
+        `Salvar ${conductTypeLabel(form.conductType).toLowerCase()} como rascunho?\n\nEste registro é sensível. Use Anexar evidência no dossiê e confira com Andreia antes da aprovação.`
       );
       if (!confirmed) return;
     }
@@ -260,7 +260,7 @@ export function HrConductClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Conduta e Ocorrências</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Registre ocorrências como rascunho, anexe evidências em Documentos do colaborador e envie para revisão antes de entrar na Vida Funcional.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ocorrências como rascunho, use Anexar evidência no dossiê e envie para revisão antes de entrar na Vida Funcional.</p>
           </div>
           <Button size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
         </div>
@@ -289,7 +289,7 @@ export function HrConductClient() {
       <HrOperationalModal
         open={showForm}
         title={form.id ? "Editar registro de conduta" : "Novo registro de conduta"}
-        description={form.id ? "Atualize o registro sem mudar o fluxo de revisão. Evidências continuam na aba Documentos do colaborador." : "O registro nasce como rascunho. Anexe evidências em Documentos do colaborador e envie para revisão quando estiver pronto."}
+        description={form.id ? "Atualize o registro sem mudar o fluxo de revisão. Evidências continuam no dossiê oficial do RH, na aba Documentos." : "O registro nasce como rascunho. Use Anexar evidência no dossiê e envie para revisão quando estiver pronto."}
         onClose={() => setShowForm(false)}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -303,15 +303,15 @@ export function HrConductClient() {
             <Field label="Severidade"><SelectField value={form.severity} onChange={(event) => setForm((current) => ({ ...current, severity: event.target.value }))}><option value="">Padrao do tipo</option>{severities.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></Field>
             <Field label="Visibilidade"><SelectField value={form.isSensitive} onChange={(event) => setForm((current) => ({ ...current, isSensitive: event.target.value }))}><option value="true">Restrito</option><option value="false">Operacional</option></SelectField></Field>
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">Evidências</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">As evidências devem ser anexadas na aba Documentos do colaborador. Aqui registre apenas o resumo da ocorrência e a ação tomada.</p>
+              <p className="font-medium text-foreground">Evidência no dossiê</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe a evidência no dossiê oficial do RH, na aba Documentos do prontuário. Aqui registre apenas o resumo da ocorrência e a ação tomada.</p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">Advertências, suspensões, reclamações e conversas formais devem ser conferidas com Andreia antes da aprovação.</p>
               {form.employeeId ? (
                 <Button asChild className="mt-3" variant="outline" size="sm">
-                  <a href={employeeDocumentsHref(form.employeeId)}>Abrir Documentos do colaborador</a>
+                  <a href={employeeDocumentsHref(form.employeeId)}>Anexar evidência no dossiê</a>
                 </Button>
               ) : (
-                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir a aba Documentos.</p>
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir o dossiê com a aba Documentos.</p>
               )}
             </div>
             <Field label="Título"><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field>

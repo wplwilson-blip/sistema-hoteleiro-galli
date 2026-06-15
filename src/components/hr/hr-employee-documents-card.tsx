@@ -327,11 +327,11 @@ export function HrEmployeeDocumentsCard({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <FileCheck2 className="h-4 w-4 text-primary" />
-              <h3 className="text-base font-semibold">Dossiê documental</h3>
+              <h3 className="text-base font-semibold">Dossiê oficial do RH</h3>
               <StatusBadge status={canViewSensitiveDocuments ? "info" : "visual"} label={canViewSensitiveDocuments ? "Arquivos liberados" : "Arquivos protegidos"} />
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Área oficial para documentos obrigatórios, evidências de conduta, ASO, exames, restrições, certificados NR, certificados/listas de presença e documentos de saída. Arquivos ficam em armazenamento privado e não expõem caminho técnico.
+              Este é o dossiê oficial do RH para documentos obrigatórios, evidências de conduta, ASO, exames, restrições, certificados NR, certificados/listas de presença e documentos de saída. Arquivos ficam em armazenamento privado e não expõem caminho técnico.
             </p>
           </div>
           {canManageDocuments ? (
@@ -363,7 +363,7 @@ export function HrEmployeeDocumentsCard({
 
         {documents.length ? (
           <div className="rounded-md border bg-muted/25 px-3 py-2 text-xs leading-5 text-muted-foreground">
-            <span className="font-medium text-foreground">Leitura rápida:</span> obrigatório precisa ser resolvido; condicional deve ser conferido e dispensado se não se aplicar; operacional é controle interno do hotel. Use também para evidências, certificados, ASO, NR, listas de presença e documentos de saída.
+            <span className="font-medium text-foreground">Leitura rápida:</span> obrigatório precisa ser resolvido; condicional deve ser conferido e dispensado se não se aplicar; operacional é controle interno do hotel. Este dossiê também guarda evidências, certificados, ASO, NR, listas de presença e documentos de saída.
           </div>
         ) : null}
 
