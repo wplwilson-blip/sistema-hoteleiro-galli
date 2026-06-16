@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Filter, LogOut, Plus, Save } from "lucide-react";
+import { ClipboardList, ExternalLink, Filter, LogOut, Plus, Save, Upload } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
@@ -44,8 +44,23 @@ type TerminationRecord = {
 type EmployeeOption = { id: string; fullName: string; preferredName: string };
 type UnitOption = { id: string; code: string; name: string };
 type TerminationsResponse = { ok: true; data: TerminationRecord[] };
+type TerminationMutationResponse = { ok: true; data: TerminationRecord };
 type EmployeesResponse = { ok: true; data: EmployeeOption[] };
 type UnitsResponse = { ok: true; units: UnitOption[] };
+type DocumentTypeOption = { id: string; code: string; name: string; category: string };
+type DocumentTypesResponse = { ok: true; data: DocumentTypeOption[] };
+type DocumentTypeSelection = { documentType: DocumentTypeOption | null; isFallback: boolean };
+type DocumentLinksResponse = {
+  ok: true;
+  data: Array<{
+    id: string;
+    sourceEntityId: string;
+    documentRole: string;
+    requirementStatus: string;
+    attachment: { id: string; fileName: string } | null;
+    document: { id: string } | null;
+  }>;
+};
 
 type TerminationForm = {
   id: string;
@@ -55,6 +70,15 @@ type TerminationForm = {
   terminationReason: string;
   effectiveDate: string;
   notes: string;
+};
+
+type TerminationAttachmentForm = {
+  file: File | null;
+  status: "idle" | "uploading" | "uploaded" | "error";
+  message: string;
+  attachmentId: string;
+  documentId: string;
+  linkId: string;
 };
 
 const terminationTypes = [
@@ -83,12 +107,44 @@ const emptyForm: TerminationForm = {
   effectiveDate: "",
   notes: ""
 };
+const emptyTerminationAttachmentForm: TerminationAttachmentForm = { file: null, status: "idle", message: "", attachmentId: "", documentId: "", linkId: "" };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível processar desligamento.");
   return payload as T;
+}
+
+async function uploadTerminationDocument(input: { record: Pick<TerminationRecord, "id" | "employeeId" | "terminationTypeLabel">; documentTypeId: string; file: File }) {
+  const formData = new FormData();
+  formData.set("employeeId", input.record.employeeId);
+  formData.set("documentTypeId", input.documentTypeId);
+  formData.set("sourceEntityType", "termination");
+  formData.set("sourceEntityId", input.record.id);
+  formData.set("documentRole", "termination_document");
+  formData.set("sourceContextLabel", `Documento de saida - ${input.record.terminationTypeLabel}`);
+  formData.set("notes", "Documento administrativo enviado pelo fluxo de Desligamentos.");
+  formData.set("isRequired", "false");
+  formData.set("isSensitive", "true");
+  formData.set("visibilityScope", "restricted");
+  formData.set("file", input.file);
+
+  const response = await fetch("/api/hr/contextual-documents", {
+    method: "POST",
+    body: formData,
+    headers: { Accept: "application/json" }
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel anexar documento de saida.");
+  return payload as {
+    ok: true;
+    data: {
+      document: { id: string };
+      attachment: { id: string; fileName: string };
+      link: { id: string };
+    };
+  };
 }
 
 function buildUrl(path: string, filters: Record<string, string>) {
@@ -100,6 +156,33 @@ function buildUrl(path: string, filters: Record<string, string>) {
 
 function employeeDocumentsHref(employeeId: string) {
   return `/rh/employees/${employeeId}?tab=documents`;
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function selectTerminationDocumentType(documentTypes: DocumentTypeOption[]): DocumentTypeSelection {
+  const preferred = documentTypes.find((item) => item.code === "DOCUMENTO_DESLIGAMENTO");
+  if (preferred) return { documentType: preferred, isFallback: false };
+
+  const semantic = documentTypes.find((item) => {
+    const text = normalizeSearch(`${item.code} ${item.name} ${item.category}`);
+    return text.includes("desligamento") || text.includes("saida") || text.includes("termination");
+  });
+  if (semantic) return { documentType: semantic, isFallback: false };
+
+  const fallback =
+    documentTypes.find((item) => item.category === "termination") ??
+    documentTypes.find((item) => item.category === "internal") ??
+    documentTypes.find((item) => item.category === "other") ??
+    documentTypes[0] ??
+    null;
+  return { documentType: fallback, isFallback: Boolean(fallback) };
+}
+
+function terminationTypeLabel(value: string) {
+  return terminationTypes.find(([type]) => type === value)?.[1] ?? "Desligamento";
 }
 
 function formatDate(value: string | null | undefined) {
@@ -127,7 +210,7 @@ function nextActionLabel(record: TerminationRecord) {
 
 function terminationActionMessage(record: TerminationRecord, action: "submit" | "approve" | "implement" | "cancel") {
   if (action === "submit") {
-    return `Enviar este desligamento para revisão?\n\nConfira motivo, data efetiva, checklist e use Anexar documentos de saída no dossiê antes de continuar.`;
+    return `Enviar este desligamento para revisão?\n\nConfira motivo, data efetiva, checklist e o documento de saída anexado no próprio processo antes de continuar.`;
   }
 
   if (action === "approve") {
@@ -135,7 +218,7 @@ function terminationActionMessage(record: TerminationRecord, action: "submit" | 
   }
 
   if (action === "implement") {
-    return `Efetivar desligamento?\n\nEsta ação registra o encerramento no prontuário e na Vida Funcional do colaborador.\n\nConfira checklist e documentos de saída no dossiê antes de continuar.`;
+    return `Efetivar desligamento?\n\nEsta ação registra o encerramento no prontuário e na Vida Funcional do colaborador.\n\nConfira o checklist obrigatório antes de continuar. O documento de saída é opcional nesta etapa.`;
   }
 
   if (action === "cancel") {
@@ -160,6 +243,7 @@ export function HrTerminationsClient() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ unitId: "", employeeId: "", terminationType: "", status: "", search: "" });
   const [form, setForm] = useState<TerminationForm>(emptyForm);
+  const [terminationAttachmentForm, setTerminationAttachmentForm] = useState<TerminationAttachmentForm>(emptyTerminationAttachmentForm);
   const [checklistName, setChecklistName] = useState("");
   const [showForm, setShowForm] = useState(false);
 
@@ -169,8 +253,50 @@ export function HrTerminationsClient() {
   });
   const employeesQuery = useQuery({ queryKey: ["hr", "employees", "termination-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const unitsQuery = useQuery({ queryKey: ["base", "units", "termination-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
+  const documentTypesQuery = useQuery({
+    queryKey: ["hr", "document-types", "termination", "active"],
+    queryFn: async () => requestJson<DocumentTypesResponse>("/api/hr/document-types?status=active")
+  });
 
   const records = useMemo(() => terminationsQuery.data?.data ?? [], [terminationsQuery.data?.data]);
+  const selectedTermination = useMemo(
+    () =>
+      records.find((item) => item.id === form.id) ??
+      (form.id
+        ? ({
+            id: form.id,
+            unit: null,
+            employeeId: form.employeeId,
+            employeeName: "",
+            status: form.status,
+            statusLabel: statuses.find(([value]) => value === form.status)?.[1] ?? form.status,
+            terminationType: form.terminationType,
+            terminationTypeLabel: terminationTypeLabel(form.terminationType),
+            terminationReason: form.terminationReason,
+            requestedAt: "",
+            effectiveDate: form.effectiveDate,
+            notes: form.notes,
+            checklist: [],
+            pendingCount: 0,
+            checklistCount: 0,
+            checklistCompletedCount: 0,
+            isSensitive: true,
+            redacted: false
+          } as TerminationRecord)
+        : null),
+    [form.effectiveDate, form.employeeId, form.id, form.notes, form.status, form.terminationReason, form.terminationType, records]
+  );
+  const terminationDocumentTypeSelection = useMemo(() => selectTerminationDocumentType(documentTypesQuery.data?.data ?? []), [documentTypesQuery.data?.data]);
+  const terminationDocumentLinksQuery = useQuery({
+    queryKey: ["hr", "employees", form.employeeId, "document-links", "termination", form.id],
+    enabled: Boolean(showForm && form.id && form.employeeId),
+    queryFn: async () => requestJson<DocumentLinksResponse>(`/api/hr/employees/${form.employeeId}/document-links?source=termination&documentRole=termination_document&includeSensitive=true`)
+  });
+  const selectedTerminationDocumentLink = useMemo(
+    () => (terminationDocumentLinksQuery.data?.data ?? []).find((link) => link.sourceEntityId === form.id && link.documentRole === "termination_document") ?? null,
+    [form.id, terminationDocumentLinksQuery.data?.data]
+  );
+  const hasTerminationDocument = Boolean(selectedTerminationDocumentLink?.attachment?.id || terminationAttachmentForm.attachmentId);
   const summary = useMemo(
     () => ({
       ongoing: records.filter((item) => ["draft", "pending_review", "approved"].includes(item.status)).length,
@@ -185,14 +311,27 @@ export function HrTerminationsClient() {
 
   const saveMutation = useMutation({
     mutationFn: async (current: TerminationForm) =>
-      requestJson(current.id ? `/api/hr/terminations/${current.id}` : "/api/hr/terminations", {
+      requestJson<TerminationMutationResponse>(current.id ? `/api/hr/terminations/${current.id}` : "/api/hr/terminations", {
         method: current.id ? "PATCH" : "POST",
         body: JSON.stringify(payload(current))
       }),
-    onSuccess: async () => {
-      setShowForm(false);
-      setForm(emptyForm);
+    onSuccess: async (result, submittedForm) => {
+      const savedRecord = result.data;
+      setForm({
+        id: savedRecord.id,
+        employeeId: savedRecord.employeeId,
+        terminationType: savedRecord.terminationType,
+        status: savedRecord.status,
+        terminationReason: savedRecord.redacted ? "" : savedRecord.terminationReason,
+        effectiveDate: savedRecord.effectiveDate,
+        notes: savedRecord.redacted ? "" : savedRecord.notes
+      });
       await queryClient.invalidateQueries({ queryKey: ["hr", "terminations"] });
+      if (submittedForm.id) {
+        setShowForm(false);
+        setForm(emptyForm);
+        setTerminationAttachmentForm(emptyTerminationAttachmentForm);
+      }
     }
   });
 
@@ -224,6 +363,37 @@ export function HrTerminationsClient() {
     }
   });
 
+  const terminationUploadMutation = useMutation({
+    mutationFn: async (input: { record: TerminationRecord; file: File; documentTypeId: string }) =>
+      uploadTerminationDocument({
+        record: input.record,
+        documentTypeId: input.documentTypeId,
+        file: input.file
+      }),
+    onSuccess: async (payload) => {
+      setTerminationAttachmentForm((current) => ({
+        ...current,
+        status: "uploaded",
+        message: "Documento anexado",
+        attachmentId: payload.data.attachment.id,
+        documentId: payload.data.document.id,
+        linkId: payload.data.link.id,
+        file: null
+      }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["hr", "terminations"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "employees"] })
+      ]);
+    },
+    onError: (error) => {
+      setTerminationAttachmentForm((current) => ({
+        ...current,
+        status: "error",
+        message: error instanceof Error ? error.message : "Erro no upload do documento de saída."
+      }));
+    }
+  });
+
   function edit(record: TerminationRecord) {
     setForm({
       id: record.id,
@@ -234,6 +404,7 @@ export function HrTerminationsClient() {
       effectiveDate: record.effectiveDate,
       notes: record.redacted ? "" : record.notes
     });
+    setTerminationAttachmentForm(emptyTerminationAttachmentForm);
     setShowForm(true);
   }
 
@@ -248,9 +419,9 @@ export function HrTerminationsClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><LogOut className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Desligamentos</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Crie o desligamento, conclua o checklist, use Anexar documentos de saída no dossiê e efetive somente após aprovação.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Crie o desligamento, conclua o checklist, anexe o documento de saída no próprio processo e efetive somente após aprovação.</p>
           </div>
-          <Button size="sm" onClick={() => { setForm(emptyForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo desligamento</Button>
+          <Button size="sm" onClick={() => { setForm(emptyForm); setTerminationAttachmentForm(emptyTerminationAttachmentForm); setShowForm(true); }}><Plus className="h-4 w-4" />Novo desligamento</Button>
         </div>
       </Card>
 
@@ -277,8 +448,12 @@ export function HrTerminationsClient() {
       <HrOperationalModal
         open={showForm}
         title={form.id ? "Editar desligamento" : "Novo desligamento"}
-        description={form.id ? "Atualize o rascunho do desligamento sem alterar o fluxo de aprovação. Documentos de saída continuam no dossiê oficial do RH, na aba Documentos." : "O desligamento nasce como rascunho. Depois, envie para revisão e efetive somente após aprovação e conferência administrativa."}
-        onClose={() => setShowForm(false)}
+        description={form.id ? "Atualize o rascunho e anexe o documento administrativo de saída sem alterar o fluxo de aprovação." : "O desligamento nasce como rascunho. Salve para liberar o anexo contextual de saída."}
+        onClose={() => {
+          setShowForm(false);
+          setForm(emptyForm);
+          setTerminationAttachmentForm(emptyTerminationAttachmentForm);
+        }}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
@@ -290,16 +465,71 @@ export function HrTerminationsClient() {
             </div>
             <Field label="Motivo"><TextArea value={form.terminationReason} onChange={(event) => setForm((current) => ({ ...current, terminationReason: event.target.value }))} /></Field>
             <Field label="Observação"><TextArea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field>
-            <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2">
-              <p className="font-medium text-foreground">Documentos de saída</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe documentos de saída, devolução de uniforme, crachá, chaves ou checklist assinado no dossiê oficial do RH, na aba Documentos do prontuário. Esta tela controla o processo e as pendências administrativas.</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">Confira o processo com Andreia antes de aprovar ou efetivar. Esta tela controla apenas checklist, aprovação e registro administrativo.</p>
-              {form.employeeId ? (
-                <Button asChild className="mt-3" variant="outline" size="sm">
-                  <a href={employeeDocumentsHref(form.employeeId)}>Anexar documentos de saída no dossiê</a>
-                </Button>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2 xl:col-span-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">Anexar documento de saída</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe aqui o documento administrativo de saída. O arquivo também ficará no dossiê do colaborador.</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Nesta etapa, o documento não substitui o checklist e não envolve folha, rescisão, eSocial ou cálculos.</p>
+                </div>
+                {form.employeeId ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={employeeDocumentsHref(form.employeeId)}><ExternalLink className="h-4 w-4" />Ver no dossiê</a>
+                  </Button>
+                ) : null}
+              </div>
+              {form.id && selectedTermination ? (
+                <>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <Field label="Arquivo">
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                        disabled={terminationUploadMutation.isPending || hasTerminationDocument || !["draft", "pending_review", "approved"].includes(form.status)}
+                        onChange={(event) => setTerminationAttachmentForm((current) => ({
+                          ...current,
+                          file: event.target.files?.[0] ?? null,
+                          status: current.status === "error" ? "idle" : current.status,
+                          message: current.status === "error" ? "" : current.message,
+                        }))}
+                      />
+                    </Field>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={
+                        terminationUploadMutation.isPending ||
+                        hasTerminationDocument ||
+                        !terminationAttachmentForm.file ||
+                        !terminationDocumentTypeSelection.documentType ||
+                        !["draft", "pending_review", "approved"].includes(form.status)
+                      }
+                      onClick={() => {
+                        if (!selectedTermination || !terminationAttachmentForm.file || !terminationDocumentTypeSelection.documentType) return;
+                        setTerminationAttachmentForm((current) => ({ ...current, status: "uploading", message: "Enviando documento..." }));
+                        terminationUploadMutation.mutate({
+                          record: selectedTermination,
+                          file: terminationAttachmentForm.file,
+                          documentTypeId: terminationDocumentTypeSelection.documentType.id,
+                        });
+                      }}
+                    >
+                      <Upload className="h-4 w-4" />Anexar
+                    </Button>
+                  </div>
+                  {!terminationDocumentTypeSelection.documentType && documentTypesQuery.isSuccess ? <p className="mt-2 text-xs font-medium text-destructive">Tipo documental ativo compatível com desligamento não encontrado.</p> : null}
+                  {terminationDocumentTypeSelection.isFallback ? <p className="mt-2 text-xs text-muted-foreground">Até existir um tipo documental mais específico, este vínculo será identificado no dossiê pelo filtro Desligamento e pelo papel Documento de saída.</p> : null}
+                  {hasTerminationDocument ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="success" label="Documento anexado" /><span className="text-xs text-muted-foreground">Disponível também no dossiê do colaborador.</span></div>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="visual" label="Documento pendente" /><span className="text-xs text-muted-foreground">Opcional nesta etapa; a efetivação continua bloqueada apenas por checklist obrigatório pendente.</span></div>
+                  )}
+                  {terminationAttachmentForm.status === "uploading" ? <p className="mt-2 text-xs text-muted-foreground">{terminationAttachmentForm.message}</p> : null}
+                  {terminationAttachmentForm.status === "error" ? <p className="mt-2 text-xs font-medium text-destructive">{terminationAttachmentForm.message}</p> : null}
+                  {form.status === "implemented" || form.status === "cancelled" ? <p className="mt-2 text-xs text-muted-foreground">Processos efetivados ou cancelados permanecem disponíveis para consulta, sem novo upload nesta tela.</p> : null}
+                </>
               ) : (
-                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir o dossiê com a aba Documentos.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="warning" label="Documento pendente" /><span className="text-xs text-muted-foreground">Salve o desligamento para liberar o upload contextual.</span></div>
               )}
             </div>
           </div>
