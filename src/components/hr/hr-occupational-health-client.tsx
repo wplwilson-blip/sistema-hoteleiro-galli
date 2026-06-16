@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BarChart3, Download, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert } from "lucide-react";
+import { Activity, BarChart3, Download, ExternalLink, FileCheck2, Filter, HeartPulse, Plus, RefreshCw, Save, ShieldAlert, Upload } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
@@ -24,6 +24,7 @@ type OccupationalRecord = {
   expiresAt: string;
   providerName: string;
   doctorName: string;
+  attachmentId: string;
   hasAttachment: boolean;
   restrictionNotes: string;
   redacted: boolean;
@@ -44,6 +45,7 @@ type NrCertification = {
   expiresAt: string;
   status: string;
   statusLabel: string;
+  certificateAttachmentId: string;
   hasCertificate: boolean;
   redacted: boolean;
   expiration?: {
@@ -56,8 +58,14 @@ type EmployeeOption = { id: string; fullName: string; preferredName: string };
 type UnitOption = { id: string; code: string; name: string };
 type RecordsResponse = { ok: true; data: OccupationalRecord[] };
 type NrResponse = { ok: true; data: NrCertification[] };
+type RecordMutationResponse = { ok: true; data: OccupationalRecord };
+type NrMutationResponse = { ok: true; data: NrCertification };
 type EmployeesResponse = { ok: true; data: EmployeeOption[] };
 type UnitsResponse = { ok: true; units: UnitOption[] };
+type DocumentTypeOption = { id: string; code: string; name: string; category: string };
+type DocumentTypesResponse = { ok: true; data: DocumentTypeOption[] };
+type OccupationalDocumentRole = "aso" | "exam" | "restriction";
+type DocumentTypeSelection = { documentType: DocumentTypeOption | null; isFallback: boolean };
 type ProcessExpirationsResponse = {
   ok: true;
   data: {
@@ -91,6 +99,15 @@ type NrForm = {
   issuedAt: string;
   expiresAt: string;
   status: string;
+};
+
+type ContextualAttachmentForm = {
+  file: File | null;
+  status: "idle" | "uploading" | "uploaded" | "error";
+  message: string;
+  attachmentId: string;
+  documentId: string;
+  linkId: string;
 };
 
 type OccupationalReportRow = {
@@ -134,12 +151,81 @@ const quickFilters = [
 ];
 const emptyRecordForm: RecordForm = { id: "", employeeId: "", recordType: "aso_periodic", status: "valid", examDate: "", expiresAt: "", providerName: "", doctorName: "", certificateNumber: "", restrictionNotes: "" };
 const emptyNrForm: NrForm = { id: "", employeeId: "", nrCode: "NR-06", trainingName: "", issuedAt: "", expiresAt: "", status: "valid" };
+const emptyContextualAttachmentForm: ContextualAttachmentForm = { file: null, status: "idle", message: "", attachmentId: "", documentId: "", linkId: "" };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { "Content-Type": "application/json", Accept: "application/json", ...init?.headers } });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível processar Saúde Ocupacional.");
   return payload as T;
+}
+
+async function uploadOccupationalDocument(input: {
+  record: OccupationalRecord;
+  documentTypeId: string;
+  documentRole: OccupationalDocumentRole;
+  isRequired: boolean;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.set("employeeId", input.record.employeeId);
+  formData.set("documentTypeId", input.documentTypeId);
+  formData.set("sourceEntityType", "occupational_health");
+  formData.set("sourceEntityId", input.record.id);
+  formData.set("documentRole", input.documentRole);
+  formData.set("sourceContextLabel", `Documento ocupacional - ${input.record.recordTypeLabel}`);
+  formData.set("notes", "Anexo enviado pelo fluxo de Saude Ocupacional.");
+  formData.set("isRequired", String(input.isRequired));
+  formData.set("isSensitive", "true");
+  formData.set("visibilityScope", "restricted");
+  formData.set("file", input.file);
+
+  const response = await fetch("/api/hr/contextual-documents", {
+    method: "POST",
+    body: formData,
+    headers: { Accept: "application/json" }
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel anexar documento ocupacional.");
+  return payload as {
+    ok: true;
+    data: {
+      document: { id: string };
+      attachment: { id: string; fileName: string };
+      link: { id: string };
+    };
+  };
+}
+
+async function uploadNrCertificate(input: { certification: NrCertification; documentTypeId: string; isRequired: boolean; file: File }) {
+  const formData = new FormData();
+  formData.set("employeeId", input.certification.employeeId);
+  formData.set("documentTypeId", input.documentTypeId);
+  formData.set("sourceEntityType", "nr_certification");
+  formData.set("sourceEntityId", input.certification.id);
+  formData.set("documentRole", "nr_certificate");
+  formData.set("sourceContextLabel", `Certificado NR - ${input.certification.nrCode}`);
+  formData.set("notes", "Certificado enviado pelo fluxo de Saude Ocupacional.");
+  formData.set("isRequired", String(input.isRequired));
+  formData.set("isSensitive", "true");
+  formData.set("visibilityScope", "restricted");
+  formData.set("file", input.file);
+
+  const response = await fetch("/api/hr/contextual-documents", {
+    method: "POST",
+    body: formData,
+    headers: { Accept: "application/json" }
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Nao foi possivel anexar certificado NR.");
+  return payload as {
+    ok: true;
+    data: {
+      document: { id: string };
+      attachment: { id: string; fileName: string };
+      link: { id: string };
+    };
+  };
 }
 
 function buildUrl(path: string, filters: Record<string, string>) {
@@ -165,6 +251,81 @@ function statusTone(status: string) {
   if (status === "expiring") return "warning" as const;
   if (status === "expired" || status === "cancelled") return "danger" as const;
   return "visual" as const;
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function occupationalDocumentRole(recordType: string): OccupationalDocumentRole {
+  if (recordType === "occupational_restriction") return "restriction";
+  if (recordType === "occupational_exam") return "exam";
+  return "aso";
+}
+
+function occupationalDocumentLabel(role: OccupationalDocumentRole) {
+  if (role === "aso") return "ASO";
+  if (role === "exam") return "Exame ocupacional";
+  return "Documento de restrição";
+}
+
+function occupationalDocumentRequired(record: Pick<OccupationalRecord, "recordType" | "status" | "expiresAt">) {
+  if (record.status !== "valid") return false;
+  if (record.recordType.startsWith("aso_")) return true;
+  return record.recordType === "occupational_exam" || record.recordType === "occupational_restriction";
+}
+
+function nrCertificateRequired(nr: Pick<NrCertification, "status" | "expiresAt">) {
+  return nr.status === "valid" && Boolean(nr.expiresAt);
+}
+
+function scoreDocumentType(item: DocumentTypeOption, terms: string[]) {
+  const text = normalizeSearch(`${item.code} ${item.name} ${item.category}`);
+  return terms.reduce((score, term, index) => (text.includes(term) ? score + terms.length - index : score), 0);
+}
+
+function selectOccupationalDocumentType(documentTypes: DocumentTypeOption[], role: OccupationalDocumentRole): DocumentTypeSelection {
+  const preferredCodes: Record<OccupationalDocumentRole, string[]> = {
+    aso: ["ASO_OCUPACIONAL", "ASO_ADMISSIONAL", "DOCUMENTO_ASO"],
+    exam: ["EXAME_OCUPACIONAL", "EXAMES_ADMISSIONAIS", "DOCUMENTO_EXAME_OCUPACIONAL"],
+    restriction: ["RESTRICAO_OCUPACIONAL", "DOCUMENTO_RESTRICAO_OCUPACIONAL", "TERMO_RESTRICAO_OCUPACIONAL"]
+  };
+  const preferred = documentTypes.find((item) => preferredCodes[role].includes(item.code));
+  if (preferred) return { documentType: preferred, isFallback: false };
+
+  const terms =
+    role === "aso"
+      ? ["aso", "ocupacional", "exame"]
+      : role === "exam"
+        ? ["exame", "ocupacional", "aso"]
+        : ["restricao", "ocupacional", "termo", "normas"];
+  const semanticMatch = documentTypes
+    .map((item) => ({ item, score: scoreDocumentType(item, terms) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.item;
+  if (semanticMatch) return { documentType: semanticMatch, isFallback: false };
+
+  const fallback =
+    documentTypes.find((item) => item.code === "TERMO_RESPONSABILIDADE") ??
+    documentTypes.find((item) => item.category === "internal") ??
+    documentTypes[0] ??
+    null;
+  return { documentType: fallback, isFallback: Boolean(fallback) };
+}
+
+function selectNrDocumentType(documentTypes: DocumentTypeOption[]): DocumentTypeSelection {
+  const preferredCodes = ["CERTIFICADO_NR", "CERTIFICADO_TREINAMENTO_NR", "CERTIFICADO_TREINAMENTO"];
+  const preferred = documentTypes.find((item) => preferredCodes.includes(item.code));
+  if (preferred) return { documentType: preferred, isFallback: preferred.code === "CERTIFICADO_TREINAMENTO" };
+
+  const semanticMatch = documentTypes
+    .map((item) => ({ item, score: scoreDocumentType(item, ["certificado", "nr", "treinamento"]) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0]?.item;
+  if (semanticMatch) return { documentType: semanticMatch, isFallback: false };
+
+  const fallback = documentTypes.find((item) => item.category === "training") ?? documentTypes[0] ?? null;
+  return { documentType: fallback, isFallback: Boolean(fallback) };
 }
 
 function expirationState(value: string | null | undefined, status: string) {
@@ -251,6 +412,8 @@ export function HrOccupationalHealthClient() {
   const [filters, setFilters] = useState({ unitId: "", employeeId: "", recordType: "", status: "", search: "", quick: "" });
   const [recordForm, setRecordForm] = useState<RecordForm>(emptyRecordForm);
   const [nrForm, setNrForm] = useState<NrForm>(emptyNrForm);
+  const [recordAttachmentForm, setRecordAttachmentForm] = useState<ContextualAttachmentForm>(emptyContextualAttachmentForm);
+  const [nrAttachmentForm, setNrAttachmentForm] = useState<ContextualAttachmentForm>(emptyContextualAttachmentForm);
   const [groupBy, setGroupBy] = useState<"unit" | "type" | "status">("unit");
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showNrForm, setShowNrForm] = useState(false);
@@ -259,9 +422,47 @@ export function HrOccupationalHealthClient() {
   const nrQuery = useQuery({ queryKey: ["hr", "nr-certifications", filters], queryFn: async () => requestJson<NrResponse>(buildUrl("/api/hr/nr-certifications", { unitId: filters.unitId, employeeId: filters.employeeId, status: filters.status, search: filters.search, pageSize: "100" })) });
   const employeesQuery = useQuery({ queryKey: ["hr", "employees", "occupational-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const unitsQuery = useQuery({ queryKey: ["base", "units", "occupational-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
+  const documentTypesQuery = useQuery({ queryKey: ["hr", "document-types", "occupational", "active"], queryFn: async () => requestJson<DocumentTypesResponse>("/api/hr/document-types?status=active") });
 
   const records = useMemo(() => recordsQuery.data?.data ?? [], [recordsQuery.data?.data]);
   const nrs = useMemo(() => nrQuery.data?.data ?? [], [nrQuery.data?.data]);
+  const selectedRecord = useMemo(
+    () =>
+      records.find((item) => item.id === recordForm.id) ??
+      (recordForm.id
+        ? ({
+            id: recordForm.id,
+            employeeId: recordForm.employeeId,
+            recordType: recordForm.recordType,
+            recordTypeLabel: recordTypes.find(([value]) => value === recordForm.recordType)?.[1] ?? "Documento ocupacional",
+            status: recordForm.status,
+            expiresAt: recordForm.expiresAt,
+            attachmentId: recordAttachmentForm.attachmentId,
+            hasAttachment: Boolean(recordAttachmentForm.attachmentId)
+          } as OccupationalRecord)
+        : null),
+    [recordAttachmentForm.attachmentId, recordForm.employeeId, recordForm.expiresAt, recordForm.id, recordForm.recordType, recordForm.status, records]
+  );
+  const selectedNr = useMemo(
+    () =>
+      nrs.find((item) => item.id === nrForm.id) ??
+      (nrForm.id
+        ? ({
+            id: nrForm.id,
+            employeeId: nrForm.employeeId,
+            nrCode: nrForm.nrCode,
+            trainingName: nrForm.trainingName,
+            status: nrForm.status,
+            expiresAt: nrForm.expiresAt,
+            certificateAttachmentId: nrAttachmentForm.attachmentId,
+            hasCertificate: Boolean(nrAttachmentForm.attachmentId)
+          } as NrCertification)
+        : null),
+    [nrAttachmentForm.attachmentId, nrForm.employeeId, nrForm.expiresAt, nrForm.id, nrForm.nrCode, nrForm.status, nrForm.trainingName, nrs]
+  );
+  const selectedRecordRole = occupationalDocumentRole(recordForm.recordType);
+  const recordDocumentTypeSelection = useMemo(() => selectOccupationalDocumentType(documentTypesQuery.data?.data ?? [], selectedRecordRole), [documentTypesQuery.data?.data, selectedRecordRole]);
+  const nrDocumentTypeSelection = useMemo(() => selectNrDocumentType(documentTypesQuery.data?.data ?? []), [documentTypesQuery.data?.data]);
   const filteredRecords = useMemo(
     () =>
       records.filter((record) => {
@@ -357,27 +558,133 @@ export function HrOccupationalHealthClient() {
 
   const recordMutation = useMutation({
     mutationFn: async (form: RecordForm) =>
-      requestJson(form.id ? `/api/hr/occupational-records/${form.id}` : "/api/hr/occupational-records", {
+      requestJson<RecordMutationResponse>(form.id ? `/api/hr/occupational-records/${form.id}` : "/api/hr/occupational-records", {
         method: form.id ? "PATCH" : "POST",
         body: JSON.stringify(recordPayload(form))
       }),
-    onSuccess: async () => {
-      setShowRecordForm(false);
-      setRecordForm(emptyRecordForm);
+    onSuccess: async (result, submittedForm) => {
+      const savedRecord = result.data;
+      setRecordForm({
+        id: savedRecord.id,
+        employeeId: savedRecord.employeeId,
+        recordType: savedRecord.recordType,
+        status: savedRecord.status,
+        examDate: savedRecord.examDate,
+        expiresAt: savedRecord.expiresAt,
+        providerName: savedRecord.redacted ? "" : savedRecord.providerName,
+        doctorName: savedRecord.redacted ? "" : savedRecord.doctorName,
+        certificateNumber: "",
+        restrictionNotes: savedRecord.redacted ? "" : savedRecord.restrictionNotes
+      });
+      setRecordAttachmentForm((current) => ({
+        ...current,
+        status: savedRecord.hasAttachment ? "uploaded" : current.status === "uploaded" ? "uploaded" : "idle",
+        message: savedRecord.hasAttachment ? "Documento anexado" : "",
+        attachmentId: savedRecord.attachmentId ?? current.attachmentId
+      }));
       await queryClient.invalidateQueries({ queryKey: ["hr", "occupational-records"] });
+      if (submittedForm.id) {
+        setShowRecordForm(false);
+        setRecordForm(emptyRecordForm);
+        setRecordAttachmentForm(emptyContextualAttachmentForm);
+      }
     }
   });
 
   const nrMutation = useMutation({
     mutationFn: async (form: NrForm) =>
-      requestJson(form.id ? `/api/hr/nr-certifications/${form.id}` : "/api/hr/nr-certifications", {
+      requestJson<NrMutationResponse>(form.id ? `/api/hr/nr-certifications/${form.id}` : "/api/hr/nr-certifications", {
         method: form.id ? "PATCH" : "POST",
         body: JSON.stringify(nrPayload(form))
       }),
-    onSuccess: async () => {
-      setShowNrForm(false);
-      setNrForm(emptyNrForm);
+    onSuccess: async (result, submittedForm) => {
+      const savedNr = result.data;
+      setNrForm({
+        id: savedNr.id,
+        employeeId: savedNr.employeeId,
+        nrCode: savedNr.nrCode,
+        trainingName: savedNr.redacted ? "" : savedNr.trainingName,
+        issuedAt: savedNr.issuedAt,
+        expiresAt: savedNr.expiresAt,
+        status: savedNr.status
+      });
+      setNrAttachmentForm((current) => ({
+        ...current,
+        status: savedNr.hasCertificate ? "uploaded" : current.status === "uploaded" ? "uploaded" : "idle",
+        message: savedNr.hasCertificate ? "Certificado anexado" : "",
+        attachmentId: savedNr.certificateAttachmentId ?? current.attachmentId
+      }));
       await queryClient.invalidateQueries({ queryKey: ["hr", "nr-certifications"] });
+      if (submittedForm.id) {
+        setShowNrForm(false);
+        setNrForm(emptyNrForm);
+        setNrAttachmentForm(emptyContextualAttachmentForm);
+      }
+    }
+  });
+
+  const recordUploadMutation = useMutation({
+    mutationFn: async (input: { record: OccupationalRecord; file: File; documentTypeId: string; documentRole: OccupationalDocumentRole }) =>
+      uploadOccupationalDocument({
+        record: input.record,
+        documentTypeId: input.documentTypeId,
+        documentRole: input.documentRole,
+        isRequired: occupationalDocumentRequired(input.record),
+        file: input.file
+      }),
+    onSuccess: async (payload) => {
+      setRecordAttachmentForm((current) => ({
+        ...current,
+        status: "uploaded",
+        message: "Documento anexado",
+        attachmentId: payload.data.attachment.id,
+        documentId: payload.data.document.id,
+        linkId: payload.data.link.id,
+        file: null
+      }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["hr", "occupational-records"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "employees"] })
+      ]);
+    },
+    onError: (error) => {
+      setRecordAttachmentForm((current) => ({
+        ...current,
+        status: "error",
+        message: error instanceof Error ? error.message : "Erro no upload do documento."
+      }));
+    }
+  });
+
+  const nrUploadMutation = useMutation({
+    mutationFn: async (input: { certification: NrCertification; file: File; documentTypeId: string }) =>
+      uploadNrCertificate({
+        certification: input.certification,
+        documentTypeId: input.documentTypeId,
+        isRequired: nrCertificateRequired(input.certification),
+        file: input.file
+      }),
+    onSuccess: async (payload) => {
+      setNrAttachmentForm((current) => ({
+        ...current,
+        status: "uploaded",
+        message: "Certificado anexado",
+        attachmentId: payload.data.attachment.id,
+        documentId: payload.data.document.id,
+        linkId: payload.data.link.id,
+        file: null
+      }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["hr", "nr-certifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["hr", "employees"] })
+      ]);
+    },
+    onError: (error) => {
+      setNrAttachmentForm((current) => ({
+        ...current,
+        status: "error",
+        message: error instanceof Error ? error.message : "Erro no upload do certificado."
+      }));
     }
   });
 
@@ -398,11 +705,23 @@ export function HrOccupationalHealthClient() {
 
   function editRecord(record: OccupationalRecord) {
     setRecordForm({ id: record.id, employeeId: record.employeeId, recordType: record.recordType, status: record.status, examDate: record.examDate, expiresAt: record.expiresAt, providerName: record.providerName, doctorName: record.doctorName, certificateNumber: "", restrictionNotes: record.restrictionNotes });
+    setRecordAttachmentForm({
+      ...emptyContextualAttachmentForm,
+      status: record.hasAttachment ? "uploaded" : "idle",
+      message: record.hasAttachment ? "Documento anexado" : "",
+      attachmentId: record.attachmentId ?? ""
+    });
     setShowRecordForm(true);
   }
 
   function editNr(row: NrCertification) {
     setNrForm({ id: row.id, employeeId: row.employeeId, nrCode: row.nrCode, trainingName: row.trainingName, issuedAt: row.issuedAt, expiresAt: row.expiresAt, status: row.status });
+    setNrAttachmentForm({
+      ...emptyContextualAttachmentForm,
+      status: row.hasCertificate ? "uploaded" : "idle",
+      message: row.hasCertificate ? "Certificado anexado" : "",
+      attachmentId: row.certificateAttachmentId ?? ""
+    });
     setShowNrForm(true);
   }
 
@@ -419,14 +738,14 @@ export function HrOccupationalHealthClient() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2"><HeartPulse className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Saúde Ocupacional</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Use Anexar ASO no dossiê ou Anexar certificado NR no dossiê para guardar arquivos no dossiê oficial do RH. Atualizar vencimentos apenas recalcula pendências e alertas operacionais.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Registre ASOs, NRs e restrições. Anexe documentos ocupacionais e certificados NR diretamente nos formulários; os arquivos também ficam no dossiê oficial do RH. Atualizar vencimentos apenas recalcula pendências e alertas operacionais.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => downloadCsv("pendências-ocupacionais.csv", pendingRows)} disabled={!pendingRows.length}><Download className="h-4 w-4" />Exportar pendências</Button>
             <Button size="sm" variant="outline" onClick={() => downloadCsv("relatorio-saude-ocupacional.csv", reportRows)} disabled={!reportRows.length}><Download className="h-4 w-4" />Exportar CSV</Button>
             <Button size="sm" variant="outline" onClick={confirmProcessExpirations} disabled={processMutation.isPending}><RefreshCw className="h-4 w-4" />Atualizar vencimentos</Button>
-            <Button size="sm" onClick={() => { setRecordForm(emptyRecordForm); setShowRecordForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
-            <Button size="sm" variant="outline" onClick={() => { setNrForm(emptyNrForm); setShowNrForm(true); }}><Plus className="h-4 w-4" />Nova NR</Button>
+            <Button size="sm" onClick={() => { setRecordForm(emptyRecordForm); setRecordAttachmentForm(emptyContextualAttachmentForm); setShowRecordForm(true); }}><Plus className="h-4 w-4" />Novo registro</Button>
+            <Button size="sm" variant="outline" onClick={() => { setNrForm(emptyNrForm); setNrAttachmentForm(emptyContextualAttachmentForm); setShowNrForm(true); }}><Plus className="h-4 w-4" />Nova NR</Button>
           </div>
         </div>
         {processMutation.data ? (
@@ -533,8 +852,12 @@ export function HrOccupationalHealthClient() {
       <HrOperationalModal
         open={showRecordForm}
         title={recordForm.id ? "Editar registro ocupacional" : "Novo registro ocupacional"}
-        description={recordForm.id ? "Atualize dados administrativos do registro ocupacional mantendo acesso restrito." : "Registre ASO, exame ou restrição com acesso restrito para usuários autorizados. O arquivo deve ficar no dossiê oficial do RH, na aba Documentos."}
-        onClose={() => setShowRecordForm(false)}
+        description={recordForm.id ? "Atualize dados administrativos e anexe o documento ocupacional mantendo acesso restrito." : "Registre ASO, exame ou restrição com acesso restrito. Salve para liberar o anexo contextual."}
+        onClose={() => {
+          setShowRecordForm(false);
+          setRecordForm(emptyRecordForm);
+          setRecordAttachmentForm(emptyContextualAttachmentForm);
+        }}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={recordForm.employeeId} onChange={(event) => setRecordForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
@@ -551,15 +874,69 @@ export function HrOccupationalHealthClient() {
             <Field label="Validade"><Input type="date" value={recordForm.expiresAt} onChange={(event) => setRecordForm((current) => ({ ...current, expiresAt: event.target.value }))} /></Field>
             <Field label="Fornecedor"><Input value={recordForm.providerName} onChange={(event) => setRecordForm((current) => ({ ...current, providerName: event.target.value }))} /></Field>
             <Field label="Médico"><Input value={recordForm.doctorName} onChange={(event) => setRecordForm((current) => ({ ...current, doctorName: event.target.value }))} /></Field>
-            <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">ASO no dossiê</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe ASO, exame ou documento de restrição no dossiê oficial do RH, na aba Documentos do prontuário. Esta tela registra datas, validade e controle operacional.</p>
-              {recordForm.employeeId ? (
-                <Button asChild className="mt-3" variant="outline" size="sm">
-                  <a href={employeeDocumentsHref(recordForm.employeeId)}>Anexar ASO no dossiê</a>
-                </Button>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2 xl:col-span-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">{selectedRecordRole === "aso" ? "Anexar ASO no dossiê" : "Anexar documento ocupacional"}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe aqui o documento ocupacional. O arquivo também ficará no dossiê do colaborador.</p>
+                  {selectedRecord && occupationalDocumentRequired(selectedRecord) ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700">{occupationalDocumentLabel(selectedRecordRole)} pendente para este registro válido.</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">Documento opcional enquanto o registro não exigir conferência documental.</p>
+                  )}
+                </div>
+                {recordForm.employeeId ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={employeeDocumentsHref(recordForm.employeeId)}><ExternalLink className="h-4 w-4" />Ver no dossiê</a>
+                  </Button>
+                ) : null}
+              </div>
+              {recordForm.id ? (
+                <>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <Field label="Arquivo">
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                        disabled={recordUploadMutation.isPending || Boolean(selectedRecord?.hasAttachment || recordAttachmentForm.attachmentId)}
+                        onChange={(event) => setRecordAttachmentForm((current) => ({
+                          ...current,
+                          file: event.target.files?.[0] ?? null,
+                          status: current.status === "error" ? "idle" : current.status,
+                          message: current.status === "error" ? "" : current.message,
+                        }))}
+                      />
+                    </Field>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={recordUploadMutation.isPending || !selectedRecord || !recordDocumentTypeSelection.documentType || !recordAttachmentForm.file || Boolean(selectedRecord?.hasAttachment || recordAttachmentForm.attachmentId)}
+                      onClick={() => {
+                        if (!selectedRecord || !recordDocumentTypeSelection.documentType || !recordAttachmentForm.file) return;
+                        setRecordAttachmentForm((current) => ({ ...current, status: "uploading", message: "Enviando documento..." }));
+                        recordUploadMutation.mutate({
+                          record: selectedRecord,
+                          file: recordAttachmentForm.file,
+                          documentTypeId: recordDocumentTypeSelection.documentType.id,
+                          documentRole: selectedRecordRole,
+                        });
+                      }}
+                    >
+                      <Upload className="h-4 w-4" />Anexar
+                    </Button>
+                  </div>
+                  {!recordDocumentTypeSelection.documentType && documentTypesQuery.isSuccess ? <p className="mt-2 text-xs font-medium text-destructive">Tipo documental ativo compatível com Saúde Ocupacional não encontrado.</p> : null}
+                  {recordDocumentTypeSelection.isFallback ? <p className="mt-2 text-xs text-muted-foreground">Até existir um tipo documental dedicado, este vínculo será identificado no dossiê pelo filtro Saúde Ocupacional e pelo papel {occupationalDocumentLabel(selectedRecordRole)}.</p> : null}
+                  {selectedRecord?.hasAttachment || recordAttachmentForm.status === "uploaded" || recordAttachmentForm.attachmentId ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="success" label="Documento anexado" /><span className="text-xs text-muted-foreground">Disponível também no dossiê do colaborador.</span></div>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={selectedRecord && occupationalDocumentRequired(selectedRecord) ? "warning" : "visual"} label="Documento pendente" /><span className="text-xs text-muted-foreground">{selectedRecord && occupationalDocumentRequired(selectedRecord) ? "Anexo recomendado para registro válido." : "Opcional neste momento."}</span></div>
+                  )}
+                  {recordAttachmentForm.status === "uploading" ? <p className="mt-2 text-xs text-muted-foreground">{recordAttachmentForm.message}</p> : null}
+                  {recordAttachmentForm.status === "error" ? <p className="mt-2 text-xs font-medium text-destructive">{recordAttachmentForm.message}</p> : null}
+                </>
               ) : (
-                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir o dossiê com a aba Documentos.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="warning" label="Documento pendente" /><span className="text-xs text-muted-foreground">Salve o registro para liberar o upload contextual.</span></div>
               )}
             </div>
             <Field label="Restrições"><TextArea value={recordForm.restrictionNotes} onChange={(event) => setRecordForm((current) => ({ ...current, restrictionNotes: event.target.value }))} /></Field>
@@ -571,8 +948,12 @@ export function HrOccupationalHealthClient() {
       <HrOperationalModal
         open={showNrForm}
         title={nrForm.id ? "Editar certificação NR" : "Nova certificação NR"}
-        description={nrForm.id ? "Atualize a certificação NR e seus vencimentos." : "Registre a NR, o treinamento, a emissão e a validade do colaborador. O certificado fica no dossiê oficial do RH."}
-        onClose={() => setShowNrForm(false)}
+        description={nrForm.id ? "Atualize a certificação NR, vencimentos e certificado contextual." : "Registre a NR, emissão e validade. Salve para liberar o anexo contextual do certificado."}
+        onClose={() => {
+          setShowNrForm(false);
+          setNrForm(emptyNrForm);
+          setNrAttachmentForm(emptyContextualAttachmentForm);
+        }}
       >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Colaborador"><SelectField value={nrForm.employeeId} onChange={(event) => setNrForm((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Selecione</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField></Field>
@@ -588,15 +969,68 @@ export function HrOccupationalHealthClient() {
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">A situação de vencimento será acompanhada pela validade informada.</p>
               </div>
             )}
-            <div className="rounded-md border bg-muted/30 p-3 text-sm">
-              <p className="font-medium text-foreground">Certificado NR</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe o certificado NR no dossiê oficial do RH, na aba Documentos do prontuário. Esta tela registra a NR, emissão e validade.</p>
-              {nrForm.employeeId ? (
-                <Button asChild className="mt-3" variant="outline" size="sm">
-                  <a href={employeeDocumentsHref(nrForm.employeeId)}>Anexar certificado NR no dossiê</a>
-                </Button>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm md:col-span-2 xl:col-span-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">Anexar certificado NR</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Anexe aqui o certificado NR. O arquivo também ficará no dossiê do colaborador.</p>
+                  {selectedNr && nrCertificateRequired(selectedNr) ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700">Certificado pendente para NR válida com validade informada.</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">Certificado opcional enquanto a NR não exigir conferência documental.</p>
+                  )}
+                </div>
+                {nrForm.employeeId ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={employeeDocumentsHref(nrForm.employeeId)}><ExternalLink className="h-4 w-4" />Ver no dossiê</a>
+                  </Button>
+                ) : null}
+              </div>
+              {nrForm.id ? (
+                <>
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <Field label="Arquivo">
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                        disabled={nrUploadMutation.isPending || Boolean(selectedNr?.hasCertificate || nrAttachmentForm.attachmentId)}
+                        onChange={(event) => setNrAttachmentForm((current) => ({
+                          ...current,
+                          file: event.target.files?.[0] ?? null,
+                          status: current.status === "error" ? "idle" : current.status,
+                          message: current.status === "error" ? "" : current.message,
+                        }))}
+                      />
+                    </Field>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={nrUploadMutation.isPending || !selectedNr || !nrDocumentTypeSelection.documentType || !nrAttachmentForm.file || Boolean(selectedNr?.hasCertificate || nrAttachmentForm.attachmentId)}
+                      onClick={() => {
+                        if (!selectedNr || !nrDocumentTypeSelection.documentType || !nrAttachmentForm.file) return;
+                        setNrAttachmentForm((current) => ({ ...current, status: "uploading", message: "Enviando certificado..." }));
+                        nrUploadMutation.mutate({
+                          certification: selectedNr,
+                          file: nrAttachmentForm.file,
+                          documentTypeId: nrDocumentTypeSelection.documentType.id,
+                        });
+                      }}
+                    >
+                      <Upload className="h-4 w-4" />Anexar
+                    </Button>
+                  </div>
+                  {!nrDocumentTypeSelection.documentType && documentTypesQuery.isSuccess ? <p className="mt-2 text-xs font-medium text-destructive">Tipo documental ativo compatível com certificado NR não encontrado.</p> : null}
+                  {nrDocumentTypeSelection.isFallback ? <p className="mt-2 text-xs text-muted-foreground">Até existir tipo dedicado de certificado NR, este vínculo será identificado no dossiê pelo filtro Saúde Ocupacional e pelo papel Certificado NR.</p> : null}
+                  {selectedNr?.hasCertificate || nrAttachmentForm.status === "uploaded" || nrAttachmentForm.attachmentId ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="success" label="Certificado anexado" /><span className="text-xs text-muted-foreground">Disponível também no dossiê do colaborador.</span></div>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={selectedNr && nrCertificateRequired(selectedNr) ? "warning" : "visual"} label="Certificado pendente" /><span className="text-xs text-muted-foreground">{selectedNr && nrCertificateRequired(selectedNr) ? "Anexo recomendado para NR válida." : "Opcional neste momento."}</span></div>
+                  )}
+                  {nrAttachmentForm.status === "uploading" ? <p className="mt-2 text-xs text-muted-foreground">{nrAttachmentForm.message}</p> : null}
+                  {nrAttachmentForm.status === "error" ? <p className="mt-2 text-xs font-medium text-destructive">{nrAttachmentForm.message}</p> : null}
+                </>
               ) : (
-                <p className="mt-3 text-xs font-medium text-muted-foreground">Selecione o colaborador para abrir o dossiê com a aba Documentos.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status="warning" label="Certificado pendente" /><span className="text-xs text-muted-foreground">Salve a NR para liberar o upload contextual.</span></div>
               )}
             </div>
           </div>
@@ -629,7 +1063,7 @@ function OccupationalRecordsTable({ records, onEdit }: { records: OccupationalRe
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">ASOs, exames e restrições</h2></div>
-      {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="Use Novo registro para cadastrar ASO, exame ou restrição. O arquivo correspondente deve ficar no dossiê oficial do RH, na aba Documentos." /> : null}
+      {!records.length ? <EmptyState title="Nenhum registro ocupacional" description="Use Novo registro para cadastrar ASO, exame ou restrição. Depois de salvar, anexe o documento ocupacional no próprio formulário." /> : null}
       {records.length ? (
         <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Fornecedor</th><th className="px-4 py-3">Médico</th><th className="px-4 py-3">Restrições</th><th className="px-4 py-3">Anexo</th><th className="px-4 py-3">Ação</th></tr></thead><tbody className="divide-y">{records.map((record) => { const expiration = recordExpiration(record); return <tr key={record.id} className="align-top"><td className="px-4 py-3">{record.employeeName || "-"}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><span>{record.recordTypeLabel}</span>{record.recordType === "occupational_restriction" && record.status !== "cancelled" ? <StatusBadge status="warning" label="Restrição ativa" /> : null}</div></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(record.status)} label={record.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="Vencido" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="Vence em breve" /> : null}</div></td><td className="px-4 py-3">{formatDate(record.examDate)}</td><td className="px-4 py-3">{formatDate(record.expiresAt)}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.providerName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.doctorName || "-"}</td><td className="px-4 py-3">{record.redacted ? "Informação restrita" : record.restrictionNotes || "-"}</td><td className="px-4 py-3"><StatusBadge status={record.hasAttachment ? "success" : "visual"} label={record.hasAttachment ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(record)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
@@ -641,7 +1075,7 @@ function NrTable({ rows, onEdit }: { rows: NrCertification[]; onEdit: (row: NrCe
   return (
     <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <div className="border-b p-4"><h2 className="text-sm font-semibold">Certificações NR</h2></div>
-      {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Use Nova NR para registrar a certificação. O certificado deve ficar no dossiê oficial do RH, na aba Documentos." /> : null}
+      {!rows.length ? <EmptyState title="Nenhuma NR registrada" description="Use Nova NR para registrar a certificação. Depois de salvar, anexe o certificado no próprio formulário." /> : null}
       {rows.length ? (
         <div className="overflow-x-auto"><table className="min-w-[820px] w-full text-sm"><thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-4 py-3">Colaborador</th><th className="px-4 py-3">NR</th><th className="px-4 py-3">Treinamento</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Emissão</th><th className="px-4 py-3">Validade</th><th className="px-4 py-3">Certificado</th><th className="px-4 py-3">Ação</th></tr></thead><tbody className="divide-y">{rows.map((row) => { const expiration = nrExpiration(row); return <tr key={row.id} className="align-top"><td className="px-4 py-3">{row.employeeName || "-"}</td><td className="px-4 py-3">{row.nrCode}</td><td className="px-4 py-3">{row.trainingName}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1"><StatusBadge status={statusTone(row.status)} label={row.statusLabel} />{expiration.isExpired ? <StatusBadge status="danger" label="NR vencida" /> : null}{expiration.expiresSoon ? <StatusBadge status="warning" label="NR a vencer" /> : null}</div></td><td className="px-4 py-3">{formatDate(row.issuedAt)}</td><td className="px-4 py-3">{formatDate(row.expiresAt)}</td><td className="px-4 py-3"><StatusBadge status={row.hasCertificate ? "success" : "visual"} label={row.hasCertificate ? "Anexado" : "Pendente"} /></td><td className="px-4 py-3"><Button variant="outline" size="sm" onClick={() => onEdit(row)}>Editar</Button></td></tr>; })}</tbody></table></div>
       ) : null}
