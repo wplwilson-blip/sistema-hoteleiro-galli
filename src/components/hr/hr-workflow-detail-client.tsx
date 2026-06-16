@@ -29,6 +29,7 @@ import {
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
+import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -1355,6 +1356,13 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       ) : null}
 
       {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
+      {isJobOpening ? (
+        <HrJobRequirementPreview
+          jobTitle={metadataText(workflow.metadata, "job_position")}
+          sector={metadataText(workflow.metadata, "department")}
+          department={metadataText(workflow.metadata, "department")}
+        />
+      ) : null}
       {isJobOpening ? (
         <CandidateSummaryPanel
           workflowId={workflow.id}

@@ -4,20 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BriefcaseBusiness, CheckCircle2, ClipboardList, Loader2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, CheckCircle2, Loader2, ShieldAlert } from "lucide-react";
 import { ErrorMessage, Field, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  findJobRequirementRule,
-  type HrAlertRequirementItem,
-  type HrJobRequirementItem,
-  type HrJobRequirementLevel,
-  type HrJobRequirementRule,
-  type HrTrainingRequirementItem
-} from "@/lib/hr/job-requirement-rules";
+import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { useAppStore } from "@/store/app-store";
 
 type RecordStatus = "active" | "inactive" | "archived";
@@ -155,106 +148,6 @@ function templateUrl(unitId: string) {
   return `/api/hr/workflow-templates?${params.toString()}`;
 }
 
-const requirementLevelLabels: Record<HrJobRequirementLevel, string> = {
-  required: "Obrigatorio",
-  recommended: "Recomendado",
-  confirm_with_sst: "Confirmar com SST",
-  conditional: "Condicional"
-};
-
-const requirementLevelStatus: Record<HrJobRequirementLevel, "visual" | "warning" | "danger" | "success" | "info"> = {
-  required: "info",
-  recommended: "visual",
-  confirm_with_sst: "warning",
-  conditional: "warning"
-};
-
-const conditionLabels: Record<string, string> = {
-  performs_electrical_work: "executa eletrica?",
-  works_above_2m: "trabalho acima de 2m?",
-  handles_food: "manipula alimentos?",
-  uses_chemical_products: "usa produtos quimicos?",
-  uses_cutting_tools: "usa facas/equipamentos cortantes?",
-  works_with_heat: "trabalha com calor?",
-  works_in_laundry_noise: "ha ruido relevante na lavanderia?",
-  security_periculosidade_review: "revisao de periculosidade com SST/trabalhista"
-};
-
-function RequirementList({ items }: { items: Array<HrJobRequirementItem | HrTrainingRequirementItem | HrAlertRequirementItem> }) {
-  if (!items.length) {
-    return <p className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Nenhum item sugerido nesta secao.</p>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <div key={item.key} className="rounded-md border bg-background px-3 py-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <p className="min-w-0 flex-1 text-sm font-medium leading-5">{item.name}</p>
-            <StatusBadge status={requirementLevelStatus[item.level]} label={requirementLevelLabels[item.level]} />
-          </div>
-          {item.condition ? <p className="mt-1 text-xs font-medium text-amber-700">Condicao: {conditionLabels[item.condition] ?? item.condition}</p> : null}
-          {"validityDays" in item && item.validityDays ? <p className="mt-1 text-xs text-muted-foreground">Validade sugerida: {item.validityDays} dias.</p> : null}
-          {"alertBeforeDays" in item && item.alertBeforeDays ? <p className="mt-1 text-xs text-muted-foreground">Alerta sugerido: {item.alertBeforeDays} dias antes.</p> : null}
-          {item.notes ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.notes}</p> : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RequirementSection({ title, items }: { title: string; items: Array<HrJobRequirementItem | HrTrainingRequirementItem | HrAlertRequirementItem> }) {
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase text-muted-foreground">{title}</h3>
-        <span className="text-xs text-muted-foreground">{items.length} item(ns)</span>
-      </div>
-      <RequirementList items={items} />
-    </section>
-  );
-}
-
-function JobRequirementRulesPreview({ rule, hasSelection }: { rule: HrJobRequirementRule | null; hasSelection: boolean }) {
-  return (
-    <section className="min-w-0">
-      <div className="mb-3 flex items-start gap-2">
-        <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold">Regras sugeridas do cargo</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Estas regras sao sugestoes baseadas na matriz PGR/PCMSO/CBO. Revise antes de usar na admissao. Nada sera gerado nesta etapa.
-          </p>
-        </div>
-      </div>
-
-      {!hasSelection ? (
-        <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">Selecione um cargo para visualizar a previa das regras automaticas.</p>
-      ) : !rule ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Nenhuma regra automatica encontrada para este cargo. Revise cargo, CBO ou setor.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          <div className="rounded-md border bg-muted/30 px-3 py-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status="info" label={rule.sector} />
-              {rule.cboCodes.slice(0, 3).map((code) => <StatusBadge key={code} status="visual" label={`CBO: ${code}`} />)}
-            </div>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">{rule.riskDescription}</p>
-          </div>
-          <RequirementSection title="Documentos" items={rule.documentRequirements} />
-          <RequirementSection title="Treinamentos" items={rule.trainingRequirements} />
-          <RequirementSection title="Saude ocupacional" items={rule.occupationalHealthRequirements} />
-          <RequirementSection title="EPIs" items={rule.epiRequirements} />
-          <RequirementSection title="Onboarding" items={rule.onboardingRequirements} />
-          <RequirementSection title="Alertas" items={rule.alertRules} />
-        </div>
-      )}
-    </section>
-  );
-}
-
 export function HrJobOpeningCreateClient() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -298,16 +191,6 @@ export function HrJobOpeningCreateClient() {
   const selectedDepartment = availableDepartments.find((department) => department.id === form.departmentId);
   const selectedPosition = availablePositions.find((position) => position.id === form.jobPositionId);
   const selectedManager = availableManagers.find((manager) => manager.id === form.managerUserId);
-  const suggestedRequirementRule = useMemo(
-    () =>
-      findJobRequirementRule({
-        jobTitle: selectedPosition?.name,
-        cboCode: selectedPosition?.code,
-        sector: selectedDepartment?.name,
-        department: selectedDepartment?.code
-      }),
-    [selectedDepartment?.code, selectedDepartment?.name, selectedPosition?.code, selectedPosition?.name]
-  );
 
   useEffect(() => {
     if (!form.unitId && activeUnits.length) {
@@ -505,7 +388,13 @@ export function HrJobOpeningCreateClient() {
           </div>
 
           <div className="mt-4 border-t pt-4">
-            <JobRequirementRulesPreview rule={suggestedRequirementRule} hasSelection={Boolean(selectedPosition || selectedDepartment)} />
+            <HrJobRequirementPreview
+              surface="section"
+              jobTitle={selectedPosition?.name}
+              cboCode={selectedPosition?.code}
+              sector={selectedDepartment?.name}
+              department={selectedDepartment?.code}
+            />
           </div>
         </Card>
 
