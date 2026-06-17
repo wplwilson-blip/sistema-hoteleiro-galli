@@ -11,6 +11,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/bas
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { useAppStore } from "@/store/app-store";
 
 type StatusTone = "visual" | "warning" | "danger" | "success" | "info";
@@ -143,6 +144,21 @@ function unitDisplayName(workflow: JobOpeningWorkflow) {
   return "Unidade registrada";
 }
 
+function nextStepLabel(workflow: JobOpeningWorkflow) {
+  const status = workflow.status;
+  const stepName = workflow.current_step?.name.toLowerCase() ?? "";
+  const stepStatus = workflow.current_step?.status ?? "";
+
+  if (status === "completed") return "Vaga finalizada";
+  if (status === "cancelled" || status === "rejected") return "Processo encerrado";
+  if (status === "waiting_approval" || stepStatus === "waiting_approval" || stepName.includes("aprov")) return "Aprovar abertura";
+  if (stepName.includes("admiss")) return "Acompanhar admissao";
+  if (stepName.includes("candidat") || stepName.includes("entrevista") || stepName.includes("recrut")) return "Cadastrar ou avaliar candidatos";
+  if (status === "open" || status === "in_progress") return "Cadastrar ou avaliar candidatos";
+  if (status === "draft" || stepStatus === "pending") return "Revisar solicitacao";
+  return "Abrir detalhe e conferir etapa";
+}
+
 export function HrJobOpeningListClient() {
   const { activeUnit } = useAppStore();
   const activeUnitId = isUuid(activeUnit?.id) ? activeUnit.id : undefined;
@@ -182,6 +198,12 @@ export function HrJobOpeningListClient() {
 
   return (
     <div className="space-y-5">
+      <HrRecruitmentBreadcrumb items={[{ label: "Vagas" }]} />
+      <HrRecruitmentGuidance
+        where="Voce esta na lista de vagas do fluxo de recrutamento e admissao."
+        next="Use Proximo passo para saber se a vaga pede aprovacao, recrutamento, candidatos ou acompanhamento admissional."
+      />
+
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -250,7 +272,7 @@ export function HrJobOpeningListClient() {
       {filteredWorkflows.length ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[1320px] text-left text-sm">
+            <table className="w-full min-w-[1440px] text-left text-sm">
               <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Vaga</th>
@@ -258,6 +280,7 @@ export function HrJobOpeningListClient() {
                   <th className="px-4 py-3">Urgencia</th>
                   <th className="px-4 py-3">Prazo</th>
                   <th className="px-4 py-3">Etapa atual</th>
+                  <th className="px-4 py-3">Proximo passo</th>
                   <th className="px-4 py-3">Unidade</th>
                   <th className="px-4 py-3">Atualizacao</th>
                   <th className="px-4 py-3 text-right">Detalhe</th>
@@ -271,6 +294,9 @@ export function HrJobOpeningListClient() {
                     <td className="px-4 py-3"><StatusBadge status={priorityTone(workflow.priority)} label={priorityLabels[workflow.priority] ?? workflow.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} /></td>
                     <td className="px-4 py-3"><p>{workflow.current_step?.name ?? "Sem etapa atual"}</p><p className="text-xs text-muted-foreground">{workflow.current_step?.assigned_to ?? "Responsavel nao informado"}</p></td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status="info" label={nextStepLabel(workflow)} />
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{unitDisplayName(workflow)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateTime(workflow.updated_at)}</td>
                     <td className="px-4 py-3 text-right">

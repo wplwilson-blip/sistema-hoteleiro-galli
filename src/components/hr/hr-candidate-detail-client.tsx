@@ -15,6 +15,7 @@ import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card"
 import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
 import { HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
+import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import {
   type Candidate,
   type CandidateAdmissionConversion,
@@ -82,6 +83,13 @@ function metadataText(record: Record<string, unknown> | null | undefined, key: s
   if (typeof value === "string" && value.trim().toLowerCase() === "redacted") return "Redigido";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
   return "";
+}
+
+function candidateNextAction(candidate: Candidate, admissionConversion: CandidateAdmissionConversion | null) {
+  if (admissionConversion) return "Acompanhe a admissao vinculada a este candidato aprovado.";
+  if (candidate.status === "aprovado") return "Inicie a admissao ou acompanhe a conversao quando ela ja existir.";
+  if (candidate.status === "reprovado") return "Confira o parecer registrado e volte para a lista de candidatos da vaga.";
+  return "Registre entrevista, scorecard e parecer humano antes de aprovar ou reprovar o candidato.";
 }
 
 export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowId: string; candidateId: string }) {
@@ -166,6 +174,19 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
 
   return (
     <div className="space-y-5">
+      <HrRecruitmentBreadcrumb
+        items={[
+          { label: "Vagas", href: "/rh/vagas" },
+          { label: "Detalhe da vaga", href: `/rh/workflows/${workflowId}` },
+          { label: "Candidatos", href: `/rh/vagas/${workflowId}/candidatos` },
+          { label: "Candidato" }
+        ]}
+      />
+      <HrRecruitmentGuidance
+        where="Voce esta avaliando um candidato vinculado a esta vaga."
+        next={candidateNextAction(candidate, admissionConversion)}
+      />
+
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -180,11 +201,11 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             <Button asChild variant="outline" size="sm">
               <Link href={`/rh/vagas/${workflowId}/candidatos`}>
                 <ArrowLeft className="h-4 w-4" />
-                Candidatos
+                Voltar para candidatos
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm">
-              <Link href={`/rh/workflows/${workflowId}`}>Vaga</Link>
+              <Link href={`/rh/workflows/${workflowId}`}>Voltar para vaga</Link>
             </Button>
           </div>
         </div>

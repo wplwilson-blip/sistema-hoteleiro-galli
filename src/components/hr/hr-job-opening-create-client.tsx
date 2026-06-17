@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
+import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { useAppStore } from "@/store/app-store";
 
 type RecordStatus = "active" | "inactive" | "archived";
@@ -301,6 +302,12 @@ export function HrJobOpeningCreateClient() {
 
   return (
     <div className="space-y-5">
+      <HrRecruitmentBreadcrumb items={[{ label: "Vagas", href: "/rh/vagas" }, { label: "Nova vaga" }]} />
+      <HrRecruitmentGuidance
+        where="Voce esta criando uma solicitacao de abertura de vaga antes do recrutamento."
+        next="Preencha os dados operacionais da vaga. Depois de salvar, acompanhe aprovacao, candidatos e proximas etapas no detalhe da vaga."
+      />
+
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -390,6 +397,9 @@ export function HrJobOpeningCreateClient() {
           <div className="mt-4 border-t pt-4">
             <HrJobRequirementPreview
               surface="section"
+              mode="summary"
+              title="Resumo das regras sugeridas do cargo"
+              description="Principais impactos do cargo: documentos, saude ocupacional, uniforme, treinamentos e onboarding. A revisao completa acontece na admissao."
               jobTitle={selectedPosition?.name}
               cboCode={selectedPosition?.code}
               sector={selectedDepartment?.name}

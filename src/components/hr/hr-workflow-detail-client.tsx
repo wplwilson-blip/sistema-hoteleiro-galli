@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
+import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -534,8 +535,43 @@ function admissionDepartment(workflow: WorkflowDetail) {
   return metadataText(workflow.metadata, "department") || "Departamento a confirmar";
 }
 
+function sourceJobOpeningWorkflowId(workflow: WorkflowDetail) {
+  return metadataText(workflow.metadata, "source_job_opening_workflow_id");
+}
+
+function sourceCandidateId(workflow: WorkflowDetail) {
+  return metadataText(workflow.metadata, "source_candidate_id");
+}
+
 function admissionDate(workflow: WorkflowDetail) {
   return metadataText(workflow.metadata, "admission_date");
+}
+
+function jobOpeningNextAction(workflow: WorkflowDetail, currentStep: WorkflowStep | null) {
+  const stepName = currentStep?.name.toLowerCase() ?? "";
+  if (workflow.status === "waiting_approval" || currentStep?.status === "waiting_approval" || stepName.includes("aprov")) {
+    return "Aguarde ou aprove a abertura da vaga conforme a etapa atual.";
+  }
+  if (stepName.includes("recrut") || stepName.includes("candidat") || stepName.includes("entrevista")) {
+    return "Inicie ou acompanhe o recrutamento, cadastre candidatos e registre avaliacoes humanas.";
+  }
+  if (stepName.includes("admiss")) return "Acompanhe a admissao vinculada ao candidato aprovado.";
+  if (workflow.status === "completed") return "Vaga finalizada. Consulte historico, candidatos e admissao se necessario.";
+  return "Confira a etapa atual, candidatos vinculados e a proxima acao do processo.";
+}
+
+function workflowReturnLink(workflow: WorkflowDetail, isJobOpening: boolean, isAdmission: boolean) {
+  if (isJobOpening) return { href: "/rh/vagas", label: "Voltar para Vagas" };
+  if (isAdmission) {
+    const sourceWorkflowId = sourceJobOpeningWorkflowId(workflow);
+    const candidateId = sourceCandidateId(workflow);
+    if (sourceWorkflowId && candidateId) {
+      return { href: `/rh/vagas/${sourceWorkflowId}/candidatos/${candidateId}`, label: "Voltar para candidato" };
+    }
+    if (sourceWorkflowId) return { href: `/rh/vagas/${sourceWorkflowId}/candidatos`, label: "Voltar para candidatos" };
+    return { href: "/rh/vagas", label: "Voltar para Vagas" };
+  }
+  return { href: "/rh/inbox", label: "Voltar para fila" };
 }
 
 function workflowProgress(steps: WorkflowStep[]) {
@@ -1304,19 +1340,26 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
   const isJobOpening = workflow.workflow_type === "job_opening";
   const isAdmission = workflow.workflow_type === "admission";
+  const returnLink = workflowReturnLink(workflow, isJobOpening, isAdmission);
 
   return (
     <div className="space-y-5">
       <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur lg:sticky lg:top-0 lg:z-10">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Link href="/rh" className="font-medium text-primary hover:underline">RH</Link>
-              <span>/</span>
-              <Link href="/rh/inbox" className="font-medium text-primary hover:underline">Fila de RH</Link>
-              <span>/</span>
-              <span>Resumo operacional</span>
-            </div>
+            {isJobOpening ? (
+              <HrRecruitmentBreadcrumb items={[{ label: "Vagas", href: "/rh/vagas" }, { label: "Detalhe da vaga" }]} />
+            ) : isAdmission ? (
+              <HrRecruitmentBreadcrumb items={[{ label: "Admissao" }]} />
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Link href="/rh" className="font-medium text-primary hover:underline">RH</Link>
+                <span>/</span>
+                <Link href="/rh/inbox" className="font-medium text-primary hover:underline">Fila de RH</Link>
+                <span>/</span>
+                <span>Resumo operacional</span>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="break-words text-lg font-semibold text-foreground">{isAdmission ? "Processo admissional" : workflowTypeLabel(workflow.workflow_type)}</h2>
               <StatusBadge status={statusTone(workflow.status)} label={workflowStatusLabel(workflow.status)} />
@@ -1339,14 +1382,28 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
               </Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/rh/inbox">
+              <Link href={returnLink.href}>
                 <ArrowLeft className="h-4 w-4" />
-                Voltar para fila
+                {returnLink.label}
               </Link>
             </Button>
           </div>
         </div>
       </Card>
+
+      {isJobOpening ? (
+        <HrRecruitmentGuidance
+          where="Voce esta no processo de abertura/recrutamento desta vaga."
+          next={jobOpeningNextAction(workflow, currentStep)}
+        />
+      ) : null}
+
+      {isAdmission ? (
+        <HrRecruitmentGuidance
+          where="Voce esta no processo admissional. Aqui ficam as etapas antes do colaborador ficar ativo."
+          next="Solicite documentos, acompanhe conferencia, contabilidade, registro e onboarding sem gerar pendencias automaticas novas nesta etapa."
+        />
+      ) : null}
 
       {isAdmission ? (
         <>
@@ -1365,6 +1422,9 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
       {isJobOpening ? (
         <HrJobRequirementPreview
+          mode="summary"
+          title="Resumo das regras sugeridas do cargo"
+          description="Principais impactos do cargo: documentos, saude ocupacional, uniforme, treinamentos e onboarding. A revisao completa acontece na admissao."
           jobTitle={metadataText(workflow.metadata, "job_position")}
           sector={metadataText(workflow.metadata, "department")}
           department={metadataText(workflow.metadata, "department")}

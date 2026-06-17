@@ -11,6 +11,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/bas
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import {
   type Candidate,
   type CandidateSummary,
@@ -68,6 +69,18 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
 
   return (
     <div className="space-y-5">
+      <HrRecruitmentBreadcrumb
+        items={[
+          { label: "Vagas", href: "/rh/vagas" },
+          { label: "Detalhe da vaga", href: `/rh/workflows/${workflowId}` },
+          { label: "Candidatos" }
+        ]}
+      />
+      <HrRecruitmentGuidance
+        where="Voce esta avaliando candidatos vinculados a esta vaga."
+        next={summary.aprovado > 0 ? "Abra o candidato aprovado para iniciar ou acompanhar a admissao." : "Cadastre candidatos, registre entrevistas e aprove um candidato quando a decisao humana estiver pronta."}
+      />
+
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
