@@ -1351,6 +1351,13 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       {isAdmission ? (
         <>
           <AdmissionSummaryPanel workflow={workflow} currentStep={currentStep} />
+          <HrJobRequirementPreview
+            title="Regras sugeridas para admissao"
+            description="Estas regras indicam o que podera ser gerado na admissao deste colaborador. Nesta etapa ainda nada sera criado automaticamente."
+            jobTitle={metadataText(workflow.metadata, "job_position")}
+            sector={metadataText(workflow.metadata, "department")}
+            department={metadataText(workflow.metadata, "department")}
+          />
           <AdmissionNextStepCard currentStep={currentStep} />
         </>
       ) : null}

@@ -14,6 +14,7 @@ import { HrInterviewFormClient } from "@/components/hr/hr-interview-form-client"
 import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card";
 import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
 import { HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
+import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import {
   type Candidate,
   type CandidateAdmissionConversion,
@@ -37,6 +38,13 @@ type CandidateDetailResponse = {
       title: string;
       status: string;
     };
+  };
+};
+
+type WorkflowRequirementPreviewResponse = {
+  data: {
+    workflow_type: string;
+    metadata: Record<string, unknown> | null;
   };
 };
 
@@ -68,6 +76,14 @@ function averageScore(interview: CandidateInterview) {
   return (total / 5).toFixed(1);
 }
 
+function metadataText(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string" && value.trim().toLowerCase() === "redacted") return "Redigido";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
 export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowId: string; candidateId: string }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CandidateEditForm | null>(null);
@@ -78,9 +94,15 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
     queryFn: async () => requestJson<CandidateDetailResponse>(`/api/hr/workflows/${workflowId}/candidates/${candidateId}`)
   });
 
+  const workflowRequirementQuery = useQuery({
+    queryKey: ["hr", "workflow-requirement-preview", workflowId],
+    queryFn: async () => requestJson<WorkflowRequirementPreviewResponse>(`/api/hr/workflows/${workflowId}`)
+  });
+
   const candidate = query.data?.data.candidate ?? null;
   const interviews = query.data?.data.interviews ?? emptyInterviews;
   const admissionConversion = query.data?.data.admission_conversion ?? null;
+  const workflowMetadata = workflowRequirementQuery.data?.data.metadata ?? null;
 
   useEffect(() => {
     if (candidate) {
@@ -226,6 +248,18 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       </div>
 
       <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} />
+
+      {workflowRequirementQuery.error ? (
+        <ErrorMessage message={workflowRequirementQuery.error instanceof Error ? workflowRequirementQuery.error.message : "Nao foi possivel carregar as regras sugeridas da vaga."} />
+      ) : null}
+
+      <HrJobRequirementPreview
+        title="Regras sugeridas para admissao"
+        description="Estas regras indicam o que podera ser gerado na admissao deste colaborador. Nesta etapa ainda nada sera criado automaticamente."
+        jobTitle={metadataText(workflowMetadata, "job_position")}
+        sector={metadataText(workflowMetadata, "department")}
+        department={metadataText(workflowMetadata, "department")}
+      />
 
       <HrCandidateAdmissionConversionCard workflowId={workflowId} candidate={candidate} admissionConversion={admissionConversion} />
 

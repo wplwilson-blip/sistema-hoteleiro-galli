@@ -16,6 +16,8 @@ type RequirementPreviewItem = HrJobRequirementItem | HrTrainingRequirementItem |
 type HrJobRequirementPreviewProps = FindJobRequirementRuleInput & {
   surface?: "card" | "section";
   className?: string;
+  title?: string;
+  description?: string;
 };
 
 const requirementLevelLabels: Record<HrJobRequirementLevel, string> = {
@@ -85,16 +87,24 @@ function RequirementSection({ title, items }: { title: string; items: Requiremen
   );
 }
 
-function PreviewContent({ rule, hasSelection }: { rule: HrJobRequirementRule | null; hasSelection: boolean }) {
+function PreviewContent({
+  rule,
+  hasSelection,
+  title,
+  description
+}: {
+  rule: HrJobRequirementRule | null;
+  hasSelection: boolean;
+  title: string;
+  description: string;
+}) {
   return (
     <>
       <div className="mb-3 flex items-start gap-2">
         <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">Regras sugeridas do cargo</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Estas regras sao sugestoes baseadas na matriz PGR/PCMSO/CBO. Revise antes de usar na admissao.
-          </p>
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
       </div>
 
@@ -126,21 +136,27 @@ function PreviewContent({ rule, hasSelection }: { rule: HrJobRequirementRule | n
   );
 }
 
-export function HrJobRequirementPreview({ surface = "card", className, ...input }: HrJobRequirementPreviewProps) {
+export function HrJobRequirementPreview({
+  surface = "card",
+  className,
+  title = "Regras sugeridas do cargo",
+  description = "Estas regras sao sugestoes baseadas na matriz PGR/PCMSO/CBO. Revise antes de usar na admissao.",
+  ...input
+}: HrJobRequirementPreviewProps) {
   const rule = findJobRequirementRule(input);
   const hasSelection = Boolean(input.ruleGroup || input.cboCode || input.jobTitle || input.sector || input.department);
 
   if (surface === "section") {
     return (
       <section className={className}>
-        <PreviewContent rule={rule} hasSelection={hasSelection} />
+        <PreviewContent rule={rule} hasSelection={hasSelection} title={title} description={description} />
       </section>
     );
   }
 
   return (
     <Card className={className ?? "min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5"}>
-      <PreviewContent rule={rule} hasSelection={hasSelection} />
+      <PreviewContent rule={rule} hasSelection={hasSelection} title={title} description={description} />
     </Card>
   );
 }
