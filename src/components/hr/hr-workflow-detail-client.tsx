@@ -31,6 +31,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
+import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -574,6 +575,30 @@ function workflowReturnLink(workflow: WorkflowDetail, isJobOpening: boolean, isA
   return { href: "/rh/inbox", label: "Voltar para fila" };
 }
 
+function jobOpeningTimelineStage(
+  workflow: WorkflowDetail,
+  currentStep: WorkflowStep | null,
+  summary: CandidateSummaryResponse["summary"] | null | undefined
+): HrRecruitmentStageKey {
+  const stepName = currentStep?.name.toLowerCase() ?? "";
+  if (stepName.includes("admiss")) return "admission";
+  if ((summary?.aprovado ?? 0) > 0) return "candidate_approved";
+  if ((summary?.total ?? 0) > 0 || stepName.includes("candidat") || stepName.includes("entrevista")) return "candidates";
+  if (workflow.status === "waiting_approval" || currentStep?.status === "waiting_approval" || stepName.includes("aprov")) return "approval";
+  if (workflow.status === "open" || workflow.status === "in_progress" || stepName.includes("recrut")) return "opening";
+  return "request";
+}
+
+function admissionTimelineStage(workflow: WorkflowDetail, currentStep: WorkflowStep | null): HrRecruitmentStageKey {
+  const stepName = currentStep?.name.toLowerCase() ?? "";
+  if (workflow.status === "completed") return "active";
+  if (stepName.includes("onboard")) return "onboarding";
+  if (stepName.includes("registr")) return "registration";
+  if (stepName.includes("contab")) return "accounting";
+  if (stepName.includes("document") || stepName.includes("confer")) return "documents";
+  return "admission";
+}
+
 function workflowProgress(steps: WorkflowStep[]) {
   if (!steps.length) return 0;
   return Math.round((steps.filter((step) => step.status === "completed").length / steps.length) * 100);
@@ -740,7 +765,7 @@ function CandidateSummaryPanel({
           <Button asChild variant="outline" size="sm">
             <Link href={`/rh/vagas/${workflowId}/candidatos`}>
               <UsersRound className="h-4 w-4" />
-              Candidatos
+              Ver candidatos
             </Link>
           </Button>
           <Button asChild size="sm">
@@ -1341,6 +1366,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   const isJobOpening = workflow.workflow_type === "job_opening";
   const isAdmission = workflow.workflow_type === "admission";
   const returnLink = workflowReturnLink(workflow, isJobOpening, isAdmission);
+  const candidateSummary = candidateSummaryQuery.data?.summary ?? null;
 
   return (
     <div className="space-y-5">
@@ -1398,10 +1424,29 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         />
       ) : null}
 
+      {isJobOpening ? (
+        <HrRecruitmentTimeline
+          mode="job_opening"
+          currentStage={jobOpeningTimelineStage(workflow, currentStep, candidateSummary)}
+          title="Linha do tempo da vaga"
+          description="Acompanhe a vaga desde a solicitacao ate o inicio da admissao."
+        />
+      ) : null}
+
       {isAdmission ? (
         <HrRecruitmentGuidance
           where="Voce esta no processo admissional. Aqui ficam as etapas antes do colaborador ficar ativo."
           next="Solicite documentos, acompanhe conferencia, contabilidade, registro e onboarding sem gerar pendencias automaticas novas nesta etapa."
+        />
+      ) : null}
+
+      {isAdmission ? (
+        <HrRecruitmentTimeline
+          mode="admission"
+          currentStage={admissionTimelineStage(workflow, currentStep)}
+          title="Linha do tempo admissional"
+          description="Visao visual da admissao, do processo iniciado ate o colaborador ativo."
+          note="Nesta fase, o RH acompanha documentos, conferencia, envio para contabilidade, registro e inicio do onboarding. O controle detalhado de documentos admissionais sera estruturado em etapa futura."
         />
       ) : null}
 

@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
+import { HrRecruitmentTimeline } from "@/components/hr/hr-recruitment-timeline";
 import { useAppStore } from "@/store/app-store";
 
 type RecordStatus = "active" | "inactive" | "archived";
@@ -306,6 +307,12 @@ export function HrJobOpeningCreateClient() {
       <HrRecruitmentGuidance
         where="Voce esta criando uma solicitacao de abertura de vaga antes do recrutamento."
         next="Preencha os dados operacionais da vaga. Depois de salvar, acompanhe aprovacao, candidatos e proximas etapas no detalhe da vaga."
+      />
+      <HrRecruitmentTimeline
+        mode="job_opening"
+        currentStage="request"
+        title="Linha do tempo da vaga"
+        description="A abertura da vaga e o primeiro passo antes de aprovacao, recrutamento, candidatos e admissao."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
+import { HrRecruitmentTimeline } from "@/components/hr/hr-recruitment-timeline";
 import {
   type Candidate,
   type CandidateSummary,
@@ -79,6 +80,12 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
       <HrRecruitmentGuidance
         where="Voce esta avaliando candidatos vinculados a esta vaga."
         next={summary.aprovado > 0 ? "Abra o candidato aprovado para iniciar ou acompanhar a admissao." : "Cadastre candidatos, registre entrevistas e aprove um candidato quando a decisao humana estiver pronta."}
+      />
+      <HrRecruitmentTimeline
+        mode="candidate"
+        currentStage={summary.aprovado > 0 ? "candidate_approved" : "candidates"}
+        title="Etapa de candidatos"
+        description="Esta etapa serve para avaliar candidatos antes de iniciar admissao."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -172,7 +179,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
               </thead>
               <tbody className="divide-y">
                 {candidates.map((candidate) => (
-                  <tr key={candidate.id} className="align-top hover:bg-muted/30">
+                  <tr key={candidate.id} className={candidate.status === "aprovado" ? "align-top bg-emerald-50/50 hover:bg-emerald-50" : "align-top hover:bg-muted/30"}>
                     <td className="px-4 py-3">
                       <p className="font-medium text-foreground">{candidate.full_name}</p>
                       <p className="text-xs text-muted-foreground">Cadastrado em {formatDateTime(candidate.created_at)}</p>
@@ -180,6 +187,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
                     <td className="px-4 py-3 text-muted-foreground">{candidate.source}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
+                      {candidate.status === "aprovado" ? <p className="mt-1 text-xs font-medium text-emerald-700">Proxima acao: iniciar ou acompanhar admissao.</p> : null}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{candidate.manual_score ?? "Não informado"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateTime(candidate.updated_at)}</td>

@@ -16,6 +16,7 @@ import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scoreca
 import { HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
+import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
 import {
   type Candidate,
   type CandidateAdmissionConversion,
@@ -90,6 +91,12 @@ function candidateNextAction(candidate: Candidate, admissionConversion: Candidat
   if (candidate.status === "aprovado") return "Inicie a admissao ou acompanhe a conversao quando ela ja existir.";
   if (candidate.status === "reprovado") return "Confira o parecer registrado e volte para a lista de candidatos da vaga.";
   return "Registre entrevista, scorecard e parecer humano antes de aprovar ou reprovar o candidato.";
+}
+
+function candidateTimelineStage(candidate: Candidate, admissionConversion: CandidateAdmissionConversion | null): HrRecruitmentStageKey {
+  if (admissionConversion?.status === "completed") return "admission";
+  if (candidate.status === "aprovado") return "candidate_approved";
+  return "candidates";
 }
 
 export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowId: string; candidateId: string }) {
@@ -185,6 +192,12 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       <HrRecruitmentGuidance
         where="Voce esta avaliando um candidato vinculado a esta vaga."
         next={candidateNextAction(candidate, admissionConversion)}
+      />
+      <HrRecruitmentTimeline
+        mode="candidate"
+        currentStage={candidateTimelineStage(candidate, admissionConversion)}
+        title="Jornada do candidato ate a admissao"
+        description="Use esta leitura para saber se o candidato ainda esta em analise, ja foi aprovado ou ja iniciou admissao."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">

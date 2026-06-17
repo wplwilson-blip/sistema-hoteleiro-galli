@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { candidateStatusLabel, requestJson, type Candidate, type CandidateAdmissionConversion } from "@/components/hr/hr-candidate-shared";
+import { cn } from "@/lib/utils";
 
 type AdmissionConversionResponse = {
   data: {
@@ -66,13 +67,14 @@ export function HrCandidateAdmissionConversionCard({
   }
 
   return (
-    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+    <Card className={cn("min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5", canConvert && !admissionWorkflowId && "border-primary/40 bg-primary/5 shadow-primary/10")}>
       <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <UserPlus className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Admissão</h2>
             {admissionWorkflowId ? <StatusBadge status="success" label="Admissão gerada" /> : <StatusBadge status="visual" label="Decisão humana" />}
+            {canConvert && !admissionWorkflowId ? <StatusBadge status="info" label="Proxima acao" /> : null}
           </div>
           {admissionWorkflowId ? (
             <p className="mt-2 text-sm text-muted-foreground">Este candidato ja possui um processo de admissao vinculado.</p>

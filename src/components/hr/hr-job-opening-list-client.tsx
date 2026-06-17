@@ -201,7 +201,7 @@ export function HrJobOpeningListClient() {
       <HrRecruitmentBreadcrumb items={[{ label: "Vagas" }]} />
       <HrRecruitmentGuidance
         where="Voce esta na lista de vagas do fluxo de recrutamento e admissao."
-        next="Use Proximo passo para saber se a vaga pede aprovacao, recrutamento, candidatos ou acompanhamento admissional."
+        next="Use Proximo passo para identificar vagas que pedem aprovacao, recrutamento, avaliacao de candidatos ou acompanhamento admissional."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
