@@ -13,6 +13,7 @@ export type HrJobRequirementType =
   | "document"
   | "training"
   | "occupational_health"
+  | "uniform"
   | "epi"
   | "onboarding"
   | "alert";
@@ -60,6 +61,7 @@ export type HrJobRequirementRule = {
   documentRequirements: HrJobRequirementItem[];
   trainingRequirements: HrTrainingRequirementItem[];
   occupationalHealthRequirements: HrJobRequirementItem[];
+  uniformRequirements: HrJobRequirementItem[];
   epiRequirements: HrJobRequirementItem[];
   onboardingRequirements: HrJobRequirementItem[];
   alertRules: HrAlertRequirementItem[];
@@ -130,6 +132,14 @@ const commonOnboarding: HrJobRequirementItem[] = [
   { key: "conduct_policy", name: "Ciencia da politica de conduta", level: "recommended", sourceBase: source.operation }
 ];
 
+const standardUniformRequirement: HrJobRequirementItem = {
+  key: "operational_uniform",
+  name: "Uniforme operacional",
+  level: "required",
+  sourceBase: source.operation,
+  notes: "Uniforme obrigatorio conforme padrao operacional da unidade."
+};
+
 const commonAlerts: HrAlertRequirementItem[] = [
   { key: "periodic_aso_due", name: "Alerta de ASO periodico", level: "required", alertBeforeDays: 30, targetRequirementKey: "clinical_exam_periodic", sourceBase: ["PCMSO", "MATRIZ_RH_30B"] }
 ];
@@ -160,7 +170,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
       { key: "lgpd_confidentiality", name: "LGPD e sigilo administrativo", level: "recommended", sourceBase: source.operation }
     ],
     occupationalHealthRequirements: clinicalExamSet,
-    epiRequirements: [{ key: "uniform", name: "Uniforme", level: "conditional", sourceBase: source.operation, notes: "Aplicar quando houver padrao de uniforme para a funcao/unidade." }],
+    uniformRequirements: [standardUniformRequirement],
+    epiRequirements: [],
     onboardingRequirements: [...commonOnboarding, { key: "lgpd_acknowledgement", name: "Ciencia LGPD/sigilo", level: "recommended", sourceBase: source.operation }],
     alertRules: [
       ...commonAlerts,
@@ -177,7 +188,7 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
     riskTags: ["ergonomic", "postural", "standing_work", "guest_service", "conflict_service"],
     riskDescription: "Risco ergonomico/postural por permanencia em pe, atendimento ao hospede e situacoes de conflito.",
     sourceBase: source.pcmsopgr,
-    documentRequirements: [...commonDocuments, lgpdDocument, { key: "uniform_delivery_record", name: "Registro de entrega de uniforme", level: "conditional", sourceBase: source.operation }],
+    documentRequirements: [...commonDocuments, lgpdDocument],
     trainingRequirements: [
       integrationTraining,
       { key: "guest_service", name: "Atendimento ao hospede", level: "recommended", alertBeforeDays: 30, sourceBase: source.operation },
@@ -187,7 +198,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
       { key: "conflict_conduct", name: "Conduta em conflito", level: "recommended", sourceBase: source.operation }
     ],
     occupationalHealthRequirements: clinicalExamSet,
-    epiRequirements: [{ key: "uniform", name: "Uniforme", level: "recommended", sourceBase: source.operation }],
+    uniformRequirements: [standardUniformRequirement],
+    epiRequirements: [],
     onboardingRequirements: [
       ...commonOnboarding,
       { key: "reception_procedures", name: "Procedimentos de recepcao", level: "recommended", sourceBase: source.operation },
@@ -196,8 +208,7 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
     alertRules: [
       ...commonAlerts,
       { key: "guest_service_training_due", name: "Alerta de treinamento de atendimento", level: "recommended", alertBeforeDays: 30, targetRequirementKey: "guest_service", sourceBase: source.operation },
-      { key: "lgpd_training_due", name: "Alerta de LGPD/sigilo", level: "recommended", alertBeforeDays: 30, targetRequirementKey: "lgpd_confidentiality", sourceBase: source.operation },
-      { key: "uniform_delivery_pending", name: "Alerta de entrega de uniforme", level: "recommended", alertBeforeDays: 7, targetRequirementKey: "uniform", sourceBase: source.operation }
+      { key: "lgpd_training_due", name: "Alerta de LGPD/sigilo", level: "recommended", alertBeforeDays: 30, targetRequirementKey: "lgpd_confidentiality", sourceBase: source.operation }
     ]
   },
   {
@@ -225,8 +236,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
       { key: "coproculture", name: "Coprocultura", level: "required", condition: "handles_food", sourceBase: ["PCMSO", "MATRIZ_RH_30B"] },
       { key: "parasitological_stool_exam", name: "Parasitologico de fezes", level: "required", condition: "handles_food", sourceBase: ["PCMSO", "MATRIZ_RH_30B"] }
     ],
+    uniformRequirements: [standardUniformRequirement],
     epiRequirements: [
-      { key: "uniform", name: "Uniforme", level: "required", sourceBase: source.operation },
       { key: "thermal_glove", name: "Luva termica", level: "conditional", condition: "works_with_heat", sourceBase: source.pcmsopgr },
       { key: "cut_resistant_glove", name: "Luva anticorte", level: "conditional", condition: "uses_cutting_tools", sourceBase: source.pcmsopgr },
       { key: "adequate_footwear", name: "Calcado adequado", level: "required", sourceBase: source.pcmsopgr }
@@ -265,8 +276,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
     occupationalHealthRequirements: [
       ...clinicalExamSet
     ],
+    uniformRequirements: [standardUniformRequirement],
     epiRequirements: [
-      { key: "uniform", name: "Uniforme", level: "required", sourceBase: source.operation },
       { key: "cleaning_gloves", name: "Luvas para limpeza/produtos", level: "required", condition: "uses_chemical_products", sourceBase: source.pcmsopgr },
       { key: "adequate_footwear", name: "Calcado adequado", level: "required", sourceBase: source.pcmsopgr },
       { key: "mask_or_goggles", name: "Mascara/oculos conforme produto", level: "conditional", condition: "uses_chemical_products", sourceBase: source.pcmsopgr },
@@ -302,8 +313,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
       { key: "ergonomics_movement", name: "Ergonomia e movimentacao de roupas", level: "recommended", sourceBase: source.pcmsopgr }
     ],
     occupationalHealthRequirements: clinicalExamSet,
+    uniformRequirements: [standardUniformRequirement],
     epiRequirements: [
-      { key: "uniform", name: "Uniforme", level: "required", sourceBase: source.operation },
       { key: "adequate_footwear", name: "Calcado adequado", level: "required", sourceBase: source.pcmsopgr },
       { key: "gloves_when_applicable", name: "Luvas quando aplicavel", level: "conditional", sourceBase: source.pcmsopgr },
       { key: "hearing_protection", name: "Protetor auditivo", level: "confirm_with_sst", condition: "works_in_laundry_noise", sourceBase: source.pcmsopgr, notes: "Confirmar exposicao e necessidade com SST." }
@@ -349,8 +360,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
       { key: "fasting_glucose", name: "Glicemia de jejum", level: "required", sourceBase: ["PCMSO", "MATRIZ_RH_30B"] },
       { key: "hemogram", name: "Hemograma completo", level: "required", sourceBase: ["PCMSO", "MATRIZ_RH_30B"] }
     ],
+    uniformRequirements: [standardUniformRequirement],
     epiRequirements: [
-      { key: "uniform", name: "Uniforme", level: "required", sourceBase: source.operation },
       { key: "mechanical_gloves", name: "Luva mecanica", level: "required", sourceBase: source.pcmsopgr },
       { key: "chemical_gloves", name: "Luva quimica", level: "conditional", condition: "uses_chemical_products", sourceBase: source.pcmsopgr },
       { key: "safety_goggles", name: "Oculos de protecao", level: "required", sourceBase: source.pcmsopgr },
@@ -382,7 +393,6 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
     sourceBase: source.reports,
     documentRequirements: [
       ...commonDocuments,
-      { key: "uniform_delivery_record", name: "Registro de entrega de uniforme", level: "recommended", sourceBase: source.operation },
       { key: "security_periculosidade_review", name: "Revisao de periculosidade", level: "confirm_with_sst", condition: "security_periculosidade_review", sourceBase: ["LAUDO_PERICULOSIDADE", "MATRIZ_RH_30B"], notes: "Folha indicou periculosidade para vigilante, mas laudo aponta ausencia. Confirmar com SST/trabalhista." }
     ],
     trainingRequirements: [
@@ -394,8 +404,8 @@ export const hrJobRequirementRules: HrJobRequirementRule[] = [
       { key: "fall_prevention_ergonomics", name: "Prevencao de quedas e ergonomia", level: "recommended", sourceBase: source.pcmsopgr }
     ],
     occupationalHealthRequirements: clinicalExamSet,
+    uniformRequirements: [standardUniformRequirement],
     epiRequirements: [
-      { key: "uniform", name: "Uniforme", level: "recommended", sourceBase: source.operation },
       { key: "security_items", name: "Itens de seguranca conforme contrato/atividade", level: "confirm_with_sst", sourceBase: source.operation }
     ],
     onboardingRequirements: [
@@ -466,6 +476,7 @@ export function listJobRequirementRulesByLevel(level: HrJobRequirementLevel) {
       ...rule.documentRequirements,
       ...rule.trainingRequirements,
       ...rule.occupationalHealthRequirements,
+      ...rule.uniformRequirements,
       ...rule.epiRequirements,
       ...rule.onboardingRequirements,
       ...rule.alertRules

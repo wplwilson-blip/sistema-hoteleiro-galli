@@ -62,11 +62,6 @@ function RequirementList({ items }: { items: RequirementPreviewItem[] }) {
           </div>
           {item.level === "confirm_with_sst" ? <p className="mt-1 text-xs font-medium text-amber-700">Depende de validacao da Seguranca do Trabalho.</p> : null}
           {item.condition ? <p className="mt-1 text-xs font-medium text-amber-700">{conditionLabels[item.condition] ?? item.condition}</p> : null}
-          {item.name.toLowerCase().includes("uniforme") ? (
-            <p className="mt-1 text-xs font-medium text-muted-foreground">
-              Uniforme: obrigatorio conforme padrao operacional da unidade. EPI tecnico depende de risco, cargo e validacao SST.
-            </p>
-          ) : null}
           {"validityDays" in item && item.validityDays ? <p className="mt-1 text-xs text-muted-foreground">Validade sugerida: {item.validityDays} dias.</p> : null}
           {"alertBeforeDays" in item && item.alertBeforeDays ? <p className="mt-1 text-xs text-muted-foreground">Alerta sugerido: {item.alertBeforeDays} dias antes.</p> : null}
           {item.notes ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.notes}</p> : null}
@@ -131,27 +126,27 @@ function PreviewContent({
               <StatusBadge status="visual" label="Preview sem geracao real" />
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">{rule.riskDescription}</p>
+            <p className="mt-2 rounded-md border bg-background px-3 py-2 text-xs font-medium leading-5 text-muted-foreground">
+              Uniforme: item operacional obrigatorio para todos os cargos. EPI tecnico depende dos riscos da funcao e validacao da Seguranca do Trabalho.
+            </p>
           </div>
           {mode === "summary" ? (
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               <SummaryTile label="Documentos" count={rule.documentRequirements.length} />
               <SummaryTile label="Saude ocupacional" count={rule.occupationalHealthRequirements.length} />
               <SummaryTile label="Treinamentos" count={rule.trainingRequirements.length} />
+              <SummaryTile label="Uniforme operacional" count={rule.uniformRequirements.length} description="Obrigatorio conforme padrao operacional da unidade." />
+              <SummaryTile label="EPIs tecnicos" count={rule.epiRequirements.length} description="Dependem de risco, cargo e validacao SST." />
               <SummaryTile label="Onboarding" count={rule.onboardingRequirements.length} />
               <SummaryTile label="Alertas" count={rule.alertRules.length} />
-              <div className="rounded-md border bg-background px-3 py-2">
-                <p className="text-sm font-medium text-foreground">Uniforme operacional</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Uniforme: obrigatorio conforme padrao operacional da unidade. EPI tecnico depende de risco, cargo e validacao SST.
-                </p>
-              </div>
             </div>
           ) : (
             <>
               <RequirementSection title="Documentos" items={rule.documentRequirements} />
               <RequirementSection title="Treinamentos" items={rule.trainingRequirements} />
               <RequirementSection title="Saude ocupacional" items={rule.occupationalHealthRequirements} />
-              <RequirementSection title="EPIs" items={rule.epiRequirements} />
+              <RequirementSection title="Uniforme operacional" items={rule.uniformRequirements} />
+              <RequirementSection title="EPIs tecnicos" items={rule.epiRequirements} />
               <RequirementSection title="Onboarding" items={rule.onboardingRequirements} />
               <RequirementSection title="Alertas" items={rule.alertRules} />
             </>
@@ -162,14 +157,14 @@ function PreviewContent({
   );
 }
 
-function SummaryTile({ label, count }: { label: string; count: number }) {
+function SummaryTile({ label, count, description = "Resumo para orientar a vaga. A revisao completa acontece na admissao." }: { label: string; count: number; description?: string }) {
   return (
     <div className="rounded-md border bg-background px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-medium text-foreground">{label}</p>
         <StatusBadge status={count ? "info" : "visual"} label={`${count} item(ns)`} />
       </div>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">Resumo para orientar a vaga. A revisao completa acontece na admissao.</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
     </div>
   );
 }
