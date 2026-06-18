@@ -167,6 +167,56 @@ function normalizeDateOnly(value: string | null | undefined) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
+async function findAdmissionProcessForConversion(supabase: SupabaseAdmin, input: EnsureAdmissionProcessInput) {
+  const loadBy = async (column: "source_candidate_id" | "admission_workflow_id", value: string) => {
+    const { data, error } = await supabase
+      .from("hr_admission_processes")
+      .select(HR_ADMISSION_PROCESS_SELECT)
+      .eq(column, value)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      logHrApiError("admission_process.ensure_lookup_failed", error);
+      throw new Error("Nao foi possivel validar processo admissional existente.");
+    }
+
+    return (data?.[0] as HrAdmissionProcessRow | undefined) ?? null;
+  };
+
+  if (input.sourceCandidateId && input.admissionWorkflowId) {
+    const { data, error } = await supabase
+      .from("hr_admission_processes")
+      .select(HR_ADMISSION_PROCESS_SELECT)
+      .eq("source_candidate_id", input.sourceCandidateId)
+      .eq("admission_workflow_id", input.admissionWorkflowId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      logHrApiError("admission_process.ensure_lookup_failed", error);
+      throw new Error("Nao foi possivel validar processo admissional existente.");
+    }
+
+    const exact = (data?.[0] as HrAdmissionProcessRow | undefined) ?? null;
+    if (exact) return exact;
+  }
+
+  if (input.admissionWorkflowId) {
+    const byWorkflow = await loadBy("admission_workflow_id", input.admissionWorkflowId);
+    if (byWorkflow) return byWorkflow;
+  }
+
+  if (input.sourceCandidateId) {
+    const byCandidate = await loadBy("source_candidate_id", input.sourceCandidateId);
+    if (byCandidate) return byCandidate;
+  }
+
+  return null;
+}
+
 async function loadSingleAdmissionProcessBy(
   context: HrRequestContext,
   column: "id" | "admission_workflow_id" | "source_candidate_id" | "employee_id",
@@ -301,39 +351,8 @@ export async function ensureAdmissionProcessForConversion(
   supabase: SupabaseAdmin,
   input: EnsureAdmissionProcessInput
 ) {
-  if (input.admissionWorkflowId) {
-    const { data, error } = await supabase
-      .from("hr_admission_processes")
-      .select(HR_ADMISSION_PROCESS_SELECT)
-      .eq("admission_workflow_id", input.admissionWorkflowId)
-      .is("deleted_at", null)
-      .limit(1);
-
-    if (error) {
-      logHrApiError("admission_process.ensure_workflow_lookup_failed", error);
-      throw new Error("Nao foi possivel validar processo admissional existente.");
-    }
-
-    const existing = (data?.[0] as HrAdmissionProcessRow | undefined) ?? null;
-    if (existing) return { process: existing, created: false };
-  }
-
-  if (input.sourceCandidateId) {
-    const { data, error } = await supabase
-      .from("hr_admission_processes")
-      .select(HR_ADMISSION_PROCESS_SELECT)
-      .eq("source_candidate_id", input.sourceCandidateId)
-      .is("deleted_at", null)
-      .limit(1);
-
-    if (error) {
-      logHrApiError("admission_process.ensure_candidate_lookup_failed", error);
-      throw new Error("Nao foi possivel validar admissao existente do candidato.");
-    }
-
-    const existing = (data?.[0] as HrAdmissionProcessRow | undefined) ?? null;
-    if (existing) return { process: existing, created: false };
-  }
+  const existing = await findAdmissionProcessForConversion(supabase, input);
+  if (existing) return { process: existing, created: false };
 
   const { data, error } = await supabase
     .from("hr_admission_processes")
@@ -349,6 +368,14 @@ export async function ensureAdmissionProcessForConversion(
       job_title: normalizeOptionalText(input.jobTitle, 180),
       cbo_code: normalizeOptionalText(input.cboCode, 20),
       department_name: normalizeOptionalText(input.departmentName, 180),
+      status: "draft",
+      current_step: "draft",
+      documents_status: "not_started",
+      accounting_status: "not_started",
+      registration_status: "not_started",
+      occupational_health_status: "not_started",
+      uniform_status: "not_started",
+      onboarding_status: "not_started",
       expected_start_date: normalizeDateOnly(input.expectedStartDate),
       created_by: input.actorUserId ?? null,
       updated_by: input.actorUserId ?? null
@@ -357,6 +384,11 @@ export async function ensureAdmissionProcessForConversion(
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      const raced = await findAdmissionProcessForConversion(supabase, input);
+      if (raced) return { process: raced, created: false };
+    }
+
     logHrApiError("admission_process.ensure_create_failed", error);
     throw new Error("Nao foi possivel criar processo admissional persistente.");
   }

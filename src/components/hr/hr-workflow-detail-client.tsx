@@ -972,7 +972,7 @@ function AdmissionPersistentPanel({
             <InfoTile label="Saude ocupacional" value={admissionAuxiliaryStatusLabel(process.occupational_health_status)} icon={ShieldAlert} />
             <InfoTile label="Uniforme" value={admissionAuxiliaryStatusLabel(process.uniform_status)} icon={UsersRound} />
             <InfoTile label="Onboarding" value={admissionAuxiliaryStatusLabel(process.onboarding_status)} icon={UserPlus} />
-            <InfoTile label="Checklist persistente" value={`${checklistTotal} item${checklistTotal === 1 ? "" : "s"}`} icon={ListChecks} />
+            <InfoTile label="Checklist persistente" value={`${checklistTotal} ${checklistTotal === 1 ? "item" : "itens"}`} icon={ListChecks} />
           </div>
           <p className="text-xs text-muted-foreground">
             Esta leitura vem da foundation persistente e nao altera o workflow visual atual.

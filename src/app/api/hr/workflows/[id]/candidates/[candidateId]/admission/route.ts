@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { HR_PERMISSIONS, logHrApiError } from "@/lib/hr/api-auth";
+import { ensureAdmissionProcessForConversion } from "@/lib/hr/admission-processes";
 import {
   loadCandidateAdmissionConversion,
   loadCandidateForWorkflow,
@@ -47,8 +48,54 @@ function dateValue(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
 }
 
+function uuidValue(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : undefined;
+}
+
+function codeValue(value: unknown, max = 20) {
+  if (typeof value !== "string") return undefined;
+  const compact = value.trim().replace(/\s+/g, "");
+  return /^[0-9A-Za-z_.-]{2,20}$/.test(compact) ? compact.slice(0, max) : undefined;
+}
+
 function normalizeStepKey(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9_.-]/g, "_").slice(0, 80);
+}
+
+async function ensurePersistentAdmissionProcess(input: {
+  supabase: SupabaseAdmin;
+  workflow: Awaited<ReturnType<typeof loadJobOpeningWorkflow>>;
+  candidate: Awaited<ReturnType<typeof loadCandidateForWorkflow>>;
+  admissionWorkflowId: string;
+  userId: string;
+}) {
+  if (!input.workflow || !input.candidate) {
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Dados insuficientes para criar admissao persistente.", 500);
+  }
+
+  const sourceMetadata = input.workflow.metadata as Metadata;
+
+  try {
+    return await ensureAdmissionProcessForConversion(input.supabase, {
+      organizationId: input.workflow.organization_id,
+      unitId: input.workflow.unit_id,
+      sourceJobOpeningWorkflowId: input.workflow.id,
+      sourceCandidateId: input.candidate.id,
+      admissionWorkflowId: input.admissionWorkflowId,
+      employeeId: null,
+      jobPositionId: uuidValue(sourceMetadata.job_position_id) ?? null,
+      departmentId: uuidValue(sourceMetadata.department_id) ?? null,
+      jobTitle: textValue(sourceMetadata.job_position),
+      cboCode: codeValue(sourceMetadata.cbo_code),
+      departmentName: textValue(sourceMetadata.department),
+      expectedStartDate: dateValue(sourceMetadata.requested_start_date) ?? dateValue(sourceMetadata.admission_date),
+      actorUserId: input.userId
+    });
+  } catch (error) {
+    logHrApiError("candidate_admission_conversion.persistent_process_failed", error instanceof Error ? error : { message: String(error) });
+    throw new HrWorkflowMutationError("INTERNAL_ERROR", "Admissao criada, mas nao foi possivel garantir o processo persistente.", 500);
+  }
 }
 
 async function loadExistingConversion(input: {
@@ -192,10 +239,23 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     const existingConversion = await loadCandidateAdmissionConversion(context, workflow.id, candidate.id);
     if (existingConversion?.status === "completed" && existingConversion.admission_workflow_id) {
+      const admissionProcess = await ensurePersistentAdmissionProcess({
+        supabase: context.supabase,
+        workflow,
+        candidate,
+        admissionWorkflowId: existingConversion.admission_workflow_id,
+        userId: context.session.user.id
+      });
+
       return NextResponse.json({
         data: {
           admission_workflow_id: existingConversion.admission_workflow_id,
-          already_exists: true
+          already_exists: true,
+          admission_process_id: admissionProcess.process.id,
+          admissionProcess: {
+            id: admissionProcess.process.id,
+            created: admissionProcess.created
+          }
         }
       });
     }
@@ -270,10 +330,23 @@ export async function POST(request: Request, { params }: RouteParams) {
     });
 
     if (alreadyCompleted && conversion.admission_workflow_id) {
+      const admissionProcess = await ensurePersistentAdmissionProcess({
+        supabase: context.supabase,
+        workflow,
+        candidate,
+        admissionWorkflowId: conversion.admission_workflow_id,
+        userId: context.session.user.id
+      });
+
       return NextResponse.json({
         data: {
           admission_workflow_id: conversion.admission_workflow_id,
-          already_exists: true
+          already_exists: true,
+          admission_process_id: admissionProcess.process.id,
+          admissionProcess: {
+            id: admissionProcess.process.id,
+            created: admissionProcess.created
+          }
         }
       });
     }
@@ -325,6 +398,14 @@ export async function POST(request: Request, { params }: RouteParams) {
       throw new HrWorkflowMutationError("INTERNAL_ERROR", "Admissao criada, mas nao foi possivel registrar o vinculo.", 500);
     }
 
+    const admissionProcess = await ensurePersistentAdmissionProcess({
+      supabase: context.supabase,
+      workflow,
+      candidate,
+      admissionWorkflowId: result.workflow_id,
+      userId: context.session.user.id
+    });
+
     const auditSnapshot = await loadWorkflowAuditSnapshot({
       supabase: context.supabase,
       workflowId: result.workflow_id
@@ -354,7 +435,12 @@ export async function POST(request: Request, { params }: RouteParams) {
       {
         data: {
           admission_workflow_id: result.workflow_id,
-          already_exists: result.idempotency?.replayed === true
+          already_exists: result.idempotency?.replayed === true,
+          admission_process_id: admissionProcess.process.id,
+          admissionProcess: {
+            id: admissionProcess.process.id,
+            created: admissionProcess.created
+          }
         }
       },
       { status: result.idempotency?.replayed ? 200 : 201 }
