@@ -213,20 +213,22 @@ type AdmissionPersistentLookupResponse = {
   };
 };
 
+type AdmissionPersistentChecklistItem = {
+  id: string;
+  item_type: string;
+  item_key: string;
+  title: string;
+  status: string;
+  requirement_level: string;
+  is_required: boolean;
+  blocks_activation: boolean;
+  notes: string | null;
+};
+
 type AdmissionPersistentDetailResponse = {
   data: {
     process: AdmissionPersistentProcess;
-    checklist: Array<{
-      id: string;
-      item_type: string;
-      item_key: string;
-      title: string;
-      status: string;
-      requirement_level: string;
-      is_required: boolean;
-      blocks_activation: boolean;
-      notes: string | null;
-    }>;
+    checklist: AdmissionPersistentChecklistItem[];
     summary: {
       checklist: {
         total: number;
@@ -360,6 +362,38 @@ const admissionChecklistStatusLabels: Record<string, string> = {
   not_applicable: "Nao aplicavel",
   cancelled: "Cancelado"
 };
+
+const admissionPersistentChecklistGroups: Array<{
+  title: string;
+  description: string;
+  itemKeys: string[];
+}> = [
+  {
+    title: "Documentos admissionais",
+    description: "Controle operacional para solicitar e conferir documentos antes do registro. Ainda nao cria documentos reais nesta etapa.",
+    itemKeys: ["request_documents", "review_documents"]
+  },
+  {
+    title: "Contabilidade e registro",
+    description: "Controle administrativo interno de envio e retorno de registro. Nao envolve folha, eSocial, calculo ou valores.",
+    itemKeys: ["send_to_accounting", "confirm_registration"]
+  },
+  {
+    title: "Saude ocupacional",
+    description: "Acompanhamento visual do ASO admissional. Ainda nao cria ASO real.",
+    itemKeys: ["occupational_health_aso"]
+  },
+  {
+    title: "Uniforme operacional",
+    description: "Uniforme e obrigacao operacional padrao, separado de EPI tecnico.",
+    itemKeys: ["uniform_delivery"]
+  },
+  {
+    title: "Onboarding",
+    description: "Preparacao para inicio do onboarding apos registro. Ainda nao cria onboarding real.",
+    itemKeys: ["start_onboarding"]
+  }
+];
 
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -967,6 +1001,14 @@ function AdmissionPersistentPanel({
   const process = detail?.data.process ?? lookup?.data.process ?? null;
   const checklistTotal = detail?.data.summary.checklist.total ?? 0;
   const checklistItems = detail?.data.checklist ?? [];
+  const completedChecklistItems = checklistItems.filter((item) => item.status === "completed" || item.status === "approved").length;
+  const pendingChecklistItems = checklistItems.filter((item) => item.status === "pending" || item.status === "requested" || item.status === "received" || item.status === "under_review").length;
+  const groupedChecklistItems = admissionPersistentChecklistGroups.map((group) => ({
+    ...group,
+    items: group.itemKeys
+      .map((itemKey) => checklistItems.find((item) => item.item_key === itemKey))
+      .filter((item): item is AdmissionPersistentChecklistItem => Boolean(item))
+  }));
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -1007,27 +1049,51 @@ function AdmissionPersistentPanel({
           </p>
           {checklistItems.length ? (
             <div className="rounded-md border bg-muted/20 p-3">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <StatusBadge status="info" label="Checklist operacional" />
-                <StatusBadge status="visual" label="Somente leitura" />
+              <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status="info" label="Checklist operacional" />
+                    <StatusBadge status="visual" label="Somente leitura" />
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Checklist persistente criado para acompanhamento operacional. Nesta etapa, os itens ainda nao geram documentos, ASO, uniforme ou onboarding automaticamente.
+                  </p>
+                </div>
+                <div className="grid shrink-0 grid-cols-3 gap-2 sm:min-w-[360px]">
+                  <InfoTile label="Total" value={String(checklistItems.length)} icon={ListChecks} />
+                  <InfoTile label="Concluidos" value={String(completedChecklistItems)} icon={CheckCircle2} />
+                  <InfoTile label="Pendentes" value={String(pendingChecklistItems)} icon={FileClock} />
+                </div>
               </div>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Checklist persistente criado para acompanhamento operacional. Nesta etapa, os itens ainda nao geram documentos, ASO, uniforme ou onboarding automaticamente.
-              </p>
-              <div className="space-y-2">
-                {checklistItems.map((item) => (
-                  <article key={item.id} className="rounded-md border bg-background p-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-semibold text-foreground">{item.title}</p>
-                        {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
-                      </div>
-                      <div className="flex shrink-0 flex-wrap gap-1.5">
-                        <StatusBadge status={statusTone(item.status)} label={admissionChecklistStatusLabel(item.status)} />
-                        {item.blocks_activation ? <StatusBadge status="warning" label="Bloqueia ativacao futura" /> : null}
-                      </div>
+              <div className="space-y-3">
+                {groupedChecklistItems.map((group) => (
+                  <section key={group.title} className="rounded-md border bg-background p-3">
+                    <div className="mb-3">
+                      <h3 className="text-sm font-semibold text-foreground">{group.title}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{group.description}</p>
                     </div>
-                  </article>
+                    {group.items.length ? (
+                      <div className="space-y-2">
+                        {group.items.map((item) => (
+                          <article key={item.id} className="rounded-md border bg-muted/20 p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="break-words text-sm font-semibold text-foreground">{item.title}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">Item somente leitura. Ainda nao executa acao real nesta etapa.</p>
+                                {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
+                              </div>
+                              <div className="flex shrink-0 flex-wrap gap-1.5">
+                                <StatusBadge status={statusTone(item.status)} label={admissionChecklistStatusLabel(item.status)} />
+                                {item.blocks_activation ? <StatusBadge status="warning" label="Bloqueia ativacao futura" /> : null}
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">Nenhum item vinculado a este grupo.</p>
+                    )}
+                  </section>
                 ))}
               </div>
             </div>
@@ -1046,6 +1112,7 @@ function AdmissionPersistentPanel({
           <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
             <p>A foundation ja esta pronta, mas esta etapa ainda nao gera pendencias reais.</p>
             <p className="mt-1">O fluxo atual continua usando o workflow visual.</p>
+            <p className="mt-1">O checklist sera criado quando a admissao persistente for inicializada pelo fluxo de conversao.</p>
           </div>
         </div>
       )}
