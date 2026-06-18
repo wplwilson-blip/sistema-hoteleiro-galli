@@ -193,6 +193,44 @@ type CandidateSummaryResponse = {
   };
 };
 
+type AdmissionPersistentProcess = {
+  id: string;
+  status: string;
+  current_step: string;
+  documents_status: string;
+  accounting_status: string;
+  registration_status: string;
+  occupational_health_status: string;
+  uniform_status: string;
+  onboarding_status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type AdmissionPersistentLookupResponse = {
+  data: {
+    process: AdmissionPersistentProcess | null;
+  };
+};
+
+type AdmissionPersistentDetailResponse = {
+  data: {
+    process: AdmissionPersistentProcess;
+    checklist: Array<{ id: string; status: string; is_required: boolean; blocks_activation: boolean }>;
+    summary: {
+      checklist: {
+        total: number;
+        pending: number;
+        completed: number;
+        blocked: number;
+        waived: number;
+        required: number;
+        blocksActivation: number;
+      };
+    };
+  };
+};
+
 type WorkflowMutationResponse = {
   data: WorkflowDetail;
   idempotency?: {
@@ -276,6 +314,28 @@ const actionLabels: Record<string, string> = {
   reject_step: "Rejeicao de etapa",
   return_step: "Devolucao de etapa",
   cancel_workflow: "Cancelamento do processo"
+};
+
+const admissionProcessStatusLabels: Record<string, string> = {
+  draft: "Rascunho",
+  documents_requested: "Documentos solicitados",
+  documents_under_review: "Documentos em conferencia",
+  sent_to_accounting: "Enviado para contabilidade administrativa",
+  registration_pending: "Registro pendente",
+  registered: "Registro concluido",
+  onboarding_ready: "Onboarding pronto",
+  completed: "Concluido",
+  cancelled: "Cancelado"
+};
+
+const admissionAuxiliaryStatusLabels: Record<string, string> = {
+  not_started: "Nao iniciado",
+  pending: "Pendente",
+  in_progress: "Em andamento",
+  completed: "Concluido",
+  blocked: "Bloqueado",
+  waived: "Dispensado",
+  cancelled: "Cancelado"
 };
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -384,6 +444,14 @@ function workflowTypeLabel(type: string) {
 
 function workflowStatusLabel(status: string) {
   return workflowStatusLabels[status] ?? status;
+}
+
+function admissionProcessStatusLabel(status: string) {
+  return admissionProcessStatusLabels[status] ?? status;
+}
+
+function admissionAuxiliaryStatusLabel(status: string) {
+  return admissionAuxiliaryStatusLabels[status] ?? status;
 }
 
 function stepStatusLabel(status: string) {
@@ -854,6 +922,78 @@ function AdmissionNextStepCard({ currentStep }: { currentStep: WorkflowStep | nu
           <InfoTile label="Prazo" value={currentStep?.sla?.due_at ? formatRelativeSla(currentStep.sla) : "Sem prazo"} icon={CalendarClock} />
         </div>
       </div>
+    </Card>
+  );
+}
+
+function AdmissionPersistentPanel({
+  lookup,
+  detail,
+  isLoading,
+  isError
+}: {
+  lookup: AdmissionPersistentLookupResponse | undefined;
+  detail: AdmissionPersistentDetailResponse | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  const process = detail?.data.process ?? lookup?.data.process ?? null;
+  const checklistTotal = detail?.data.summary.checklist.total ?? 0;
+
+  return (
+    <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+      <SectionHeader
+        title="Admissao persistente"
+        description="Esta area prepara o controle futuro de documentos, contabilidade, registro, uniforme e onboarding. Nesta versao, ela e apenas leitura e nao cria pendencias automaticamente."
+        icon={ClipboardList}
+      />
+
+      {isError ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Nao foi possivel carregar a admissao persistente agora.
+        </div>
+      ) : isLoading ? (
+        <div className="flex items-center gap-2 rounded-md border bg-background p-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando leitura persistente...
+        </div>
+      ) : process ? (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge status={statusTone(process.status)} label={admissionProcessStatusLabel(process.status)} />
+            <StatusBadge status="visual" label="Somente leitura" />
+          </div>
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <InfoTile label="Status do processo" value={admissionProcessStatusLabel(process.status)} icon={CheckCircle2} />
+            <InfoTile label="Etapa atual" value={admissionProcessStatusLabel(process.current_step)} icon={ListChecks} />
+            <InfoTile label="Documentos" value={admissionAuxiliaryStatusLabel(process.documents_status)} icon={ClipboardList} />
+            <InfoTile label="Contabilidade adm." value={admissionAuxiliaryStatusLabel(process.accounting_status)} icon={FileClock} />
+            <InfoTile label="Registro" value={admissionAuxiliaryStatusLabel(process.registration_status)} icon={SquareCheckBig} />
+            <InfoTile label="Saude ocupacional" value={admissionAuxiliaryStatusLabel(process.occupational_health_status)} icon={ShieldAlert} />
+            <InfoTile label="Uniforme" value={admissionAuxiliaryStatusLabel(process.uniform_status)} icon={UsersRound} />
+            <InfoTile label="Onboarding" value={admissionAuxiliaryStatusLabel(process.onboarding_status)} icon={UserPlus} />
+            <InfoTile label="Checklist persistente" value={`${checklistTotal} item${checklistTotal === 1 ? "" : "s"}`} icon={ListChecks} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Esta leitura vem da foundation persistente e nao altera o workflow visual atual.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge status="visual" label="Somente leitura" />
+            <StatusBadge status="info" label="Foundation pronta" />
+          </div>
+          <div className="grid min-w-0 gap-3 md:grid-cols-2">
+            <InfoTile label="Processo admissional persistente" value="Ainda nao criado" icon={ClipboardList} />
+            <InfoTile label="Checklist persistente" value="0 itens" icon={ListChecks} />
+          </div>
+          <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            <p>A foundation ja esta pronta, mas esta etapa ainda nao gera pendencias reais.</p>
+            <p className="mt-1">O fluxo atual continua usando o workflow visual.</p>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -1350,6 +1490,17 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
     queryFn: async () => requestJson<CandidateSummaryResponse>(`/api/hr/workflows/${workflowId}/candidates?page_size=1`),
     enabled: workflow?.workflow_type === "job_opening"
   });
+  const persistentAdmissionQuery = useQuery({
+    queryKey: ["hr", "admission-process", "workflow", workflowId],
+    queryFn: async () => requestJson<AdmissionPersistentLookupResponse>(`/api/hr/admission-processes?workflowId=${workflowId}`),
+    enabled: workflow?.workflow_type === "admission"
+  });
+  const persistentAdmissionProcessId = persistentAdmissionQuery.data?.data.process?.id ?? null;
+  const persistentAdmissionDetailQuery = useQuery({
+    queryKey: ["hr", "admission-process", persistentAdmissionProcessId],
+    queryFn: async () => requestJson<AdmissionPersistentDetailResponse>(`/api/hr/admission-processes/${persistentAdmissionProcessId}`),
+    enabled: workflow?.workflow_type === "admission" && Boolean(persistentAdmissionProcessId)
+  });
 
   if (detailQuery.isLoading) {
     return <LoadingTable label="Carregando detalhe do processo RH..." />;
@@ -1453,6 +1604,12 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       {isAdmission ? (
         <>
           <AdmissionSummaryPanel workflow={workflow} currentStep={currentStep} />
+          <AdmissionPersistentPanel
+            lookup={persistentAdmissionQuery.data}
+            detail={persistentAdmissionDetailQuery.data}
+            isLoading={persistentAdmissionQuery.isLoading || persistentAdmissionDetailQuery.isLoading}
+            isError={persistentAdmissionQuery.isError || persistentAdmissionDetailQuery.isError}
+          />
           <HrJobRequirementPreview
             title="Regras sugeridas para admissao"
             description="Estas regras indicam o que podera ser gerado na admissao deste colaborador. Nesta etapa ainda nada sera criado automaticamente."
