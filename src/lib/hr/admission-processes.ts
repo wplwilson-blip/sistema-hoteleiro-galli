@@ -122,6 +122,36 @@ export type EnsureAdmissionProcessInput = {
   actorUserId?: string | null;
 };
 
+export type AdmissionProcessListFilters = {
+  workflowId?: string;
+  candidateId?: string;
+  employeeId?: string;
+  jobOpeningWorkflowId?: string;
+  status?: HrAdmissionProcessStatus;
+  page?: number;
+  pageSize?: number;
+};
+
+export type HrAdmissionStatusSummary = {
+  processStatus: HrAdmissionProcessStatus;
+  currentStep: HrAdmissionProcessStatus;
+  documentsStatus: HrAdmissionAuxiliaryStatus;
+  accountingStatus: HrAdmissionAuxiliaryStatus;
+  registrationStatus: HrAdmissionAuxiliaryStatus;
+  occupationalHealthStatus: HrAdmissionAuxiliaryStatus;
+  uniformStatus: HrAdmissionAuxiliaryStatus;
+  onboardingStatus: HrAdmissionAuxiliaryStatus;
+  checklist: {
+    total: number;
+    pending: number;
+    completed: number;
+    blocked: number;
+    waived: number;
+    required: number;
+    blocksActivation: number;
+  };
+};
+
 function canAccessAdmissionProcess(context: HrRequestContext, process: HrAdmissionProcessRow) {
   return context.isSuperAdmin || !process.unit_id || context.accessibleUnitIds.includes(process.unit_id);
 }
@@ -137,7 +167,11 @@ function normalizeDateOnly(value: string | null | undefined) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
-async function loadSingleAdmissionProcessBy(context: HrRequestContext, column: "id" | "admission_workflow_id" | "source_candidate_id", value: string) {
+async function loadSingleAdmissionProcessBy(
+  context: HrRequestContext,
+  column: "id" | "admission_workflow_id" | "source_candidate_id" | "employee_id",
+  value: string
+) {
   const { data, error } = await context.supabase
     .from("hr_admission_processes")
     .select(HR_ADMISSION_PROCESS_SELECT)
@@ -164,6 +198,62 @@ export async function loadAdmissionProcessByCandidate(context: HrRequestContext,
   return loadSingleAdmissionProcessBy(context, "source_candidate_id", candidateId);
 }
 
+export async function loadAdmissionProcessByEmployee(context: HrRequestContext, employeeId: string) {
+  return loadSingleAdmissionProcessBy(context, "employee_id", employeeId);
+}
+
+export async function loadAdmissionProcessById(context: HrRequestContext, admissionProcessId: string) {
+  return loadSingleAdmissionProcessBy(context, "id", admissionProcessId);
+}
+
+export async function listAdmissionProcesses(context: HrRequestContext, filters: AdmissionProcessListFilters = {}) {
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 50;
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  if (!context.isSuperAdmin && context.accessibleUnitIds.length === 0) {
+    return {
+      data: [],
+      pagination: {
+        page,
+        pageSize,
+        total: 0,
+        totalPages: 0
+      }
+    };
+  }
+
+  let query = context.supabase
+    .from("hr_admission_processes")
+    .select(HR_ADMISSION_PROCESS_SELECT, { count: "exact" })
+    .is("deleted_at", null);
+
+  if (!context.isSuperAdmin) query = query.in("unit_id", context.accessibleUnitIds);
+  if (filters.workflowId) query = query.eq("admission_workflow_id", filters.workflowId);
+  if (filters.candidateId) query = query.eq("source_candidate_id", filters.candidateId);
+  if (filters.employeeId) query = query.eq("employee_id", filters.employeeId);
+  if (filters.jobOpeningWorkflowId) query = query.eq("source_job_opening_workflow_id", filters.jobOpeningWorkflowId);
+  if (filters.status) query = query.eq("status", filters.status);
+
+  const { data, error, count } = await query.order("created_at", { ascending: false }).range(from, to);
+
+  if (error) {
+    logHrApiError("admission_process.list_failed", error);
+    throw new Error("Nao foi possivel listar processos admissionais.");
+  }
+
+  return {
+    data: ((data ?? []) as HrAdmissionProcessRow[]).filter((process) => canAccessAdmissionProcess(context, process)),
+    pagination: {
+      page,
+      pageSize,
+      total: count ?? 0,
+      totalPages: Math.ceil((count ?? 0) / pageSize)
+    }
+  };
+}
+
 export async function listAdmissionChecklistItems(context: HrRequestContext, admissionProcessId: string) {
   const process = await loadSingleAdmissionProcessBy(context, "id", admissionProcessId);
 
@@ -183,6 +273,28 @@ export async function listAdmissionChecklistItems(context: HrRequestContext, adm
   }
 
   return (data ?? []) as HrAdmissionChecklistItemRow[];
+}
+
+export function summarizeAdmissionProcess(process: HrAdmissionProcessRow, checklistItems: HrAdmissionChecklistItemRow[]): HrAdmissionStatusSummary {
+  return {
+    processStatus: process.status,
+    currentStep: process.current_step,
+    documentsStatus: process.documents_status,
+    accountingStatus: process.accounting_status,
+    registrationStatus: process.registration_status,
+    occupationalHealthStatus: process.occupational_health_status,
+    uniformStatus: process.uniform_status,
+    onboardingStatus: process.onboarding_status,
+    checklist: {
+      total: checklistItems.length,
+      pending: checklistItems.filter((item) => item.status === "pending" || item.status === "requested" || item.status === "under_review").length,
+      completed: checklistItems.filter((item) => item.status === "completed" || item.status === "approved").length,
+      blocked: checklistItems.filter((item) => item.status === "rejected").length,
+      waived: checklistItems.filter((item) => item.status === "waived" || item.status === "not_applicable").length,
+      required: checklistItems.filter((item) => item.is_required).length,
+      blocksActivation: checklistItems.filter((item) => item.blocks_activation).length
+    }
+  };
 }
 
 export async function ensureAdmissionProcessForConversion(

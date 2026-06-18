@@ -386,6 +386,28 @@ export const hrDocumentPendenciesSummaryQuerySchema = z.object({
   departmentId: optionalUuidSchema
 });
 
+export const hrAdmissionProcessStatusSchema = z.enum([
+  "draft",
+  "documents_requested",
+  "documents_under_review",
+  "sent_to_accounting",
+  "registration_pending",
+  "registered",
+  "onboarding_ready",
+  "completed",
+  "cancelled"
+]);
+
+export const hrAdmissionProcessesQuerySchema = z.object({
+  workflowId: optionalUuidSchema,
+  candidateId: optionalUuidSchema,
+  employeeId: optionalUuidSchema,
+  jobOpeningWorkflowId: optionalUuidSchema,
+  status: hrAdmissionProcessStatusSchema.optional().or(emptyToUndefined),
+  page: paginatedNumber(1, 100000),
+  pageSize: paginatedNumber(50, 100)
+});
+
 export const hrOnboardingDashboardQuerySchema = z.object({
   page: paginatedNumber(1, 100000),
   pageSize: paginatedNumber(20, 100),
