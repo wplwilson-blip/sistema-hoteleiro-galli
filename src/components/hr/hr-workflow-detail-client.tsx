@@ -216,7 +216,17 @@ type AdmissionPersistentLookupResponse = {
 type AdmissionPersistentDetailResponse = {
   data: {
     process: AdmissionPersistentProcess;
-    checklist: Array<{ id: string; status: string; is_required: boolean; blocks_activation: boolean }>;
+    checklist: Array<{
+      id: string;
+      item_type: string;
+      item_key: string;
+      title: string;
+      status: string;
+      requirement_level: string;
+      is_required: boolean;
+      blocks_activation: boolean;
+      notes: string | null;
+    }>;
     summary: {
       checklist: {
         total: number;
@@ -338,6 +348,19 @@ const admissionAuxiliaryStatusLabels: Record<string, string> = {
   cancelled: "Cancelado"
 };
 
+const admissionChecklistStatusLabels: Record<string, string> = {
+  pending: "Pendente",
+  requested: "Solicitado",
+  received: "Recebido",
+  under_review: "Em conferencia",
+  approved: "Aprovado",
+  rejected: "Rejeitado",
+  waived: "Dispensado",
+  completed: "Concluido",
+  not_applicable: "Nao aplicavel",
+  cancelled: "Cancelado"
+};
+
 async function requestJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => null);
@@ -452,6 +475,10 @@ function admissionProcessStatusLabel(status: string) {
 
 function admissionAuxiliaryStatusLabel(status: string) {
   return admissionAuxiliaryStatusLabels[status] ?? status;
+}
+
+function admissionChecklistStatusLabel(status: string) {
+  return admissionChecklistStatusLabels[status] ?? status;
 }
 
 function stepStatusLabel(status: string) {
@@ -939,6 +966,7 @@ function AdmissionPersistentPanel({
 }) {
   const process = detail?.data.process ?? lookup?.data.process ?? null;
   const checklistTotal = detail?.data.summary.checklist.total ?? 0;
+  const checklistItems = detail?.data.checklist ?? [];
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -977,6 +1005,33 @@ function AdmissionPersistentPanel({
           <p className="text-xs text-muted-foreground">
             Esta leitura vem da foundation persistente e nao altera o workflow visual atual.
           </p>
+          {checklistItems.length ? (
+            <div className="rounded-md border bg-muted/20 p-3">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <StatusBadge status="info" label="Checklist operacional" />
+                <StatusBadge status="visual" label="Somente leitura" />
+              </div>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Checklist persistente criado para acompanhamento operacional. Nesta etapa, os itens ainda nao geram documentos, ASO, uniforme ou onboarding automaticamente.
+              </p>
+              <div className="space-y-2">
+                {checklistItems.map((item) => (
+                  <article key={item.id} className="rounded-md border bg-background p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-semibold text-foreground">{item.title}</p>
+                        {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-1.5">
+                        <StatusBadge status={statusTone(item.status)} label={admissionChecklistStatusLabel(item.status)} />
+                        {item.blocks_activation ? <StatusBadge status="warning" label="Bloqueia ativacao futura" /> : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">

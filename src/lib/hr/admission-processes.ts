@@ -122,6 +122,13 @@ export type EnsureAdmissionProcessInput = {
   actorUserId?: string | null;
 };
 
+export type EnsureAdmissionMinimumChecklistInput = {
+  organizationId: string;
+  unitId: string | null;
+  admissionProcessId: string;
+  actorUserId?: string | null;
+};
+
 export type AdmissionProcessListFilters = {
   workflowId?: string;
   candidateId?: string;
@@ -152,6 +159,96 @@ export type HrAdmissionStatusSummary = {
   };
 };
 
+const admissionMinimumChecklistItems: Array<{
+  itemKey: string;
+  title: string;
+  itemType: HrAdmissionChecklistItemType;
+  requirementLevel: HrAdmissionRequirementLevel;
+  status: HrAdmissionChecklistStatus;
+  isRequired: boolean;
+  blocksActivation: boolean;
+  notes: string;
+  sortOrder: number;
+}> = [
+  {
+    itemKey: "request_documents",
+    title: "Solicitar documentos admissionais",
+    itemType: "document",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: true,
+    notes: "Item operacional do checklist persistente. Nao cria documento real nesta etapa.",
+    sortOrder: 10
+  },
+  {
+    itemKey: "review_documents",
+    title: "Conferir documentos recebidos",
+    itemType: "document",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: true,
+    notes: "Item operacional do checklist persistente. Nao cria documento real nesta etapa.",
+    sortOrder: 20
+  },
+  {
+    itemKey: "send_to_accounting",
+    title: "Enviar dados para contabilidade",
+    itemType: "accounting",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: false,
+    notes: "Controle administrativo interno para acompanhamento cadastral. Nao aciona rotinas externas.",
+    sortOrder: 30
+  },
+  {
+    itemKey: "confirm_registration",
+    title: "Confirmar registro administrativo",
+    itemType: "registration",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: true,
+    notes: "Controle administrativo interno para acompanhamento cadastral.",
+    sortOrder: 40
+  },
+  {
+    itemKey: "occupational_health_aso",
+    title: "Agendar ou confirmar ASO admissional",
+    itemType: "occupational_health",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: true,
+    notes: "Item operacional do checklist persistente. Nao cria ASO real nesta etapa.",
+    sortOrder: 50
+  },
+  {
+    itemKey: "uniform_delivery",
+    title: "Registrar entrega de uniforme operacional",
+    itemType: "uniform",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: false,
+    notes: "Uniforme operacional separado de EPI tecnico. Nao cria entrega real nesta etapa.",
+    sortOrder: 60
+  },
+  {
+    itemKey: "start_onboarding",
+    title: "Iniciar onboarding do colaborador",
+    itemType: "onboarding",
+    requirementLevel: "required",
+    status: "pending",
+    isRequired: true,
+    blocksActivation: false,
+    notes: "Item operacional do checklist persistente. Nao cria onboarding real nesta etapa.",
+    sortOrder: 70
+  }
+];
+
 function canAccessAdmissionProcess(context: HrRequestContext, process: HrAdmissionProcessRow) {
   return context.isSuperAdmin || !process.unit_id || context.accessibleUnitIds.includes(process.unit_id);
 }
@@ -165,6 +262,23 @@ function normalizeOptionalText(value: string | null | undefined, max: number) {
 function normalizeDateOnly(value: string | null | undefined) {
   if (typeof value !== "string") return null;
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+async function listAdmissionChecklistItemsForProcess(supabase: SupabaseAdmin, admissionProcessId: string) {
+  const { data, error } = await supabase
+    .from("hr_admission_checklist_items")
+    .select(HR_ADMISSION_CHECKLIST_ITEM_SELECT)
+    .eq("admission_process_id", admissionProcessId)
+    .is("deleted_at", null)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    logHrApiError("admission_process.checklist_lookup_failed", error);
+    throw new Error("Nao foi possivel carregar o checklist admissional.");
+  }
+
+  return (data ?? []) as HrAdmissionChecklistItemRow[];
 }
 
 async function findAdmissionProcessForConversion(supabase: SupabaseAdmin, input: EnsureAdmissionProcessInput) {
@@ -308,21 +422,7 @@ export async function listAdmissionChecklistItems(context: HrRequestContext, adm
   const process = await loadSingleAdmissionProcessBy(context, "id", admissionProcessId);
 
   if (!process) return [];
-
-  const { data, error } = await context.supabase
-    .from("hr_admission_checklist_items")
-    .select(HR_ADMISSION_CHECKLIST_ITEM_SELECT)
-    .eq("admission_process_id", admissionProcessId)
-    .is("deleted_at", null)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    logHrApiError("admission_process.checklist_lookup_failed", error);
-    throw new Error("Nao foi possivel carregar o checklist admissional.");
-  }
-
-  return (data ?? []) as HrAdmissionChecklistItemRow[];
+  return listAdmissionChecklistItemsForProcess(context.supabase, admissionProcessId);
 }
 
 export function summarizeAdmissionProcess(process: HrAdmissionProcessRow, checklistItems: HrAdmissionChecklistItemRow[]): HrAdmissionStatusSummary {
@@ -394,4 +494,50 @@ export async function ensureAdmissionProcessForConversion(
   }
 
   return { process: data as HrAdmissionProcessRow, created: true };
+}
+
+export async function ensureAdmissionMinimumChecklist(
+  supabase: SupabaseAdmin,
+  input: EnsureAdmissionMinimumChecklistInput
+) {
+  const existingItems = await listAdmissionChecklistItemsForProcess(supabase, input.admissionProcessId);
+  const existingKeys = new Set(existingItems.map((item) => item.item_key));
+  const missingItems = admissionMinimumChecklistItems.filter((item) => !existingKeys.has(item.itemKey));
+
+  if (missingItems.length === 0) {
+    return { items: existingItems, created: 0 };
+  }
+
+  const { error } = await supabase.from("hr_admission_checklist_items").insert(
+    missingItems.map((item) => ({
+      organization_id: input.organizationId,
+      unit_id: input.unitId,
+      admission_process_id: input.admissionProcessId,
+      item_type: item.itemType,
+      item_key: item.itemKey,
+      title: item.title,
+      description: null,
+      requirement_level: item.requirementLevel,
+      status: item.status,
+      is_required: item.isRequired,
+      blocks_activation: item.blocksActivation,
+      source_requirement_key: null,
+      source_rule_group: "minimum_admission_checklist",
+      notes: item.notes,
+      sort_order: item.sortOrder,
+      created_by: input.actorUserId ?? null,
+      updated_by: input.actorUserId ?? null
+    }))
+  );
+
+  if (error && error.code !== "23505") {
+    logHrApiError("admission_process.minimum_checklist_create_failed", error);
+    throw new Error("Nao foi possivel criar checklist admissional persistente.");
+  }
+
+  const items = await listAdmissionChecklistItemsForProcess(supabase, input.admissionProcessId);
+  return {
+    items,
+    created: Math.max(0, items.length - existingItems.length)
+  };
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { HR_PERMISSIONS, logHrApiError } from "@/lib/hr/api-auth";
-import { ensureAdmissionProcessForConversion } from "@/lib/hr/admission-processes";
+import { ensureAdmissionMinimumChecklist, ensureAdmissionProcessForConversion } from "@/lib/hr/admission-processes";
 import {
   loadCandidateAdmissionConversion,
   loadCandidateForWorkflow,
@@ -77,7 +77,7 @@ async function ensurePersistentAdmissionProcess(input: {
   const sourceMetadata = input.workflow.metadata as Metadata;
 
   try {
-    return await ensureAdmissionProcessForConversion(input.supabase, {
+    const admissionProcess = await ensureAdmissionProcessForConversion(input.supabase, {
       organizationId: input.workflow.organization_id,
       unitId: input.workflow.unit_id,
       sourceJobOpeningWorkflowId: input.workflow.id,
@@ -92,6 +92,18 @@ async function ensurePersistentAdmissionProcess(input: {
       expectedStartDate: dateValue(sourceMetadata.requested_start_date) ?? dateValue(sourceMetadata.admission_date),
       actorUserId: input.userId
     });
+    const checklist = await ensureAdmissionMinimumChecklist(input.supabase, {
+      organizationId: admissionProcess.process.organization_id,
+      unitId: admissionProcess.process.unit_id,
+      admissionProcessId: admissionProcess.process.id,
+      actorUserId: input.userId
+    });
+
+    return {
+      ...admissionProcess,
+      checklistItems: checklist.items,
+      checklistCreated: checklist.created
+    };
   } catch (error) {
     logHrApiError("candidate_admission_conversion.persistent_process_failed", error instanceof Error ? error : { message: String(error) });
     throw new HrWorkflowMutationError("INTERNAL_ERROR", "Admissao criada, mas nao foi possivel garantir o processo persistente.", 500);
@@ -254,7 +266,9 @@ export async function POST(request: Request, { params }: RouteParams) {
           admission_process_id: admissionProcess.process.id,
           admissionProcess: {
             id: admissionProcess.process.id,
-            created: admissionProcess.created
+            created: admissionProcess.created,
+            checklistItems: admissionProcess.checklistItems.length,
+            checklistCreated: admissionProcess.checklistCreated
           }
         }
       });
@@ -345,7 +359,9 @@ export async function POST(request: Request, { params }: RouteParams) {
           admission_process_id: admissionProcess.process.id,
           admissionProcess: {
             id: admissionProcess.process.id,
-            created: admissionProcess.created
+            created: admissionProcess.created,
+            checklistItems: admissionProcess.checklistItems.length,
+            checklistCreated: admissionProcess.checklistCreated
           }
         }
       });
@@ -439,7 +455,9 @@ export async function POST(request: Request, { params }: RouteParams) {
           admission_process_id: admissionProcess.process.id,
           admissionProcess: {
             id: admissionProcess.process.id,
-            created: admissionProcess.created
+            created: admissionProcess.created,
+            checklistItems: admissionProcess.checklistItems.length,
+            checklistCreated: admissionProcess.checklistCreated
           }
         }
       },
