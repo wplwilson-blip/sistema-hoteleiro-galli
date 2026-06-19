@@ -168,6 +168,11 @@ export type HrAdmissionAggregateStatuses = {
   onboarding_status: HrAdmissionAuxiliaryStatus;
 };
 
+export type HrAdmissionMainStatusResolution = {
+  status: HrAdmissionProcessStatus;
+  current_step: HrAdmissionProcessStatus;
+};
+
 const admissionMinimumChecklistItems: Array<{
   itemKey: string;
   title: string;
@@ -315,6 +320,54 @@ function calculateAdmissionAggregateStatuses(checklistItems: HrAdmissionChecklis
       resolveAdmissionAuxiliaryStatus(checklistItems.filter((item) => itemKeys.includes(item.item_key)))
     ])
   ) as HrAdmissionAggregateStatuses;
+}
+
+function deriveAdmissionProcessMainStatus(statuses: HrAdmissionAggregateStatuses): HrAdmissionMainStatusResolution {
+  if (statuses.documents_status === "blocked") {
+    return { status: "documents_under_review", current_step: "documents_under_review" };
+  }
+
+  if (statuses.accounting_status === "blocked") {
+    return { status: "sent_to_accounting", current_step: "sent_to_accounting" };
+  }
+
+  if (statuses.registration_status === "blocked") {
+    return { status: "registration_pending", current_step: "registration_pending" };
+  }
+
+  if (statuses.occupational_health_status === "blocked" || statuses.uniform_status === "blocked") {
+    return { status: "registered", current_step: "registered" };
+  }
+
+  if (statuses.onboarding_status === "blocked") {
+    return { status: "onboarding_ready", current_step: "onboarding_ready" };
+  }
+
+  if (statuses.documents_status !== "completed") {
+    if (statuses.documents_status === "in_progress") {
+      return { status: "documents_under_review", current_step: "documents_under_review" };
+    }
+
+    return { status: "documents_requested", current_step: "documents_requested" };
+  }
+
+  if (statuses.accounting_status !== "completed") {
+    return { status: "sent_to_accounting", current_step: "sent_to_accounting" };
+  }
+
+  if (statuses.registration_status !== "completed") {
+    return { status: "registration_pending", current_step: "registration_pending" };
+  }
+
+  if (statuses.occupational_health_status !== "completed" || statuses.uniform_status !== "completed") {
+    return { status: "registered", current_step: "registered" };
+  }
+
+  if (statuses.onboarding_status !== "completed") {
+    return { status: "onboarding_ready", current_step: "onboarding_ready" };
+  }
+
+  return { status: "completed", current_step: "completed" };
 }
 
 async function findAdmissionProcessForConversion(supabase: SupabaseAdmin, input: EnsureAdmissionProcessInput) {
@@ -490,11 +543,13 @@ export async function recalculateAdmissionProcessAggregateStatuses(
 ) {
   const checklistItems = await listAdmissionChecklistItemsForProcess(supabase, admissionProcessId);
   const aggregateStatuses = calculateAdmissionAggregateStatuses(checklistItems);
+  const mainStatus = deriveAdmissionProcessMainStatus(aggregateStatuses);
 
   const { data, error } = await supabase
     .from("hr_admission_processes")
     .update({
       ...aggregateStatuses,
+      ...mainStatus,
       updated_by: actorUserId ?? null
     })
     .eq("id", admissionProcessId)
