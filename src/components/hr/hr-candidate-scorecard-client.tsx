@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Save, ShieldAlert, Star } from "lucide-react";
+import { ClipboardList, Edit, Save, ShieldAlert, Star } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
@@ -105,6 +105,19 @@ function calculateLiveScore(questions: ScorecardQuestion[], responses: ResponseF
   };
 }
 
+function opinionFromScore(total: number | null): InterviewOpinion {
+  if (total === null) return "parcialmente_recomendado";
+  if (total >= 4.5) return "recomendado";
+  if (total < 3) return "nao_recomendado";
+  return "parcialmente_recomendado";
+}
+
+function opinionTone(opinion: InterviewOpinion) {
+  if (opinion === "recomendado") return "success" as const;
+  if (opinion === "nao_recomendado") return "danger" as const;
+  return "warning" as const;
+}
+
 function buildResponseForm(questions: ScorecardQuestion[], scorecard?: InterviewScorecard): ResponseForm {
   return Object.fromEntries(
     questions.map((question) => {
@@ -136,6 +149,8 @@ export function HrCandidateScorecardClient({
   const [finalOpinion, setFinalOpinion] = useState<InterviewOpinion>("parcialmente_recomendado");
   const [humanOpinion, setHumanOpinion] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
+  const [validationMessage, setValidationMessage] = useState("");
+  const [isEditing, setIsEditing] = useState(true);
 
   const query = useQuery({
     queryKey: ["hr", "candidate-scorecards", workflowId, candidateId],
@@ -149,6 +164,10 @@ export function HrCandidateScorecardClient({
   const existingScorecard = selectedInterview ? scorecards.find((scorecard) => scorecard.interview_id === selectedInterview.id) : undefined;
   const selectedInterviewKey = selectedInterview?.id ?? "";
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0] ?? null;
+  const missingRequiredQuestionIds = useMemo(
+    () => (selectedTemplate?.questions ?? []).filter((question) => question.is_required && !responses[question.id]?.score).map((question) => question.id),
+    [responses, selectedTemplate?.questions]
+  );
   const liveScore = useMemo(
     () => calculateLiveScore(selectedTemplate?.questions ?? [], responses),
     [responses, selectedTemplate?.questions]
@@ -173,12 +192,24 @@ export function HrCandidateScorecardClient({
     setHumanOpinion(scorecard?.human_opinion ?? "");
     setResponses(buildResponseForm(nextTemplate.questions, scorecard));
     setSavedMessage("");
+    setValidationMessage("");
+    setIsEditing(!scorecard);
   }, [scorecards, selectedInterviewKey, templates]);
+
+  useEffect(() => {
+    if (isEditing) {
+      setFinalOpinion(opinionFromScore(liveScore.total));
+    }
+  }, [isEditing, liveScore.total]);
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!selectedInterview || !selectedTemplate) {
         throw new Error("Selecione uma entrevista e um roteiro de avaliação.");
+      }
+
+      if (missingRequiredQuestionIds.length) {
+        throw new Error("Preencha todas as notas obrigatorias antes de salvar a avaliacao.");
       }
 
       return requestJson(`/api/hr/workflows/${workflowId}/candidates/${candidateId}/scorecards`, {
@@ -200,6 +231,8 @@ export function HrCandidateScorecardClient({
     },
     onSuccess: async () => {
       setSavedMessage("Roteiro de avaliação salvo. A decisão permanece humana.");
+      setValidationMessage("");
+      setIsEditing(false);
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-scorecards", workflowId, candidateId] });
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-detail", workflowId, candidateId] });
     }
@@ -207,6 +240,7 @@ export function HrCandidateScorecardClient({
 
   function updateResponse(questionId: string, value: Partial<ResponseForm[string]>) {
     setSavedMessage("");
+    setValidationMessage("");
     mutation.reset();
     setResponses((current) => ({
       ...current,
@@ -227,12 +261,24 @@ export function HrCandidateScorecardClient({
     setSelectedTemplateId(template.id);
     setResponses(buildResponseForm(template.questions, existingScorecard?.template_id === template.id ? existingScorecard : undefined));
     setSavedMessage("");
+    setValidationMessage("");
     mutation.reset();
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (missingRequiredQuestionIds.length) {
+      setValidationMessage("Preencha todas as notas obrigatorias antes de salvar a avaliacao.");
+      return;
+    }
     mutation.mutate();
+  }
+
+  function reopenScorecard() {
+    setSavedMessage("");
+    setValidationMessage("");
+    mutation.reset();
+    setIsEditing(true);
   }
 
   if (!interviews.length) {
@@ -263,6 +309,66 @@ export function HrCandidateScorecardClient({
           <h2 className="text-sm font-semibold">Roteiro de avaliação da entrevista</h2>
         </div>
         <EmptyState title="Sem modelos ativos" description="Não há roteiros de avaliação ativos para esta unidade." />
+      </Card>
+    );
+  }
+
+  if (existingScorecard && selectedTemplate && !isEditing) {
+    return (
+      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+        <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Avaliacao registrada</h2>
+              <StatusBadge status="success" label={`Salva em ${formatDateTime(existingScorecard.evaluated_at)}`} />
+              <StatusBadge status={opinionTone(existingScorecard.final_opinion)} label={interviewOpinionLabel(existingScorecard.final_opinion)} />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Roteiro concluido para esta entrevista. Edite apenas se precisar corrigir a avaliacao registrada.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={reopenScorecard}>
+            <Edit className="h-4 w-4" />
+            Editar avaliacao
+          </Button>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[0.7fr_1.3fr]">
+          <aside className="space-y-3 rounded-md border bg-muted/20 p-3">
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Nota final</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{existingScorecard.total_score.toFixed(2)}</p>
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Recomendacao</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{interviewOpinionLabel(existingScorecard.final_opinion)}</p>
+            </div>
+            {existingScorecard.human_opinion ? (
+              <div className="rounded-md border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Parecer humano</p>
+                <p className="mt-1 break-words text-sm text-foreground">{existingScorecard.human_opinion}</p>
+              </div>
+            ) : null}
+            {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
+          </aside>
+
+          <div className="space-y-3">
+            {selectedTemplate.questions.map((question) => {
+              const response = existingScorecard.responses.find((item) => item.question_id === question.id);
+              return (
+                <div key={question.id} className="rounded-md border bg-background p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-foreground">{question.question_text}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{question.category}</p>
+                    </div>
+                    <StatusBadge status="visual" label={`Nota ${response?.score ?? "-"}`} />
+                  </div>
+                  {response?.observation ? <p className="mt-3 break-words text-sm text-muted-foreground">{response.observation}</p> : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </Card>
     );
   }
@@ -311,35 +417,39 @@ export function HrCandidateScorecardClient({
 
         <div className="grid gap-3 xl:grid-cols-[1.3fr_0.7fr]">
           <div className="space-y-3">
-            {selectedTemplate?.questions.map((question) => (
-              <div key={question.id} className="rounded-md border bg-background p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="break-words text-sm font-medium text-foreground">{question.question_text}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {question.category} | Peso {question.weight.toFixed(2)} {question.is_required ? "| Obrigatoria" : "| Opcional"}
-                    </p>
+            {selectedTemplate?.questions.map((question) => {
+              const isMissing = missingRequiredQuestionIds.includes(question.id);
+              return (
+                <div key={question.id} className={`rounded-md border bg-background p-3 ${isMissing ? "border-destructive/60 bg-destructive/5" : ""}`}>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-foreground">{question.question_text}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {question.category} | Peso {question.weight.toFixed(2)} {question.is_required ? "| Obrigatoria" : "| Opcional"}
+                      </p>
+                      {isMissing ? <p className="mt-2 text-xs font-medium text-destructive">Nota obrigatoria pendente.</p> : null}
+                    </div>
+                    <div className="w-full sm:w-48">
+                      <SelectField value={responses[question.id]?.score ?? ""} onChange={(event) => updateResponse(question.id, { score: event.target.value })}>
+                        {scoreLabels.map((option) => (
+                          <option key={option.value || "empty"} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </SelectField>
+                    </div>
                   </div>
-                  <div className="w-full sm:w-48">
-                    <SelectField value={responses[question.id]?.score ?? ""} onChange={(event) => updateResponse(question.id, { score: event.target.value })}>
-                      {scoreLabels.map((option) => (
-                        <option key={option.value || "empty"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </SelectField>
+                  <div className="mt-3">
+                    <TextArea
+                      value={responses[question.id]?.observation ?? ""}
+                      onChange={(event) => updateResponse(question.id, { observation: event.target.value })}
+                      maxLength={1000}
+                      placeholder="Observacao opcional, sem dados sensiveis."
+                    />
                   </div>
                 </div>
-                <div className="mt-3">
-                  <TextArea
-                    value={responses[question.id]?.observation ?? ""}
-                    onChange={(event) => updateResponse(question.id, { observation: event.target.value })}
-                    maxLength={1000}
-                    placeholder="Observacao opcional, sem dados sensiveis."
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <aside className="space-y-3 rounded-md border bg-muted/20 p-3">
@@ -383,6 +493,7 @@ export function HrCandidateScorecardClient({
         </div>
 
         {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível salvar o roteiro de avaliação."} /> : null}
+        {validationMessage ? <ErrorMessage message={validationMessage} /> : null}
         {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
         <div className="flex justify-end">
           <Button type="submit" disabled={mutation.isPending}>
