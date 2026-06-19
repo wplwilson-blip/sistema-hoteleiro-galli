@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
-import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
+import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
+import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
@@ -207,6 +208,18 @@ type AdmissionPersistentProcess = {
   updated_at: string;
 };
 
+type AdmissionChecklistStatus =
+  | "pending"
+  | "requested"
+  | "received"
+  | "under_review"
+  | "approved"
+  | "rejected"
+  | "waived"
+  | "completed"
+  | "not_applicable"
+  | "cancelled";
+
 type AdmissionPersistentLookupResponse = {
   data: {
     process: AdmissionPersistentProcess | null;
@@ -218,7 +231,7 @@ type AdmissionPersistentChecklistItem = {
   item_type: string;
   item_key: string;
   title: string;
-  status: string;
+  status: AdmissionChecklistStatus;
   requirement_level: string;
   is_required: boolean;
   blocks_activation: boolean;
@@ -241,6 +254,13 @@ type AdmissionPersistentDetailResponse = {
       };
     };
   };
+};
+
+type AdmissionChecklistUpdateForm = {
+  status: AdmissionChecklistStatus | "";
+  notes: string;
+  waiverReason: string;
+  rejectionReason: string;
 };
 
 type WorkflowMutationResponse = {
@@ -361,6 +381,16 @@ const admissionChecklistStatusLabels: Record<string, string> = {
   completed: "Concluido",
   not_applicable: "Nao aplicavel",
   cancelled: "Cancelado"
+};
+
+const admissionChecklistAllowedStatuses: Record<string, AdmissionChecklistStatus[]> = {
+  request_documents: ["requested", "completed", "waived"],
+  review_documents: ["under_review", "approved", "rejected", "waived"],
+  send_to_accounting: ["requested", "completed", "waived"],
+  confirm_registration: ["completed", "waived"],
+  occupational_health_aso: ["requested", "completed", "waived"],
+  uniform_delivery: ["completed", "waived"],
+  start_onboarding: ["completed", "waived"]
 };
 
 const admissionPersistentChecklistGroups: Array<{
@@ -998,23 +1028,133 @@ function AdmissionPersistentPanel({
   isLoading: boolean;
   isError: boolean;
 }) {
+  const queryClient = useQueryClient();
   const process = detail?.data.process ?? lookup?.data.process ?? null;
   const checklistTotal = detail?.data.summary.checklist.total ?? 0;
   const checklistItems = detail?.data.checklist ?? [];
   const completedChecklistItems = checklistItems.filter((item) => item.status === "completed" || item.status === "approved").length;
   const pendingChecklistItems = checklistItems.filter((item) => item.status === "pending" || item.status === "requested" || item.status === "received" || item.status === "under_review").length;
+  const [selectedChecklistItem, setSelectedChecklistItem] = useState<AdmissionPersistentChecklistItem | null>(null);
+  const [checklistForm, setChecklistForm] = useState<AdmissionChecklistUpdateForm>({
+    status: "",
+    notes: "",
+    waiverReason: "",
+    rejectionReason: ""
+  });
+  const [checklistFeedback, setChecklistFeedback] = useState<string | null>(null);
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const groupedChecklistItems = admissionPersistentChecklistGroups.map((group) => ({
     ...group,
     items: group.itemKeys
       .map((itemKey) => checklistItems.find((item) => item.item_key === itemKey))
       .filter((item): item is AdmissionPersistentChecklistItem => Boolean(item))
   }));
+  const selectedAllowedStatuses = selectedChecklistItem ? admissionChecklistAllowedStatuses[selectedChecklistItem.item_key] ?? [] : [];
+  const requiresWaiverReason = checklistForm.status === "waived";
+  const requiresRejectionReason = checklistForm.status === "rejected";
+  const checklistMutation = useMutation({
+    mutationFn: async (input: {
+      processId: string;
+      itemId: string;
+      status: AdmissionChecklistStatus;
+      notes?: string;
+      waiverReason?: string;
+      rejectionReason?: string;
+    }) => {
+      const response = await fetch(`/api/hr/admission-processes/${input.processId}/checklist/${input.itemId}`, {
+        method: "PATCH",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          status: input.status,
+          notes: input.notes,
+          waiverReason: input.waiverReason,
+          rejectionReason: input.rejectionReason
+        })
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("Voce nao tem permissao para atualizar este item.");
+        }
+
+        if (response.status === 422) {
+          throw new Error(body?.message ?? "Revise o status, motivo ou observacao informada.");
+        }
+
+        throw new Error(body?.message ?? "Nao foi possivel atualizar o item do checklist admissional.");
+      }
+
+      return body as { data: AdmissionPersistentChecklistItem };
+    },
+    onSuccess: () => {
+      setChecklistFeedback("Status do item atualizado com sucesso.");
+      setChecklistError(null);
+      setSelectedChecklistItem(null);
+      setChecklistForm({ status: "", notes: "", waiverReason: "", rejectionReason: "" });
+
+      if (process?.id) {
+        void queryClient.invalidateQueries({ queryKey: ["hr", "admission-process", process.id] });
+      }
+    },
+    onError: (error) => {
+      setChecklistFeedback(null);
+      setChecklistError(error instanceof Error ? error.message : "Nao foi possivel atualizar o item do checklist admissional.");
+    }
+  });
+
+  function openChecklistUpdate(item: AdmissionPersistentChecklistItem) {
+    const allowedStatuses = admissionChecklistAllowedStatuses[item.item_key] ?? [];
+
+    setSelectedChecklistItem(item);
+    setChecklistFeedback(null);
+    setChecklistError(null);
+    setChecklistForm({
+      status: allowedStatuses.includes(item.status) ? item.status : allowedStatuses[0] ?? "",
+      notes: item.notes ?? "",
+      waiverReason: "",
+      rejectionReason: ""
+    });
+  }
+
+  function closeChecklistUpdate() {
+    if (checklistMutation.isPending) return;
+    setSelectedChecklistItem(null);
+    setChecklistError(null);
+  }
+
+  function submitChecklistUpdate() {
+    if (!process?.id || !selectedChecklistItem || !checklistForm.status) return;
+
+    if (requiresWaiverReason && checklistForm.waiverReason.trim().length < 3) {
+      setChecklistError("Informe o motivo da dispensa antes de salvar.");
+      return;
+    }
+
+    if (requiresRejectionReason && checklistForm.rejectionReason.trim().length < 3) {
+      setChecklistError("Informe o motivo da reprovacao antes de salvar.");
+      return;
+    }
+
+    setChecklistError(null);
+    checklistMutation.mutate({
+      processId: process.id,
+      itemId: selectedChecklistItem.id,
+      status: checklistForm.status,
+      notes: checklistForm.notes.trim() || undefined,
+      waiverReason: checklistForm.waiverReason.trim() || undefined,
+      rejectionReason: checklistForm.rejectionReason.trim() || undefined
+    });
+  }
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
       <SectionHeader
         title="Admissao persistente"
-        description="Esta area prepara o controle futuro de documentos, contabilidade, registro, uniforme e onboarding. Nesta versao, ela e apenas leitura e nao cria pendencias automaticamente."
+        description="Esta area acompanha manualmente o checklist admissional persistente. Atualizar um item nao cria documentos, ASO, uniforme, onboarding, folha ou eSocial."
         icon={ClipboardList}
       />
 
@@ -1031,7 +1171,7 @@ function AdmissionPersistentPanel({
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <StatusBadge status={statusTone(process.status)} label={admissionProcessStatusLabel(process.status)} />
-            <StatusBadge status="visual" label="Somente leitura" />
+            <StatusBadge status="info" label="Atualizacao manual" />
           </div>
           <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <InfoTile label="Status do processo" value={admissionProcessStatusLabel(process.status)} icon={CheckCircle2} />
@@ -1047,16 +1187,17 @@ function AdmissionPersistentPanel({
           <p className="text-xs text-muted-foreground">
             Esta leitura vem da foundation persistente e nao altera o workflow visual atual.
           </p>
+          {checklistFeedback ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{checklistFeedback}</div> : null}
           {checklistItems.length ? (
             <div className="rounded-md border bg-muted/20 p-3">
               <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status="info" label="Checklist operacional" />
-                    <StatusBadge status="visual" label="Somente leitura" />
+                    <StatusBadge status="visual" label="Nao gera pendencias reais" />
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Checklist persistente criado para acompanhamento operacional. Nesta etapa, os itens ainda nao geram documentos, ASO, uniforme ou onboarding automaticamente.
+                    Checklist persistente criado para acompanhamento operacional. Nesta etapa, atualizar status nao gera documentos, ASO, uniforme, onboarding, folha ou eSocial.
                   </p>
                 </div>
                 <div className="grid shrink-0 grid-cols-3 gap-2 sm:min-w-[360px]">
@@ -1079,12 +1220,15 @@ function AdmissionPersistentPanel({
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
                                 <p className="break-words text-sm font-semibold text-foreground">{item.title}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">Item somente leitura. Ainda nao executa acao real nesta etapa.</p>
+                                <p className="mt-1 text-xs text-muted-foreground">Atualizacao manual do item. Ainda nao executa geracao real nesta etapa.</p>
                                 {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
                               </div>
-                              <div className="flex shrink-0 flex-wrap gap-1.5">
+                              <div className="flex shrink-0 flex-wrap items-start gap-1.5">
                                 <StatusBadge status={statusTone(item.status)} label={admissionChecklistStatusLabel(item.status)} />
                                 {item.blocks_activation ? <StatusBadge status="warning" label="Bloqueia ativacao futura" /> : null}
+                                <Button type="button" variant="outline" size="sm" onClick={() => openChecklistUpdate(item)} disabled={checklistMutation.isPending}>
+                                  Atualizar status
+                                </Button>
                               </div>
                             </div>
                           </article>
@@ -1116,6 +1260,96 @@ function AdmissionPersistentPanel({
           </div>
         </div>
       )}
+
+      <HrOperationalModal
+        open={Boolean(selectedChecklistItem)}
+        title={selectedChecklistItem ? `Atualizar status - ${selectedChecklistItem.title}` : "Atualizar status"}
+        description="Esta acao atualiza apenas o checklist admissional. Ela nao gera documento, ASO, uniforme, onboarding, folha ou eSocial."
+        onClose={closeChecklistUpdate}
+        size="lg"
+      >
+        {selectedChecklistItem ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InfoTile label="Status atual" value={admissionChecklistStatusLabel(selectedChecklistItem.status)} icon={CheckCircle2} />
+              <InfoTile label="Tipo" value={selectedChecklistItem.item_type.replace(/_/g, " ")} icon={ClipboardList} />
+            </div>
+
+            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              <p>Esta atualizacao e operacional e manual.</p>
+              <p className="mt-1">Documentos admissionais: nao cria documentos reais.</p>
+              <p className="mt-1">Contabilidade e registro: nao envolve folha, eSocial, calculo ou valores.</p>
+              <p className="mt-1">Saude ocupacional: nao cria ASO real.</p>
+              <p className="mt-1">Uniforme operacional: separado de EPI tecnico.</p>
+              <p className="mt-1">Onboarding: nao cria onboarding real.</p>
+            </div>
+
+            <Field label="Novo status">
+              <SelectField
+                value={checklistForm.status}
+                onChange={(event) =>
+                  setChecklistForm((current) => ({
+                    ...current,
+                    status: event.target.value as AdmissionChecklistStatus,
+                    waiverReason: event.target.value === "waived" ? current.waiverReason : "",
+                    rejectionReason: event.target.value === "rejected" ? current.rejectionReason : ""
+                  }))
+                }
+                disabled={checklistMutation.isPending}
+              >
+                {selectedAllowedStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {admissionChecklistStatusLabel(status)}
+                  </option>
+                ))}
+              </SelectField>
+            </Field>
+
+            <Field label="Observacao operacional">
+              <TextArea
+                value={checklistForm.notes}
+                onChange={(event) => setChecklistForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Use apenas contexto operacional necessario. Nao informe CPF, salario, folha, eSocial ou dados bancarios."
+                disabled={checklistMutation.isPending}
+              />
+            </Field>
+
+            {requiresWaiverReason ? (
+              <Field label="Motivo da dispensa">
+                <TextArea
+                  value={checklistForm.waiverReason}
+                  onChange={(event) => setChecklistForm((current) => ({ ...current, waiverReason: event.target.value }))}
+                  placeholder="Informe o motivo administrativo da dispensa"
+                  disabled={checklistMutation.isPending}
+                />
+              </Field>
+            ) : null}
+
+            {requiresRejectionReason ? (
+              <Field label="Motivo da reprovacao">
+                <TextArea
+                  value={checklistForm.rejectionReason}
+                  onChange={(event) => setChecklistForm((current) => ({ ...current, rejectionReason: event.target.value }))}
+                  placeholder="Informe o motivo administrativo da reprovacao"
+                  disabled={checklistMutation.isPending}
+                />
+              </Field>
+            ) : null}
+
+            {checklistError ? <ErrorMessage message={checklistError} /> : null}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" onClick={closeChecklistUpdate} disabled={checklistMutation.isPending}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={submitChecklistUpdate} disabled={checklistMutation.isPending || !checklistForm.status}>
+                {checklistMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SquareCheckBig className="h-4 w-4" />}
+                Salvar status
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </HrOperationalModal>
     </Card>
   );
 }
