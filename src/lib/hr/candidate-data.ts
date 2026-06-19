@@ -133,12 +133,31 @@ export const createInterviewSchema = z.object({
 });
 
 const forbiddenPayloadPattern =
-  /\b(cpf|rg|cid|salario|salary|documento|document_number|file_path|storage_path|signed_url|download_url|public_url|curriculo|resume)\b/i;
+  /\b(cpf|rg|cid|salario|salary|folha|e-?social|laudo|dados?\s+bancarios?|documento|document_number|file_path|storage_path|signed_url|download_url|public_url|curriculo|resume|discriminatorio|discriminatoria)\b/i;
+
+const forbiddenCandidateSourcePattern =
+  /\b(cpf|rg|cid|salario|salary|folha|e-?social|laudo|dados?\s+bancarios?|documento|document_number|file_path|storage_path|signed_url|download_url|public_url|discriminatorio|discriminatoria)\b/i;
+
+const cpfNumberPattern = /\b(?:\d{3}\.\d{3}\.\d{3}-?\d{2}|\d{9}-\d{2})\b/;
+
+function normalizeSensitiveText(text: string) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function hasForbiddenCandidateText(text: string, pattern: RegExp) {
+  return pattern.test(normalizeSensitiveText(text)) || cpfNumberPattern.test(text);
+}
 
 export function assertCandidateLgpdText(values: Array<string | null | undefined>) {
   const text = values.filter(Boolean).join(" ");
-  if (forbiddenPayloadPattern.test(text)) {
+  if (hasForbiddenCandidateText(text, forbiddenPayloadPattern)) {
     throw new Error("Evite documentos, dados sensiveis, discriminatorios ou anexos neste cadastro.");
+  }
+}
+
+export function assertCandidateSourceText(value: string | null | undefined) {
+  if (value && hasForbiddenCandidateText(value, forbiddenCandidateSourcePattern)) {
+    throw new Error("Evite documentos, dados sensiveis ou informacoes discriminatorias na origem do candidato.");
   }
 }
 

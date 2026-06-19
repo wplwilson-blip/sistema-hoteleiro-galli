@@ -3,6 +3,7 @@ import { z } from "zod";
 import { HR_PERMISSIONS, logHrApiError } from "@/lib/hr/api-auth";
 import {
   assertCandidateLgpdText,
+  assertCandidateSourceText,
   candidateSelect,
   getCandidateSensitiveAccess,
   loadCandidateAdmissionConversion,
@@ -84,7 +85,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
 
     const payload = updateCandidateSchema.parse(await request.json().catch(() => ({})));
-    assertCandidateLgpdText([payload.full_name, payload.phone, payload.source, payload.notes, payload.human_opinion]);
+    assertCandidateSourceText(payload.source);
+    assertCandidateLgpdText([payload.full_name, payload.phone, payload.notes, payload.human_opinion]);
 
     const updatePayload: Record<string, unknown> = {
       updated_by: context.session.user.id

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { HR_PERMISSIONS, logHrApiError } from "@/lib/hr/api-auth";
 import {
   assertCandidateLgpdText,
+  assertCandidateSourceText,
   candidateListQuerySchema,
   candidateSelect,
   createCandidateSchema,
@@ -114,7 +115,8 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     const payload = createCandidateSchema.parse(await request.json().catch(() => ({})));
-    assertCandidateLgpdText([payload.full_name, payload.phone, payload.source, payload.notes, payload.human_opinion]);
+    assertCandidateSourceText(payload.source);
+    assertCandidateLgpdText([payload.full_name, payload.phone, payload.notes, payload.human_opinion]);
 
     const { data, error } = await context.supabase
       .from("hr_job_candidates")
