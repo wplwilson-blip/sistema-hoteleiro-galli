@@ -829,7 +829,7 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
         <summary className="flex cursor-pointer list-none items-start gap-2">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <span>
-            <span className="block text-sm font-semibold text-foreground">Informacoes internas do processo</span>
+            <span className="block text-sm font-semibold text-foreground">Informações internas do processo</span>
             <span className="block text-xs text-muted-foreground">Dados internos de apoio, ocultos por padrao para a operacao.</span>
           </span>
         </summary>
@@ -950,16 +950,45 @@ function CandidateSummaryPanel({
   );
 }
 
-function EscalationPanel({ escalation }: { escalation: WorkflowEscalation | null | undefined }) {
-  const isEscalated = Boolean(escalation?.overdue || escalation?.eligible || escalation?.level || escalation?.count);
+function hasEscalationAlert(escalation: WorkflowEscalation | null | undefined) {
+  return Boolean(escalation?.overdue || escalation?.eligible || escalation?.level || escalation?.count);
+}
+
+function JobOpeningNextActionPanel({ workflow, currentStep }: { workflow: WorkflowDetail; currentStep: WorkflowStep | null }) {
+  return (
+    <Card className="min-w-0 border-primary/30 bg-primary/5 p-4 shadow-sm shadow-primary/10">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-2">
+            <SquareCheckBig className="h-5 w-5 shrink-0 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">Próxima ação</h2>
+          </div>
+          <p className="break-words text-lg font-semibold text-foreground">{jobOpeningNextAction(workflow, currentStep)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Use as ações disponíveis abaixo conforme a etapa atual e as permissões do seu perfil.</p>
+        </div>
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:w-[440px]">
+          <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
+          <InfoTile label="Responsável atual" value={currentStep?.assigned_to ?? "Não informado"} icon={UserRound} />
+          <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />
+          <InfoTile label="Prazo" value={workflow.sla?.due_at ? formatRelativeSla(workflow.sla) : slaLabel(workflow.sla)} icon={CalendarClock} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function EscalationPanel({ escalation, hideWhenQuiet = false }: { escalation: WorkflowEscalation | null | undefined; hideWhenQuiet?: boolean }) {
+  const isEscalated = hasEscalationAlert(escalation);
+
+  if (hideWhenQuiet && !isEscalated) return null;
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Prioridade e atrasos" description="Acompanhamento do prazo e dos sinais que pedem atencao." icon={ShieldAlert} />
+      <SectionHeader title="Prioridade e atrasos" description="Acompanhamento do prazo e dos sinais que pedem atenção." icon={ShieldAlert} />
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <InfoTile label="Estado" value={isEscalated ? "Requer acompanhamento" : "Sem alerta"} icon={ShieldAlert} />
         <InfoTile label="Atenção" value={escalation?.level ? `Nível ${escalation.level}` : "-"} icon={ListChecks} />
-        <InfoTile label="Ocorrencias" value={String(escalation?.count ?? 0)} icon={History} />
+        <InfoTile label="Ocorrências" value={String(escalation?.count ?? 0)} icon={History} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <StatusBadge status={escalation?.overdue ? "danger" : isEscalated ? "warning" : "visual"} label={escalation?.label ?? (isEscalated ? "Acompanhar prazo" : "Sem alerta de prazo")} />
@@ -1402,15 +1431,16 @@ function AdmissionChecklistPanel({ workflow }: { workflow: WorkflowDetail }) {
   );
 }
 
-function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
+function StepsPanel({ workflow, collapsed = false }: { workflow: WorkflowDetail; collapsed?: boolean }) {
   const currentStepId = workflow.current_step_id;
 
   return (
     <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
-      <div className="p-4">
-        <SectionHeader title="Etapas do processo" description="Sequencia operacional das etapas protegidas pelo sistema." icon={ListChecks} />
-      </div>
-      {workflow.steps.length ? (
+      <details open={!collapsed}>
+        <summary className="cursor-pointer list-none p-4">
+          <SectionHeader title="Etapas do processo" description={collapsed ? "Sequencia tecnica recolhida para nao dominar a operacao diaria." : "Sequencia operacional das etapas protegidas pelo sistema."} icon={ListChecks} />
+        </summary>
+        {workflow.steps.length ? (
         <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="border-y bg-muted/50 text-xs uppercase text-muted-foreground">
@@ -1450,6 +1480,7 @@ function StepsPanel({ workflow }: { workflow: WorkflowDetail }) {
           <EmptyState title="Sem etapas disponiveis" description="O sistema nao retornou etapas para este processo." />
         </div>
       )}
+      </details>
     </Card>
   );
 }
@@ -1568,12 +1599,13 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
 }
 
 function NotificationsPanel({ notifications, isLoading, error }: { notifications: WorkflowNotification[]; isLoading: boolean; error: unknown }) {
+  if (!isLoading && !error && !notifications.length) return null;
+
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
       <SectionHeader title="Notificacoes" description="Avisos relacionados ao processo, quando disponiveis." icon={Bell} />
       {isLoading ? <LoadingTable label="Carregando notificacoes do processo..." /> : null}
       {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar notificacoes."} /> : null}
-      {!isLoading && !error && !notifications.length ? <EmptyState title="Sem notificacoes" description="Nenhuma notificacao foi retornada para este processo." /> : null}
       {notifications.length ? (
         <div className="grid min-w-0 gap-3 xl:grid-cols-2">
           {notifications.map((notification) => (
@@ -1877,7 +1909,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
   return (
     <div className="space-y-5">
-      <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur lg:sticky lg:top-0 lg:z-10">
+      <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
             {isJobOpening ? (
@@ -1931,6 +1963,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         />
       ) : null}
 
+      {isJobOpening ? <JobOpeningNextActionPanel workflow={workflow} currentStep={currentStep} /> : null}
+
       {isJobOpening ? (
         <HrRecruitmentTimeline
           mode="job_opening"
@@ -1979,16 +2013,6 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
       {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
       {isJobOpening ? (
-        <HrJobRequirementPreview
-          mode="summary"
-          title="Resumo das regras sugeridas do cargo"
-          description="Principais impactos do cargo: documentos, saude ocupacional, uniforme, treinamentos e onboarding. A revisao completa acontece na admissao."
-          jobTitle={metadataText(workflow.metadata, "job_position")}
-          sector={metadataText(workflow.metadata, "department")}
-          department={metadataText(workflow.metadata, "department")}
-        />
-      ) : null}
-      {isJobOpening ? (
         <CandidateSummaryPanel
           workflowId={workflow.id}
           summary={candidateSummaryQuery.data?.summary ?? null}
@@ -2016,7 +2040,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       <WorkflowActionPanel workflow={workflow} currentStep={currentStep} onSuccess={() => undefined} />
 
       {isJobOpening ? (
-        <EscalationPanel escalation={workflow.escalation} />
+        <EscalationPanel escalation={workflow.escalation} hideWhenQuiet />
       ) : isAdmission ? (
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
           <SlaPanel sla={workflow.sla} />
@@ -2029,23 +2053,27 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         </div>
       )}
 
-      {isAdmission ? <AdmissionChecklistPanel workflow={workflow} /> : <StepsPanel workflow={workflow} />}
+      {isAdmission ? <AdmissionChecklistPanel workflow={workflow} /> : !isJobOpening ? <StepsPanel workflow={workflow} /> : null}
 
-      <TimelinePanel
-        events={timelineQuery.data?.data ?? []}
-        isLoading={timelineQuery.isLoading}
-        error={timelineQuery.error}
-        workflowType={workflow.workflow_type}
-      />
+      {!isJobOpening ? (
+        <>
+          <TimelinePanel
+            events={timelineQuery.data?.data ?? []}
+            isLoading={timelineQuery.isLoading}
+            error={timelineQuery.error}
+            workflowType={workflow.workflow_type}
+          />
 
-      <AuditPanel
-        logs={auditQuery.data?.data ?? []}
-        total={auditQuery.data?.pagination.total ?? 0}
-        isLoading={auditQuery.isLoading}
-        error={auditQuery.error}
-      />
+          <AuditPanel
+            logs={auditQuery.data?.data ?? []}
+            total={auditQuery.data?.pagination.total ?? 0}
+            isLoading={auditQuery.isLoading}
+            error={auditQuery.error}
+          />
 
-      <TechnicalMetadataPanel metadata={workflow.metadata} />
+          <TechnicalMetadataPanel metadata={workflow.metadata} />
+        </>
+      ) : null}
 
       <NotificationsPanel
         notifications={notificationsQuery.data?.data ?? []}

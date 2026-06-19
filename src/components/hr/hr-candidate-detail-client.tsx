@@ -71,8 +71,8 @@ function averageScore(interview: CandidateInterview) {
 }
 
 function candidateNextAction(candidate: Candidate, admissionConversion: CandidateAdmissionConversion | null) {
-  if (admissionConversion) return "Acompanhe a admissao vinculada a este candidato aprovado.";
-  if (candidate.status === "aprovado") return "Inicie a admissao ou acompanhe a conversao quando ela ja existir.";
+  if (admissionConversion) return "Acompanhe a admissão vinculada a este candidato aprovado.";
+  if (candidate.status === "aprovado") return "Próxima etapa: abrir ou acompanhar admissão.";
   if (candidate.status === "banco_de_talentos") return "Mantenha o registro para consulta futura e volte para a vaga quando precisar comparar candidatos.";
   if (candidate.status === "reprovado") return "Confira o parecer registrado e volte para a lista de candidatos da vaga.";
   if (candidate.status === "desistiu") return "Confira o registro de encerramento e volte para a lista de candidatos da vaga.";
@@ -104,7 +104,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
   useEffect(() => {
     if (candidate) {
       setForm(toForm(candidate));
-      setIsOpinionEditing(!candidate.human_opinion && !candidate.notes && candidate.manual_score === null);
+      setIsOpinionEditing(candidate.status !== "aprovado" && !candidate.human_opinion && !candidate.notes && candidate.manual_score === null);
     }
   }, [candidate]);
 
@@ -192,6 +192,8 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       human_opinion: currentOpinion || defaultOpinion || null
     });
   }
+
+  const isCandidateApproved = candidate.status === "aprovado";
 
   return (
     <div className="space-y-5">
@@ -300,67 +302,65 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <UserRound className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Dados basicos</h2>
+          <h2 className="text-sm font-semibold">Dados básicos</h2>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <InfoTile label="Nome" value={candidate.full_name} />
           <InfoTile label="Origem" value={candidate.source} />
           <InfoTile label="Telefone" value={candidate.phone ?? "Restrito"} icon={Phone} />
-          <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Nao informado" : String(candidate.manual_score)} icon={Star} />
+          <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Não informado" : String(candidate.manual_score)} icon={Star} />
         </div>
         {candidate.phone_redacted ? (
-          <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissao. Consulte apenas quando necessario para contato operacional.</p>
+          <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissão. Consulte apenas quando necessário para contato operacional.</p>
         ) : null}
       </Card>
 
       <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} />
 
-      <Card className="min-w-0 border-border/80 bg-muted/20 p-4 shadow-sm shadow-primary/5">
-        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          Regras admissionais serao revisadas apos aprovacao do candidato, no fluxo de admissao/contratacao.
-        </div>
-      </Card>
-
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="flex items-start gap-2">
-          <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <div>
-            <h2 className="text-sm font-semibold">Roteiro da entrevista</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Leia o roteiro antes de registrar a conversa. Ele orienta a entrevista e a avaliacao, mas a decisao final continua humana e vinculada a esta vaga.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <HrInterviewFormClient workflowId={workflowId} candidateId={candidateId} interviews={interviews} />
-
-      <HrCandidateScorecardClient workflowId={workflowId} candidateId={candidateId} interviews={interviews} />
-
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <ClipboardCheck className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Parecer e status</h2>
-              {isOpinionEditing ? <StatusBadge status="warning" label="Em edicao" /> : <StatusBadge status="success" label="Salvo" />}
+      {!isCandidateApproved ? (
+        <>
+          <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+            <div className="flex items-start gap-2">
+              <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <h2 className="text-sm font-semibold">Roteiro da entrevista</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Leia o roteiro antes de registrar a conversa. Ele orienta a entrevista e a avaliação, mas a decisão final continua humana e vinculada a esta vaga.
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Parecer operacional da selecao. Nao substitui a decisao formal da vaga.</p>
+          </Card>
+
+          <HrInterviewFormClient workflowId={workflowId} candidateId={candidateId} interviews={interviews} />
+
+          <HrCandidateScorecardClient workflowId={workflowId} candidateId={candidateId} interviews={interviews} />
+        </>
+      ) : null}
+
+      {!isCandidateApproved ? (
+        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-semibold">Parecer e status</h2>
+                {isOpinionEditing ? <StatusBadge status="warning" label="Em edição" /> : <StatusBadge status="success" label="Salvo" />}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Parecer operacional da seleção.</p>
+            </div>
+            {!isOpinionEditing ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsOpinionEditing(true)}>
+                <Edit className="h-4 w-4" />
+                Editar parecer
+              </Button>
+            ) : null}
           </div>
-          {!isOpinionEditing ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsOpinionEditing(true)}>
-              <Edit className="h-4 w-4" />
-              Editar parecer
-            </Button>
-          ) : null}
-        </div>
 
         {!isOpinionEditing ? (
           <div className="space-y-3">
             <div className="grid gap-3 md:grid-cols-3">
               <InfoTile label="Status" value={candidateStatusLabel(candidate.status)} icon={ClipboardCheck} />
-              <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Nao informado" : String(candidate.manual_score)} icon={Star} />
+              <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Não informado" : String(candidate.manual_score)} icon={Star} />
               <InfoTile label="Atualizado em" value={formatDateTime(candidate.updated_at)} icon={CalendarClock} />
             </div>
             <div className="rounded-md border bg-background p-3">
@@ -369,7 +369,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             </div>
             {candidate.notes ? (
               <div className="rounded-md border bg-background p-3">
-                <p className="text-xs font-medium text-muted-foreground">Observacoes</p>
+                <p className="text-xs font-medium text-muted-foreground">Observações</p>
                 <p className="mt-2 break-words text-sm text-foreground">{candidate.notes}</p>
               </div>
             ) : null}
@@ -377,29 +377,37 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
           </div>
         ) : (
           <form className="space-y-3" onSubmit={submit}>
-            <Field label="Status">
-              <SelectField value={form.status} onChange={(event) => updateForm({ status: event.target.value as CandidateStatus })}>
-                {candidateStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </SelectField>
-            </Field>
+            {isCandidateApproved ? (
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">Status</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{candidateStatusLabel(candidate.status)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Alteração de decisão não fica disponível nesta tela após a aprovação.</p>
+              </div>
+            ) : (
+              <Field label="Status">
+                <SelectField value={form.status} onChange={(event) => updateForm({ status: event.target.value as CandidateStatus })}>
+                  {candidateStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </SelectField>
+              </Field>
+            )}
             <Field label="Nota manual">
               <Input type="number" min={0} max={100} value={form.manual_score} onChange={(event) => updateForm({ manual_score: event.target.value })} placeholder="0 a 100" />
             </Field>
             <Field label="Parecer humano">
-              <TextArea value={form.human_opinion} onChange={(event) => updateForm({ human_opinion: event.target.value })} maxLength={2000} placeholder="Parecer humano, sem dados sensiveis." />
+              <TextArea value={form.human_opinion} onChange={(event) => updateForm({ human_opinion: event.target.value })} maxLength={2000} placeholder="Parecer humano, sem dados sensíveis." />
             </Field>
-            <Field label="Observacoes">
+            <Field label="Observações">
               <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={1000} placeholder="Contexto operacional breve." />
             </Field>
             <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              Nota e parecer sao manuais. O sistema nao aprova, reprova nem ranqueia automaticamente.
+              Nota e parecer são manuais. O sistema não aprova, reprova nem ranqueia automaticamente.
             </div>
-            {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel atualizar o candidato."} /> : null}
+            {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível atualizar o candidato."} /> : null}
             <div className="flex justify-end">
               <Button type="submit" disabled={mutation.isPending}>
                 <Save className="h-4 w-4" />
@@ -408,68 +416,81 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             </div>
           </form>
         )}
-      </Card>
+        </Card>
+      ) : null}
 
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <ClipboardCheck className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Decisao do candidato</h2>
-              <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
-              {candidate.status === "aprovado" || candidate.status === "reprovado" || candidate.status === "banco_de_talentos" || candidate.status === "desistiu" ? (
-                <StatusBadge status="success" label="Decisao registrada" />
-              ) : (
-                <StatusBadge status="warning" label="Pendente de decisao" />
-              )}
+      {isCandidateApproved ? (
+        <Card className="min-w-0 border-emerald-200 bg-emerald-50 p-4 shadow-sm shadow-primary/5">
+          <div className="flex flex-wrap items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+            <h2 className="text-sm font-semibold text-emerald-950">Candidato aprovado para esta vaga</h2>
+          </div>
+          {candidate.human_opinion ? <p className="mt-3 break-words text-sm text-emerald-950">Parecer: {candidate.human_opinion}</p> : null}
+          <p className="mt-2 text-sm text-emerald-900">Próxima etapa: abrir ou acompanhar admissão.</p>
+          {decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-white/70 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
+        </Card>
+      ) : (
+        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-semibold">Decisão do candidato</h2>
+                <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
+                {candidate.status === "reprovado" || candidate.status === "banco_de_talentos" || candidate.status === "desistiu" ? (
+                  <StatusBadge status="success" label="Decisão registrada" />
+                ) : (
+                  <StatusBadge status="warning" label="Pendente de decisão" />
+                )}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{candidateNextAction(candidate, admissionConversion)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                A decisão abaixo atualiza somente o status do candidato nesta vaga e o parecer humano quando estiver vazio.
+              </p>
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">{candidateNextAction(candidate, admissionConversion)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              A decisao abaixo atualiza somente o status do candidato nesta vaga e o parecer humano quando estiver vazio. Nao cria colaborador, admissao, documentos ou pendencias automaticamente.
-            </p>
+            <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+              <Button
+                type="button"
+                onClick={() => decide("aprovado", "Candidato aprovado para esta vaga.", "Confirmar aprovação deste candidato para esta vaga?")}
+                disabled={decisionMutation.isPending || candidate.status === "aprovado"}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Aprovar para esta vaga
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => decide("banco_de_talentos", "Candidato apto para futura vaga.", "Confirmar envio deste candidato para banco de talentos?")}
+                disabled={decisionMutation.isPending || candidate.status === "banco_de_talentos"}
+              >
+                <Archive className="h-4 w-4" />
+                Banco de talentos
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => decide("reprovado", "Candidato não avançou neste processo seletivo.", "Confirmar que este candidato não avançará neste processo?")}
+                disabled={decisionMutation.isPending || candidate.status === "reprovado"}
+              >
+                <XCircle className="h-4 w-4" />
+                Não avançar
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => decide("reprovado", "Candidato não recomendado para esta vaga.", "Confirmar marcação deste candidato como não recomendado?")}
+                disabled={decisionMutation.isPending || candidate.status === "reprovado"}
+              >
+                <XCircle className="h-4 w-4" />
+                Não recomendado
+              </Button>
+            </div>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-            <Button
-              type="button"
-              onClick={() => decide("aprovado", "Candidato aprovado para esta vaga.", "Confirmar aprovacao deste candidato para esta vaga?")}
-              disabled={decisionMutation.isPending || candidate.status === "aprovado"}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Aprovar para esta vaga
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => decide("banco_de_talentos", "Candidato apto para futura vaga.", "Confirmar envio deste candidato para banco de talentos?")}
-              disabled={decisionMutation.isPending || candidate.status === "banco_de_talentos"}
-            >
-              <Archive className="h-4 w-4" />
-              Banco de talentos
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => decide("reprovado", "Candidato nao avancou neste processo seletivo.", "Confirmar que este candidato nao avancara neste processo?")}
-              disabled={decisionMutation.isPending || candidate.status === "reprovado"}
-            >
-              <XCircle className="h-4 w-4" />
-              Nao avancar
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => decide("reprovado", "Candidato nao recomendado para esta vaga.", "Confirmar marcacao deste candidato como nao recomendado?")}
-              disabled={decisionMutation.isPending || candidate.status === "reprovado"}
-            >
-              <XCircle className="h-4 w-4" />
-              Nao recomendado
-            </Button>
-          </div>
-        </div>
-        {candidate.human_opinion ? <p className="mt-3 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Parecer atual: {candidate.human_opinion}</p> : null}
-        {decisionMutation.error ? <ErrorMessage message={decisionMutation.error instanceof Error ? decisionMutation.error.message : "Nao foi possivel registrar a decisao."} /> : null}
-        {decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
-      </Card>
+          {candidate.human_opinion ? <p className="mt-3 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Parecer atual: {candidate.human_opinion}</p> : null}
+          {decisionMutation.error ? <ErrorMessage message={decisionMutation.error instanceof Error ? decisionMutation.error.message : "Não foi possível registrar a decisão."} /> : null}
+          {decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
+        </Card>
+      )}
 
       <HrCandidateAdmissionConversionCard workflowId={workflowId} candidate={candidate} admissionConversion={admissionConversion} />
 

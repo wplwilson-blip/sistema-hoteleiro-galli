@@ -58,7 +58,7 @@ export function HrCandidateAdmissionConversionCard({
 
   function handleConvert() {
     const confirmed = window.confirm(
-      "Gerar um processo de admissao para este candidato aprovado? Isso nao cria colaborador, folha, salario, documentos ou ponto automaticamente."
+      "Gerar admissão para este candidato aprovado?"
     );
 
     if (confirmed) {
@@ -74,17 +74,17 @@ export function HrCandidateAdmissionConversionCard({
             <UserPlus className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Admissão</h2>
             {admissionWorkflowId ? <StatusBadge status="success" label="Admissão gerada" /> : <StatusBadge status="visual" label="Decisão humana" />}
-            {canConvert && !admissionWorkflowId ? <StatusBadge status="info" label="Proxima acao" /> : null}
+            {canConvert && !admissionWorkflowId ? <StatusBadge status="info" label="Próxima ação" /> : null}
           </div>
           {admissionWorkflowId ? (
-            <p className="mt-2 text-sm text-muted-foreground">Este candidato ja possui um processo de admissao vinculado.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Este candidato já possui um processo de admissão vinculado.</p>
           ) : canConvert ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Gere um processo de admissao a partir deste candidato aprovado. O colaborador ainda nao sera criado.
+              Abra o processo de admissão deste candidato aprovado.
             </p>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">
-              A admissao so pode ser gerada apos o candidato ser marcado como aprovado. Status atual: {candidateStatusLabel(candidate.status)}.
+              A admissão só pode ser gerada após o candidato ser marcado como aprovado. Status atual: {candidateStatusLabel(candidate.status)}.
             </p>
           )}
         </div>
@@ -93,23 +93,25 @@ export function HrCandidateAdmissionConversionCard({
           {admissionWorkflowId ? (
             <Button asChild>
               <Link href={`/rh/workflows/${admissionWorkflowId}`}>
-                Abrir admissao
+                Abrir admissão
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
           ) : (
             <Button type="button" onClick={handleConvert} disabled={!canConvert || mutation.isPending}>
               <UserPlus className="h-4 w-4" />
-              Gerar admissao
+              Gerar admissão
             </Button>
           )}
         </div>
       </div>
 
-      <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        A conversão não copia telefone, currículo, roteiro de avaliação ou pareceres completos para a admissão.
-      </div>
+      {!canConvert ? (
+        <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          A admissão é liberada somente depois da aprovação do candidato.
+        </div>
+      ) : null}
 
       {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível gerar a admissão."} /> : null}
     </Card>

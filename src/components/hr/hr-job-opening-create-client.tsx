@@ -10,7 +10,6 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { HrRecruitmentTimeline } from "@/components/hr/hr-recruitment-timeline";
 import { useAppStore } from "@/store/app-store";
@@ -401,22 +400,10 @@ export function HrJobOpeningCreateClient() {
             </Field>
           </div>
 
-          <div className="mt-4 border-t pt-4">
-            <HrJobRequirementPreview
-              surface="section"
-              mode="summary"
-              title="Resumo das regras sugeridas do cargo"
-              description="Principais impactos do cargo: documentos, saude ocupacional, uniforme, treinamentos e onboarding. A revisao completa acontece na admissao."
-              jobTitle={selectedPosition?.name}
-              cboCode={selectedPosition?.code}
-              sector={selectedDepartment?.name}
-              department={selectedDepartment?.code}
-            />
-          </div>
         </Card>
 
         <div className="space-y-4">
-          <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
+          <Card className="hidden">
             <div className="mb-3 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Etapas previstas</h2>
