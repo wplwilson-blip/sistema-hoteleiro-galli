@@ -159,6 +159,15 @@ export type HrAdmissionStatusSummary = {
   };
 };
 
+export type HrAdmissionAggregateStatuses = {
+  documents_status: HrAdmissionAuxiliaryStatus;
+  accounting_status: HrAdmissionAuxiliaryStatus;
+  registration_status: HrAdmissionAuxiliaryStatus;
+  occupational_health_status: HrAdmissionAuxiliaryStatus;
+  uniform_status: HrAdmissionAuxiliaryStatus;
+  onboarding_status: HrAdmissionAuxiliaryStatus;
+};
+
 const admissionMinimumChecklistItems: Array<{
   itemKey: string;
   title: string;
@@ -249,6 +258,15 @@ const admissionMinimumChecklistItems: Array<{
   }
 ];
 
+const admissionAggregateStatusGroups: Record<keyof HrAdmissionAggregateStatuses, string[]> = {
+  documents_status: ["request_documents", "review_documents"],
+  accounting_status: ["send_to_accounting"],
+  registration_status: ["confirm_registration"],
+  occupational_health_status: ["occupational_health_aso"],
+  uniform_status: ["uniform_delivery"],
+  onboarding_status: ["start_onboarding"]
+};
+
 function canAccessAdmissionProcess(context: HrRequestContext, process: HrAdmissionProcessRow) {
   return context.isSuperAdmin || !process.unit_id || context.accessibleUnitIds.includes(process.unit_id);
 }
@@ -279,6 +297,24 @@ async function listAdmissionChecklistItemsForProcess(supabase: SupabaseAdmin, ad
   }
 
   return (data ?? []) as HrAdmissionChecklistItemRow[];
+}
+
+function resolveAdmissionAuxiliaryStatus(items: HrAdmissionChecklistItemRow[]): HrAdmissionAuxiliaryStatus {
+  if (items.some((item) => item.status === "rejected")) return "blocked";
+  if (items.length > 0 && items.every((item) => item.status === "completed" || item.status === "approved" || item.status === "waived" || item.status === "not_applicable")) {
+    return "completed";
+  }
+  if (items.some((item) => item.status === "requested" || item.status === "received" || item.status === "under_review")) return "in_progress";
+  return "pending";
+}
+
+function calculateAdmissionAggregateStatuses(checklistItems: HrAdmissionChecklistItemRow[]): HrAdmissionAggregateStatuses {
+  return Object.fromEntries(
+    Object.entries(admissionAggregateStatusGroups).map(([field, itemKeys]) => [
+      field,
+      resolveAdmissionAuxiliaryStatus(checklistItems.filter((item) => itemKeys.includes(item.item_key)))
+    ])
+  ) as HrAdmissionAggregateStatuses;
 }
 
 async function findAdmissionProcessForConversion(supabase: SupabaseAdmin, input: EnsureAdmissionProcessInput) {
@@ -444,6 +480,37 @@ export function summarizeAdmissionProcess(process: HrAdmissionProcessRow, checkl
       required: checklistItems.filter((item) => item.is_required).length,
       blocksActivation: checklistItems.filter((item) => item.blocks_activation).length
     }
+  };
+}
+
+export async function recalculateAdmissionProcessAggregateStatuses(
+  supabase: SupabaseAdmin,
+  admissionProcessId: string,
+  actorUserId: string | null | undefined
+) {
+  const checklistItems = await listAdmissionChecklistItemsForProcess(supabase, admissionProcessId);
+  const aggregateStatuses = calculateAdmissionAggregateStatuses(checklistItems);
+
+  const { data, error } = await supabase
+    .from("hr_admission_processes")
+    .update({
+      ...aggregateStatuses,
+      updated_by: actorUserId ?? null
+    })
+    .eq("id", admissionProcessId)
+    .is("deleted_at", null)
+    .select(HR_ADMISSION_PROCESS_SELECT)
+    .single();
+
+  if (error) {
+    logHrApiError("admission_process.aggregate_status_update_failed", error);
+    throw new Error("Nao foi possivel recalcular os status agregados da admissao.");
+  }
+
+  return {
+    process: data as HrAdmissionProcessRow,
+    statuses: aggregateStatuses,
+    summary: summarizeAdmissionProcess(data as HrAdmissionProcessRow, checklistItems)
   };
 }
 

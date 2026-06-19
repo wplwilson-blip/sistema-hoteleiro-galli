@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   HR_ADMISSION_CHECKLIST_ITEM_SELECT,
   loadAdmissionProcessById,
+  recalculateAdmissionProcessAggregateStatuses,
   type HrAdmissionChecklistItemRow,
   type HrAdmissionChecklistStatus
 } from "@/lib/hr/admission-processes";
@@ -191,9 +192,16 @@ export async function PATCH(request: Request, { params }: AdmissionChecklistItem
       return hrApiError("Nao foi possivel atualizar o item do checklist admissional.", 500);
     }
 
+    const aggregate = await recalculateAdmissionProcessAggregateStatuses(context.supabase, id, context.session.user.id);
+
     return NextResponse.json({
       ok: true,
-      data: updatedItem as HrAdmissionChecklistItemRow
+      data: {
+        item: updatedItem as HrAdmissionChecklistItemRow,
+        process: aggregate.process,
+        statuses: aggregate.statuses,
+        summary: aggregate.summary
+      }
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
