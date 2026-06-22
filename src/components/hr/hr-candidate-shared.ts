@@ -95,6 +95,27 @@ export function formatDateTime(value: string | null | undefined) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+export function formatPhone(value: string | null | undefined) {
+  if (!value) return "Restrito";
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return value;
+}
+
+export function normalizePhoneForApi(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "").slice(0, 11);
+}
+
+export function maskPhoneInput(value: string | null | undefined) {
+  const digits = normalizePhoneForApi(value);
+  if (!digits) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,

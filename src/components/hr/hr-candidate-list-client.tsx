@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, CheckCircle2, Filter, MessageSquarePlus, Search, UserPlus, UsersRound, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/base-cadastros/crud-components";
+import { HrCandidateAdmissionActionButton } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import {
   candidateStatusOptions,
   candidateStatusTone,
   formatDateTime,
+  formatPhone,
   requestJson
 } from "@/components/hr/hr-candidate-shared";
 
@@ -34,6 +36,18 @@ type CandidatesResponse = {
   pagination: {
     total: number;
   };
+};
+
+type AdmissionProcessForCandidate = {
+  id: string;
+  source_candidate_id: string | null;
+  admission_workflow_id: string | null;
+  status: string;
+  current_step: string;
+};
+
+type AdmissionProcessesByJobOpeningResponse = {
+  data: AdmissionProcessForCandidate[];
 };
 
 function buildUrl(path: string, params: Record<string, string | number | undefined>) {
@@ -61,6 +75,19 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
 
   const candidates = query.data?.data ?? [];
   const summary = query.data?.summary ?? { total: 0, triagem: 0, entrevista: 0, aprovado: 0, reprovado: 0 };
+  const admissionProcessesQuery = useQuery({
+    queryKey: ["hr", "admission-processes", "job-opening", workflowId],
+    queryFn: async () => requestJson<AdmissionProcessesByJobOpeningResponse>(`/api/hr/admission-processes?jobOpeningWorkflowId=${workflowId}&pageSize=100`),
+    enabled: summary.aprovado > 0
+  });
+  const admissionProcesses = admissionProcessesQuery.data?.data;
+  const admissionByCandidateId = useMemo(() => {
+    const map = new Map<string, AdmissionProcessForCandidate>();
+    for (const process of admissionProcesses ?? []) {
+      if (process.source_candidate_id) map.set(process.source_candidate_id, process);
+    }
+    return map;
+  }, [admissionProcesses]);
   const hasFilters = Boolean(status || search.trim());
 
   function clearFilters() {
@@ -78,14 +105,14 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
         ]}
       />
       <HrRecruitmentGuidance
-        where="Voce esta avaliando candidatos vinculados a esta vaga."
-        next={summary.aprovado > 0 ? "Abra o candidato aprovado para iniciar ou acompanhar a admissao." : "Cadastre candidatos, registre entrevistas e aprove um candidato quando a decisao humana estiver pronta."}
+        where="Você esta avaliando candidatos vinculados a esta vaga."
+        next={summary.aprovado > 0 ? "Use Encaminhar para admissão ou Acompanhar admissão no candidato aprovado." : "Cadastre candidatos, registre entrevistas e aprove um candidato quando a decisão humana estiver pronta."}
       />
       <HrRecruitmentTimeline
         mode="candidate"
         currentStage={summary.aprovado > 0 ? "candidate_approved" : "candidates"}
         title="Etapa de candidatos"
-        description="Esta etapa serve para avaliar candidatos antes de iniciar admissao."
+        description="Esta etapa serve para avaliar candidatos antes de iniciar admissão."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -96,7 +123,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
               <StatusBadge status="visual" label={`${summary.total} cadastrados`} />
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Lista operacional sem ranking automatico. Telefone fica reservado ao detalhe do candidato.
+              Lista operacional sem ranking automático, com contato formatado e ação admissional para aprovados.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -166,33 +193,37 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
       {candidates.length ? (
         <Card className="overflow-hidden border-border/80 shadow-sm shadow-primary/5">
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Candidato</th>
                   <th className="px-4 py-3">Origem</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Nota manual</th>
-                  <th className="px-4 py-3">Atualizacao</th>
-                  <th className="w-48 px-4 py-3 text-right">Ações</th>
+                  <th className="px-4 py-3">Atualização</th>
+                  <th className="w-72 px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {candidates.map((candidate) => (
+                {candidates.map((candidate) => {
+                  const admissionWorkflowId = admissionByCandidateId.get(candidate.id)?.admission_workflow_id ?? null;
+                  return (
                   <tr key={candidate.id} className={candidate.status === "aprovado" ? "align-top bg-emerald-50/50 hover:bg-emerald-50" : "align-top hover:bg-muted/30"}>
                     <td className="px-4 py-3">
                       <p className="font-medium text-foreground">{candidate.full_name}</p>
                       <p className="text-xs text-muted-foreground">Cadastrado em {formatDateTime(candidate.created_at)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{candidate.phone_redacted ? "Telefone restrito" : formatPhone(candidate.phone)}</p>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{candidate.source}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
-                      {candidate.status === "aprovado" ? <p className="mt-1 text-xs font-medium text-emerald-700">Proxima acao: iniciar ou acompanhar admissao.</p> : null}
+                      {candidate.status === "aprovado" ? <p className="mt-1 text-xs font-medium text-emerald-700">{admissionWorkflowId ? "Admissão aberta para acompanhamento." : "Próxima ação: encaminhar para admissão."}</p> : null}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{candidate.manual_score ?? "Não informado"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateTime(candidate.updated_at)}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {candidate.status === "aprovado" ? (
+                          <HrCandidateAdmissionActionButton workflowId={workflowId} candidate={candidate} admissionWorkflowId={admissionWorkflowId} className="whitespace-nowrap" />
+                        ) : null}
                         <Button asChild variant="outline" size="sm" className="whitespace-nowrap">
                           <Link href={`/rh/vagas/${workflowId}/candidatos/${candidate.id}`}>
                             Abrir
@@ -202,7 +233,8 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

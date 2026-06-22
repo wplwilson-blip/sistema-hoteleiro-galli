@@ -30,9 +30,11 @@ import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
 import { HrOperationalModal } from "@/components/hr/hr-operational-modal";
+import { HrCandidateAdmissionActionButton } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
+import { candidateStatusLabel, candidateStatusTone, formatPhone, type Candidate, type CandidateSummary } from "@/components/hr/hr-candidate-shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -185,13 +187,20 @@ type NotificationsResponse = {
 };
 
 type CandidateSummaryResponse = {
-  summary: {
-    total: number;
-    triagem: number;
-    entrevista: number;
-    aprovado: number;
-    reprovado: number;
-  };
+  data: Candidate[];
+  summary: CandidateSummary;
+};
+
+type AdmissionProcessForCandidate = {
+  id: string;
+  source_candidate_id: string | null;
+  admission_workflow_id: string | null;
+  status: string;
+  current_step: string;
+};
+
+type AdmissionProcessesByJobOpeningResponse = {
+  data: AdmissionProcessForCandidate[];
 };
 
 type AdmissionPersistentProcess = {
@@ -285,14 +294,14 @@ const workflowTypeLabels: Record<string, string> = {
   warning: "Advertencia",
   equipment_delivery: "Entrega de equipamento",
   general_note: "Nota administrativa",
-  job_opening: "Solicitacao de vaga"
+  job_opening: "Solicitação de vaga"
 };
 
 const workflowStatusLabels: Record<string, string> = {
   draft: "Rascunho",
   open: "Aberto",
   in_progress: "Em andamento",
-  waiting_approval: "Aguardando aprovacao",
+  waiting_approval: "Aguardando aprovação",
   returned: "Devolvido",
   completed: "Concluido",
   cancelled: "Cancelado",
@@ -302,7 +311,7 @@ const workflowStatusLabels: Record<string, string> = {
 const stepStatusLabels: Record<string, string> = {
   pending: "Pendente",
   in_progress: "Em andamento",
-  waiting_approval: "Aguardando aprovacao",
+  waiting_approval: "Aguardando aprovação",
   returned: "Devolvida",
   completed: "Concluida",
   skipped: "Ignorada",
@@ -324,14 +333,14 @@ const eventTypeLabels: Record<string, string> = {
   workflow_assigned: "Processo atribuido",
   workflow_status_changed: "Status alterado",
   workflow_due_date_changed: "Prazo alterado",
-  workflow_submitted_for_approval: "Enviado para aprovacao",
+  workflow_submitted_for_approval: "Enviado para aprovação",
   workflow_approved: "Processo aprovado",
   workflow_returned: "Processo devolvido",
   workflow_rejected: "Processo rejeitado",
   workflow_completed: "Processo concluido",
   workflow_cancelled: "Processo cancelado",
   step_started: "Etapa iniciada",
-  step_completed: "Etapa concluida",
+  step_completed: "Etapa concluída",
   step_rejected: "Etapa rejeitada",
   step_returned: "Etapa devolvida",
   step_skipped: "Etapa ignorada",
@@ -340,7 +349,7 @@ const eventTypeLabels: Record<string, string> = {
 };
 
 const actionLabels: Record<string, string> = {
-  create_workflow: "Criacao do processo",
+  create_workflow: "Criação do processo",
   execute_step: "Execucao de etapa",
   approve_step: "Aprovação de etapa",
   reject_step: "Rejeicao de etapa",
@@ -351,7 +360,7 @@ const actionLabels: Record<string, string> = {
 const admissionProcessStatusLabels: Record<string, string> = {
   draft: "Rascunho",
   documents_requested: "Documentos solicitados",
-  documents_under_review: "Documentos em conferencia",
+  documents_under_review: "Documentos em conferência",
   sent_to_accounting: "Enviado para contabilidade administrativa",
   registration_pending: "Registro pendente",
   registered: "Registro concluido",
@@ -361,7 +370,7 @@ const admissionProcessStatusLabels: Record<string, string> = {
 };
 
 const admissionAuxiliaryStatusLabels: Record<string, string> = {
-  not_started: "Nao iniciado",
+  not_started: "Não iniciado",
   pending: "Pendente",
   in_progress: "Em andamento",
   completed: "Concluido",
@@ -374,12 +383,12 @@ const admissionChecklistStatusLabels: Record<string, string> = {
   pending: "Pendente",
   requested: "Solicitado",
   received: "Recebido",
-  under_review: "Em conferencia",
+  under_review: "Em conferência",
   approved: "Aprovado",
   rejected: "Rejeitado",
   waived: "Dispensado",
   completed: "Concluido",
-  not_applicable: "Nao aplicavel",
+  not_applicable: "Não aplicável",
   cancelled: "Cancelado"
 };
 
@@ -400,27 +409,27 @@ const admissionPersistentChecklistGroups: Array<{
 }> = [
   {
     title: "Documentos admissionais",
-    description: "Controle operacional para solicitar e conferir documentos antes do registro. Ainda nao cria documentos reais nesta etapa.",
+    description: "Controle operacional para solicitar e conferir documentos antes do registro. Ainda não cria documentos reais nesta etapa.",
     itemKeys: ["request_documents", "review_documents"]
   },
   {
     title: "Contabilidade e registro",
-    description: "Controle administrativo interno de envio e retorno de registro. Nao envolve folha, eSocial, calculo ou valores.",
+    description: "Controle administrativo interno de envio e retorno de registro. Não envolve folha, eSocial, cálculo ou valores.",
     itemKeys: ["send_to_accounting", "confirm_registration"]
   },
   {
-    title: "Saude ocupacional",
-    description: "Acompanhamento visual do ASO admissional. Ainda nao cria ASO real.",
+    title: "Saúde ocupacional",
+    description: "Acompanhamento visual do ASO admissional. Ainda não cria ASO real.",
     itemKeys: ["occupational_health_aso"]
   },
   {
     title: "Uniforme operacional",
-    description: "Uniforme e obrigacao operacional padrao, separado de EPI tecnico.",
+    description: "Uniforme e obrigação operacional padrão, separado de EPI técnico.",
     itemKeys: ["uniform_delivery"]
   },
   {
     title: "Onboarding",
-    description: "Preparacao para inicio do onboarding apos registro. Ainda nao cria onboarding real.",
+    description: "Preparação para início do onboarding após registro. Ainda não cria onboarding real.",
     itemKeys: ["start_onboarding"]
   }
 ];
@@ -560,7 +569,7 @@ function operationalEventLabel(type: string, workflowType?: string) {
     workflow_created: "Processo admissional criado",
     workflow_opened: "Checklist admissional aberto",
     step_started: "Etapa admissional iniciada",
-    step_completed: "Etapa admissional concluida",
+    step_completed: "Etapa admissional concluída",
     workflow_approved: "Validação registrada",
     workflow_returned: "Processo devolvido para ajuste",
     workflow_completed: "Admissão concluída",
@@ -611,14 +620,14 @@ function entityLabel(entity: string) {
     workflow: "Processo",
     step: "Etapa",
     event: "Histórico",
-    notification: "Notificacao"
+    notification: "Notificação"
   };
   return labels[entity] ?? entity;
 }
 
 function slaLabel(sla: WorkflowSla | null | undefined) {
   const status = sla?.status ?? "";
-  return slaStatusLabels[status] ?? sla?.label ?? "Prazo nao informado";
+  return slaStatusLabels[status] ?? sla?.label ?? "Prazo não informado";
 }
 
 function stringifySafeValue(value: unknown) {
@@ -629,16 +638,16 @@ function stringifySafeValue(value: unknown) {
 
 function technicalLabel(key: string) {
   const labels: Record<string, string> = {
-    actor_user_id: "usuario responsavel",
+    actor_user_id: "usuário responsável",
     workflow_id: "processo",
     step_id: "etapa",
-    event_id: "historico",
+    event_id: "histórico",
     request_id: "rastreio",
-    correlation_id: "correlacao",
+    correlation_id: "correlação",
     workflow_type: "tipo de processo",
-    workflow_status: "situacao do processo",
-    from_status: "situacao anterior",
-    to_status: "nova situacao"
+    workflow_status: "situação do processo",
+    from_status: "situação anterior",
+    to_status: "nova situação"
   };
   return labels[key] ?? key.replace(/_/g, " ");
 }
@@ -707,17 +716,100 @@ function admissionDate(workflow: WorkflowDetail) {
   return metadataText(workflow.metadata, "admission_date");
 }
 
-function jobOpeningNextAction(workflow: WorkflowDetail, currentStep: WorkflowStep | null) {
-  const stepName = currentStep?.name.toLowerCase() ?? "";
-  if (workflow.status === "waiting_approval" || currentStep?.status === "waiting_approval" || stepName.includes("aprov")) {
-    return "Aguarde ou aprove a abertura da vaga conforme a etapa atual.";
+type JobOpeningNextActionInfo = {
+  title: string;
+  description: string;
+  tone: StatusTone;
+};
+
+function normalizeActionText(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function jobOpeningNextActionInfo(
+  workflow: WorkflowDetail,
+  currentStep: WorkflowStep | null,
+  summary: CandidateSummary | null | undefined
+): JobOpeningNextActionInfo {
+  const stepName = normalizeActionText(currentStep?.name);
+  const stepStatus = currentStep?.status ?? "";
+  const allowedActions = workflow.allowed_actions ?? {};
+  const approvedCount = summary?.aprovado ?? 0;
+  const candidateCount = summary?.total ?? 0;
+
+  if (workflow.status === "completed") {
+    return {
+      title: "Vaga finalizada",
+      description: "Consulte candidatos, histórico e admissão vinculada quando precisar revisar o processo.",
+      tone: "success"
+    };
   }
-  if (stepName.includes("recrut") || stepName.includes("candidat") || stepName.includes("entrevista")) {
-    return "Inicie ou acompanhe o recrutamento, cadastre candidatos e registre avaliacoes humanas.";
+
+  if (workflow.status === "cancelled" || workflow.status === "rejected") {
+    return {
+      title: "Processo encerrado",
+      description: "Esta vaga não possui ação operacional ativa neste momento.",
+      tone: "danger"
+    };
   }
-  if (stepName.includes("admiss")) return "Acompanhe a admissao vinculada ao candidato aprovado.";
-  if (workflow.status === "completed") return "Vaga finalizada. Consulte historico, candidatos e admissao se necessario.";
-  return "Confira a etapa atual, candidatos vinculados e a proxima acao do processo.";
+
+  if (approvedCount > 0 || stepName.includes("admiss")) {
+    return {
+      title: approvedCount > 0 ? "Acompanhar admissão do candidato aprovado" : "Preparar etapa admissional",
+      description: "Abra ou acompanhe a admissão do candidato aprovado e finalize a vaga quando a contratação estiver encaminhada.",
+      tone: "success"
+    };
+  }
+
+  if (workflow.status === "waiting_approval" || stepStatus === "waiting_approval" || allowedActions.approve || stepName.includes("aprov")) {
+    return {
+      title: allowedActions.approve ? "Aprovar abertura da vaga" : "Aguardar aprovação da vaga",
+      description: allowedActions.approve
+        ? "Revise a solicitação e aprove, devolva ou reprove conforme a alçada desta etapa."
+        : "A solicitação já foi encaminhada e aguarda aprovação da etapa atual.",
+      tone: "warning"
+    };
+  }
+
+  if (candidateCount > 0 || stepName.includes("candidat") || stepName.includes("entrevista")) {
+    return {
+      title: "Acompanhar candidatos vinculados",
+      description: "Continue triagem, entrevistas e parecer humano até registrar a decisão do candidato nesta vaga.",
+      tone: "info"
+    };
+  }
+
+  if (workflow.status === "open" || workflow.status === "in_progress" || stepName.includes("recrut") || stepName.includes("vaga aprovada")) {
+    return {
+      title: "Iniciar recrutamento",
+      description: "Cadastre candidatos, registre origem e avance para avaliação humana quando houver interessados.",
+      tone: "info"
+    };
+  }
+
+  if (allowedActions.execute || stepName.includes("valid")) {
+    return {
+      title: "Validar solicitação pelo RH",
+      description: "Confira cargo, departamento, quantidade, gestor e prioridade antes de encaminhar a vaga.",
+      tone: "warning"
+    };
+  }
+
+  return {
+    title: currentStep ? "Avancar etapa atual" : "Acompanhar solicitação da vaga",
+    description: currentStep
+      ? "Use as ações disponíveis desta etapa para manter a vaga em movimento."
+      : "A vaga ainda não possui etapa ativa exibida para o seu perfil.",
+    tone: "visual"
+  };
+}
+
+function jobOpeningNextAction(workflow: WorkflowDetail, currentStep: WorkflowStep | null, summary?: CandidateSummary | null) {
+  const action = jobOpeningNextActionInfo(workflow, currentStep, summary);
+  return `${action.title}: ${action.description}`;
 }
 
 function workflowReturnLink(workflow: WorkflowDetail, isJobOpening: boolean, isAdmission: boolean) {
@@ -765,10 +857,10 @@ function workflowProgress(steps: WorkflowStep[]) {
 
 function stepHelperText(step: WorkflowStep | null) {
   if (!step) return "Nenhuma etapa ativa no momento.";
-  if (step.status === "waiting_approval") return "Aguardando validacao humana.";
+  if (step.status === "waiting_approval") return "Aguardando validação humana.";
   if (step.status === "returned") return "Etapa devolvida para ajuste.";
-  if (step.status === "in_progress") return "Aguardando execucao pelo responsavel.";
-  if (step.status === "pending") return "Etapa ainda nao iniciada.";
+  if (step.status === "in_progress") return "Aguardando execução pelo responsável.";
+  if (step.status === "pending") return "Etapa ainda não iniciada.";
   return "Etapa registrada no processo.";
 }
 
@@ -830,7 +922,7 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <span>
             <span className="block text-sm font-semibold text-foreground">Informações internas do processo</span>
-            <span className="block text-xs text-muted-foreground">Dados internos de apoio, ocultos por padrao para a operacao.</span>
+            <span className="block text-xs text-muted-foreground">Dados internos de apoio, ocultos por padrão para a operação.</span>
           </span>
         </summary>
         <div className="mt-4 flex flex-wrap gap-1.5">
@@ -859,7 +951,7 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <SectionHeader title="Painel da solicitacao de vaga" description="Dados principais para RH e gestores acompanharem a abertura da vaga." icon={BriefcaseBusiness} />
+        <SectionHeader title="Painel da solicitação de vaga" description="Dados principais para RH e gestores acompanharem a abertura da vaga." icon={BriefcaseBusiness} />
         <div className="flex flex-wrap gap-2">
           <StatusBadge status={priorityTone(urgency)} label={`Urgencia: ${urgencyLabel(urgency)}`} />
           <StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} />
@@ -893,7 +985,7 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
           ) : null}
           {notes ? (
             <div className="rounded-md border bg-background p-3">
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Observacoes operacionais</p>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Observações operacionais</p>
               <p className="mt-2 break-words text-sm text-foreground">{notes}</p>
             </div>
           ) : null}
@@ -906,20 +998,40 @@ function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
 function CandidateSummaryPanel({
   workflowId,
   summary,
+  candidates,
   isLoading,
   error
 }: {
   workflowId: string;
   summary: CandidateSummaryResponse["summary"] | null;
+  candidates: Candidate[];
   isLoading: boolean;
   error: unknown;
 }) {
   const values = summary ?? { total: 0, triagem: 0, entrevista: 0, aprovado: 0, reprovado: 0 };
+  const admissionProcessesQuery = useQuery({
+    queryKey: ["hr", "admission-processes", "job-opening", workflowId],
+    queryFn: async () => requestJson<AdmissionProcessesByJobOpeningResponse>(`/api/hr/admission-processes?jobOpeningWorkflowId=${workflowId}&pageSize=100`),
+    enabled: values.aprovado > 0
+  });
+  const admissionProcesses = admissionProcessesQuery.data?.data;
+  const admissionByCandidateId = useMemo(() => {
+    const map = new Map<string, AdmissionProcessForCandidate>();
+    for (const process of admissionProcesses ?? []) {
+      if (process.source_candidate_id) map.set(process.source_candidate_id, process);
+    }
+    return map;
+  }, [admissionProcesses]);
+  const previewCandidates = useMemo(() => {
+    const approved = candidates.filter((candidate) => candidate.status === "aprovado");
+    const active = candidates.filter((candidate) => candidate.status !== "aprovado");
+    return [...approved, ...active].slice(0, 4);
+  }, [candidates]);
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
       <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <SectionHeader title="Candidatos" description="Acompanhamento leve da vaga, sem ranking automatico ou decisao por sistema." icon={UsersRound} />
+        <SectionHeader title="Candidatos" description="Acompanhamento leve da vaga, sem ranking automático ou decisão por sistema." icon={UsersRound} />
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline" size="sm">
             <Link href={`/rh/vagas/${workflowId}/candidatos`}>
@@ -946,6 +1058,45 @@ function CandidateSummaryPanel({
           <InfoTile label="Reprovados" value={String(values.reprovado)} icon={SquareX} />
         </div>
       ) : null}
+      {!isLoading && !error && previewCandidates.length ? (
+        <div className="mt-4 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Candidatos vinculados</p>
+            {values.aprovado > 0 ? <StatusBadge status="success" label="Aprovado com ação admissional" /> : null}
+          </div>
+          <div className="grid gap-2 xl:grid-cols-2">
+            {previewCandidates.map((candidate) => {
+              const admissionWorkflowId = admissionByCandidateId.get(candidate.id)?.admission_workflow_id ?? null;
+              return (
+                <article key={candidate.id} className={cn("rounded-md border bg-background p-3", candidate.status === "aprovado" && "border-emerald-200 bg-emerald-50/60")}>
+                  <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
+                        {candidate.status === "aprovado" && admissionWorkflowId ? <StatusBadge status="success" label="Admissão aberta" /> : null}
+                      </div>
+                      <p className="mt-2 break-words text-sm font-semibold text-foreground">{candidate.full_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {candidate.source} | {candidate.phone_redacted ? "Telefone restrito" : formatPhone(candidate.phone)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">Parecer: {candidate.human_opinion || "sem parecer"}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2 md:justify-end">
+                      {candidate.status === "aprovado" ? (
+                        <HrCandidateAdmissionActionButton workflowId={workflowId} candidate={candidate} admissionWorkflowId={admissionWorkflowId} className="whitespace-nowrap" />
+                      ) : (
+                        <Button asChild variant="outline" size="sm" className="whitespace-nowrap">
+                          <Link href={`/rh/vagas/${workflowId}/candidatos/${candidate.id}`}>Abrir candidato</Link>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -954,7 +1105,23 @@ function hasEscalationAlert(escalation: WorkflowEscalation | null | undefined) {
   return Boolean(escalation?.overdue || escalation?.eligible || escalation?.level || escalation?.count);
 }
 
-function JobOpeningNextActionPanel({ workflow, currentStep }: { workflow: WorkflowDetail; currentStep: WorkflowStep | null }) {
+function JobOpeningNextActionPanel({
+  workflow,
+  currentStep,
+  summary
+}: {
+  workflow: WorkflowDetail;
+  currentStep: WorkflowStep | null;
+  summary: CandidateSummary | null;
+}) {
+  const action = jobOpeningNextActionInfo(workflow, currentStep, summary);
+  const details = [
+    currentStep?.name ? { label: "Etapa atual", value: currentStep.name, icon: ListChecks } : null,
+    currentStep?.assigned_to ? { label: "Responsavel atual", value: currentStep.assigned_to, icon: UserRound } : null,
+    { label: "Status", value: workflowStatusLabel(workflow.status), icon: CheckCircle2 },
+    workflow.sla?.due_at ? { label: "Prazo", value: formatRelativeSla(workflow.sla), icon: CalendarClock } : null
+  ].filter(Boolean) as Array<{ label: string; value: string; icon: typeof ClipboardList }>;
+
   return (
     <Card className="min-w-0 border-primary/30 bg-primary/5 p-4 shadow-sm shadow-primary/10">
       <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -962,16 +1129,18 @@ function JobOpeningNextActionPanel({ workflow, currentStep }: { workflow: Workfl
           <div className="mb-2 flex items-center gap-2">
             <SquareCheckBig className="h-5 w-5 shrink-0 text-primary" />
             <h2 className="text-base font-semibold text-foreground">Próxima ação</h2>
+            <StatusBadge status={action.tone} label="Ação operacional" />
           </div>
-          <p className="break-words text-lg font-semibold text-foreground">{jobOpeningNextAction(workflow, currentStep)}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Use as ações disponíveis abaixo conforme a etapa atual e as permissões do seu perfil.</p>
+          <p className="break-words text-lg font-semibold text-foreground">{action.title}</p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{action.description}</p>
         </div>
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:w-[440px]">
-          <InfoTile label="Etapa atual" value={currentStep?.name ?? "Sem etapa atual"} icon={ListChecks} />
-          <InfoTile label="Responsável atual" value={currentStep?.assigned_to ?? "Não informado"} icon={UserRound} />
-          <InfoTile label="Status" value={workflowStatusLabel(workflow.status)} icon={CheckCircle2} />
-          <InfoTile label="Prazo" value={workflow.sla?.due_at ? formatRelativeSla(workflow.sla) : slaLabel(workflow.sla)} icon={CalendarClock} />
-        </div>
+        {details.length ? (
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:w-[440px]">
+            {details.map((detail) => (
+              <InfoTile key={detail.label} label={detail.label} value={detail.value} icon={detail.icon} />
+            ))}
+          </div>
+        ) : null}
       </div>
     </Card>
   );
@@ -1032,7 +1201,7 @@ function AdmissionNextStepCard({ currentStep }: { currentStep: WorkflowStep | nu
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-2">
             <SquareCheckBig className="h-5 w-5 text-primary" />
-            <h2 className="text-base font-semibold text-foreground">Proxima etapa</h2>
+            <h2 className="text-base font-semibold text-foreground">Próxima etapa</h2>
           </div>
           <p className="break-words text-xl font-semibold text-foreground">{currentStep?.name ?? "Nenhuma etapa ativa"}</p>
           <p className="mt-1 text-sm text-muted-foreground">{stepHelperText(currentStep)}</p>
@@ -1107,14 +1276,14 @@ function AdmissionPersistentPanel({
 
       if (!response.ok) {
         if (response.status === 403) {
-          throw new Error("Voce nao tem permissao para atualizar este item.");
+          throw new Error("Você não tem permissão para atualizar este item.");
         }
 
         if (response.status === 422) {
-          throw new Error(body?.message ?? "Revise o status, motivo ou observacao informada.");
+          throw new Error(body?.message ?? "Revise o status, motivo ou observação informada.");
         }
 
-        throw new Error(body?.message ?? "Nao foi possivel atualizar o item do checklist admissional.");
+        throw new Error(body?.message ?? "Não foi possível atualizar o item do checklist admissional.");
       }
 
       return body as { data: AdmissionPersistentChecklistItem };
@@ -1131,7 +1300,7 @@ function AdmissionPersistentPanel({
     },
     onError: (error) => {
       setChecklistFeedback(null);
-      setChecklistError(error instanceof Error ? error.message : "Nao foi possivel atualizar o item do checklist admissional.");
+      setChecklistError(error instanceof Error ? error.message : "Não foi possível atualizar o item do checklist admissional.");
     }
   });
 
@@ -1164,7 +1333,7 @@ function AdmissionPersistentPanel({
     }
 
     if (requiresRejectionReason && checklistForm.rejectionReason.trim().length < 3) {
-      setChecklistError("Informe o motivo da reprovacao antes de salvar.");
+      setChecklistError("Informe o motivo da reprovação antes de salvar.");
       return;
     }
 
@@ -1182,14 +1351,14 @@ function AdmissionPersistentPanel({
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
       <SectionHeader
-        title="Admissao persistente"
-        description="Esta area acompanha manualmente o checklist admissional persistente. Atualizar um item nao cria documentos, ASO, uniforme, onboarding, folha ou eSocial."
+        title="Admissão persistente"
+        description="Esta área acompanha manualmente o checklist admissional persistente. Atualizar um item não cria documentos, ASO, uniforme, onboarding, folha ou eSocial."
         icon={ClipboardList}
       />
 
       {isError ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Nao foi possivel carregar a admissao persistente agora.
+          Não foi possível carregar a admissão persistente agora.
         </div>
       ) : isLoading ? (
         <div className="flex items-center gap-2 rounded-md border bg-background p-3 text-sm text-muted-foreground">
@@ -1200,7 +1369,7 @@ function AdmissionPersistentPanel({
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <StatusBadge status={statusTone(process.status)} label={admissionProcessStatusLabel(process.status)} />
-            <StatusBadge status="info" label="Atualizacao manual" />
+            <StatusBadge status="info" label="Atualização manual" />
           </div>
           <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <InfoTile label="Status do processo" value={admissionProcessStatusLabel(process.status)} icon={CheckCircle2} />
@@ -1208,13 +1377,13 @@ function AdmissionPersistentPanel({
             <InfoTile label="Documentos" value={admissionAuxiliaryStatusLabel(process.documents_status)} icon={ClipboardList} />
             <InfoTile label="Contabilidade adm." value={admissionAuxiliaryStatusLabel(process.accounting_status)} icon={FileClock} />
             <InfoTile label="Registro" value={admissionAuxiliaryStatusLabel(process.registration_status)} icon={SquareCheckBig} />
-            <InfoTile label="Saude ocupacional" value={admissionAuxiliaryStatusLabel(process.occupational_health_status)} icon={ShieldAlert} />
+            <InfoTile label="Saúde ocupacional" value={admissionAuxiliaryStatusLabel(process.occupational_health_status)} icon={ShieldAlert} />
             <InfoTile label="Uniforme" value={admissionAuxiliaryStatusLabel(process.uniform_status)} icon={UsersRound} />
             <InfoTile label="Onboarding" value={admissionAuxiliaryStatusLabel(process.onboarding_status)} icon={UserPlus} />
             <InfoTile label="Checklist persistente" value={`${checklistTotal} ${checklistTotal === 1 ? "item" : "itens"}`} icon={ListChecks} />
           </div>
           <p className="text-xs text-muted-foreground">
-            Esta leitura vem da foundation persistente e nao altera o workflow visual atual.
+            Esta leitura vem da foundation persistente e não altera o workflow visual atual.
           </p>
           {checklistFeedback ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{checklistFeedback}</div> : null}
           {checklistItems.length ? (
@@ -1223,10 +1392,10 @@ function AdmissionPersistentPanel({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status="info" label="Checklist operacional" />
-                    <StatusBadge status="visual" label="Nao gera pendencias reais" />
+                    <StatusBadge status="visual" label="Não gera pendências reais" />
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Checklist persistente criado para acompanhamento operacional. Nesta etapa, atualizar status nao gera documentos, ASO, uniforme, onboarding, folha ou eSocial.
+                    Checklist persistente criado para acompanhamento operacional. Nesta etapa, atualizar status não gera documentos, ASO, uniforme, onboarding, folha ou eSocial.
                   </p>
                 </div>
                 <div className="grid shrink-0 grid-cols-3 gap-2 sm:min-w-[360px]">
@@ -1249,12 +1418,12 @@ function AdmissionPersistentPanel({
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
                                 <p className="break-words text-sm font-semibold text-foreground">{item.title}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">Atualizacao manual do item. Ainda nao executa geracao real nesta etapa.</p>
+                                <p className="mt-1 text-xs text-muted-foreground">Atualização manual do item. Ainda não executa geração real nesta etapa.</p>
                                 {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
                               </div>
                               <div className="flex shrink-0 flex-wrap items-start gap-1.5">
                                 <StatusBadge status={statusTone(item.status)} label={admissionChecklistStatusLabel(item.status)} />
-                                {item.blocks_activation ? <StatusBadge status="warning" label="Bloqueia ativacao futura" /> : null}
+                                {item.blocks_activation ? <StatusBadge status="warning" label="Bloqueia ativação futura" /> : null}
                                 <Button type="button" variant="outline" size="sm" onClick={() => openChecklistUpdate(item)} disabled={checklistMutation.isPending}>
                                   Atualizar status
                                 </Button>
@@ -1279,13 +1448,13 @@ function AdmissionPersistentPanel({
             <StatusBadge status="info" label="Foundation pronta" />
           </div>
           <div className="grid min-w-0 gap-3 md:grid-cols-2">
-            <InfoTile label="Processo admissional persistente" value="Ainda nao criado" icon={ClipboardList} />
+            <InfoTile label="Processo admissional persistente" value="Ainda não criado" icon={ClipboardList} />
             <InfoTile label="Checklist persistente" value="0 itens" icon={ListChecks} />
           </div>
           <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-            <p>A foundation ja esta pronta, mas esta etapa ainda nao gera pendencias reais.</p>
+            <p>A foundation já esta pronta, mas esta etapa ainda não gera pendências reais.</p>
             <p className="mt-1">O fluxo atual continua usando o workflow visual.</p>
-            <p className="mt-1">O checklist sera criado quando a admissao persistente for inicializada pelo fluxo de conversao.</p>
+            <p className="mt-1">O checklist será criado quando a admissão persistente for inicializada pelo fluxo de conversão.</p>
           </div>
         </div>
       )}
@@ -1293,7 +1462,7 @@ function AdmissionPersistentPanel({
       <HrOperationalModal
         open={Boolean(selectedChecklistItem)}
         title={selectedChecklistItem ? `Atualizar status - ${selectedChecklistItem.title}` : "Atualizar status"}
-        description="Esta acao atualiza apenas o checklist admissional. Ela nao gera documento, ASO, uniforme, onboarding, folha ou eSocial."
+        description="Esta ação atualiza apenas o checklist admissional. Ela não gera documento, ASO, uniforme, onboarding, folha ou eSocial."
         onClose={closeChecklistUpdate}
         size="lg"
       >
@@ -1305,12 +1474,12 @@ function AdmissionPersistentPanel({
             </div>
 
             <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-              <p>Esta atualizacao e operacional e manual.</p>
-              <p className="mt-1">Documentos admissionais: nao cria documentos reais.</p>
-              <p className="mt-1">Contabilidade e registro: nao envolve folha, eSocial, calculo ou valores.</p>
-              <p className="mt-1">Saude ocupacional: nao cria ASO real.</p>
-              <p className="mt-1">Uniforme operacional: separado de EPI tecnico.</p>
-              <p className="mt-1">Onboarding: nao cria onboarding real.</p>
+              <p>Esta atualização e operacional e manual.</p>
+              <p className="mt-1">Documentos admissionais: não cria documentos reais.</p>
+              <p className="mt-1">Contabilidade e registro: não envolve folha, eSocial, cálculo ou valores.</p>
+              <p className="mt-1">Saúde ocupacional: não cria ASO real.</p>
+              <p className="mt-1">Uniforme operacional: separado de EPI técnico.</p>
+              <p className="mt-1">Onboarding: não cria onboarding real.</p>
             </div>
 
             <Field label="Novo status">
@@ -1334,11 +1503,11 @@ function AdmissionPersistentPanel({
               </SelectField>
             </Field>
 
-            <Field label="Observacao operacional">
+            <Field label="Observação operacional">
               <TextArea
                 value={checklistForm.notes}
                 onChange={(event) => setChecklistForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Use apenas contexto operacional necessario. Nao informe CPF, salario, folha, eSocial ou dados bancarios."
+                placeholder="Use apenas contexto operacional necessário. Não informe CPF, salário, folha, eSocial ou dados bancários."
                 disabled={checklistMutation.isPending}
               />
             </Field>
@@ -1355,11 +1524,11 @@ function AdmissionPersistentPanel({
             ) : null}
 
             {requiresRejectionReason ? (
-              <Field label="Motivo da reprovacao">
+              <Field label="Motivo da reprovação">
                 <TextArea
                   value={checklistForm.rejectionReason}
                   onChange={(event) => setChecklistForm((current) => ({ ...current, rejectionReason: event.target.value }))}
-                  placeholder="Informe o motivo administrativo da reprovacao"
+                  placeholder="Informe o motivo administrativo da reprovação"
                   disabled={checklistMutation.isPending}
                 />
               </Field>
@@ -1388,7 +1557,7 @@ function AdmissionChecklistPanel({ workflow }: { workflow: WorkflowDetail }) {
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Checklist admissional" description="Etapas operacionais para acompanhar a admissao ate o cadastro funcional futuro." icon={ListChecks} />
+      <SectionHeader title="Checklist admissional" description="Etapas operacionais para acompanhar a admissão até o cadastro funcional futuro." icon={ListChecks} />
       {workflow.steps.length ? (
         <div className="space-y-3">
           {workflow.steps.map((step) => {
@@ -1425,7 +1594,7 @@ function AdmissionChecklistPanel({ workflow }: { workflow: WorkflowDetail }) {
           })}
         </div>
       ) : (
-        <EmptyState title="Sem checklist" description="O sistema nao retornou etapas para esta admissao." />
+        <EmptyState title="Sem checklist" description="O sistema não retornou etapas para esta admissão." />
       )}
     </Card>
   );
@@ -1438,7 +1607,7 @@ function StepsPanel({ workflow, collapsed = false }: { workflow: WorkflowDetail;
     <Card className="min-w-0 overflow-hidden border-border/80 shadow-sm shadow-primary/5">
       <details open={!collapsed}>
         <summary className="cursor-pointer list-none p-4">
-          <SectionHeader title="Etapas do processo" description={collapsed ? "Sequencia tecnica recolhida para nao dominar a operacao diaria." : "Sequencia operacional das etapas protegidas pelo sistema."} icon={ListChecks} />
+          <SectionHeader title="Etapas do processo" description={collapsed ? "Sequência técnica recolhida para não dominar a operação diária." : "Sequência operacional das etapas protegidas pelo sistema."} icon={ListChecks} />
         </summary>
         {workflow.steps.length ? (
         <div className="max-w-full overflow-x-auto">
@@ -1477,7 +1646,7 @@ function StepsPanel({ workflow, collapsed = false }: { workflow: WorkflowDetail;
         </div>
       ) : (
         <div className="p-4 pt-0">
-          <EmptyState title="Sem etapas disponiveis" description="O sistema nao retornou etapas para este processo." />
+          <EmptyState title="Sem etapas disponíveis" description="O sistema não retornou etapas para este processo." />
         </div>
       )}
       </details>
@@ -1504,13 +1673,13 @@ function TimelinePanel({
         <summary className="cursor-pointer list-none">
           <SectionHeader
             title={isAdmission ? "Histórico operacional" : "Histórico do processo"}
-            description={isAdmission ? "Movimentacoes registradas durante a admissao." : "Movimentacoes registradas durante o processo."}
+            description={isAdmission ? "Movimentações registradas durante a admissão." : "Movimentações registradas durante o processo."}
             icon={History}
           />
         </summary>
         <div className="mt-4">
-          {isLoading ? <LoadingTable label="Carregando historico do processo..." /> : null}
-          {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar historico."} /> : null}
+          {isLoading ? <LoadingTable label="Carregando histórico do processo..." /> : null}
+          {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar histórico."} /> : null}
           {!isLoading && !error && !events.length ? <EmptyState title="Histórico vazio" description="Nenhum evento ativo foi retornado para este processo." /> : null}
           {events.length ? (
             <div className="space-y-3">
@@ -1529,12 +1698,12 @@ function TimelinePanel({
                   </div>
                   {technicalEntries(event.payload).length ? (
                     <details className="mt-3 rounded-md border bg-muted/20 p-3">
-                      <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio tecnico do evento</summary>
+                      <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio técnico do evento</summary>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {technicalEntries(event.payload).map(([key, value]) => (
                           <StatusBadge key={key} status="visual" label={`${technicalLabel(key)}: ${stringifySafeValue(value)}`} />
                         ))}
-                        {event.actor_user_id ? <StatusBadge status="visual" label={`usuario responsavel: ${event.actor_user_id}`} /> : null}
+                        {event.actor_user_id ? <StatusBadge status="visual" label={`usuário responsável: ${event.actor_user_id}`} /> : null}
                         {event.step_id ? <StatusBadge status="visual" label={`etapa: ${event.step_id}`} /> : null}
                         <StatusBadge status="visual" label={`processo: ${event.workflow_id}`} />
                       </div>
@@ -1555,7 +1724,7 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
     <Card className="min-w-0 border-border/60 bg-muted/10 p-4 shadow-sm shadow-primary/5">
       <details>
         <summary className="cursor-pointer list-none">
-          <SectionHeader title="Auditoria e rastreabilidade" description="Registros internos recolhidos por padrao para preservar a leitura operacional." icon={Lock} />
+          <SectionHeader title="Auditoria e rastreabilidade" description="Registros internos recolhidos por padrão para preservar a leitura operacional." icon={Lock} />
         </summary>
         <div className="mt-4">
           {isLoading ? <LoadingTable label="Carregando auditoria do processo..." /> : null}
@@ -1578,14 +1747,14 @@ function AuditPanel({ logs, total, isLoading, error }: { logs: AuditLog[]; total
                     <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(log.created_at)}</p>
                   </div>
                   <details className="mt-3 rounded-md border bg-muted/20 p-3">
-                    <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio tecnico da auditoria</summary>
+                    <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Rastreio técnico da auditoria</summary>
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {log.actor_user_id ? <StatusBadge status="visual" label={`usuario responsavel: ${log.actor_user_id}`} /> : null}
+                      {log.actor_user_id ? <StatusBadge status="visual" label={`usuário responsável: ${log.actor_user_id}`} /> : null}
                       {log.workflow_id ? <StatusBadge status="visual" label={`processo: ${log.workflow_id}`} /> : null}
                       {log.step_id ? <StatusBadge status="visual" label={`etapa: ${log.step_id}`} /> : null}
-                      {log.event_id ? <StatusBadge status="visual" label={`historico: ${log.event_id}`} /> : null}
+                      {log.event_id ? <StatusBadge status="visual" label={`histórico: ${log.event_id}`} /> : null}
                       {log.request_id ? <StatusBadge status="visual" label={`rastreio: ${log.request_id}`} /> : null}
-                      {log.correlation_id ? <StatusBadge status="visual" label={`correlacao: ${log.correlation_id}`} /> : null}
+                      {log.correlation_id ? <StatusBadge status="visual" label={`correlação: ${log.correlation_id}`} /> : null}
                     </div>
                   </details>
                 </article>
@@ -1603,9 +1772,9 @@ function NotificationsPanel({ notifications, isLoading, error }: { notifications
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-      <SectionHeader title="Notificacoes" description="Avisos relacionados ao processo, quando disponiveis." icon={Bell} />
-      {isLoading ? <LoadingTable label="Carregando notificacoes do processo..." /> : null}
-      {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar notificacoes."} /> : null}
+      <SectionHeader title="Notificações" description="Avisos relacionados ao processo, quando disponíveis." icon={Bell} />
+      {isLoading ? <LoadingTable label="Carregando notificações do processo..." /> : null}
+      {error ? <ErrorMessage message={error instanceof Error ? error.message : "Erro ao carregar notificações."} /> : null}
       {notifications.length ? (
         <div className="grid min-w-0 gap-3 xl:grid-cols-2">
           {notifications.map((notification) => (
@@ -1650,7 +1819,7 @@ function WorkflowActionPanel({
   const mutation = useMutation({
     mutationFn: postWorkflowAction,
     onSuccess: async (response, variables) => {
-      const replayed = response.idempotency?.replayed ? " A acao ja havia sido registrada e foi reaproveitada com seguranca." : "";
+      const replayed = response.idempotency?.replayed ? " A ação já havia sido registrada e foi reaproveitada com segurança." : "";
       const message = `${actionLabelsForUi[variables.action].success}${replayed}`;
       setFeedback(message);
       setLocalError(null);
@@ -1708,7 +1877,7 @@ function WorkflowActionPanel({
 
       {!allowedActions.length ? (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          Nenhuma acao operacional foi liberada pelo sistema para este processo no estado atual.
+          Nenhuma ação operacional foi liberada pelo sistema para este processo no estado atual.
         </div>
       ) : (
         <div className="space-y-4">
@@ -1764,12 +1933,12 @@ function WorkflowActionPanel({
               ) : null}
 
               <label className="mt-3 block space-y-1 text-xs font-medium text-muted-foreground">
-                Observacao opcional
+                Observação opcional
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Sem dados sensiveis; use apenas contexto operacional necessario"
+                  placeholder="Sem dados sensíveis; use apenas contexto operacional necessário"
                   disabled={mutation.isPending}
                 />
               </label>
@@ -1810,33 +1979,33 @@ const actionLabelsForUi: Record<
 > = {
   execute: {
     label: "Concluir etapa",
-    success: "Etapa concluida com sucesso.",
+    success: "Etapa concluída com sucesso.",
     confirmTitle: "Confirmar conclusão da etapa",
-    confirmDescription: "A etapa atual sera concluida no fluxo operacional.",
+    confirmDescription: "A etapa atual será concluída no fluxo operacional.",
     icon: SquareCheckBig,
     variant: "default"
   },
   approve: {
     label: "Aprovar",
     success: "Etapa aprovada com sucesso.",
-    confirmTitle: "Confirmar aprovacao",
-    confirmDescription: "A aprovacao sera registrada com auditoria e historico.",
+    confirmTitle: "Confirmar aprovação",
+    confirmDescription: "A aprovação será registrada com auditoria e histórico.",
     icon: CheckCircle2,
     variant: "default"
   },
   reject: {
     label: "Rejeitar",
     success: "Etapa rejeitada com sucesso.",
-    confirmTitle: "Confirmar rejeicao",
-    confirmDescription: "A rejeicao exige motivo e sera registrada na auditoria.",
+    confirmTitle: "Confirmar rejeição",
+    confirmDescription: "A rejeição exige motivo e será registrada na auditoria.",
     icon: SquareX,
     variant: "danger"
   },
   return: {
     label: "Devolver",
     success: "Etapa devolvida com sucesso.",
-    confirmTitle: "Confirmar devolucao",
-    confirmDescription: "A devolucao exige motivo para rastreabilidade.",
+    confirmTitle: "Confirmar devolução",
+    confirmDescription: "A devolução exige motivo para rastreabilidade.",
     icon: RotateCcw,
     variant: "outline"
   },
@@ -1875,7 +2044,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   const currentStep = useMemo(() => workflow?.steps.find((step) => step.id === workflow.current_step_id) ?? null, [workflow]);
   const candidateSummaryQuery = useQuery({
     queryKey: ["hr", "job-opening-candidates-summary", workflowId],
-    queryFn: async () => requestJson<CandidateSummaryResponse>(`/api/hr/workflows/${workflowId}/candidates?page_size=1`),
+    queryFn: async () => requestJson<CandidateSummaryResponse>(`/api/hr/workflows/${workflowId}/candidates?page_size=8`),
     enabled: workflow?.workflow_type === "job_opening"
   });
   const persistentAdmissionQuery = useQuery({
@@ -1899,7 +2068,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   }
 
   if (!workflow) {
-    return <EmptyState title="Processo nao encontrado" description="O processo nao existe ou esta fora das unidades permitidas para o seu perfil." />;
+    return <EmptyState title="Processo não encontrado" description="O processo não existe ou esta fora das unidades permitidas para o seu perfil." />;
   }
 
   const isJobOpening = workflow.workflow_type === "job_opening";
@@ -1915,7 +2084,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             {isJobOpening ? (
               <HrRecruitmentBreadcrumb items={[{ label: "Vagas", href: "/rh/vagas" }, { label: "Detalhe da vaga" }]} />
             ) : isAdmission ? (
-              <HrRecruitmentBreadcrumb items={[{ label: "Admissao" }]} />
+              <HrRecruitmentBreadcrumb items={[{ label: "Admissão" }]} />
             ) : (
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Link href="/rh" className="font-medium text-primary hover:underline">RH</Link>
@@ -1934,7 +2103,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span>Unidade: {unitDisplayName(workflow)}</span>
               <span>{isAdmission ? `Candidato: ${admissionCandidateName(workflow)}` : `Colaborador: ${isJobOpening ? "Não aplicável" : workflow.employee?.name ?? "Não vinculado"}`}</span>
-              {workflow.employee?.redacted ? <span>Dado redigido por permissao</span> : null}
+              {workflow.employee?.redacted ? <span>Dado redigido por permissão</span> : null}
               <span>Criado em {formatDateTime(workflow.created_at)}</span>
               <span>Atualizado em {formatDateTime(workflow.updated_at)}</span>
             </div>
@@ -1958,26 +2127,26 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
 
       {isJobOpening ? (
         <HrRecruitmentGuidance
-          where="Voce esta no processo de abertura/recrutamento desta vaga."
-          next={jobOpeningNextAction(workflow, currentStep)}
+          where="Você esta no processo de abertura/recrutamento desta vaga."
+          next={jobOpeningNextAction(workflow, currentStep, candidateSummary)}
         />
       ) : null}
 
-      {isJobOpening ? <JobOpeningNextActionPanel workflow={workflow} currentStep={currentStep} /> : null}
+      {isJobOpening ? <JobOpeningNextActionPanel workflow={workflow} currentStep={currentStep} summary={candidateSummary} /> : null}
 
       {isJobOpening ? (
         <HrRecruitmentTimeline
           mode="job_opening"
           currentStage={jobOpeningTimelineStage(workflow, currentStep, candidateSummary)}
           title="Linha do tempo da vaga"
-          description="Acompanhe a vaga desde a solicitacao ate o inicio da admissao."
+          description="Acompanhe a vaga desde a solicitação até o início da admissão."
         />
       ) : null}
 
       {isAdmission ? (
         <HrRecruitmentGuidance
-          where="Voce esta no processo admissional. Aqui ficam as etapas antes do colaborador ficar ativo."
-          next="Solicite documentos, acompanhe conferencia, contabilidade, registro e onboarding sem gerar pendencias automaticas novas nesta etapa."
+          where="Você esta no processo admissional. Aqui ficam as etapas antes do colaborador ficar ativo."
+          next="Solicite documentos, acompanhe conferência, contabilidade, registro e onboarding sem gerar pendências automáticas novas nesta etapa."
         />
       ) : null}
 
@@ -1986,8 +2155,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
           mode="admission"
           currentStage={admissionTimelineStage(workflow, currentStep)}
           title="Linha do tempo admissional"
-          description="Visao visual da admissao, do processo iniciado ate o colaborador ativo."
-          note="Nesta fase, o RH acompanha documentos, conferencia, envio para contabilidade, registro e inicio do onboarding. O controle detalhado de documentos admissionais sera estruturado em etapa futura."
+          description="Visão visual da admissão, do processo iniciado até o colaborador ativo."
+          note="Nesta fase, o RH acompanha documentos, conferência, envio para contabilidade, registro e início do onboarding. O controle detalhado de documentos admissionais será estruturado em etapa futura."
         />
       ) : null}
 
@@ -2001,8 +2170,8 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
             isError={persistentAdmissionQuery.isError || persistentAdmissionDetailQuery.isError}
           />
           <HrJobRequirementPreview
-            title="Regras sugeridas para admissao"
-            description="Estas regras indicam o que podera ser gerado na admissao deste colaborador. Nesta etapa ainda nada sera criado automaticamente."
+            title="Regras sugeridas para admissão"
+            description="Estas regras indicam o que poderá ser gerado na admissão deste colaborador. Nesta etapa ainda nada será criado automaticamente."
             jobTitle={metadataText(workflow.metadata, "job_position")}
             sector={metadataText(workflow.metadata, "department")}
             department={metadataText(workflow.metadata, "department")}
@@ -2016,6 +2185,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         <CandidateSummaryPanel
           workflowId={workflow.id}
           summary={candidateSummaryQuery.data?.summary ?? null}
+          candidates={candidateSummaryQuery.data?.data ?? []}
           isLoading={candidateSummaryQuery.isLoading}
           error={candidateSummaryQuery.error}
         />

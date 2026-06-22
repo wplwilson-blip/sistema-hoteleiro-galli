@@ -3,17 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArrowLeft, CalendarClock, CheckCircle2, ClipboardCheck, Edit, History, Phone, Save, ShieldAlert, Star, UserRound, XCircle } from "lucide-react";
+import { Archive, ArrowLeft, CalendarClock, CheckCircle2, ClipboardCheck, Edit, History, Phone, Save, ShieldAlert, UserRound, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
-import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
+import { ErrorMessage, Field, LoadingTable, TextArea } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { HrInterviewFormClient } from "@/components/hr/hr-interview-form-client";
 import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card";
 import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
-import { HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
+import { HrCandidateAdmissionActionButton, HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
 import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
 import {
@@ -22,9 +21,9 @@ import {
   type CandidateInterview,
   type CandidateStatus,
   candidateStatusLabel,
-  candidateStatusOptions,
   candidateStatusTone,
   formatDateTime,
+  formatPhone,
   interviewOpinionLabel,
   requestJson
 } from "@/components/hr/hr-candidate-shared";
@@ -72,7 +71,7 @@ function averageScore(interview: CandidateInterview) {
 
 function candidateNextAction(candidate: Candidate, admissionConversion: CandidateAdmissionConversion | null) {
   if (admissionConversion) return "Acompanhe a admissão vinculada a este candidato aprovado.";
-  if (candidate.status === "aprovado") return "Próxima etapa: abrir ou acompanhar admissão.";
+  if (candidate.status === "aprovado") return "Próxima etapa: encaminhar para admissão ou acompanhar admissão.";
   if (candidate.status === "banco_de_talentos") return "Mantenha o registro para consulta futura e volte para a vaga quando precisar comparar candidatos.";
   if (candidate.status === "reprovado") return "Confira o parecer registrado e volte para a lista de candidatos da vaga.";
   if (candidate.status === "desistiu") return "Confira o registro de encerramento e volte para a lista de candidatos da vaga.";
@@ -120,7 +119,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         })
       }),
     onSuccess: async () => {
-      setSavedMessage("Candidato atualizado com decisao humana registrada.");
+      setSavedMessage("Candidato atualizado com decisão humana registrada.");
       setIsOpinionEditing(false);
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-detail", workflowId, candidateId] });
       await queryClient.invalidateQueries({ queryKey: ["hr", "job-opening-candidates"] });
@@ -134,7 +133,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         body: JSON.stringify(payload)
       }),
     onSuccess: async (_response, payload) => {
-      setDecisionMessage(`Decisao registrada: ${candidateStatusLabel(payload.status)}.`);
+      setDecisionMessage(`Decisão registrada: ${candidateStatusLabel(payload.status)}.`);
       await queryClient.invalidateQueries({ queryKey: ["hr", "candidate-detail", workflowId, candidateId] });
       await queryClient.invalidateQueries({ queryKey: ["hr", "job-opening-candidates"] });
     }
@@ -162,7 +161,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
   }
 
   if (!candidate || !form) {
-    return <EmptyState title="Candidato nao encontrado" description="O candidato nao existe ou esta fora do seu escopo de RH." />;
+    return <EmptyState title="Candidato não encontrado" description="O candidato não existe ou esta fora do seu escopo de RH." />;
   }
 
   function updateForm(next: Partial<CandidateEditForm>) {
@@ -194,6 +193,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
   }
 
   const isCandidateApproved = candidate.status === "aprovado";
+  const admissionWorkflowId = admissionConversion?.status === "completed" ? admissionConversion.admission_workflow_id : null;
 
   return (
     <div className="space-y-5">
@@ -206,27 +206,54 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         ]}
       />
       <HrRecruitmentGuidance
-        where="Voce esta avaliando um candidato vinculado a esta vaga."
+        where={isCandidateApproved ? "Você esta consultando o candidato aprovado desta vaga." : "Você esta avaliando um candidato vinculado a esta vaga."}
         next={candidateNextAction(candidate, admissionConversion)}
       />
       <HrRecruitmentTimeline
         mode="candidate"
         currentStage={candidateTimelineStage(candidate, admissionConversion)}
-        title="Jornada do candidato ate a admissao"
-        description="Use esta leitura para saber se o candidato ainda esta em analise, ja foi aprovado ou ja iniciou admissao."
+        title="Jornada do candidato até a admissão"
+        description="Use esta leitura para saber se o candidato ainda está em análise, já foi aprovado ou já iniciou admissão."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
-              <StatusBadge status="visual" label="Decisao humana" />
+              <StatusBadge status="visual" label="Decisão humana" />
             </div>
             <h2 className="mt-2 break-words text-lg font-semibold text-foreground">{candidate.full_name}</h2>
             <p className="mt-1 text-sm text-muted-foreground">Origem: {candidate.source}</p>
+            {isCandidateApproved ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <InfoTile label="Telefone" value={candidate.phone_redacted ? "Telefone restrito" : formatPhone(candidate.phone)} icon={Phone} />
+                <InfoTile label="Atualizado em" value={formatDateTime(candidate.updated_at)} icon={CalendarClock} />
+                <InfoTile label="Status" value={candidateStatusLabel(candidate.status)} icon={ClipboardCheck} />
+              </div>
+            ) : null}
+            {isCandidateApproved && candidate.human_opinion ? (
+              <div className="mt-3 rounded-md border bg-background p-3">
+                <p className="text-xs font-medium text-muted-foreground">Parecer humano</p>
+                <p className="mt-2 break-words text-sm text-foreground">{candidate.human_opinion}</p>
+              </div>
+            ) : null}
+            {isCandidateApproved && candidate.notes ? (
+              <div className="mt-3 rounded-md border bg-background p-3">
+                <p className="text-xs font-medium text-muted-foreground">Observações</p>
+                <p className="mt-2 break-words text-sm text-foreground">{candidate.notes}</p>
+              </div>
+            ) : null}
+            {isCandidateApproved && candidate.phone_redacted ? (
+              <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissão. Consulte apenas quando necessário para contato operacional.</p>
+            ) : null}
+            {isCandidateApproved ? <p className="mt-3 text-sm text-muted-foreground">{admissionWorkflowId ? "Admissão já aberta para acompanhamento." : "Próxima etapa: encaminhar para admissão."}</p> : null}
+            {isCandidateApproved && decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
+            {isCandidateApproved ? (
+              <HrCandidateAdmissionActionButton workflowId={workflowId} candidate={candidate} admissionWorkflowId={admissionWorkflowId} />
+            ) : null}
             <Button asChild variant="outline" size="sm">
               <Link href={`/rh/vagas/${workflowId}/candidatos`}>
                 <ArrowLeft className="h-4 w-4" />
@@ -240,80 +267,22 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         </div>
       </Card>
 
-      {/*
-        {false ? (
-        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="mb-4 flex items-center gap-2">
-            <UserRound className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Dados basicos</h2>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <InfoTile label="Nome" value={candidate.full_name} />
-            <InfoTile label="Origem" value={candidate.source} />
-            <InfoTile label="Telefone" value={candidate.phone ?? "Restrito"} icon={Phone} />
-            <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Não informado" : String(candidate.manual_score)} icon={Star} />
-          </div>
-          {candidate.phone_redacted ? (
-            <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissao. Consulte apenas quando necessario para contato operacional.</p>
-          ) : null}
-        </Card>
-
-        <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-          <div className="mb-4 flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Parecer e status</h2>
-          </div>
-          <form className="space-y-3" onSubmit={submit}>
-            <Field label="Status">
-              <SelectField value={form.status} onChange={(event) => updateForm({ status: event.target.value as CandidateStatus })}>
-                {candidateStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </SelectField>
-            </Field>
-            <Field label="Nota manual">
-              <Input type="number" min={0} max={100} value={form.manual_score} onChange={(event) => updateForm({ manual_score: event.target.value })} placeholder="0 a 100" />
-            </Field>
-            <Field label="Parecer humano">
-              <TextArea value={form.human_opinion} onChange={(event) => updateForm({ human_opinion: event.target.value })} maxLength={2000} placeholder="Parecer humano, sem dados sensiveis." />
-            </Field>
-            <Field label="Observacoes">
-              <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={1000} placeholder="Contexto operacional breve." />
-            </Field>
-            <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              Nota e parecer são manuais. O sistema não aprova, reprova nem ranqueia automaticamente.
-            </div>
-            {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível atualizar o candidato."} /> : null}
-            {savedMessage ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{savedMessage}</p> : null}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={mutation.isPending}>
-                <Save className="h-4 w-4" />
-                Salvar parecer
-              </Button>
-            </div>
-          </form>
-        </Card>
-        ) : null}
-      */}
-
+      {!isCandidateApproved ? (
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <UserRound className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Dados básicos</h2>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <InfoTile label="Nome" value={candidate.full_name} />
           <InfoTile label="Origem" value={candidate.source} />
-          <InfoTile label="Telefone" value={candidate.phone ?? "Restrito"} icon={Phone} />
-          <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Não informado" : String(candidate.manual_score)} icon={Star} />
+          <InfoTile label="Telefone" value={candidate.phone_redacted ? "Telefone restrito" : formatPhone(candidate.phone)} icon={Phone} />
         </div>
         {candidate.phone_redacted ? (
           <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissão. Consulte apenas quando necessário para contato operacional.</p>
         ) : null}
       </Card>
+      ) : null}
 
       <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} />
 
@@ -343,10 +312,10 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <ClipboardCheck className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-semibold">Parecer e status</h2>
+                <h2 className="text-sm font-semibold">Parecer da seleção</h2>
                 {isOpinionEditing ? <StatusBadge status="warning" label="Em edição" /> : <StatusBadge status="success" label="Salvo" />}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Parecer operacional da seleção.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Análise humana do candidato. A decisão final fica no bloco de decisão abaixo.</p>
             </div>
             {!isOpinionEditing ? (
               <Button type="button" variant="outline" size="sm" onClick={() => setIsOpinionEditing(true)}>
@@ -358,9 +327,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
 
         {!isOpinionEditing ? (
           <div className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              <InfoTile label="Status" value={candidateStatusLabel(candidate.status)} icon={ClipboardCheck} />
-              <InfoTile label="Nota manual" value={candidate.manual_score === null ? "Não informado" : String(candidate.manual_score)} icon={Star} />
+            <div className="grid gap-3 md:grid-cols-2">
               <InfoTile label="Atualizado em" value={formatDateTime(candidate.updated_at)} icon={CalendarClock} />
             </div>
             <div className="rounded-md border bg-background p-3">
@@ -377,26 +344,6 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
           </div>
         ) : (
           <form className="space-y-3" onSubmit={submit}>
-            {isCandidateApproved ? (
-              <div className="rounded-md border bg-muted/30 p-3">
-                <p className="text-xs font-medium text-muted-foreground">Status</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{candidateStatusLabel(candidate.status)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Alteração de decisão não fica disponível nesta tela após a aprovação.</p>
-              </div>
-            ) : (
-              <Field label="Status">
-                <SelectField value={form.status} onChange={(event) => updateForm({ status: event.target.value as CandidateStatus })}>
-                  {candidateStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </SelectField>
-              </Field>
-            )}
-            <Field label="Nota manual">
-              <Input type="number" min={0} max={100} value={form.manual_score} onChange={(event) => updateForm({ manual_score: event.target.value })} placeholder="0 a 100" />
-            </Field>
             <Field label="Parecer humano">
               <TextArea value={form.human_opinion} onChange={(event) => updateForm({ human_opinion: event.target.value })} maxLength={2000} placeholder="Parecer humano, sem dados sensíveis." />
             </Field>
@@ -405,7 +352,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             </Field>
             <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              Nota e parecer são manuais. O sistema não aprova, reprova nem ranqueia automaticamente.
+              O parecer é manual e não altera a decisão do candidato. Use o bloco de decisão para aprovar, reprovar ou enviar para banco de talentos.
             </div>
             {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível atualizar o candidato."} /> : null}
             <div className="flex justify-end">
@@ -419,17 +366,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         </Card>
       ) : null}
 
-      {isCandidateApproved ? (
-        <Card className="min-w-0 border-emerald-200 bg-emerald-50 p-4 shadow-sm shadow-primary/5">
-          <div className="flex flex-wrap items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-700" />
-            <h2 className="text-sm font-semibold text-emerald-950">Candidato aprovado para esta vaga</h2>
-          </div>
-          {candidate.human_opinion ? <p className="mt-3 break-words text-sm text-emerald-950">Parecer: {candidate.human_opinion}</p> : null}
-          <p className="mt-2 text-sm text-emerald-900">Próxima etapa: abrir ou acompanhar admissão.</p>
-          {decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-white/70 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
-        </Card>
-      ) : (
+      {!isCandidateApproved ? (
         <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
           <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
@@ -490,15 +427,17 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
           {decisionMutation.error ? <ErrorMessage message={decisionMutation.error instanceof Error ? decisionMutation.error.message : "Não foi possível registrar a decisão."} /> : null}
           {decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
         </Card>
-      )}
+      ) : null}
 
-      <HrCandidateAdmissionConversionCard workflowId={workflowId} candidate={candidate} admissionConversion={admissionConversion} />
+      {!isCandidateApproved ? <HrCandidateAdmissionConversionCard workflowId={workflowId} candidate={candidate} admissionConversion={admissionConversion} /> : null}
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="mb-4 flex items-center gap-2">
+        <details open={!isCandidateApproved} className="group">
+        <summary className="mb-4 flex cursor-pointer list-none items-center gap-2">
           <CalendarClock className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Entrevistas</h2>
-        </div>
+          {isCandidateApproved ? <StatusBadge status="visual" label="Consulta registrada" /> : null}
+        </summary>
         {interviews.length ? (
           <div className="grid gap-3 xl:grid-cols-2">
             {interviews.map((interview) => (
@@ -525,6 +464,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         ) : (
           <EmptyState title="Sem entrevistas" description="Registre a primeira entrevista quando houver conversa com o candidato." />
         )}
+        </details>
       </Card>
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">

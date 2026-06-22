@@ -10,7 +10,7 @@ import { ErrorMessage, Field, SelectField, TextArea } from "@/components/base-ca
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { candidateStatusOptions, requestJson, type CandidateStatus } from "@/components/hr/hr-candidate-shared";
+import { candidateStatusOptions, maskPhoneInput, normalizePhoneForApi, requestJson, type CandidateStatus } from "@/components/hr/hr-candidate-shared";
 
 type CandidateForm = {
   full_name: string;
@@ -53,7 +53,7 @@ async function uploadCandidateResume(workflowId: string, candidateId: string, fi
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message ?? payload?.error?.message ?? "Nao foi possivel enviar o curriculo.");
+    throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível enviar o currículo.");
   }
 }
 
@@ -70,7 +70,7 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
         method: "POST",
         body: JSON.stringify({
           full_name: form.full_name,
-          phone: form.phone,
+          phone: normalizePhoneForApi(form.phone),
           source: form.source,
           status: form.status,
           notes: form.notes || null
@@ -130,7 +130,7 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
               <StatusBadge status="visual" label="Processo leve" />
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Cadastre os dados basicos do candidato. O curriculo deve ser anexado no campo proprio, nao colado nas observacoes.
+              Cadastre os dados básicos do candidato. O currículo deve ser anexado no campo próprio, não colado nas observações.
             </p>
           </div>
           <Button asChild variant="outline" size="sm">
@@ -149,10 +149,18 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
               <Input value={form.full_name} onChange={(event) => updateForm({ full_name: event.target.value })} required minLength={2} maxLength={140} />
             </Field>
             <Field label="Telefone">
-              <Input value={form.phone} onChange={(event) => updateForm({ phone: event.target.value })} required minLength={6} maxLength={30} />
+              <Input
+                value={form.phone}
+                onChange={(event) => updateForm({ phone: maskPhoneInput(event.target.value) })}
+                required
+                minLength={14}
+                maxLength={15}
+                inputMode="tel"
+                placeholder="(43) 99101-0309"
+              />
             </Field>
             <Field label="Origem">
-              <Input value={form.source} onChange={(event) => updateForm({ source: event.target.value })} required minLength={2} maxLength={80} placeholder="Ex.: curriculo, indicacao, WhatsApp, presencial, Indeed." />
+              <Input value={form.source} onChange={(event) => updateForm({ source: event.target.value })} required minLength={2} maxLength={80} placeholder="Ex.: currículo, indicação, WhatsApp, presencial, Indeed." />
             </Field>
             <Field label="Status inicial">
               <SelectField value={form.status} onChange={(event) => updateForm({ status: event.target.value as CandidateStatus })}>
@@ -164,8 +172,8 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
               </SelectField>
             </Field>
           </div>
-          <Field label="Observacoes">
-            <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={1000} placeholder="Use apenas contexto operacional breve. Nao cole documentos, CPF, RG, dados medicos ou informacoes discriminatorias." />
+          <Field label="Observações">
+            <TextArea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} maxLength={1000} placeholder="Use apenas contexto operacional breve. Não cole documentos, CPF, RG, dados médicos ou informações discriminatórias." />
           </Field>
 
           <div className="rounded-md border bg-muted/20 p-3">
@@ -173,20 +181,20 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <FileText className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-semibold text-foreground">Curriculo do candidato</h2>
+                  <h2 className="text-sm font-semibold text-foreground">Currículo do candidato</h2>
                   <StatusBadge status={resumeFile ? "success" : "visual"} label={resumeFile ? "Selecionado" : "Opcional"} />
                 </div>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  Anexe aqui o curriculo recebido. Nao cole dados sensiveis nas observacoes. O arquivo fica vinculado ao candidato e nao vai para o dossie do colaborador.
+                  Anexe aqui o currículo recebido. Não cole dados sensíveis nas observações. O arquivo fica vinculado ao candidato e não vai para o dossiê do colaborador.
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Formatos aceitos: PDF, JPG, JPEG ou PNG ate 5 MB.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Formatos aceitos: PDF, JPG, JPEG ou PNG até 5 MB.</p>
                 {resumeFile ? <p className="mt-2 break-words text-xs font-medium text-foreground">{resumeFile.name}</p> : null}
               </div>
               <div className="shrink-0">
                 <input ref={resumeInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" className="hidden" onChange={handleResumeChange} />
                 <Button type="button" variant="outline" size="sm" onClick={() => resumeInputRef.current?.click()} disabled={mutation.isPending}>
                   <Upload className="h-4 w-4" />
-                  {resumeFile ? "Trocar arquivo" : "Selecionar curriculo"}
+                  {resumeFile ? "Trocar arquivo" : "Selecionar currículo"}
                 </Button>
               </div>
             </div>
@@ -195,10 +203,10 @@ export function HrCandidateCreateClient({ workflowId }: { workflowId: string }) 
 
           <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            O cadastro nao cria colaborador, admissao, dossie de colaborador, ranking ou decisao automatica. A decisao continua humana.
+            O cadastro não cria colaborador, admissão, dossiê de colaborador, ranking ou decisão automática. A decisão continua humana.
           </div>
 
-          {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Nao foi possivel cadastrar o candidato."} /> : null}
+          {mutation.error ? <ErrorMessage message={mutation.error instanceof Error ? mutation.error.message : "Não foi possível cadastrar o candidato."} /> : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Button asChild variant="outline">
