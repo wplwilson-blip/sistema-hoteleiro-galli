@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
+import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
 import { HrRecruitmentTimeline } from "@/components/hr/hr-recruitment-timeline";
 import { useAppStore } from "@/store/app-store";
 
@@ -71,14 +71,14 @@ const urgencyOptions = [
   { value: "low", label: "Baixa" },
   { value: "normal", label: "Normal" },
   { value: "high", label: "Alta" },
-  { value: "critical", label: "Critica" }
+  { value: "critical", label: "Crítica" }
 ];
 
 const reasonOptions = [
-  "Substituicao",
+  "Substituição",
   "Aumento de demanda",
-  "Nova funcao",
-  "Reforco operacional",
+  "Nova função",
+  "Reforço operacional",
   "Banco preventivo"
 ];
 
@@ -211,12 +211,12 @@ export function HrJobOpeningCreateClient() {
     if (!form.departmentId || !selectedDepartment) return "Informe o departamento.";
     if (!form.jobPositionId || !selectedPosition) return "Informe o cargo.";
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) return "Informe uma quantidade entre 1 e 100.";
-    if (!form.urgency) return "Informe a urgencia.";
+    if (!form.urgency) return "Informe a urgência.";
     if (!form.reason) return "Informe o motivo da vaga.";
     if (!form.managerUserId || !selectedManager) return "Informe o gestor solicitante.";
     if (!form.requestedStartDate) return "Informe a data desejada.";
     if (compactText(form.justification).length < 10) return "Informe uma justificativa operacional.";
-    if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Roteiro de vaga ativo com etapas nao encontrado.";
+    if (!selectedTemplate || !(selectedTemplate.steps?.length ?? 0)) return "Roteiro de vaga ativo com etapas não encontrado.";
     if (forbiddenTextPattern.test(`${form.justification} ${form.notes}`)) {
       return "Não informe salário, benefícios, documentos, dados bancários ou dados médicos.";
     }
@@ -244,7 +244,7 @@ export function HrJobOpeningCreateClient() {
         `Departamento: ${selectedDepartment?.name}`,
         `Cargo: ${selectedPosition?.name}`,
         `Quantidade: ${quantity}`,
-        `Urgencia: ${form.urgency}`,
+        `Urgência: ${form.urgency}`,
         `Motivo: ${form.reason}`,
         `Gestor solicitante: ${managerLabel(selectedManager)}`,
         `Data desejada: ${form.requestedStartDate}`
@@ -303,27 +303,23 @@ export function HrJobOpeningCreateClient() {
   return (
     <div className="space-y-5">
       <HrRecruitmentBreadcrumb items={[{ label: "Vagas", href: "/rh/vagas" }, { label: "Nova vaga" }]} />
-      <HrRecruitmentGuidance
-        where="Voce esta criando uma solicitacao de abertura de vaga antes do recrutamento."
-        next="Preencha os dados operacionais da vaga. Depois de salvar, acompanhe aprovacao, candidatos e proximas etapas no detalhe da vaga."
-      />
       <HrRecruitmentTimeline
         mode="job_opening"
         currentStage="request"
         title="Linha do tempo da vaga"
-        description="A abertura da vaga e o primeiro passo antes de aprovacao, recrutamento, candidatos e admissao."
+        description="A abertura da vaga é o primeiro passo antes de aprovação, recrutamento, candidatos e admissão."
       />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status="info" label="Solicitacao formal" />
+              <StatusBadge status="info" label="Solicitação formal" />
               <StatusBadge status="visual" label="Candidatos vinculados depois da abertura" />
               {selectedTemplate ? <StatusBadge status="success" label={`Roteiro: ${selectedTemplate.name}`} /> : null}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              A vaga sera aberta para aprovacao e acompanhamento operacional. Candidatos e entrevistas podem ser vinculados depois da abertura.
+              A vaga será aberta para aprovação e acompanhamento operacional. Candidatos e entrevistas podem ser vinculados depois da abertura.
             </p>
           </div>
           <Button asChild variant="outline" size="sm">
@@ -372,7 +368,7 @@ export function HrJobOpeningCreateClient() {
             <Field label="Quantidade">
               <Input type="number" min={1} max={100} value={form.requestedQuantity} onChange={(event) => updateForm("requestedQuantity", event.target.value)} disabled={createMutation.isPending} required />
             </Field>
-            <Field label="Urgencia">
+            <Field label="Urgência">
               <SelectField value={form.urgency} onChange={(event) => updateForm("urgency", event.target.value)} disabled={createMutation.isPending} required>
                 {urgencyOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </SelectField>
@@ -395,7 +391,7 @@ export function HrJobOpeningCreateClient() {
             <Field label="Justificativa" className="md:col-span-2">
               <TextArea value={form.justification} onChange={(event) => updateForm("justification", event.target.value)} maxLength={800} placeholder="Explique a necessidade operacional da vaga. Não informe salário, benefícios ou dados pessoais." disabled={createMutation.isPending} required />
             </Field>
-            <Field label="Observacoes operacionais" className="md:col-span-2">
+            <Field label="Observações operacionais" className="md:col-span-2">
               <TextArea value={form.notes} onChange={(event) => updateForm("notes", event.target.value)} maxLength={500} placeholder="Opcional. Não informe dados sensíveis ou informações de candidatos." disabled={createMutation.isPending} />
             </Field>
           </div>
@@ -420,7 +416,7 @@ export function HrJobOpeningCreateClient() {
                   <div key={step.step_key} className="rounded-md border bg-background px-3 py-2 text-sm">
                     <p className="font-medium">{step.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {step.requires_approval ? "Requer aprovacao" : "Etapa operacional"}
+                      {step.requires_approval ? "Requer aprovação" : "Etapa operacional"}
                       {formatOperationalDeadline(step.default_sla_minutes) ? ` · prazo previsto ${formatOperationalDeadline(step.default_sla_minutes)}` : ""}
                     </p>
                   </div>
@@ -428,7 +424,7 @@ export function HrJobOpeningCreateClient() {
               </div>
             ) : (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Roteiro de vaga ativo com etapas nao encontrado. A abertura fica bloqueada para preservar o processo correto.
+                Roteiro de vaga ativo com etapas não encontrado. A abertura fica bloqueada para preservar o processo correto.
               </div>
             )}
           </Card>
@@ -440,7 +436,7 @@ export function HrJobOpeningCreateClient() {
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>Não informe salário, benefícios, dados pessoais de candidatos, documentos, anexos ou dados médicos.</p>
-              <p>A solicitacao fica registrada para acompanhamento do RH, com candidatos e entrevistas vinculados ao processo quando necessario.</p>
+              <p>A solicitação fica registrada para acompanhamento do RH, com candidatos e entrevistas vinculados ao processo quando necessário.</p>
             </div>
           </Card>
 

@@ -60,7 +60,7 @@ export function HrCandidateAdmissionActionButton({
         queryClient.invalidateQueries({ queryKey: ["hr", "admission-processes", "job-opening", workflowId] })
       ]);
       const admissionWorkflowId = result.data.admission_workflow_id;
-      router.push(admissionWorkflowId ? `/rh/workflows/${admissionWorkflowId}` : `/rh/admissoes/nova`);
+      router.push(admissionWorkflowId ? `/rh/admissoes/${admissionWorkflowId}` : `/rh/admissoes`);
     }
   });
 
@@ -73,7 +73,7 @@ export function HrCandidateAdmissionActionButton({
 
   const button = admissionWorkflowId ? (
     <Button asChild variant="outline" size={size} className={className}>
-      <Link href={`/rh/workflows/${admissionWorkflowId}`}>
+      <Link href={`/rh/admissoes/${admissionWorkflowId}`}>
         Acompanhar admissão
         <ArrowRight className="h-4 w-4" />
       </Link>

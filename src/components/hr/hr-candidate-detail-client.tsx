@@ -13,8 +13,7 @@ import { HrInterviewFormClient } from "@/components/hr/hr-interview-form-client"
 import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card";
 import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
 import { HrCandidateAdmissionActionButton, HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
-import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
-import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
+import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
 import {
   type Candidate,
   type CandidateAdmissionConversion,
@@ -76,12 +75,6 @@ function candidateNextAction(candidate: Candidate, admissionConversion: Candidat
   if (candidate.status === "reprovado") return "Confira o parecer registrado e volte para a lista de candidatos da vaga.";
   if (candidate.status === "desistiu") return "Confira o registro de encerramento e volte para a lista de candidatos da vaga.";
   return "Registre entrevista, scorecard e parecer humano antes de aprovar ou reprovar o candidato.";
-}
-
-function candidateTimelineStage(candidate: Candidate, admissionConversion: CandidateAdmissionConversion | null): HrRecruitmentStageKey {
-  if (admissionConversion?.status === "completed") return "admission";
-  if (candidate.status === "aprovado") return "candidate_approved";
-  return "candidates";
 }
 
 export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowId: string; candidateId: string }) {
@@ -205,17 +198,6 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
           { label: "Candidato" }
         ]}
       />
-      <HrRecruitmentGuidance
-        where={isCandidateApproved ? "Você esta consultando o candidato aprovado desta vaga." : "Você esta avaliando um candidato vinculado a esta vaga."}
-        next={candidateNextAction(candidate, admissionConversion)}
-      />
-      <HrRecruitmentTimeline
-        mode="candidate"
-        currentStage={candidateTimelineStage(candidate, admissionConversion)}
-        title="Jornada do candidato até a admissão"
-        description="Use esta leitura para saber se o candidato ainda está em análise, já foi aprovado ou já iniciou admissão."
-      />
-
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -284,7 +266,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
       </Card>
       ) : null}
 
-      <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} />
+      {!isCandidateApproved ? <HrCandidateResumeCard workflowId={workflowId} candidateId={candidateId} /> : null}
 
       {!isCandidateApproved ? (
         <>
@@ -431,6 +413,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
 
       {!isCandidateApproved ? <HrCandidateAdmissionConversionCard workflowId={workflowId} candidate={candidate} admissionConversion={admissionConversion} /> : null}
 
+      {!isCandidateApproved ? (
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <details open={!isCandidateApproved} className="group">
         <summary className="mb-4 flex cursor-pointer list-none items-center gap-2">
@@ -466,7 +449,9 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         )}
         </details>
       </Card>
+      ) : null}
 
+      {!isCandidateApproved ? (
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex items-center gap-2">
           <History className="h-4 w-4 text-primary" />
@@ -481,6 +466,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
           ))}
         </div>
       </Card>
+      ) : null}
     </div>
   );
 }

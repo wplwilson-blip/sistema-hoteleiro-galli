@@ -3,17 +3,15 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, CheckCircle2, Filter, MessageSquarePlus, Search, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Filter, Search, UserPlus, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
-import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/base-cadastros/crud-components";
 import { HrCandidateAdmissionActionButton } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
-import { HrRecruitmentTimeline } from "@/components/hr/hr-recruitment-timeline";
+import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
 import {
   type Candidate,
   type CandidateSummary,
@@ -89,6 +87,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
     return map;
   }, [admissionProcesses]);
   const hasFilters = Boolean(status || search.trim());
+  const counterText = `Total: ${summary.total} · Triagem: ${summary.triagem} · Entrevista: ${summary.entrevista} · Aprovados: ${summary.aprovado} · Reprovados: ${summary.reprovado}`;
 
   function clearFilters() {
     setStatus("");
@@ -104,17 +103,6 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
           { label: "Candidatos" }
         ]}
       />
-      <HrRecruitmentGuidance
-        where="Você esta avaliando candidatos vinculados a esta vaga."
-        next={summary.aprovado > 0 ? "Use Encaminhar para admissão ou Acompanhar admissão no candidato aprovado." : "Cadastre candidatos, registre entrevistas e aprove um candidato quando a decisão humana estiver pronta."}
-      />
-      <HrRecruitmentTimeline
-        mode="candidate"
-        currentStage={summary.aprovado > 0 ? "candidate_approved" : "candidates"}
-        title="Etapa de candidatos"
-        description="Esta etapa serve para avaliar candidatos antes de iniciar admissão."
-      />
-
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -143,13 +131,7 @@ export function HrCandidateListClient({ workflowId }: { workflowId: string }) {
         </div>
       </Card>
 
-      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard title="Total" value={String(summary.total)} icon={UsersRound} tone={summary.total ? "info" : "neutral"} />
-        <StatCard title="Em triagem" value={String(summary.triagem)} icon={Filter} tone={summary.triagem ? "warning" : "neutral"} />
-        <StatCard title="Em entrevista" value={String(summary.entrevista)} icon={MessageSquarePlus} tone={summary.entrevista ? "warning" : "neutral"} />
-        <StatCard title="Aprovados" value={String(summary.aprovado)} icon={CheckCircle2} tone={summary.aprovado ? "info" : "neutral"} />
-        <StatCard title="Reprovados" value={String(summary.reprovado)} icon={X} tone={summary.reprovado ? "danger" : "neutral"} />
-      </div>
+      <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">{counterText}</div>
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

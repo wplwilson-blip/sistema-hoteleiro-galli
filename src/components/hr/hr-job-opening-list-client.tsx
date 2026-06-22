@@ -3,15 +3,14 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Filter, Search, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Filter, Search, UserPlus, UsersRound, X } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
-import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { HrRecruitmentBreadcrumb, HrRecruitmentGuidance } from "@/components/hr/hr-recruitment-navigation";
+import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
 import { useAppStore } from "@/store/app-store";
 
 type StatusTone = "visual" | "warning" | "danger" | "success" | "info";
@@ -152,10 +151,10 @@ function nextStepLabel(workflow: JobOpeningWorkflow) {
   if (status === "completed") return "Vaga finalizada";
   if (status === "cancelled" || status === "rejected") return "Processo encerrado";
   if (status === "waiting_approval" || stepStatus === "waiting_approval" || stepName.includes("aprov")) return "Aprovar abertura";
-  if (stepName.includes("admiss")) return "Acompanhar admissao";
+  if (stepName.includes("admiss")) return "Acompanhar admissão";
   if (stepName.includes("candidat") || stepName.includes("entrevista") || stepName.includes("recrut")) return "Cadastrar ou avaliar candidatos";
   if (status === "open" || status === "in_progress") return "Cadastrar ou avaliar candidatos";
-  if (status === "draft" || stepStatus === "pending") return "Revisar solicitacao";
+  if (status === "draft" || stepStatus === "pending") return "Revisar solicitação";
   return "Abrir detalhe e conferir etapa";
 }
 
@@ -189,6 +188,7 @@ export function HrJobOpeningListClient() {
   const overdueTotal = filteredWorkflows.filter((workflow) => workflow.sla?.status === "overdue").length;
   const warningTotal = filteredWorkflows.filter((workflow) => workflow.sla?.status === "warning").length;
   const hasFilters = Boolean(search || status || unitId);
+  const counterText = `${openTotal} vagas abertas · ${waitingApproval} aguardando aprovação · ${inRecruitment} em recrutamento · ${closedTotal} encerradas · ${warningTotal} vencendo · ${overdueTotal} vencidas`;
 
   function clearFilters() {
     setSearch("");
@@ -199,10 +199,6 @@ export function HrJobOpeningListClient() {
   return (
     <div className="space-y-5">
       <HrRecruitmentBreadcrumb items={[{ label: "Vagas" }]} />
-      <HrRecruitmentGuidance
-        where="Voce esta na lista de vagas do fluxo de recrutamento e admissao."
-        next="Use Proximo passo para identificar vagas que pedem aprovacao, recrutamento, avaliacao de candidatos ou acompanhamento admissional."
-      />
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -222,14 +218,7 @@ export function HrJobOpeningListClient() {
         </div>
       </Card>
 
-      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <StatCard title="Vagas abertas" value={String(openTotal)} icon={BriefcaseBusiness} tone={openTotal ? "info" : "neutral"} />
-        <StatCard title="Em aprovacao" value={String(waitingApproval)} icon={CheckCircle2} tone={waitingApproval ? "warning" : "neutral"} />
-        <StatCard title="Em recrutamento" value={String(inRecruitment)} icon={ArrowRight} tone={inRecruitment ? "info" : "neutral"} />
-        <StatCard title="Encerradas" value={String(closedTotal)} icon={CheckCircle2} tone={closedTotal ? "info" : "neutral"} />
-        <StatCard title="Prazos vencendo" value={String(warningTotal)} icon={CalendarClock} tone={warningTotal ? "warning" : "neutral"} />
-        <StatCard title="Prazos vencidos" value={String(overdueTotal)} icon={AlertTriangle} tone={overdueTotal ? "danger" : "neutral"} />
-      </div>
+      <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">{counterText}</div>
 
       <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -293,7 +282,7 @@ export function HrJobOpeningListClient() {
                     <td className="px-4 py-3"><StatusBadge status={statusTone(workflow.status)} label={statusLabels[workflow.status] ?? workflow.status} /></td>
                     <td className="px-4 py-3"><StatusBadge status={priorityTone(workflow.priority)} label={priorityLabels[workflow.priority] ?? workflow.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} /></td>
-                    <td className="px-4 py-3"><p>{workflow.current_step?.name ?? "Sem etapa atual"}</p><p className="text-xs text-muted-foreground">{workflow.current_step?.assigned_to ?? "Responsavel nao informado"}</p></td>
+                    <td className="px-4 py-3"><p>{workflow.current_step?.name ?? "Sem etapa atual"}</p><p className="text-xs text-muted-foreground">{workflow.current_step?.assigned_to ?? "Responsável não informado"}</p></td>
                     <td className="px-4 py-3">
                       <StatusBadge status="info" label={nextStepLabel(workflow)} />
                     </td>

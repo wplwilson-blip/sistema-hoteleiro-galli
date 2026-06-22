@@ -314,7 +314,7 @@ export function HrAdmissionCreateClient() {
         queryClient.invalidateQueries({ queryKey: ["hr", "dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["hr", "analytics"] })
       ]);
-      router.push(`/rh/workflows/${result.data.id}`);
+      router.push(`/rh/admissoes/${result.data.id}`);
     },
     onError: (mutationError) => {
       setError(mutationError instanceof Error ? mutationError.message : "Não foi possível abrir a admissão.");
