@@ -32,9 +32,12 @@ A migration deve:
 - cadastrar permissoes `BASE:*` faltantes;
 - cadastrar permissoes `PURCHASES:*`;
 - cadastrar permissoes `ATTACHMENTS:*`;
+- criar o access profile `COMPRAS` ativo;
 - conceder permissao aos perfis corretos via `profile_permissions`;
 - manter `SUPER_ADMIN` com todas as permissoes;
 - nao alterar Auth, login, RLS, `auth_email`, policies ou schema operacional.
+
+A migration nao deve vincular usuarios ao novo perfil `COMPRAS`. A atribuicao do usuario comprador sera feita depois na gestao de usuarios.
 
 ### 3.2 Permissoes BASE
 
@@ -97,14 +100,15 @@ Grants iniciais seguindo a matriz `docs/RH-35B_MATRIZ_PAPEIS_PERMISSOES_MENU.md`
 | `SUPER_ADMIN` | Todas as permissoes `BASE:*`, `PURCHASES:*` e `ATTACHMENTS:*`. |
 | `NETWORK_MANAGER` | `BASE:units.view`, `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:approvals.decide`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
 | `UNIT_DIRECTOR` | Mesmas permissoes de consulta/aprovacao de Compras da unidade: `BASE:* .view` aplicavel, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:approvals.decide`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
-| `DEPARTMENT_MANAGER` | Consulta e operacao administrativa conforme escopo: `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:requests.manage`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:approvals.decide` quando a alcada permitir, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
+| `COMPRAS` | Perfil novo dedicado. Grants: `PURCHASES:requests.view`, `PURCHASES:requests.manage`, `PURCHASES:quotes.view`, `PURCHASES:quotes.manage`, `PURCHASES:approvals.view`, `PURCHASES:approvals.submit`, `PURCHASES:documentation.view`, `BASE:suppliers.view`, `BASE:suppliers.manage`, `ATTACHMENTS:purchases.view`, `ATTACHMENTS:purchases.manage`. |
+| `DEPARTMENT_MANAGER` | Consulta e solicitacao administrativa conforme escopo: `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:requests.manage`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. Nao recebe `PURCHASES:approvals.decide` nesta etapa. |
 | `SUPERVISOR` | `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:requests.manage`, `PURCHASES:quotes.view`, `ATTACHMENTS:purchases.view`. |
 | `FINANCE` | `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
 | `AUDIT` | Permissoes de leitura/auditoria: `BASE:* .view` aplicavel, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
 | `EMPLOYEE` | `PURCHASES:requests.view` e `PURCHASES:requests.manage` apenas para operacao propria no escopo da unidade, se o produto mantiver solicitante operacional. |
 | `EXTERNAL_TECHNICIAN` | Nenhum grant de Base/Compras/Attachments por padrao. |
 
-Ponto de revisao: a matriz RH-35B cita papeis conceituais como `COMPRAS`, `GERENCIA_ADMINISTRATIVA` e outros que ainda nao aparecem como perfis persistidos nas migrations atuais. A migration inicial deve conceder aos perfis existentes de forma conservadora. Uma migration futura pode criar perfis operacionais novos se aprovado.
+Decisao fechada: `COMPRAS` sera criado agora como access profile dedicado, mas sem usuario vinculado automaticamente. A aprovacao da Gerencia Administrativa ate R$ 200,00 nao sera concedida a `DEPARTMENT_MANAGER` nesta etapa; ela fica para uma tarefa separada, junto com a revisao de `assertCanDecidePurchaseApprovalLevel`. Por enquanto, decisao de aprovacao continua restrita a `SUPER_ADMIN` e `UNIT_DIRECTOR`, conforme regra existente no backend.
 
 ## 4. Helper generico proposto
 
@@ -226,4 +230,3 @@ Depois da migracao das rotas:
 | Fornecedores globais | Confirmar se fornecedor sem `unit_id` e corporativo ou legado; por seguranca, restringir a `SUPER_ADMIN` inicialmente. |
 | Criacao de unidades | Confirmar se apenas `SUPER_ADMIN` pode criar unidade nova. |
 | Usuarios internos | Confirmar se sai de `SUPER_ADMIN` estrito para `BASE:users.*` com escopo por unidade. |
-
