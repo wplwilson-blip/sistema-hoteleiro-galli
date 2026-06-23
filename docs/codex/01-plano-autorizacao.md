@@ -1,14 +1,112 @@
-# Plano de Autorizacao Granular para Base e Compras
+# Plano de Autorizacao Granular para Base, Compras e Attachments
 
 ## 1. Objetivo
 
-Corrigir a lacuna confirmada no diagnostico de autorizacao: rotas de `src/app/api/base` e parte das rotas de `src/app/api/purchases` usam apenas `requireAuthenticatedRequest()` ou `requireSuperAdminRequest()` e, em alguns casos, nao filtram os dados por unidade.
+Corrigir a lacuna confirmada no diagnostico de autorizacao: rotas de `src/app/api/base`, `src/app/api/purchases` e `src/app/api/attachments` ainda dependem de `requireAuthenticatedRequest()` ou `requireSuperAdminRequest()` sem uma matriz granular consistente por permissao e, em alguns casos, sem filtro por unidade.
 
 O objetivo da proxima etapa de codigo sera criar um helper generico reutilizavel, no mesmo modelo operacional do RH, para exigir permissao por acao e retornar as unidades acessiveis do usuario. As rotas afetadas deverao usar essas unidades para leitura e escrita.
 
-Nao faz parte deste plano alterar login, Supabase Auth, `auth_email`, schema de banco, RLS/policies ou fluxos de negocio.
+Antes de escrever codigo em `src/`, a primeira etapa obrigatoria e apresentar uma migration de seed/grants para cadastrar permissoes faltantes e conceder acessos aos perfis corretos. Essa migration mexe em `permissions` e `profile_permissions`, area sensivel do `docs/NAO_ALTERAR.md`, portanto deve ser revisada e aprovada antes de ser aplicada.
 
-## 2. Padrao tecnico proposto
+Nao faz parte deste plano alterar login, Supabase Auth, `auth_email`, RLS/policies, fluxo de login ou regras de negocio fora do escopo de autorizacao.
+
+## 2. Ordem aprovada de execucao
+
+1. Planejar a migration de seed/grants.
+2. Criar a migration somente apos aprovacao deste plano.
+3. Apresentar o SQL da migration e aguardar aprovacao antes de aplicar no Supabase.
+4. Aplicar a migration aprovada.
+5. Refatorar `requireHrPermission` para delegar ao helper generico, mantendo comportamento identico para RH.
+6. Rodar testes de screenshot/UAT do RH para garantir que o RH nao quebrou.
+7. Migrar rotas de `src/app/api/base`.
+8. Migrar rotas de `src/app/api/purchases`.
+9. Migrar rotas de `src/app/api/attachments`.
+10. Rodar lint, build e testes manuais de autorizacao.
+
+## 3. Migration de seed/grants obrigatoria
+
+### 3.1 Objetivo da migration
+
+A migration deve:
+
+- cadastrar permissoes `BASE:*` faltantes;
+- cadastrar permissoes `PURCHASES:*`;
+- cadastrar permissoes `ATTACHMENTS:*`;
+- conceder permissao aos perfis corretos via `profile_permissions`;
+- manter `SUPER_ADMIN` com todas as permissoes;
+- nao alterar Auth, login, RLS, `auth_email`, policies ou schema operacional.
+
+### 3.2 Permissoes BASE
+
+Permissoes ja existentes:
+
+| Codigo | Uso |
+|---|---|
+| `BASE:units.view` | Ver unidades. |
+| `BASE:units.manage` | Gerenciar unidades. |
+| `BASE:employees.view` | Ver colaboradores. |
+| `BASE:employees.manage` | Gerenciar colaboradores. |
+| `BASE:users.view` | Ver usuarios internos. |
+| `BASE:users.manage` | Gerenciar usuarios internos. |
+| `BASE:departments.manage` | Gerenciar departamentos legado. |
+
+Permissoes novas obrigatorias:
+
+| Codigo novo | Uso |
+|---|---|
+| `BASE:departments.view` | Ver departamentos. |
+| `BASE:job_positions.view` | Ver cargos. |
+| `BASE:job_positions.manage` | Gerenciar cargos. |
+| `BASE:suppliers.view` | Ver fornecedores. |
+| `BASE:suppliers.manage` | Gerenciar fornecedores. |
+
+Regra: GET usa `.view`; POST/PATCH/DELETE usa `.manage`. Nao reutilizar `.manage` para leitura quando houver `.view`.
+
+### 3.3 Permissoes PURCHASES
+
+Permissoes novas obrigatorias:
+
+| Codigo novo | Uso |
+|---|---|
+| `PURCHASES:requests.view` | Ver solicitacoes de compra. |
+| `PURCHASES:requests.manage` | Criar, editar, enviar ou cancelar solicitacoes. |
+| `PURCHASES:quotes.view` | Ver cotacoes. |
+| `PURCHASES:quotes.manage` | Iniciar, criar, editar, selecionar, excluir e negociar cotacoes. |
+| `PURCHASES:approvals.view` | Ver fila e dossies de aprovacao de compras. |
+| `PURCHASES:approvals.submit` | Enviar ou reenviar compra para aprovacao. |
+| `PURCHASES:approvals.decide` | Decidir aprovacao, mantendo alcadas existentes. |
+| `PURCHASES:documentation.view` | Ver dashboard documental de cotacoes. |
+
+### 3.4 Permissoes ATTACHMENTS
+
+Permissoes novas obrigatorias:
+
+| Codigo novo | Uso |
+|---|---|
+| `ATTACHMENTS:purchases.view` | Ver anexos de compras no escopo permitido. |
+| `ATTACHMENTS:purchases.manage` | Enviar ou remover anexos de compras no escopo permitido. |
+
+Observacao: os anexos atuais de `/api/attachments` aceitam apenas `module = purchases` e `entity_type = purchase_quote`. A autorizacao deve validar permissao de attachment e tambem unidade da cotacao/solicitacao relacionada.
+
+### 3.5 Grants por perfil
+
+Grants iniciais seguindo a matriz `docs/RH-35B_MATRIZ_PAPEIS_PERMISSOES_MENU.md`:
+
+| Perfil atual | Grants planejados |
+|---|---|
+| `SUPER_ADMIN` | Todas as permissoes `BASE:*`, `PURCHASES:*` e `ATTACHMENTS:*`. |
+| `NETWORK_MANAGER` | `BASE:units.view`, `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:approvals.decide`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
+| `UNIT_DIRECTOR` | Mesmas permissoes de consulta/aprovacao de Compras da unidade: `BASE:* .view` aplicavel, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:approvals.decide`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
+| `DEPARTMENT_MANAGER` | Consulta e operacao administrativa conforme escopo: `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:requests.manage`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:approvals.decide` quando a alcada permitir, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
+| `SUPERVISOR` | `BASE:departments.view`, `BASE:job_positions.view`, `BASE:employees.view`, `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:requests.manage`, `PURCHASES:quotes.view`, `ATTACHMENTS:purchases.view`. |
+| `FINANCE` | `BASE:suppliers.view`, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
+| `AUDIT` | Permissoes de leitura/auditoria: `BASE:* .view` aplicavel, `PURCHASES:requests.view`, `PURCHASES:quotes.view`, `PURCHASES:approvals.view`, `PURCHASES:documentation.view`, `ATTACHMENTS:purchases.view`. |
+| `EMPLOYEE` | `PURCHASES:requests.view` e `PURCHASES:requests.manage` apenas para operacao propria no escopo da unidade, se o produto mantiver solicitante operacional. |
+| `EXTERNAL_TECHNICIAN` | Nenhum grant de Base/Compras/Attachments por padrao. |
+
+Ponto de revisao: a matriz RH-35B cita papeis conceituais como `COMPRAS`, `GERENCIA_ADMINISTRATIVA` e outros que ainda nao aparecem como perfis persistidos nas migrations atuais. A migration inicial deve conceder aos perfis existentes de forma conservadora. Uma migration futura pode criar perfis operacionais novos se aprovado.
+
+## 4. Helper generico proposto
 
 Criar um helper generico, reaproveitando a logica de `src/lib/hr/api-auth.ts`, com responsabilidade equivalente a:
 
@@ -21,7 +119,7 @@ Criar um helper generico, reaproveitando a logica de `src/lib/hr/api-auth.ts`, c
 - tratar `SUPER_ADMIN` como acesso a todas as unidades ativas;
 - devolver `403` quando nao houver permissao efetiva.
 
-Nome sugerido para a fundacao:
+Nome sugerido:
 
 | Item | Nome sugerido |
 |---|---|
@@ -34,115 +132,98 @@ Local sugerido:
 
 `src/lib/auth/permissions.ts` ou `src/lib/base-cadastros/api-permissions.ts`.
 
-Para evitar duplicacao, `src/lib/hr/api-auth.ts` deve continuar expondo `requireHrPermission`, mas a implementacao interna pode passar a delegar ao helper generico. A API publica do RH deve permanecer compativel.
+Depois da migration, `src/lib/hr/api-auth.ts` deve delegar internamente ao helper generico sem mudar sua API publica. O comportamento de RH deve permanecer identico.
 
-## 3. Modulos e codigos de permissao
-
-### 3.1 BASE
-
-As permissoes abaixo ja existem na seed `010_seed_base_data.sql`:
-
-| Codigo | Uso planejado |
-|---|---|
-| `BASE:units.view` | Listar unidades acessiveis. |
-| `BASE:units.manage` | Criar/editar unidades. |
-| `BASE:departments.manage` | Listar/criar/editar departamentos e cargos, pois ainda nao existe `BASE:departments.view` nem `BASE:job_positions.*`. |
-| `BASE:employees.view` | Listar colaboradores. |
-| `BASE:employees.manage` | Criar/editar colaboradores. |
-| `BASE:users.view` | Consultar usuarios internos. |
-| `BASE:users.manage` | Criar/editar usuarios internos. |
-
-Observacao: para nao criar migration nesta etapa, o plano usa `BASE:departments.manage` tambem para leitura de departamentos e cargos. Uma evolucao futura pode separar `BASE:departments.view`, `BASE:job_positions.view` e `BASE:job_positions.manage`.
-
-### 3.2 PURCHASES
-
-Nao encontrei seed persistida de permissoes `PURCHASES:*` nas migrations atuais. Para cumprir autorizacao granular sem amarrar Compras a perfis fixos, a implementacao de codigo deve usar codigos abaixo, mas a revisao precisa decidir se esses codigos serao cadastrados no banco antes da ativacao.
-
-| Codigo proposto | Uso planejado |
-|---|---|
-| `PURCHASES:requests.view` | Ver solicitacoes de compra. |
-| `PURCHASES:requests.manage` | Criar, editar, enviar ou cancelar solicitacoes. |
-| `PURCHASES:quotes.view` | Ver cotações e fornecedores disponiveis para cotacao. |
-| `PURCHASES:quotes.manage` | Iniciar cotacao, criar, editar, selecionar, excluir e negociar cotacoes. |
-| `PURCHASES:approvals.view` | Ver dossies e fila de aprovacao de compras. |
-| `PURCHASES:approvals.submit` | Enviar ou reenviar compra para aprovacao. |
-| `PURCHASES:approvals.decide` | Decidir aprovacao, mantendo a regra de alcada existente. |
-| `PURCHASES:documentation.view` | Ver dashboard documental de cotacoes. |
-
-Decisao pendente para revisao: se nao houver cadastro desses codigos em `permissions`, o helper generico devera negar acesso para usuarios comuns. Para manter comportamento de usuarios autorizados, e necessario cadastrar/conceder essas permissoes antes ou junto da etapa de codigo. `SUPER_ADMIN` continuara liberado pelo helper.
-
-## 4. Rotas de Cadastros afetadas
+## 5. Rotas de Cadastros afetadas
 
 | Rota | Metodo | Permissao | Filtro/restricao por unidade |
 |---|---:|---|---|
-| `/api/base/units` | GET | `BASE:units.view` | Listar somente `units.id in accessibleUnitIds`, exceto `SUPER_ADMIN`. Buscar `unit_settings` apenas das unidades filtradas. |
-| `/api/base/units` | POST | `BASE:units.manage` | Criacao de unidade deve exigir permissao de gestao. Como unidade nova ainda nao esta em `accessibleUnitIds`, manter permitido apenas para `SUPER_ADMIN` ou perfil com permissao global equivalente. |
-| `/api/base/units/[id]` | PATCH | `BASE:units.manage` | Antes de alterar, confirmar que `params.id` esta em `accessibleUnitIds`, exceto `SUPER_ADMIN`; aplicar `.eq("id", params.id)` e tratar fora de escopo como `404` ou `403`. |
-| `/api/base/departments` | GET | `BASE:departments.manage` | Adicionar `.in("unit_id", accessibleUnitIds)` na query principal e carregar unidades apenas desse conjunto. |
-| `/api/base/departments` | POST | `BASE:departments.manage` | Validar `payload.unitId` em `accessibleUnitIds` antes de `getUnitOrganizationId`, exceto `SUPER_ADMIN`. |
-| `/api/base/departments/[id]` | PATCH | `BASE:departments.manage` | Carregar departamento atual por `id`; exigir unidade atual no escopo e `payload.unitId` no escopo para impedir mover entre unidades indevidas. |
-| `/api/base/job-positions` | GET | `BASE:departments.manage` | Adicionar `.in("unit_id", accessibleUnitIds)` na query principal e carregar departamentos/unidades somente relacionados ao resultado filtrado. |
-| `/api/base/job-positions` | POST | `BASE:departments.manage` | Validar `payload.unitId` em `accessibleUnitIds`; se `departmentId` vier, confirmar departamento da mesma unidade. |
-| `/api/base/job-positions/[id]` | PATCH | `BASE:departments.manage` | Carregar cargo atual; exigir unidade atual no escopo e `payload.unitId` no escopo; validar departamento da unidade nova. |
-| `/api/base/employees` | GET | `BASE:employees.view` | Adicionar `.in("unit_id", accessibleUnitIds)` na query principal; carregar departamentos/cargos/unidades apenas dos registros retornados. |
-| `/api/base/employees` | POST | `BASE:employees.manage` | Validar `payload.unitId` em `accessibleUnitIds`; validar departamento/cargo dentro da mesma unidade quando informados. |
-| `/api/base/employees/[id]` | PATCH | `BASE:employees.manage` | Carregar colaborador atual; exigir unidade atual no escopo e `payload.unitId` no escopo; validar departamento/cargo dentro da unidade. |
-| `/api/base/suppliers` | GET | `BASE:settings.manage` ou futura `BASE:suppliers.view` | Substituir `session.units` por `accessibleUnitIds`; manter fornecedor global sem `unit_id` visivel apenas se a permissao permitir escopo corporativo ou para `SUPER_ADMIN`. |
-| `/api/base/suppliers` | POST | `BASE:settings.manage` ou futura `BASE:suppliers.manage` | Validar `payload.unitId` em `accessibleUnitIds`; fornecedor global sem unidade deve ficar restrito a `SUPER_ADMIN` ou permissao global. |
-| `/api/base/suppliers/[id]` | GET | `BASE:settings.manage` ou futura `BASE:suppliers.view` | Carregar fornecedor; se tiver `unit_id`, exigir unidade no escopo; se nao tiver `unit_id`, restringir a permissao global/`SUPER_ADMIN`. |
-| `/api/base/suppliers/[id]` | PATCH | `BASE:settings.manage` ou futura `BASE:suppliers.manage` | Exigir unidade atual no escopo e unidade de destino no escopo; fornecedor global restrito a `SUPER_ADMIN` ou permissao global. |
-| `/api/base/users` | GET | `BASE:users.view` ou manter `BASE:users.manage` | Atualmente exige `SUPER_ADMIN`. Plano: migrar para permissao granular apenas se produto permitir administradores nao-super; se mantiver `SUPER_ADMIN`, documentar excecao. |
-| `/api/base/users` | POST | `BASE:users.manage` | Atualmente exige `SUPER_ADMIN`. Mesmo com helper generico, validar que todas as `payload.unitIds` estao no escopo do operador; para criar usuario multiunidade fora do proprio escopo, exigir `SUPER_ADMIN`. |
-| `/api/base/users/[id]` | PATCH | `BASE:users.manage` | Mesma regra do POST; impedir atribuir ou remover escopos fora das unidades acessiveis, exceto `SUPER_ADMIN`. |
+| `/api/base/units` | GET | `BASE:units.view` | Listar somente `units.id in accessibleUnitIds`, exceto `SUPER_ADMIN`; buscar `unit_settings` apenas das unidades filtradas. |
+| `/api/base/units` | POST | `BASE:units.manage` | Criacao de unidade nova deve ficar restrita a `SUPER_ADMIN` ate regra global explicita. |
+| `/api/base/units/[id]` | PATCH | `BASE:units.manage` | Confirmar `params.id` em `accessibleUnitIds`, exceto `SUPER_ADMIN`. |
+| `/api/base/departments` | GET | `BASE:departments.view` | Aplicar `.in("unit_id", accessibleUnitIds)` na query principal. |
+| `/api/base/departments` | POST | `BASE:departments.manage` | Validar `payload.unitId` em `accessibleUnitIds`. |
+| `/api/base/departments/[id]` | PATCH | `BASE:departments.manage` | Exigir unidade atual e unidade de destino no escopo. |
+| `/api/base/job-positions` | GET | `BASE:job_positions.view` | Aplicar `.in("unit_id", accessibleUnitIds)` na query principal. |
+| `/api/base/job-positions` | POST | `BASE:job_positions.manage` | Validar `payload.unitId`; se `departmentId` vier, confirmar departamento da mesma unidade. |
+| `/api/base/job-positions/[id]` | PATCH | `BASE:job_positions.manage` | Exigir unidade atual e unidade de destino no escopo; validar departamento da unidade. |
+| `/api/base/employees` | GET | `BASE:employees.view` | Aplicar `.in("unit_id", accessibleUnitIds)` na query principal. |
+| `/api/base/employees` | POST | `BASE:employees.manage` | Validar `payload.unitId`; validar departamento/cargo dentro da mesma unidade quando informados. |
+| `/api/base/employees/[id]` | PATCH | `BASE:employees.manage` | Exigir unidade atual e unidade de destino no escopo; validar departamento/cargo. |
+| `/api/base/suppliers` | GET | `BASE:suppliers.view` | Substituir `session.units` por `accessibleUnitIds`; fornecedor global sem `unit_id` visivel apenas para `SUPER_ADMIN` ate regra explicita. |
+| `/api/base/suppliers` | POST | `BASE:suppliers.manage` | Validar `payload.unitId`; fornecedor global sem unidade restrito a `SUPER_ADMIN` ate regra explicita. |
+| `/api/base/suppliers/[id]` | GET | `BASE:suppliers.view` | Se tiver `unit_id`, exigir unidade no escopo; se nao tiver, restringir a `SUPER_ADMIN`. |
+| `/api/base/suppliers/[id]` | PATCH | `BASE:suppliers.manage` | Exigir unidade atual e unidade de destino no escopo; fornecedor global restrito a `SUPER_ADMIN`. |
+| `/api/base/users` | GET | `BASE:users.view` | Atualmente exige `SUPER_ADMIN`; se migrar, filtrar usuarios por links em unidades acessiveis e esconder usuarios fora do escopo. |
+| `/api/base/users` | POST | `BASE:users.manage` | Validar que todas as `payload.unitIds` estao no escopo; criar usuario multiunidade fora do proprio escopo exige `SUPER_ADMIN`. |
+| `/api/base/users/[id]` | PATCH | `BASE:users.manage` | Impedir atribuir/remover escopos fora das unidades acessiveis, exceto `SUPER_ADMIN`. |
 
-## 5. Rotas de Compras afetadas
+## 6. Rotas de Compras afetadas
 
 | Rota | Metodo | Permissao | Filtro/restricao por unidade |
 |---|---:|---|---|
-| `/api/purchases/requests` | GET | `PURCHASES:requests.view` | Continuar `.in("unit_id", accessibleUnitIds)`, mas obter `accessibleUnitIds` pelo helper de permissao, nao por `session.units`. |
-| `/api/purchases/requests` | POST | `PURCHASES:requests.manage` | Validar `payload.unitId` em `accessibleUnitIds`; validar departamento/centro de custo na unidade. |
-| `/api/purchases/requests/[id]` | GET | `PURCHASES:requests.view` | Buscar solicitacao e retornar `404`/`403` se `request.unit_id` nao estiver no escopo. |
-| `/api/purchases/requests/[id]` | PATCH | `PURCHASES:requests.manage` | Exigir unidade atual no escopo; validar unidade de destino no escopo; manter bloqueios de status existentes. |
+| `/api/purchases/requests` | GET | `PURCHASES:requests.view` | Continuar `.in("unit_id", accessibleUnitIds)`, usando escopo do helper. |
+| `/api/purchases/requests` | POST | `PURCHASES:requests.manage` | Validar `payload.unitId`, departamento e centro de custo dentro do escopo. |
+| `/api/purchases/requests/[id]` | GET | `PURCHASES:requests.view` | Buscar solicitacao e ocultar se `request.unit_id` estiver fora do escopo. |
+| `/api/purchases/requests/[id]` | PATCH | `PURCHASES:requests.manage` | Exigir unidade atual e unidade de destino no escopo; manter bloqueios de status. |
 | `/api/purchases/requests/[id]/quotes` | POST | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; validar fornecedor no escopo ou fornecedor global permitido. |
-| `/api/purchases/requests/[id]/quotes/[quoteId]` | PATCH | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; garantir `quote.purchase_request_id = params.id`; validar fornecedor no escopo quando alterado. |
-| `/api/purchases/requests/[id]/quotes/[quoteId]` | DELETE | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; manter bloqueios de dossie formal/selecionada existentes. |
-| `/api/purchases/requests/[id]/quotes/[quoteId]/negotiations` | POST | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; validar fornecedor/origem da cotacao; manter regras de bloqueio existentes. |
-| `/api/purchases/quotes` | GET | `PURCHASES:quotes.view` | Continuar filtrando solicitações/cotações por `.in("unit_id", accessibleUnitIds)` e fornecedores por escopo; usar `accessibleUnitIds` do helper. |
-| `/api/purchases/approvals` | GET | `PURCHASES:approvals.view` | Hoje usa `requireSuperAdminRequest` apesar de filtrar por `session.units`. Planejado: trocar para helper granular e manter `.in("unit_id", accessibleUnitIds)`. |
-| `/api/purchases/approvals/[requestId]/decision` | POST | `PURCHASES:approvals.decide` | Manter `assertCanDecidePurchaseApprovalLevel`; antes disso exigir permissao granular e unidade no escopo. A regra de Diretoria por unidade continua valendo. |
-| `/api/purchases/approvals/[requestId]/resubmit` | POST | `PURCHASES:approvals.submit` | Exigir unidade da solicitacao no escopo e permissao de envio; manter validacoes de status, cotacao vencedora e evidencia. |
-| `/api/purchases/documentation-dashboard` | GET | `PURCHASES:documentation.view` | Continuar `.in("unit_id", accessibleUnitIds)` em `purchase_quotes`; consultas derivadas devem partir dos IDs ja filtrados. |
+| `/api/purchases/requests/[id]/quotes/[quoteId]` | PATCH | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; garantir `quote.purchase_request_id = params.id`. |
+| `/api/purchases/requests/[id]/quotes/[quoteId]` | DELETE | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; manter bloqueios de dossie formal e cotacao selecionada. |
+| `/api/purchases/requests/[id]/quotes/[quoteId]/negotiations` | POST | `PURCHASES:quotes.manage` | Exigir `request.unit_id` no escopo; validar fornecedor/origem da cotacao. |
+| `/api/purchases/quotes` | GET | `PURCHASES:quotes.view` | Filtrar solicitacoes/cotacoes por `.in("unit_id", accessibleUnitIds)` e fornecedores por escopo. |
+| `/api/purchases/approvals` | GET | `PURCHASES:approvals.view` | Trocar `requireSuperAdminRequest` por helper granular e manter `.in("unit_id", accessibleUnitIds)`. |
+| `/api/purchases/approvals/[requestId]/decision` | POST | `PURCHASES:approvals.decide` | Exigir permissao e unidade no escopo; manter `assertCanDecidePurchaseApprovalLevel`. |
+| `/api/purchases/approvals/[requestId]/resubmit` | POST | `PURCHASES:approvals.submit` | Exigir unidade da solicitacao no escopo e permissao de envio; manter validacoes de status/evidencia. |
+| `/api/purchases/documentation-dashboard` | GET | `PURCHASES:documentation.view` | Continuar `.in("unit_id", accessibleUnitIds)` em `purchase_quotes`; consultas derivadas partem dos IDs filtrados. |
 
-## 6. Regras de filtro por unidade
+## 7. Rotas de Attachments afetadas
+
+| Rota | Metodo | Permissao | Filtro/restricao por unidade |
+|---|---:|---|---|
+| `/api/attachments` | GET | `ATTACHMENTS:purchases.view` | Validar `module = purchases`, `entity_type = purchase_quote`; carregar cotacao/solicitacao relacionada e exigir unidade no escopo. |
+| `/api/attachments` | POST | `ATTACHMENTS:purchases.manage` | Validar cotacao/solicitacao relacionada e unidade no escopo antes de upload e insert em `attachments`. |
+| `/api/attachments/[id]` | DELETE | `ATTACHMENTS:purchases.manage` | Carregar attachment, validar modulo/tipo, carregar cotacao/solicitacao relacionada e exigir unidade no escopo antes do soft delete. |
+
+## 8. Regras de filtro por unidade
 
 1. Toda leitura de tabela com `unit_id` deve aplicar `.in("unit_id", accessibleUnitIds)`, exceto quando `isSuperAdmin = true`.
 2. Toda escrita deve validar a unidade atual do registro antes de alterar.
 3. Toda escrita que recebe `payload.unitId` deve validar a unidade de destino.
-4. Registros globais com `unit_id null` nao devem ser tratados como visiveis para todos por padrao. A regra proposta e restringir a `SUPER_ADMIN` ou permissao global explicita.
+4. Registros globais com `unit_id null` nao devem ser tratados como visiveis para todos por padrao. A regra inicial e restringir a `SUPER_ADMIN`, salvo aprovacao de regra global explicita.
 5. Consultas auxiliares de `units`, `departments`, `job_positions`, `suppliers`, `attachments` e eventos devem derivar dos IDs ja autorizados ou aplicar o mesmo escopo.
 6. Fora de escopo deve preferir `404` quando revelar existencia do registro for sensivel; `403` pode ser usado quando a mensagem operacional ja existe e nao vaza detalhe adicional.
 
-## 7. Sequencia de implementacao proposta
+## 9. Validacao obrigatoria
 
-1. Criar helper generico reutilizando a logica de permissao do RH.
-2. Ajustar `src/lib/hr/api-auth.ts` para delegar ao helper generico sem mudar sua API publica.
-3. Migrar rotas de `src/app/api/base` para `requirePermission`.
-4. Migrar rotas de `src/app/api/purchases` para `requirePermission`.
-5. Validar se existem permissões `PURCHASES:*` no banco. Se nao existirem, decidir cadastro/seed antes de ativar as rotas para usuarios comuns.
-6. Rodar testes manuais com:
-   - usuario sem permissao: espera `403`;
-   - usuario com permissao em uma unidade: enxerga/altera apenas aquela unidade;
-   - usuario sem acesso a unidade do registro: nao enxerga nem altera;
-   - `SUPER_ADMIN`: enxerga tudo.
-7. Rodar `npm.cmd run lint` e `npm.cmd run build`.
+Depois da migration e antes de migrar rotas:
 
-## 8. Pontos de revisao antes do codigo
+- confirmar que `permissions` contem os codigos novos;
+- confirmar que `profile_permissions` concedeu os grants esperados;
+- confirmar que `SUPER_ADMIN` manteve acesso total;
+- confirmar que usuarios nao-super com grants continuam acessando seu escopo.
+
+Depois da refatoracao do helper e antes de migrar Base/Compras/Attachments:
+
+- rodar testes de screenshot/UAT do RH;
+- validar rotas criticas de RH que usam `requireHrPermission`;
+- confirmar que o comportamento de RH continua identico.
+
+Depois da migracao das rotas:
+
+- usuario sem permissao recebe `403`;
+- usuario com permissao em uma unidade enxerga/altera apenas aquela unidade;
+- usuario sem acesso a unidade do registro nao enxerga nem altera;
+- `SUPER_ADMIN` enxerga tudo;
+- `npm.cmd run lint`;
+- `npm.cmd run build`.
+
+## 10. Pontos de revisao antes do codigo
 
 | Ponto | Decisao necessaria |
 |---|---|
-| Permissoes de Compras | Confirmar cadastro dos codigos `PURCHASES:*` ou autorizar migration/seed especifica. |
-| Fornecedores globais | Definir se fornecedor sem `unit_id` e corporativo ou legado; por seguranca, restringir a `SUPER_ADMIN` ate regra explicita. |
-| Criacao de unidades | Definir se perfis alem de `SUPER_ADMIN` podem criar unidade nova. |
-| Usuarios internos | Definir se deixa `SUPER_ADMIN` como excecao ou se migra para `BASE:users.*` com escopo por unidade. |
-| Departamentos/cargos | Decidir se `BASE:departments.manage` pode continuar cobrindo leitura de cargos/departamentos nesta etapa. |
+| Migration de seed/grants | Aprovar SQL antes de aplicar, pois mexe em `permissions` e `profile_permissions`. |
+| Perfis conceituais sem cadastro | Decidir se ficam mapeados para perfis atuais ou se uma sprint futura cria novos perfis. |
+| Fornecedores globais | Confirmar se fornecedor sem `unit_id` e corporativo ou legado; por seguranca, restringir a `SUPER_ADMIN` inicialmente. |
+| Criacao de unidades | Confirmar se apenas `SUPER_ADMIN` pode criar unidade nova. |
+| Usuarios internos | Confirmar se sai de `SUPER_ADMIN` estrito para `BASE:users.*` com escopo por unidade. |
 
