@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { ATTACHMENTS_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { validatePurchaseQuoteAttachmentMutationAccess, type AttachmentRow } from "@/lib/attachments/api";
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(ATTACHMENTS_PERMISSIONS.purchasesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     const { data, error } = await supabase
       .from("attachments")
@@ -40,8 +41,8 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       .update({
         status: "inactive",
         deleted_at: new Date().toISOString(),
-        deleted_by: session.user.id,
-        updated_by: session.user.id
+        deleted_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
       .eq("id", attachment.id);
 

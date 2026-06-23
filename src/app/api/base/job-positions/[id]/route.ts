@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { jobPositionPayloadSchema } from "@/lib/base-cadastros/schemas";
 import {
   apiError,
   getUnitOrganizationId,
   logBaseCadastroError,
-  requireAuthenticatedRequest
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -32,17 +32,45 @@ async function hasJobPositionCodeInOrganization(
   return Boolean(data?.[0]);
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+async function validateDepartmentForUnit(supabase: ReturnType<typeof createSupabaseAdminClient>, departmentId: string | undefined, unitId: string) {
+  if (!departmentId) {
+    return;
+  }
 
-  if (response || !session) {
+  const { data, error } = await supabase
+    .from("departments")
+    .select("id")
+    .eq("id", departmentId)
+    .eq("unit_id", unitId)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logBaseCadastroError("job_position.department_lookup_failed", error);
+    throw new Error("Nao foi possivel validar o departamento do cargo.");
+  }
+
+  if (!data?.[0]) {
+    throw new Error("Departamento nao encontrado para a unidade selecionada.");
+  }
+}
+
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.jobPositionsManage);
+
+  if (response || !context) {
     return response;
   }
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para editar cargos.", 403);
+    }
+
     const payload = jobPositionPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
+    await validateDepartmentForUnit(supabase, payload.departmentId, payload.unitId);
 
     if (await hasJobPositionCodeInOrganization(supabase, organizationId, payload.code, params.id)) {
       return apiError("Ja existe um cargo com este codigo nesta organizacao.", 409);
@@ -59,7 +87,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         description: payload.description || null,
         is_leadership: payload.isLeadership,
         status: payload.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", params.id)
       .is("deleted_at", null);

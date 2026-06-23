@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { apiError, logBaseCadastroError, requireSuperAdminRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, getPurchaseApprovalLevelLabel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import { getPurchasePriorityLabel, getPurchaseRequestStatusLabel, getPurchaseRequestTypeLabel, getPurchaseUnitOfMeasureLabel, type PurchaseUnitOfMeasure } from "@/lib/purchases/schemas";
@@ -377,9 +378,9 @@ function mapLegacyQuote(row: PurchaseQuoteRow | null | undefined, supplier?: Sup
 }
 
 export async function GET(request: Request) {
-  const { session, response } = await requireSuperAdminRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
@@ -387,8 +388,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const statusFilter = url.searchParams.get("status");
     const levelFilter = url.searchParams.get("level");
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     let requestQuery = supabase
       .from("purchase_requests")

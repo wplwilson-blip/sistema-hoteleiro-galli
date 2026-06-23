@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import { assertCanDecidePurchaseApprovalLevel, PurchaseApprovalAuthorizationError } from "@/lib/purchases/approval-authorization";
@@ -66,14 +67,14 @@ async function insertPurchaseRequestEvent(
 
   if (error) {
     logBaseCadastroError("purchase_approvals.event_create_failed", error);
-    throw new Error("Não foi possível registrar o evento da aprovação.");
+    throw new Error("NÃ£o foi possÃ­vel registrar o evento da aprovaÃ§Ã£o.");
   }
 }
 
 export async function POST(request: Request, { params }: { params: { requestId: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsDecide);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
@@ -84,8 +85,8 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       return apiError(payload.decision === "rejected" ? "Informe a justificativa para reprovar a compra." : "Informe o que Compras precisa revisar.", 400);
     }
 
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     const { data: requestData, error: requestError } = await supabase
       .from("purchase_requests")
@@ -96,21 +97,21 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     if (requestError || !requestData) {
       logBaseCadastroError("purchase_approvals.request_lookup_failed", requestError ?? { message: "not found" });
-      return apiError("Solicitação de compra não encontrada.", 404);
+      return apiError("SolicitaÃ§Ã£o de compra nÃ£o encontrada.", 404);
     }
 
     const purchaseRequest = requestData as PurchaseRequestRow;
 
     if (!accessibleUnitIds.includes(purchaseRequest.unit_id)) {
-      return apiError("Você não tem acesso a esta unidade.", 403);
+      return apiError("VocÃª nÃ£o tem acesso a esta unidade.", 403);
     }
 
     if (!purchaseRequest.approval_required || toNumber(purchaseRequest.total_approved_amount) <= 0) {
-      return apiError("Esta solicitação não possui compra aguardando aprovação.", 409);
+      return apiError("Esta solicitaÃ§Ã£o nÃ£o possui compra aguardando aprovaÃ§Ã£o.", 409);
     }
 
     if (purchaseRequest.approval_status === "approved" || purchaseRequest.approval_status === "rejected") {
-      return apiError("Esta compra já possui decisão registrada.", 409);
+      return apiError("Esta compra jÃ¡ possui decisÃ£o registrada.", 409);
     }
 
     const { data: quoteData, error: quoteError } = await supabase
@@ -123,13 +124,13 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     if (quoteError) {
       logBaseCadastroError("purchase_approvals.winning_quote_lookup_failed", quoteError);
-      return apiError("Não foi possível localizar a cotação vencedora.", 500);
+      return apiError("NÃ£o foi possÃ­vel localizar a cotaÃ§Ã£o vencedora.", 500);
     }
 
     const winningQuote = (quoteData?.[0] ?? null) as PurchaseQuoteRow | null;
 
     if (!winningQuote) {
-      return apiError("Selecione uma cotação vencedora antes de decidir a aprovação.", 409);
+      return apiError("Selecione uma cotaÃ§Ã£o vencedora antes de decidir a aprovaÃ§Ã£o.", 409);
     }
 
     let approvalLevel = purchaseRequest.approval_level ?? getPurchaseApprovalLevel(toNumber(purchaseRequest.total_approved_amount));
@@ -157,7 +158,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     try {
       await assertCanDecidePurchaseApprovalLevel(supabase, {
-        session,
+        session: context.session,
         unitId: purchaseRequest.unit_id,
         approvalLevel
       });
@@ -178,13 +179,13 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       approval_level: approvalLevel,
       decision: payload.decision,
       justification: decisionReason,
-      decided_by: session.user.id,
+      decided_by: context.session.user.id,
       decided_at: decidedAt
     });
 
     if (decisionError) {
       logBaseCadastroError("purchase_approvals.decision_insert_failed", decisionError);
-      return apiError("Não foi possível registrar a decisão de aprovação.", 500);
+      return apiError("NÃ£o foi possÃ­vel registrar a decisÃ£o de aprovaÃ§Ã£o.", 500);
     }
 
     const { error: updateError } = await supabase
@@ -194,15 +195,15 @@ export async function POST(request: Request, { params }: { params: { requestId: 
         approval_status: payload.decision,
         approval_level: approvalLevel,
         approval_decided_at: decidedAt,
-        approval_decided_by: session.user.id,
+        approval_decided_by: context.session.user.id,
         approval_decision_notes: decisionReason,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", purchaseRequest.id);
 
     if (updateError) {
       logBaseCadastroError("purchase_approvals.request_update_failed", updateError);
-      return apiError("A decisão foi registrada, mas não foi possível atualizar a solicitação.", 500);
+      return apiError("A decisÃ£o foi registrada, mas nÃ£o foi possÃ­vel atualizar a solicitaÃ§Ã£o.", 500);
     }
 
     try {
@@ -211,7 +212,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
         purchaseRequestId: purchaseRequest.id,
         decision: payload.decision,
         decisionReason,
-        decidedBy: session.user.id,
+        decidedBy: context.session.user.id,
         decidedAt
       });
     } catch (snapshotError) {
@@ -231,18 +232,18 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       fromStatus: purchaseRequest.status,
       toStatus: nextStatus,
       description: eventDescription,
-      createdBy: session.user.id
+      createdBy: context.session.user.id
     });
 
     return NextResponse.json({
       ok: true,
-      message: payload.decision === "approved" ? "Compra aprovada com sucesso." : payload.decision === "rejected" ? "Compra reprovada com sucesso." : "Compra devolvida para revisão de Compras."
+      message: payload.decision === "approved" ? "Compra aprovada com sucesso." : payload.decision === "rejected" ? "Compra reprovada com sucesso." : "Compra devolvida para revisÃ£o de Compras."
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiError("Dados inválidos para registrar a decisão.", 400);
+      return apiError("Dados invÃ¡lidos para registrar a decisÃ£o.", 400);
     }
 
-    return apiError(error instanceof Error ? error.message : "Não foi possível registrar a decisão.", 500);
+    return apiError(error instanceof Error ? error.message : "NÃ£o foi possÃ­vel registrar a decisÃ£o.", 500);
   }
 }

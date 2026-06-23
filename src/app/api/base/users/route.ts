@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { buildTechnicalAuthEmail } from "@/lib/auth/schemas";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserCreatePayloadSchema } from "@/lib/base-cadastros/schemas";
-import { apiError, logBaseCadastroError, requireSuperAdminRequest } from "@/lib/base-cadastros/api-helpers";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -71,14 +72,18 @@ async function createUnitLinks(input: {
 }
 
 export async function GET() {
-  const { response } = await requireSuperAdminRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.usersView);
 
-  if (response) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para gerenciar usuarios internos.", 403);
+    }
+
+    const supabase = context.supabase;
     const { data: users, error: usersError } = await supabase
       .from("app_users")
       .select("id, username, display_name, status, created_at")
@@ -197,9 +202,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireSuperAdminRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.usersManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
@@ -207,8 +212,12 @@ export async function POST(request: Request) {
   let appUserId: string | null = null;
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para gerenciar usuarios internos.", 403);
+    }
+
     const payload = internalUserCreatePayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const employee = await getEmployeeForUser(supabase, payload.employeeId);
 
     if (await employeeHasActiveUser(supabase, payload.employeeId)) {
@@ -258,8 +267,8 @@ export async function POST(request: Request) {
         display_name: employee.full_name,
         personal_email: employee.personal_email ?? employee.corporate_email ?? null,
         status: payload.status,
-        created_by: session.user.id,
-        updated_by: session.user.id
+        created_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
       .select("id")
       .single();
@@ -279,13 +288,13 @@ export async function POST(request: Request) {
       app_user_id: appUser.id,
       employee_id: payload.employeeId,
       status: "active",
-      created_by: session.user.id,
-      updated_by: session.user.id
+      created_by: context.session.user.id,
+      updated_by: context.session.user.id
     });
 
     if (employeeLinkError) {
       logBaseCadastroError("users.employee_link_create_failed", employeeLinkError);
-      await supabase.from("app_users").update({ deleted_at: new Date().toISOString(), deleted_by: session.user.id }).eq("id", appUser.id);
+      await supabase.from("app_users").update({ deleted_at: new Date().toISOString(), deleted_by: context.session.user.id }).eq("id", appUser.id);
       await supabase.auth.admin.deleteUser(authUserId);
       return apiError("Nao foi possivel vincular o colaborador ao usuario.", 500);
     }
@@ -295,7 +304,7 @@ export async function POST(request: Request) {
       appUserId: appUser.id,
       unitIds: payload.unitIds,
       accessProfileId: payload.accessProfileId,
-      actorUserId: session.user.id
+      actorUserId: context.session.user.id
     });
 
     return NextResponse.json({ ok: true });
@@ -305,17 +314,17 @@ export async function POST(request: Request) {
     if (appUserId) {
       await supabase
         .from("user_employee_links")
-        .update({ status: "inactive", unlinked_at: new Date().toISOString(), updated_by: session.user.id })
+        .update({ status: "inactive", unlinked_at: new Date().toISOString(), updated_by: context.session.user.id })
         .eq("app_user_id", appUserId)
         .eq("status", "active")
         .is("deleted_at", null);
       await supabase
         .from("user_unit_links")
-        .update({ status: "inactive", updated_by: session.user.id })
+        .update({ status: "inactive", updated_by: context.session.user.id })
         .eq("app_user_id", appUserId)
         .eq("status", "active")
         .is("deleted_at", null);
-      await supabase.from("app_users").update({ deleted_at: new Date().toISOString(), deleted_by: session?.user.id }).eq("id", appUserId);
+      await supabase.from("app_users").update({ deleted_at: new Date().toISOString(), deleted_by: context.session.user.id }).eq("id", appUserId);
     }
 
     if (authUserId) {

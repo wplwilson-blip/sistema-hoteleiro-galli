@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
-import { apiError, getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, getUnitOrganizationId, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   classifyPurchaseQuoteEvidence,
@@ -449,17 +450,17 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 }
 
 export async function GET(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.quotesView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const url = new URL(request.url);
     const requestId = url.searchParams.get("requestId")?.trim() ?? "";
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     if (!accessibleUnitIds.length) {
       return NextResponse.json({ ok: true, requests: [], suppliers: [], quotes: [] });

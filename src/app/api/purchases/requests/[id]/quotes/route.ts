@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseQuoteNumber,
@@ -249,16 +250,16 @@ function buildQuoteEvidenceFields(payload: Extract<z.infer<typeof purchaseQuoteP
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.quotesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const payload = purchaseQuotePostSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
     const requestRow = await fetchRequestById(supabase, params.id);
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
@@ -289,7 +290,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
       const { error: updateError } = await supabase
         .from("purchase_requests")
-        .update({ status: "quotation", updated_by: session.user.id })
+        .update({ status: "quotation", updated_by: context.session.user.id })
         .eq("id", requestRow.id);
 
       if (updateError) {
@@ -305,7 +306,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         fromStatus: requestRow.status,
         toStatus: "quotation",
         description: "Cotacao iniciada.",
-        createdBy: session.user.id
+        createdBy: context.session.user.id
       });
 
       const updatedRequest = await fetchRequestById(supabase, requestRow.id);
@@ -323,7 +324,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (requestRow.status === "submitted" || requestRow.status === "under_review") {
       const { error: updateError } = await supabase
         .from("purchase_requests")
-        .update({ status: "quotation", updated_by: session.user.id })
+        .update({ status: "quotation", updated_by: context.session.user.id })
         .eq("id", requestRow.id);
 
       if (updateError) {
@@ -339,7 +340,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         fromStatus: requestRow.status,
         toStatus: "quotation",
         description: "Cotacao iniciada.",
-        createdBy: session.user.id
+        createdBy: context.session.user.id
       });
     } else if (requestRow.status !== "quotation") {
       return apiError("A cotação so pode ser registrada para solicitacoes em análise ou em cotação.", 409);
@@ -410,8 +411,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
           ...buildQuoteEvidenceFields(payload),
           notes: payload.notes ?? null,
           status: "received",
-          created_by: session.user.id,
-          updated_by: session.user.id
+          created_by: context.session.user.id,
+          updated_by: context.session.user.id
         })
         .select("id")
         .single();
@@ -447,8 +448,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
         unit_price: item.unitPrice,
         total_price: roundMoney(item.quantity * item.unitPrice),
         delivery_notes: item.deliveryNotes ? item.deliveryNotes : null,
-        created_by: session.user.id,
-        updated_by: session.user.id
+        created_by: context.session.user.id,
+        updated_by: context.session.user.id
       };
     });
 
@@ -468,7 +469,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       fromStatus: requestRow.status,
       toStatus: requestRow.status,
       description: "Cotacao registrada.",
-      createdBy: session.user.id
+      createdBy: context.session.user.id
     });
 
     return NextResponse.json({ ok: true, quoteId, quoteNumber });

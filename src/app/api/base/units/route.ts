@@ -1,30 +1,38 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { unitPayloadSchema } from "@/lib/base-cadastros/schemas";
 import {
   apiError,
   getInitialOrganizationId,
-  logBaseCadastroError,
-  requireAuthenticatedRequest
+  logBaseCadastroError
 } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const unitSettingsKey = "setup.initial";
 
 export async function GET() {
-  const { response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.unitsView);
 
-  if (response) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const { data: units, error: unitsError } = await supabase
+    if (!context.isSuperAdmin && !context.accessibleUnitIds.length) {
+      return NextResponse.json({ ok: true, units: [] });
+    }
+
+    let unitsQuery = context.supabase
       .from("units")
       .select("id, organization_id, code, name, status, created_at")
       .is("deleted_at", null)
       .order("name", { ascending: true });
+
+    if (!context.isSuperAdmin) {
+      unitsQuery = unitsQuery.in("id", context.accessibleUnitIds);
+    }
+
+    const { data: units, error: unitsError } = await unitsQuery;
 
     if (unitsError) {
       logBaseCadastroError("units.list_failed", unitsError);
@@ -33,7 +41,7 @@ export async function GET() {
 
     const unitIds = units?.map((unit) => unit.id) ?? [];
     const { data: settings, error: settingsError } = unitIds.length
-      ? await supabase.from("unit_settings").select("unit_id, value").in("unit_id", unitIds).eq("key", unitSettingsKey).is("deleted_at", null)
+      ? await context.supabase.from("unit_settings").select("unit_id, value").in("unit_id", unitIds).eq("key", unitSettingsKey).is("deleted_at", null)
       : { data: [], error: null };
 
     if (settingsError) {
@@ -66,18 +74,21 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.unitsManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const payload = unitPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const organizationId = await getInitialOrganizationId(supabase);
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para criar unidades.", 403);
+    }
 
-    const { data: units, error: unitError } = await supabase
+    const payload = unitPayloadSchema.parse(await request.json());
+    const organizationId = await getInitialOrganizationId(context.supabase);
+
+    const { data: units, error: unitError } = await context.supabase
       .from("units")
       .upsert(
         {
@@ -87,7 +98,7 @@ export async function POST(request: Request) {
           legal_name: payload.name,
           timezone: "America/Sao_Paulo",
           status: payload.status,
-          updated_by: session.user.id,
+          updated_by: context.session.user.id,
           deleted_at: null,
           deleted_by: null
         },
@@ -104,7 +115,7 @@ export async function POST(request: Request) {
       return apiError("Nao foi possivel salvar a unidade.", 500);
     }
 
-    const { error: settingsError } = await supabase.from("unit_settings").upsert(
+    const { error: settingsError } = await context.supabase.from("unit_settings").upsert(
       {
         unit_id: units[0].id,
         key: unitSettingsKey,
@@ -113,7 +124,7 @@ export async function POST(request: Request) {
           state: payload.state
         },
         status: "active",
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       },
       { onConflict: "unit_id,key", ignoreDuplicates: false }
     );

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculateWinningQuoteApprovalFlags, getPurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import {
@@ -48,15 +49,15 @@ function toNumber(value: string | number | null | undefined) {
 }
 
 export async function POST(_request: Request, { params }: { params: { requestId: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsSubmit);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
     const { data, error } = await supabase
       .from("purchase_requests")
       .select("id, organization_id, unit_id, status, request_number, total_approved_amount, approval_required, approval_status")
@@ -65,29 +66,29 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       .single();
 
     if (error || !data) {
-      return apiError("Solicitação de compra não encontrada.", 404);
+      return apiError("SolicitaÃ§Ã£o de compra nÃ£o encontrada.", 404);
     }
 
     const purchaseRequest = data as PurchaseRequestRow;
 
     if (!accessibleUnitIds.includes(purchaseRequest.unit_id)) {
-      return apiError("Você não tem acesso a esta unidade.", 403);
+      return apiError("VocÃª nÃ£o tem acesso a esta unidade.", 403);
     }
 
     if (purchaseRequest.approval_status === "approved" || purchaseRequest.status === "approved") {
-      return apiError("Esta compra já foi aprovada e não pode ser reenviada.", 409);
+      return apiError("Esta compra jÃ¡ foi aprovada e nÃ£o pode ser reenviada.", 409);
     }
 
     if (purchaseRequest.approval_status === "rejected" || purchaseRequest.status === "rejected") {
-      return apiError("Esta compra foi reprovada e não pode ser reenviada.", 409);
+      return apiError("Esta compra foi reprovada e nÃ£o pode ser reenviada.", 409);
     }
 
     if (purchaseRequest.approval_status === "pending" && purchaseRequest.approval_required && toNumber(purchaseRequest.total_approved_amount) > 0) {
-      return apiError("Esta compra já está aguardando aprovação.", 409);
+      return apiError("Esta compra jÃ¡ estÃ¡ aguardando aprovaÃ§Ã£o.", 409);
     }
 
     if (purchaseRequest.status !== "quotation") {
-      return apiError("Esta compra precisa estar em cotação para ser enviada para aprovação.", 409);
+      return apiError("Esta compra precisa estar em cotaÃ§Ã£o para ser enviada para aprovaÃ§Ã£o.", 409);
     }
 
     const { data: quoteData, error: quoteError } = await supabase
@@ -100,7 +101,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     if (quoteError) {
       logBaseCadastroError("purchase_approvals.resubmit_quote_lookup_failed", quoteError);
-      return apiError("Não foi possível validar a cotação vencedora.", 500);
+      return apiError("NÃ£o foi possÃ­vel validar a cotaÃ§Ã£o vencedora.", 500);
     }
 
     const selectedQuote = quoteData?.[0] as SelectedQuoteRow | undefined;
@@ -109,8 +110,8 @@ export async function POST(_request: Request, { params }: { params: { requestId:
     if (!selectedQuote) {
       return apiError(
         isResubmission
-          ? "Selecione uma cotação vencedora antes de reenviar para aprovação."
-          : "Selecione uma cotação vencedora antes de enviar para aprovação.",
+          ? "Selecione uma cotaÃ§Ã£o vencedora antes de reenviar para aprovaÃ§Ã£o."
+          : "Selecione uma cotaÃ§Ã£o vencedora antes de enviar para aprovaÃ§Ã£o.",
         409
       );
     }
@@ -129,7 +130,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     if (attachmentError) {
       logBaseCadastroError("purchase_approvals.resubmit_attachment_lookup_failed", attachmentError);
-      return apiError("Não foi possível validar os anexos da cotação vencedora.", 500);
+      return apiError("NÃ£o foi possÃ­vel validar os anexos da cotaÃ§Ã£o vencedora.", 500);
     }
 
     const evidenceClassification = classifyPurchaseQuoteEvidence({
@@ -156,7 +157,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         supabase,
         purchaseRequestId: purchaseRequest.id,
         selectedQuoteId: selectedQuote.id,
-        submittedBy: session.user.id,
+        submittedBy: context.session.user.id,
         approvalLevel,
         totalAmount: total,
         approvalStatusAtCreation: "pending",
@@ -168,7 +169,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       }
 
       logBaseCadastroError("purchase_approvals.snapshot_create_failed", snapshotError instanceof Error ? snapshotError : { message: "unknown" });
-      return apiError("Não foi possível gerar o dossiê formal da aprovação.", 500);
+      return apiError("NÃ£o foi possÃ­vel gerar o dossiÃª formal da aprovaÃ§Ã£o.", 500);
     }
 
     const { error: updateError } = await supabase
@@ -185,7 +186,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         approval_decided_at: null,
         approval_decided_by: null,
         approval_decision_notes: null,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", purchaseRequest.id);
 
@@ -194,7 +195,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       if (approvalSnapshot) {
         await deletePurchaseApprovalSnapshot(supabase, approvalSnapshot.id);
       }
-      return apiError(isResubmission ? "Não foi possível reenviar a compra para aprovação." : "Não foi possível enviar a compra para aprovação.", 500);
+      return apiError(isResubmission ? "NÃ£o foi possÃ­vel reenviar a compra para aprovaÃ§Ã£o." : "NÃ£o foi possÃ­vel enviar a compra para aprovaÃ§Ã£o.", 500);
     }
 
     const { error: eventError } = await supabase.from("purchase_request_events").insert([
@@ -206,9 +207,9 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       from_status: purchaseRequest.status,
       to_status: "quotation",
       description: isResubmission
-        ? `Compra ${purchaseRequest.request_number} reenviada para aprovação após revisão de Compras.`
-        : `Compra ${purchaseRequest.request_number} enviada para aprovação.`,
-      created_by: session.user.id
+        ? `Compra ${purchaseRequest.request_number} reenviada para aprovaÃ§Ã£o apÃ³s revisÃ£o de Compras.`
+        : `Compra ${purchaseRequest.request_number} enviada para aprovaÃ§Ã£o.`,
+      created_by: context.session.user.id
       },
       {
         organization_id: purchaseRequest.organization_id,
@@ -218,7 +219,7 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         from_status: purchaseRequest.status,
         to_status: "quotation",
         description: `Dossie formal de aprovacao #${approvalSnapshot?.snapshot_number ?? "-"} criado para a compra ${purchaseRequest.request_number}.`,
-        created_by: session.user.id
+        created_by: context.session.user.id
       }
     ]);
 
@@ -226,8 +227,8 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       logBaseCadastroError("purchase_approvals.resubmit_event_create_failed", eventError);
     }
 
-    return NextResponse.json({ ok: true, message: isResubmission ? "Compra reenviada para aprovação." : "Compra enviada para aprovação." });
+    return NextResponse.json({ ok: true, message: isResubmission ? "Compra reenviada para aprovaÃ§Ã£o." : "Compra enviada para aprovaÃ§Ã£o." });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Não foi possível enviar para aprovação.", 500);
+    return apiError(error instanceof Error ? error.message : "NÃ£o foi possÃ­vel enviar para aprovaÃ§Ã£o.", 500);
   }
 }

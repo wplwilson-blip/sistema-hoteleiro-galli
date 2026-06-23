@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildPurchaseRequestInitialFlags,
@@ -467,17 +468,17 @@ async function loadRequestOptionsForId(supabase: SupabaseAdmin, request: Purchas
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.requestsView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const requestRow = await fetchRequestById(supabase, params.id);
 
-    if (!session.units.some((unit) => unit.id === requestRow.unit_id)) {
+    if (!context.accessibleUnitIds.includes(requestRow.unit_id)) {
       return apiError("Voce nao tem acesso a esta solicitacao.", 403);
     }
 
@@ -502,17 +503,17 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.requestsManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const payload = purchaseRequestPatchSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const requestRow = await fetchRequestById(supabase, params.id);
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
       return apiError("Voce nao tem acesso a esta solicitacao.", 403);
@@ -529,7 +530,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
       const { error: updateError } = await supabase
         .from("purchase_requests")
-        .update({ status: "cancelled", updated_by: session.user.id })
+        .update({ status: "cancelled", updated_by: context.session.user.id })
         .eq("id", requestRow.id);
 
       if (updateError) {
@@ -546,10 +547,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           fromStatus: requestRow.status,
           toStatus: "cancelled",
           description: `Status alterado de ${requestRow.status} para cancelled.`,
-          createdBy: session.user.id
+          createdBy: context.session.user.id
         });
       } catch (eventError) {
-        await supabase.from("purchase_requests").update({ status: requestRow.status, updated_by: session.user.id }).eq("id", requestRow.id);
+        await supabase.from("purchase_requests").update({ status: requestRow.status, updated_by: context.session.user.id }).eq("id", requestRow.id);
         return apiError(eventError instanceof Error ? eventError.message : "Nao foi possivel registrar o cancelamento.", 500);
       }
 
@@ -587,7 +588,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       await validateCostCenterForUnit(supabase, payloadResult.costCenterId, payloadResult.unitId);
     }
 
-    const updateBody = buildRequestUpdateBody({ ...payloadResult, updatedBy: session.user.id }, requestRow.status);
+    const updateBody = buildRequestUpdateBody({ ...payloadResult, updatedBy: context.session.user.id }, requestRow.status);
     const oldRequestBody = {
       unit_id: requestRow.unit_id,
       department_id: requestRow.department_id,
@@ -605,7 +606,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       approval_required: requestRow.approval_required,
       director_approval_required: requestRow.director_approval_required,
       status: requestRow.status,
-      updated_by: session.user.id
+      updated_by: context.session.user.id
     };
 
     const { error: updateError } = await supabase.from("purchase_requests").update(updateBody).eq("id", requestRow.id);
@@ -635,8 +636,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       approved_unit_price: null,
       approved_total_price: null,
       notes: item.notes ?? null,
-      created_by: session.user.id,
-      updated_by: session.user.id
+      created_by: context.session.user.id,
+      updated_by: context.session.user.id
     }));
 
     const { error: insertItemsError } = await supabase.from("purchase_request_items").insert(newItems);
@@ -658,7 +659,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           fromStatus: requestRow.status,
           toStatus: "submitted",
           description: buildStatusChangeDescription(requestRow.status, "submitted"),
-          createdBy: session.user.id
+          createdBy: context.session.user.id
         });
       } catch (eventError) {
         await supabase.from("purchase_requests").update(oldRequestBody).eq("id", requestRow.id);

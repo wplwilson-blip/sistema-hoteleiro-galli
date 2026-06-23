@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { jobPositionPayloadSchema } from "@/lib/base-cadastros/schemas";
 import {
   apiError,
   getUnitOrganizationId,
   logBaseCadastroError,
-  requireAuthenticatedRequest
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -30,21 +30,53 @@ async function hasJobPositionCodeInOrganization(
   return Boolean(data?.[0]);
 }
 
-export async function GET() {
-  const { response } = await requireAuthenticatedRequest();
+async function validateDepartmentForUnit(supabase: ReturnType<typeof createSupabaseAdminClient>, departmentId: string | undefined, unitId: string) {
+  if (!departmentId) {
+    return;
+  }
 
-  if (response) {
+  const { data, error } = await supabase
+    .from("departments")
+    .select("id")
+    .eq("id", departmentId)
+    .eq("unit_id", unitId)
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logBaseCadastroError("job_position.department_lookup_failed", error);
+    throw new Error("Nao foi possivel validar o departamento do cargo.");
+  }
+
+  if (!data?.[0]) {
+    throw new Error("Departamento nao encontrado para a unidade selecionada.");
+  }
+}
+
+export async function GET() {
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.jobPositionsView);
+
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const { data: positions, error: positionsError } = await supabase
+    if (!context.isSuperAdmin && !context.accessibleUnitIds.length) {
+      return NextResponse.json({ ok: true, positions: [] });
+    }
+
+    let positionsQuery = context.supabase
       .from("job_positions")
       .select("id, organization_id, unit_id, department_id, code, name, description, is_leadership, status, created_at")
       .is("deleted_at", null)
       .not("unit_id", "is", null)
       .order("name", { ascending: true });
+
+    if (!context.isSuperAdmin) {
+      positionsQuery = positionsQuery.in("unit_id", context.accessibleUnitIds);
+    }
+
+    const { data: positions, error: positionsError } = await positionsQuery;
 
     if (positionsError) {
       logBaseCadastroError("job_positions.list_failed", positionsError);
@@ -55,10 +87,10 @@ export async function GET() {
     const departmentIds = Array.from(new Set((positions ?? []).map((position) => position.department_id).filter(Boolean)));
 
     const { data: units, error: unitsError } = unitIds.length
-      ? await supabase.from("units").select("id, code, name").in("id", unitIds)
+      ? await context.supabase.from("units").select("id, code, name").in("id", unitIds)
       : { data: [], error: null };
     const { data: departments, error: departmentsError } = departmentIds.length
-      ? await supabase.from("departments").select("id, code, name").in("id", departmentIds)
+      ? await context.supabase.from("departments").select("id, code, name").in("id", departmentIds)
       : { data: [], error: null };
 
     if (unitsError) {
@@ -104,16 +136,21 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.jobPositionsManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para criar cargos.", 403);
+    }
+
     const payload = jobPositionPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
+    await validateDepartmentForUnit(supabase, payload.departmentId, payload.unitId);
 
     if (await hasJobPositionCodeInOrganization(supabase, organizationId, payload.code)) {
       return apiError("Ja existe um cargo com este codigo nesta organizacao.", 409);
@@ -128,8 +165,8 @@ export async function POST(request: Request) {
       description: payload.description || null,
       is_leadership: payload.isLeadership,
       status: payload.status,
-      created_by: session.user.id,
-      updated_by: session.user.id
+      created_by: context.session.user.id,
+      updated_by: context.session.user.id
     });
 
     if (error) {

@@ -13,6 +13,37 @@ export type PermissionRequestContext<TPermissionCode extends string = string> = 
   isSuperAdmin: boolean;
 };
 
+export const BASE_PERMISSIONS = {
+  unitsView: "BASE:units.view",
+  unitsManage: "BASE:units.manage",
+  departmentsView: "BASE:departments.view",
+  departmentsManage: "BASE:departments.manage",
+  jobPositionsView: "BASE:job_positions.view",
+  jobPositionsManage: "BASE:job_positions.manage",
+  employeesView: "BASE:employees.view",
+  employeesManage: "BASE:employees.manage",
+  suppliersView: "BASE:suppliers.view",
+  suppliersManage: "BASE:suppliers.manage",
+  usersView: "BASE:users.view",
+  usersManage: "BASE:users.manage"
+} as const;
+
+export const PURCHASES_PERMISSIONS = {
+  requestsView: "PURCHASES:requests.view",
+  requestsManage: "PURCHASES:requests.manage",
+  quotesView: "PURCHASES:quotes.view",
+  quotesManage: "PURCHASES:quotes.manage",
+  approvalsView: "PURCHASES:approvals.view",
+  approvalsSubmit: "PURCHASES:approvals.submit",
+  approvalsDecide: "PURCHASES:approvals.decide",
+  documentationView: "PURCHASES:documentation.view"
+} as const;
+
+export const ATTACHMENTS_PERMISSIONS = {
+  purchasesView: "ATTACHMENTS:purchases.view",
+  purchasesManage: "ATTACHMENTS:purchases.manage"
+} as const;
+
 export type PermissionAccessResult = {
   isSuperAdmin: boolean;
   accessibleUnitIds: string[];

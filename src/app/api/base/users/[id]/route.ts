@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserUpdatePayloadSchema } from "@/lib/base-cadastros/schemas";
-import { apiError, logBaseCadastroError, requireSuperAdminRequest } from "@/lib/base-cadastros/api-helpers";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -136,15 +137,19 @@ async function replaceUnitLinks(input: {
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireSuperAdminRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.usersManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para gerenciar usuarios internos.", 403);
+    }
+
     const payload = internalUserUpdatePayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const employee = await getEmployeeForUser(supabase, payload.employeeId);
 
     if (await employeeHasOtherActiveUser(supabase, payload.employeeId, params.id)) {
@@ -157,7 +162,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         display_name: employee.full_name,
         personal_email: employee.personal_email ?? employee.corporate_email ?? null,
         status: payload.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", params.id)
       .is("deleted_at", null);
@@ -171,14 +176,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       supabase,
       appUserId: params.id,
       employeeId: payload.employeeId,
-      actorUserId: session.user.id
+      actorUserId: context.session.user.id
     });
     await replaceUnitLinks({
       supabase,
       appUserId: params.id,
       unitIds: payload.unitIds,
       accessProfileId: payload.accessProfileId,
-      actorUserId: session.user.id
+      actorUserId: context.session.user.id
     });
 
     return NextResponse.json({ ok: true });

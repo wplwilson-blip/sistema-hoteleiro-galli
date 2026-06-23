@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getUnitOrganizationId, logBaseCadastroError, requireAuthenticatedRequest, apiError } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { getUnitOrganizationId, logBaseCadastroError, apiError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseRequestNumber,
@@ -477,15 +478,15 @@ function buildStatusChangeDescription(fromStatus: string, toStatus: string) {
 }
 
 export async function GET() {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.requestsView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
     const [options, list] = await Promise.all([loadPurchaseOptions(supabase, accessibleUnitIds), loadPurchasesForList(supabase, accessibleUnitIds)]);
 
     return NextResponse.json({
@@ -514,16 +515,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.requestsManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const payload = purchaseRequestWriteSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     await validateUnitScope(supabase, payload.unitId, accessibleUnitIds);
     await validateDepartmentForUnit(supabase, payload.departmentId, payload.unitId);
@@ -549,7 +550,7 @@ export async function POST(request: Request) {
           unit_id: payload.unitId,
           department_id: payload.departmentId,
           cost_center_id: normalizeOptionalUuid(payload.costCenterId),
-          requested_by: session.user.id,
+          requested_by: context.session.user.id,
           request_number: requestNumber,
           title: payload.title,
           description: payload.description ?? null,
@@ -575,8 +576,8 @@ export async function POST(request: Request) {
           over_budget: false,
           over_budget_justification: null,
           payment_request_id: null,
-          created_by: session.user.id,
-          updated_by: session.user.id
+          created_by: context.session.user.id,
+          updated_by: context.session.user.id
         })
         .select("id")
         .single();
@@ -610,8 +611,8 @@ export async function POST(request: Request) {
       approved_unit_price: null,
       approved_total_price: null,
       notes: item.notes ?? null,
-      created_by: session.user.id,
-      updated_by: session.user.id
+      created_by: context.session.user.id,
+      updated_by: context.session.user.id
     }));
 
     const { error: itemsError } = await supabase.from("purchase_request_items").insert(requestItems);
@@ -631,7 +632,7 @@ export async function POST(request: Request) {
         fromStatus: null,
         toStatus: status,
         description: buildCreateEventDescription(payload.action),
-        createdBy: session.user.id
+        createdBy: context.session.user.id
       });
     } catch (eventError) {
       await supabase.from("purchase_request_items").delete().eq("purchase_request_id", requestId);
@@ -648,7 +649,7 @@ export async function POST(request: Request) {
         unit: findOptionById(options.units, createdRequest.unit_id),
         department: findOptionById(options.departments, createdRequest.department_id),
         costCenter: findOptionById(options.costCenters, createdRequest.cost_center_id) ?? null,
-        requesterName: session.user.name,
+        requesterName: context.session.user.name,
         items: createdItems
       })
     });

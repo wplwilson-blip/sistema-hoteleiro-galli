@@ -1,32 +1,84 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { employeePayloadSchema } from "@/lib/base-cadastros/schemas";
 import {
   apiError,
   getUnitOrganizationId,
   logBaseCadastroError,
-  requireAuthenticatedRequest
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ensureAutomaticEmployeeDocumentDossier } from "@/lib/hr/employee-document-dossier-auto";
 import { ensureAutomaticEmployeeOnboarding } from "@/lib/hr/employee-onboarding-auto";
 
-export async function GET() {
-  const { response } = await requireAuthenticatedRequest();
+async function validateEmployeeRelationsForUnit(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  input: { unitId: string; departmentId?: string; jobPositionId?: string }
+) {
+  if (input.departmentId) {
+    const { data, error } = await supabase
+      .from("departments")
+      .select("id")
+      .eq("id", input.departmentId)
+      .eq("unit_id", input.unitId)
+      .is("deleted_at", null)
+      .limit(1);
 
-  if (response) {
+    if (error) {
+      logBaseCadastroError("employee.department_lookup_failed", error);
+      throw new Error("Nao foi possivel validar o departamento do colaborador.");
+    }
+
+    if (!data?.[0]) {
+      throw new Error("Departamento nao encontrado para a unidade selecionada.");
+    }
+  }
+
+  if (input.jobPositionId) {
+    const { data, error } = await supabase
+      .from("job_positions")
+      .select("id")
+      .eq("id", input.jobPositionId)
+      .eq("unit_id", input.unitId)
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (error) {
+      logBaseCadastroError("employee.job_position_lookup_failed", error);
+      throw new Error("Nao foi possivel validar o cargo do colaborador.");
+    }
+
+    if (!data?.[0]) {
+      throw new Error("Cargo nao encontrado para a unidade selecionada.");
+    }
+  }
+}
+
+export async function GET() {
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.employeesView);
+
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const { data: employees, error: employeesError } = await supabase
+    if (!context.isSuperAdmin && !context.accessibleUnitIds.length) {
+      return NextResponse.json({ ok: true, employees: [] });
+    }
+
+    let employeesQuery = context.supabase
       .from("employees")
       .select(
         "id, organization_id, unit_id, department_id, job_position_id, full_name, preferred_name, document_number, corporate_email, personal_email, phone, hire_date, termination_date, status, created_at"
       )
       .is("deleted_at", null)
       .order("full_name", { ascending: true });
+
+    if (!context.isSuperAdmin) {
+      employeesQuery = employeesQuery.in("unit_id", context.accessibleUnitIds);
+    }
+
+    const { data: employees, error: employeesError } = await employeesQuery;
 
     if (employeesError) {
       logBaseCadastroError("employees.list_failed", employeesError);
@@ -38,13 +90,13 @@ export async function GET() {
     const jobPositionIds = Array.from(new Set((employees ?? []).map((employee) => employee.job_position_id).filter(Boolean)));
 
     const { data: units, error: unitsError } = unitIds.length
-      ? await supabase.from("units").select("id, code, name").in("id", unitIds)
+      ? await context.supabase.from("units").select("id, code, name").in("id", unitIds)
       : { data: [], error: null };
     const { data: departments, error: departmentsError } = departmentIds.length
-      ? await supabase.from("departments").select("id, code, name").in("id", departmentIds)
+      ? await context.supabase.from("departments").select("id, code, name").in("id", departmentIds)
       : { data: [], error: null };
     const { data: jobPositions, error: jobPositionsError } = jobPositionIds.length
-      ? await supabase.from("job_positions").select("id, code, name").in("id", jobPositionIds)
+      ? await context.supabase.from("job_positions").select("id, code, name").in("id", jobPositionIds)
       : { data: [], error: null };
 
     if (unitsError) {
@@ -104,16 +156,25 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.employeesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para criar colaboradores.", 403);
+    }
+
     const payload = employeePayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
+    await validateEmployeeRelationsForUnit(supabase, {
+      unitId: payload.unitId,
+      departmentId: payload.departmentId,
+      jobPositionId: payload.jobPositionId
+    });
 
     const { data, error } = await supabase
       .from("employees")
@@ -131,8 +192,8 @@ export async function POST(request: Request) {
         hire_date: payload.hireDate || null,
         termination_date: payload.terminationDate || null,
         status: payload.status,
-        created_by: session.user.id,
-        updated_by: session.user.id
+        created_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
       .select("id")
       .single();
@@ -144,7 +205,7 @@ export async function POST(request: Request) {
 
     if (data?.id && payload.status === "active") {
       try {
-        await ensureAutomaticEmployeeOnboarding(supabase, data.id as string, session.user.id);
+        await ensureAutomaticEmployeeOnboarding(supabase, data.id as string, context.session.user.id);
       } catch (onboardingError) {
         logBaseCadastroError(
           "employee.auto_onboarding_failed",
@@ -153,7 +214,7 @@ export async function POST(request: Request) {
       }
 
       try {
-        await ensureAutomaticEmployeeDocumentDossier(supabase, data.id as string, session.user.id);
+        await ensureAutomaticEmployeeDocumentDossier(supabase, data.id as string, context.session.user.id);
       } catch (documentDossierError) {
         logBaseCadastroError(
           "employee.auto_document_dossier_failed",

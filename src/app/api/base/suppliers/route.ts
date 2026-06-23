@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertUnitInPermissionScope, BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { supplierPayloadSchema } from "@/lib/base-cadastros/schemas";
-import {
-  apiError,
-  getInitialOrganizationId,
-  getUnitOrganizationId,
-  logBaseCadastroError,
-  requireAuthenticatedRequest
-} from "@/lib/base-cadastros/api-helpers";
+import { apiError, getInitialOrganizationId, getUnitOrganizationId, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupplierRow = {
@@ -102,14 +97,16 @@ async function validateDuplicateDocument(
 
   const { data, error } = await supabase
     .from("suppliers")
-    .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
+    .select(
+      "id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at"
+    )
     .eq("organization_id", organizationId)
     .eq("document_type", documentType)
     .is("deleted_at", null);
 
   if (error) {
     logBaseCadastroError("suppliers.document_lookup_failed", error);
-    throw new Error("Não foi possível validar o documento do fornecedor.");
+    throw new Error("Nao foi possivel validar o documento do fornecedor.");
   }
 
   return ((data ?? []) as SupplierRow[]).find((supplier) => {
@@ -122,16 +119,16 @@ async function validateDuplicateDocument(
 }
 
 export async function GET() {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.suppliersView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getInitialOrganizationId(supabase);
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     const [{ data: suppliers, error: suppliersError }, { data: units, error: unitsError }] = await Promise.all([
       supabase
@@ -143,7 +140,13 @@ export async function GET() {
         .is("deleted_at", null)
         .order("name", { ascending: true }),
       accessibleUnitIds.length
-        ? supabase.from("units").select("id, code, name").in("id", accessibleUnitIds).eq("organization_id", organizationId).is("deleted_at", null).order("name", { ascending: true })
+        ? supabase
+            .from("units")
+            .select("id, code, name")
+            .in("id", accessibleUnitIds)
+            .eq("organization_id", organizationId)
+            .is("deleted_at", null)
+            .order("name", { ascending: true })
         : Promise.resolve({ data: [], error: null })
     ]);
 
@@ -158,7 +161,9 @@ export async function GET() {
     }
 
     const unitsById = new Map((units ?? []).map((unit) => [unit.id, unit]));
-    const visibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) => !supplier.unit_id || accessibleUnitIds.includes(supplier.unit_id));
+    const visibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) =>
+      supplier.unit_id ? context.isSuperAdmin || accessibleUnitIds.includes(supplier.unit_id) : context.isSuperAdmin
+    );
 
     return NextResponse.json({
       ok: true,
@@ -170,29 +175,30 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.suppliersManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const payload = supplierPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
 
-    if (payload.unitId && !session.units.some((unit) => unit.id === payload.unitId)) {
-      return apiError("Não é possível cadastrar fornecedor em uma unidade sem permissão.", 403);
+    if (payload.unitId) {
+      assertUnitInPermissionScope(context, payload.unitId);
+    } else if (!context.isSuperAdmin) {
+      return apiError("Nao e possivel cadastrar fornecedor global sem permissao de super admin.", 403);
     }
 
     const organizationId = payload.unitId ? await getUnitOrganizationId(supabase, payload.unitId) : await getInitialOrganizationId(supabase);
-
     const duplicateSupplier = await validateDuplicateDocument(supabase, organizationId, payload.documentType, payload.documentNumber);
 
     if (duplicateSupplier) {
       return NextResponse.json(
         {
           ok: false,
-          message: "Já existe um fornecedor cadastrado com este CNPJ/CPF.",
+          message: "Ja existe um fornecedor cadastrado com este CNPJ/CPF.",
           supplier: serializeSupplier(duplicateSupplier)
         },
         { status: 409 }
@@ -217,26 +223,28 @@ export async function POST(request: Request) {
         category: payload.category ?? null,
         notes: payload.notes ?? null,
         status: payload.status,
-        created_by: session.user.id,
-        updated_by: session.user.id
+        created_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
-      .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
+      .select(
+        "id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at"
+      )
       .single();
 
     if (error) {
       logBaseCadastroError("suppliers.create_failed", error);
       if (error.code === "23505") {
-        return apiError("Já existe um fornecedor cadastrado com este CNPJ/CPF.", 409);
+        return apiError("Ja existe um fornecedor cadastrado com este CNPJ/CPF.", 409);
       }
-      return apiError("Não foi possível salvar o fornecedor.", 500);
+      return apiError("Nao foi possivel salvar o fornecedor.", 500);
     }
 
     return NextResponse.json({ ok: true, supplier: serializeSupplier(createdSupplier as SupplierRow) }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiError(error.errors[0]?.message ?? "Dados inválidos.", 422);
+      return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     }
 
-    return apiError(error instanceof Error ? error.message : "Não foi possível salvar o fornecedor.", 500);
+    return apiError(error instanceof Error ? error.message : "Nao foi possivel salvar o fornecedor.", 500);
   }
 }

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { departmentPayloadSchema } from "@/lib/base-cadastros/schemas";
 import {
   apiError,
   getUnitOrganizationId,
-  logBaseCadastroError,
-  requireAuthenticatedRequest
+  logBaseCadastroError
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -27,20 +27,29 @@ async function hasDepartmentCodeInUnit(supabase: ReturnType<typeof createSupabas
 }
 
 export async function GET() {
-  const { response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsView);
 
-  if (response) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
-    const { data: departments, error: departmentsError } = await supabase
+    if (!context.isSuperAdmin && !context.accessibleUnitIds.length) {
+      return NextResponse.json({ ok: true, departments: [] });
+    }
+
+    let departmentQuery = context.supabase
       .from("departments")
       .select("id, organization_id, unit_id, code, name, description, status, created_at")
       .is("deleted_at", null)
       .not("unit_id", "is", null)
       .order("name", { ascending: true });
+
+    if (!context.isSuperAdmin) {
+      departmentQuery = departmentQuery.in("unit_id", context.accessibleUnitIds);
+    }
+
+    const { data: departments, error: departmentsError } = await departmentQuery;
 
     if (departmentsError) {
       logBaseCadastroError("departments.list_failed", departmentsError);
@@ -49,7 +58,7 @@ export async function GET() {
 
     const unitIds = Array.from(new Set((departments ?? []).map((department) => department.unit_id).filter(Boolean)));
     const { data: units, error: unitsError } = unitIds.length
-      ? await supabase.from("units").select("id, code, name").in("id", unitIds)
+      ? await context.supabase.from("units").select("id, code, name").in("id", unitIds)
       : { data: [], error: null };
 
     if (unitsError) {
@@ -84,15 +93,19 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para criar departamentos.", 403);
+    }
+
     const payload = departmentPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
 
     if (await hasDepartmentCodeInUnit(supabase, payload.unitId, payload.code)) {
@@ -106,8 +119,8 @@ export async function POST(request: Request) {
       name: payload.name,
       description: payload.description || null,
       status: payload.status,
-      created_by: session.user.id,
-      updated_by: session.user.id
+      created_by: context.session.user.id,
+      updated_by: context.session.user.id
     });
 
     if (error) {

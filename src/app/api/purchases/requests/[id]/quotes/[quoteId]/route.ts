@@ -1,6 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   calculateWinningQuoteApprovalFlags,
@@ -501,16 +502,16 @@ async function restoreQuoteSelectionState(
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string; quoteId: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.quotesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const payload = purchaseQuotePatchSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
     const requestRow = await fetchRequestById(supabase, params.id);
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
@@ -543,7 +544,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
       const { error: quoteUpdateError } = await supabase
         .from("purchase_quotes")
-        .update({ is_selected: false, status: "received", updated_by: session.user.id })
+        .update({ is_selected: false, status: "received", updated_by: context.session.user.id })
         .eq("id", quoteRow.id)
         .eq("purchase_request_id", requestRow.id)
         .is("deleted_at", null);
@@ -564,7 +565,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: null,
           ...getReviewDecisionResetFields(requestRow),
-          updated_by: session.user.id
+          updated_by: context.session.user.id
         })
         .eq("id", requestRow.id);
 
@@ -572,7 +573,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         logBaseCadastroError("purchase_quotes.unselect_request_update_failed", requestUpdateError);
         await supabase
           .from("purchase_quotes")
-          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: session.user.id })
+          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: context.session.user.id })
           .eq("id", quoteRow.id);
         return apiError("Não foi possível atualizar a solicitação ao remover a vencedora.", 500);
       }
@@ -586,12 +587,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           fromStatus: requestRow.status,
           toStatus: requestRow.status,
           description: "Cotação removida como vencedora.",
-          createdBy: session.user.id
+          createdBy: context.session.user.id
         });
       } catch (eventError) {
         await supabase
           .from("purchase_quotes")
-          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: session.user.id })
+          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: context.session.user.id })
           .eq("id", quoteRow.id);
         return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar a remoção da vencedora.", 500);
       }
@@ -617,27 +618,27 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
       const { error: unselectError } = await supabase
         .from("purchase_quotes")
-        .update({ is_selected: false, status: "rejected", updated_by: session.user.id })
+        .update({ is_selected: false, status: "rejected", updated_by: context.session.user.id })
         .eq("purchase_request_id", requestRow.id)
         .neq("id", quoteRow.id)
         .is("deleted_at", null);
 
       if (unselectError) {
         logBaseCadastroError("purchase_quotes.select_clear_failed", unselectError);
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
+        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
         return apiError("Não foi possível atualizar as cotações da solicitação.", 500);
       }
 
       const { error: selectError } = await supabase
         .from("purchase_quotes")
-        .update({ is_selected: true, status: "selected", updated_by: session.user.id })
+        .update({ is_selected: true, status: "selected", updated_by: context.session.user.id })
         .eq("id", quoteRow.id)
         .eq("purchase_request_id", requestRow.id)
         .is("deleted_at", null);
 
       if (selectError) {
         logBaseCadastroError("purchase_quotes.select_update_failed", selectError);
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
+        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
         return apiError("Não foi possível selecionar a cotação.", 500);
       }
 
@@ -652,13 +653,13 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: getPurchaseApprovalLevel(selectedTotal),
           ...getReviewDecisionResetFields(requestRow),
-          updated_by: session.user.id
+          updated_by: context.session.user.id
         })
         .eq("id", requestRow.id);
 
       if (requestUpdateError) {
         logBaseCadastroError("purchase_quotes.select_request_update_failed", requestUpdateError);
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
+        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
         return apiError("Não foi possível atualizar a solicitação com a cotação selecionada.", 500);
       }
 
@@ -671,10 +672,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           fromStatus: requestRow.status,
           toStatus: requestRow.status,
           description: "Cotacao selecionada.",
-          createdBy: session.user.id
+          createdBy: context.session.user.id
         });
       } catch (eventError) {
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, session.user.id);
+        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
         return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar a selecao da cotação.", 500);
       }
 
@@ -696,7 +697,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (requestRow.status === "submitted" || requestRow.status === "under_review") {
       const { error: startError } = await supabase
         .from("purchase_requests")
-        .update({ status: "quotation", updated_by: session.user.id })
+        .update({ status: "quotation", updated_by: context.session.user.id })
         .eq("id", requestRow.id);
 
       if (startError) {
@@ -712,7 +713,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         fromStatus: requestRow.status,
         toStatus: "quotation",
         description: "Cotacao iniciada.",
-        createdBy: session.user.id
+        createdBy: context.session.user.id
       });
     } else if (requestRow.status !== "quotation") {
       return apiError("A cotação so pode ser editada em uma solicitação em análise ou em cotação.", 409);
@@ -768,7 +769,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       ...mapQuoteEvidenceUpdate(parsed, hasActiveAttachment),
       notes: parsed.notes ?? null,
       status: quoteRow.is_selected ? "selected" : "received",
-      updated_by: session.user.id
+      updated_by: context.session.user.id
     };
 
     const { error: updateError } = await supabase.from("purchase_quotes").update(quoteUpdateBody).eq("id", quoteRow.id).eq("purchase_request_id", requestRow.id);
@@ -797,7 +798,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         ...mapQuoteEvidenceRollback(quoteRow),
         notes: quoteRow.notes,
         status: quoteRow.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       }).eq("id", quoteRow.id);
       return apiError("Não foi possível atualizar os itens da cotação.", 500);
     }
@@ -813,8 +814,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         unit_price: item.unit_price,
         total_price: item.total_price,
         delivery_notes: item.delivery_notes,
-        created_by: session.user.id,
-        updated_by: session.user.id
+        created_by: context.session.user.id,
+        updated_by: context.session.user.id
       }))
     );
 
@@ -835,9 +836,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         ...mapQuoteEvidenceRollback(quoteRow),
         notes: quoteRow.notes,
         status: quoteRow.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       }).eq("id", quoteRow.id);
-      await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, session.user.id));
+      await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, context.session.user.id));
       return apiError("Não foi possível atualizar os itens da cotação.", 500);
     }
 
@@ -855,14 +856,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: getPurchaseApprovalLevel(totalAmount),
           ...getReviewDecisionResetFields(requestRow),
-          updated_by: session.user.id
+          updated_by: context.session.user.id
         })
         .eq("id", requestRow.id);
 
       if (requestUpdateError) {
         logBaseCadastroError("purchase_quotes.request_update_failed", requestUpdateError);
         await supabase.from("purchase_quote_items").delete().eq("purchase_quote_id", quoteRow.id);
-        await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, session.user.id));
+        await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, context.session.user.id));
         await supabase.from("purchase_quotes").update({
           supplier_id: quoteRow.supplier_id,
           quote_number: quoteRow.quote_number,
@@ -878,7 +879,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           ...mapQuoteEvidenceRollback(quoteRow),
           notes: quoteRow.notes,
           status: quoteRow.status,
-          updated_by: session.user.id
+          updated_by: context.session.user.id
         }).eq("id", quoteRow.id);
         return apiError("Não foi possível atualizar a solicitação com o total da cotação.", 500);
       }
@@ -892,7 +893,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       fromStatus: requestRow.status,
       toStatus: requestRow.status,
       description: "Cotacao atualizada.",
-      createdBy: session.user.id
+      createdBy: context.session.user.id
     });
 
     return NextResponse.json({ ok: true, quoteId: quoteRow.id });
@@ -914,17 +915,17 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 }
 
 export async function DELETE(_request: Request, { params }: { params: { id: string; quoteId: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.quotesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const requestRow = await fetchRequestById(supabase, params.id);
 
-    if (!session.units.some((unit) => unit.id === requestRow.unit_id)) {
+    if (!context.accessibleUnitIds.includes(requestRow.unit_id)) {
       return apiError("Você não tem acesso a esta solicitação.", 403);
     }
 
@@ -957,8 +958,8 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
         status: "cancelled",
         is_selected: false,
         deleted_at: now,
-        deleted_by: session.user.id,
-        updated_by: session.user.id
+        deleted_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
       .eq("id", quoteRow.id);
 
@@ -971,14 +972,14 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       .from("purchase_quote_items")
       .update({
         deleted_at: now,
-        deleted_by: session.user.id,
-        updated_by: session.user.id
+        deleted_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
       .eq("purchase_quote_id", quoteRow.id);
 
     if (itemsUpdateError) {
       logBaseCadastroError("purchase_quotes.delete_items_failed", itemsUpdateError);
-      await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: session.user.id }).eq("id", quoteRow.id);
+      await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: context.session.user.id }).eq("id", quoteRow.id);
       return apiError("Não foi possível cancelar os itens da cotação.", 500);
     }
 
@@ -994,14 +995,14 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
           ...getReviewApprovalStatusUpdate(requestRow),
           approval_level: null,
           ...getReviewDecisionResetFields(requestRow),
-          updated_by: session.user.id
+          updated_by: context.session.user.id
         })
         .eq("id", requestRow.id);
 
       if (requestUpdateError) {
         logBaseCadastroError("purchase_quotes.delete_request_failed", requestUpdateError);
-        await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: session.user.id }).eq("id", quoteRow.id);
-        await supabase.from("purchase_quote_items").update({ deleted_at: null, deleted_by: null, updated_by: session.user.id }).eq("purchase_quote_id", quoteRow.id);
+        await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: context.session.user.id }).eq("id", quoteRow.id);
+        await supabase.from("purchase_quote_items").update({ deleted_at: null, deleted_by: null, updated_by: context.session.user.id }).eq("purchase_quote_id", quoteRow.id);
         return apiError("Não foi possível atualizar a solicitação apos o cancelamento da cotação.", 500);
       }
     }
@@ -1014,7 +1015,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       fromStatus: requestRow.status,
       toStatus: requestRow.status,
       description: wasSelected ? "Cotação vencedora cancelada. A solicitação ficou sem cotação vencedora." : "Cotacao cancelada.",
-      createdBy: session.user.id
+      createdBy: context.session.user.id
     });
 
     return NextResponse.json({
@@ -1034,4 +1035,3 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     return apiError(error instanceof Error ? error.message : "Não foi possível cancelar a cotação.", 500);
   }
 }
-

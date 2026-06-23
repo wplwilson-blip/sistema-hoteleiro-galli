@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { ATTACHMENTS_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   ATTACHMENTS_BUCKET,
@@ -24,9 +25,9 @@ const attachmentQuerySchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(ATTACHMENTS_PERMISSIONS.purchasesView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
@@ -37,8 +38,8 @@ export async function GET(request: Request) {
       entity_type: url.searchParams.get("entity_type") ?? "",
       entity_id: url.searchParams.get("entity_id") ?? ""
     });
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     await validatePurchaseQuoteAttachmentAccess(supabase, params.entity_id, accessibleUnitIds);
 
@@ -76,9 +77,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(ATTACHMENTS_PERMISSIONS.purchasesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
@@ -111,8 +112,8 @@ export async function POST(request: Request) {
       return apiError(fileValidationMessage, 422);
     }
 
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
     const entityContext = await validatePurchaseQuoteAttachmentMutationAccess(supabase, entityId, accessibleUnitIds);
     const filePath = buildAttachmentStoragePath({
       organizationId: entityContext.organizationId,
@@ -150,10 +151,10 @@ export async function POST(request: Request) {
         description: description || null,
         is_sensitive: isSensitive,
         visibility_scope: visibilityScope,
-        uploaded_by: session.user.id,
+        uploaded_by: context.session.user.id,
         status: "active",
-        created_by: session.user.id,
-        updated_by: session.user.id
+        created_by: context.session.user.id,
+        updated_by: context.session.user.id
       })
       .select("id, organization_id, unit_id, module, entity_type, entity_id, file_name, file_path, file_mime_type, file_size_bytes, storage_bucket, description, is_sensitive, visibility_scope, uploaded_by, status, created_at, updated_at")
       .single();

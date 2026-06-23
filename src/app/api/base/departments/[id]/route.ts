@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { departmentPayloadSchema } from "@/lib/base-cadastros/schemas";
 import {
   apiError,
   getUnitOrganizationId,
   logBaseCadastroError,
-  requireAuthenticatedRequest
 } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -33,15 +33,19 @@ async function hasDepartmentCodeInUnit(
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para editar departamentos.", 403);
+    }
+
     const payload = departmentPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getUnitOrganizationId(supabase, payload.unitId);
 
     if (await hasDepartmentCodeInUnit(supabase, payload.unitId, payload.code, params.id)) {
@@ -57,7 +61,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         name: payload.name,
         description: payload.description || null,
         status: payload.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", params.id)
       .is("deleted_at", null);

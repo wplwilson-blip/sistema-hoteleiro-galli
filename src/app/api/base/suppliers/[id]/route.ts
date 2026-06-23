@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertUnitInPermissionScope, BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { supplierPayloadSchema } from "@/lib/base-cadastros/schemas";
-import {
-  apiError,
-  getInitialOrganizationId,
-  getUnitOrganizationId,
-  logBaseCadastroError,
-  requireAuthenticatedRequest
-} from "@/lib/base-cadastros/api-helpers";
+import { apiError, getInitialOrganizationId, getUnitOrganizationId, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupplierRow = {
@@ -87,6 +82,17 @@ function serializeSupplier(row: SupplierRow) {
   };
 }
 
+function assertCanAccessSupplier(context: NonNullable<Awaited<ReturnType<typeof requirePermission>>["context"]>, unitId: string | null) {
+  if (!unitId) {
+    if (!context.isSuperAdmin) {
+      throw new Error("Fornecedor nao encontrado.");
+    }
+    return;
+  }
+
+  assertUnitInPermissionScope(context, unitId);
+}
+
 async function validateDuplicateDocument(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   organizationId: string,
@@ -102,14 +108,16 @@ async function validateDuplicateDocument(
 
   const { data, error } = await supabase
     .from("suppliers")
-    .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
+    .select(
+      "id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at"
+    )
     .eq("organization_id", organizationId)
     .eq("document_type", documentType)
     .is("deleted_at", null);
 
   if (error) {
     logBaseCadastroError("suppliers.document_lookup_failed", error);
-    throw new Error("Não foi possível validar o documento do fornecedor.");
+    throw new Error("Nao foi possivel validar o documento do fornecedor.");
   }
 
   return ((data ?? []) as SupplierRow[]).find((supplier) => {
@@ -122,16 +130,15 @@ async function validateDuplicateDocument(
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.suppliersView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     const organizationId = await getInitialOrganizationId(supabase);
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
 
     const { data: supplier, error: supplierError } = await supabase
       .from("suppliers")
@@ -154,8 +161,10 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       return apiError("Fornecedor nao encontrado.", 404);
     }
 
-    if (currentSupplier.unit_id && !accessibleUnitIds.includes(currentSupplier.unit_id)) {
-      return apiError("Você não tem acesso à unidade deste fornecedor.", 403);
+    try {
+      assertCanAccessSupplier(context, currentSupplier.unit_id);
+    } catch {
+      return apiError("Fornecedor nao encontrado.", 404);
     }
 
     const { data: unit, error: unitError } = currentSupplier.unit_id
@@ -177,19 +186,20 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.suppliersManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const payload = supplierPayloadSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
 
-    if (payload.unitId && !accessibleUnitIds.includes(payload.unitId)) {
-      return apiError("Não é possível mover fornecedor para uma unidade sem permissão.", 403);
+    if (payload.unitId) {
+      assertUnitInPermissionScope(context, payload.unitId);
+    } else if (!context.isSuperAdmin) {
+      return apiError("Nao e possivel mover fornecedor para cadastro global sem permissao de super admin.", 403);
     }
 
     const { data: currentSupplier, error: currentSupplierError } = await supabase
@@ -210,19 +220,20 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return apiError("Fornecedor nao encontrado.", 404);
     }
 
-    if (existingSupplier.unit_id && !accessibleUnitIds.includes(existingSupplier.unit_id)) {
-      return apiError("Você não tem acesso à unidade deste fornecedor.", 403);
+    try {
+      assertCanAccessSupplier(context, existingSupplier.unit_id);
+    } catch {
+      return apiError("Fornecedor nao encontrado.", 404);
     }
 
     const organizationId = payload.unitId ? await getUnitOrganizationId(supabase, payload.unitId) : existingSupplier.organization_id;
-
     const duplicateSupplier = await validateDuplicateDocument(supabase, organizationId, payload.documentType, payload.documentNumber, params.id);
 
     if (duplicateSupplier) {
       return NextResponse.json(
         {
           ok: false,
-          message: "Já existe um fornecedor cadastrado com este CNPJ/CPF.",
+          message: "Ja existe um fornecedor cadastrado com este CNPJ/CPF.",
           supplier: serializeSupplier(duplicateSupplier)
         },
         { status: 409 }
@@ -247,27 +258,29 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         category: payload.category ?? null,
         notes: payload.notes ?? null,
         status: payload.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", params.id)
       .is("deleted_at", null)
-      .select("id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at")
+      .select(
+        "id, organization_id, unit_id, name, trade_name, document_type, document_number, email, phone, whatsapp, contact_name, address_json, bank_data_json, category, notes, status, created_at, updated_at"
+      )
       .single();
 
     if (error) {
       logBaseCadastroError("suppliers.update_failed", error);
       if (error.code === "23505") {
-        return apiError("Já existe um fornecedor cadastrado com este CNPJ/CPF.", 409);
+        return apiError("Ja existe um fornecedor cadastrado com este CNPJ/CPF.", 409);
       }
-      return apiError("Não foi possível atualizar o fornecedor.", 500);
+      return apiError("Nao foi possivel atualizar o fornecedor.", 500);
     }
 
     return NextResponse.json({ ok: true, supplier: serializeSupplier(updatedSupplier as SupplierRow) });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiError(error.errors[0]?.message ?? "Dados inválidos.", 422);
+      return apiError(error.errors[0]?.message ?? "Dados invalidos.", 422);
     }
 
-    return apiError(error instanceof Error ? error.message : "Não foi possível atualizar o fornecedor.", 500);
+    return apiError(error instanceof Error ? error.message : "Nao foi possivel atualizar o fornecedor.", 500);
   }
 }

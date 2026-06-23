@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildNextPurchaseQuoteNumber, roundMoney, sumPurchaseQuoteItems } from "@/lib/purchases/api";
 import {
@@ -160,19 +161,19 @@ function mapNegotiationEvidenceInsert(payload: NegotiationPayload) {
 
 function getNegotiationBlockMessage(requestRow: PurchaseRequestRow) {
   if (requestRow.approval_status === "pending") {
-    return "Não é possível registrar nova proposta para uma compra aguardando aprovação.";
+    return "NÃ£o Ã© possÃ­vel registrar nova proposta para uma compra aguardando aprovaÃ§Ã£o.";
   }
 
   if (requestRow.approval_status === "approved" || requestRow.status === "approved") {
-    return "Não é possível registrar nova proposta para uma compra aprovada.";
+    return "NÃ£o Ã© possÃ­vel registrar nova proposta para uma compra aprovada.";
   }
 
   if (requestRow.approval_status === "rejected" || requestRow.status === "rejected") {
-    return "Não é possível registrar nova proposta para uma compra reprovada.";
+    return "NÃ£o Ã© possÃ­vel registrar nova proposta para uma compra reprovada.";
   }
 
   if (requestRow.status === "cancelled") {
-    return "Não é possível registrar nova proposta para uma compra cancelada.";
+    return "NÃ£o Ã© possÃ­vel registrar nova proposta para uma compra cancelada.";
   }
 
   if (requestRow.approval_status === "returned_to_purchases") {
@@ -183,7 +184,7 @@ function getNegotiationBlockMessage(requestRow: PurchaseRequestRow) {
     return "";
   }
 
-  return "A nova proposta negociada só pode ser registrada para compras em cotação.";
+  return "A nova proposta negociada sÃ³ pode ser registrada para compras em cotaÃ§Ã£o.";
 }
 
 async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
@@ -198,7 +199,7 @@ async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quote_negotiations.request_lookup_failed", error);
-    throw new Error("Não foi possível localizar a solicitação.");
+    throw new Error("NÃ£o foi possÃ­vel localizar a solicitaÃ§Ã£o.");
   }
 
   return data as PurchaseRequestRow;
@@ -214,7 +215,7 @@ async function fetchRequestItems(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quote_negotiations.request_items_lookup_failed", error);
-    throw new Error("Não foi possível carregar os itens da solicitação.");
+    throw new Error("NÃ£o foi possÃ­vel carregar os itens da solicitaÃ§Ã£o.");
   }
 
   return (data ?? []) as PurchaseRequestItemRow[];
@@ -233,11 +234,11 @@ async function fetchPreviousQuote(supabase: SupabaseAdmin, requestId: string, qu
 
   if (error) {
     if (error.code === "PGRST116") {
-      throw new Error("Cotação não encontrada ou já removida.");
+      throw new Error("CotaÃ§Ã£o nÃ£o encontrada ou jÃ¡ removida.");
     }
 
     logBaseCadastroError("purchase_quote_negotiations.previous_quote_lookup_failed", error);
-    throw new Error("Não foi possível localizar a cotação anterior.");
+    throw new Error("NÃ£o foi possÃ­vel localizar a cotaÃ§Ã£o anterior.");
   }
 
   return data as PurchaseQuoteRow;
@@ -255,17 +256,17 @@ async function fetchSupplier(supabase: SupabaseAdmin, supplierId: string, organi
 
   if (error) {
     logBaseCadastroError("purchase_quote_negotiations.supplier_lookup_failed", error);
-    throw new Error("Não foi possível validar o fornecedor da cotação.");
+    throw new Error("NÃ£o foi possÃ­vel validar o fornecedor da cotaÃ§Ã£o.");
   }
 
   const supplier = data?.[0] as SupplierRow | undefined;
 
   if (!supplier) {
-    throw new Error("Fornecedor não encontrado ou inativo.");
+    throw new Error("Fornecedor nÃ£o encontrado ou inativo.");
   }
 
   if (supplier.unit_id && !accessibleUnitIds.includes(supplier.unit_id)) {
-    throw new Error("Você não tem acesso a este fornecedor.");
+    throw new Error("VocÃª nÃ£o tem acesso a este fornecedor.");
   }
 
   return supplier;
@@ -281,7 +282,7 @@ async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
 
   if (error) {
     logBaseCadastroError("purchase_quote_negotiations.existing_quotes_lookup_failed", error);
-    throw new Error("Não foi possível carregar as cotações da solicitação.");
+    throw new Error("NÃ£o foi possÃ­vel carregar as cotaÃ§Ãµes da solicitaÃ§Ã£o.");
   }
 
   return (data ?? []) as Array<{ id: string; quote_number: string }>;
@@ -313,7 +314,7 @@ async function insertPurchaseRequestEvent(
 
   if (error) {
     logBaseCadastroError("purchase_quote_negotiations.event_create_failed", error);
-    throw new Error("Não foi possível registrar o evento da negociação.");
+    throw new Error("NÃ£o foi possÃ­vel registrar o evento da negociaÃ§Ã£o.");
   }
 }
 
@@ -345,11 +346,11 @@ function mapNegotiationItemRows(
     const requestItem = requestItemMap.get(item.purchaseRequestItemId);
 
     if (!requestItem) {
-      throw new Error("Os itens informados não pertencem à solicitação de compra.");
+      throw new Error("Os itens informados nÃ£o pertencem Ã  solicitaÃ§Ã£o de compra.");
     }
 
     if (seenRequestItemIds.has(item.purchaseRequestItemId)) {
-      throw new Error("Cada item da solicitação deve aparecer apenas uma vez na nova proposta.");
+      throw new Error("Cada item da solicitaÃ§Ã£o deve aparecer apenas uma vez na nova proposta.");
     }
 
     seenRequestItemIds.add(item.purchaseRequestItemId);
@@ -413,9 +414,9 @@ async function restoreRequestSelectionState(supabase: SupabaseAdmin, requestRow:
 }
 
 export async function POST(_request: Request, { params }: { params: { id: string; quoteId: string } }) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.quotesManage);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
@@ -425,13 +426,13 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
   try {
     const payload = purchaseQuoteNegotiationCreateSchema.parse(await _request.json());
-    const supabase = createSupabaseAdminClient();
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const supabase = context.supabase;
+    const accessibleUnitIds = context.accessibleUnitIds;
     const requestRow = await fetchRequestById(supabase, params.id);
     requestForRollback = requestRow;
 
     if (!accessibleUnitIds.includes(requestRow.unit_id)) {
-      return apiError("Você não tem acesso a esta solicitação.", 403);
+      return apiError("VocÃª nÃ£o tem acesso a esta solicitaÃ§Ã£o.", 403);
     }
 
     const blockMessage = getNegotiationBlockMessage(requestRow);
@@ -443,11 +444,11 @@ export async function POST(_request: Request, { params }: { params: { id: string
     previousQuoteForRollback = previousQuote;
 
     if (previousQuote.status === "cancelled" || previousQuote.deleted_at) {
-      return apiError("Cotação não encontrada ou já removida.", 404);
+      return apiError("CotaÃ§Ã£o nÃ£o encontrada ou jÃ¡ removida.", 404);
     }
 
     if (previousQuote.superseded_by_quote_id || previousQuote.superseded_at) {
-      return apiError("Esta cotação já foi superada por uma proposta mais recente.", 409);
+      return apiError("Esta cotaÃ§Ã£o jÃ¡ foi superada por uma proposta mais recente.", 409);
     }
 
     const supplier = await fetchSupplier(supabase, previousQuote.supplier_id, requestRow.organization_id, accessibleUnitIds);
@@ -493,8 +494,8 @@ export async function POST(_request: Request, { params }: { params: { id: string
           original_quote_id: originalQuoteId,
           parent_quote_id: parentQuoteId,
           quote_round: quoteRound,
-          created_by: session.user.id,
-          updated_by: session.user.id
+          created_by: context.session.user.id,
+          updated_by: context.session.user.id
         })
         .select(`id, organization_id, unit_id, purchase_request_id, supplier_id, quote_number, quote_date, valid_until, total_amount, delivery_days, payment_terms, is_selected, ${quoteEvidenceSelectColumns}, status, original_quote_id, parent_quote_id, quote_round, superseded_by_quote_id, superseded_at, deleted_at`)
         .single();
@@ -510,20 +511,20 @@ export async function POST(_request: Request, { params }: { params: { id: string
       }
 
       logBaseCadastroError("purchase_quote_negotiations.quote_create_failed", quoteError);
-      return apiError(quoteError.message || "Não foi possível salvar a nova proposta.", 500);
+      return apiError(quoteError.message || "NÃ£o foi possÃ­vel salvar a nova proposta.", 500);
     }
 
     if (!createdQuoteId) {
-      return apiError(duplicateQuoteErrorMessage || "Não foi possível gerar um número único para a nova proposta.", 409);
+      return apiError(duplicateQuoteErrorMessage || "NÃ£o foi possÃ­vel gerar um nÃºmero Ãºnico para a nova proposta.", 409);
     }
 
-    const quoteItemRows = mapNegotiationItemRows(payload, requestItems, requestRow, createdQuoteId, session.user.id);
+    const quoteItemRows = mapNegotiationItemRows(payload, requestItems, requestRow, createdQuoteId, context.session.user.id);
     const { error: quoteItemsError } = await supabase.from("purchase_quote_items").insert(quoteItemRows);
 
     if (quoteItemsError) {
       logBaseCadastroError("purchase_quote_negotiations.items_create_failed", quoteItemsError);
       await rollbackCreatedQuote(supabase, createdQuoteId);
-      return apiError(quoteItemsError.message || "Não foi possível salvar os itens da nova proposta.", 500);
+      return apiError(quoteItemsError.message || "NÃ£o foi possÃ­vel salvar os itens da nova proposta.", 500);
     }
 
     const { error: previousUpdateError } = await supabase
@@ -531,10 +532,10 @@ export async function POST(_request: Request, { params }: { params: { id: string
       .update({
         superseded_by_quote_id: createdQuoteId,
         superseded_at: new Date().toISOString(),
-        superseded_by: session.user.id,
+        superseded_by: context.session.user.id,
         is_selected: false,
         status: previousQuote.is_selected ? "received" : previousQuote.status,
-        updated_by: session.user.id
+        updated_by: context.session.user.id
       })
       .eq("id", previousQuote.id)
       .eq("purchase_request_id", requestRow.id)
@@ -547,12 +548,12 @@ export async function POST(_request: Request, { params }: { params: { id: string
     if (previousUpdateError) {
       if (previousUpdateError.code === "PGRST116") {
         await rollbackCreatedQuote(supabase, createdQuoteId);
-        return apiError("Esta cotação já foi superada por uma proposta mais recente.", 409);
+        return apiError("Esta cotaÃ§Ã£o jÃ¡ foi superada por uma proposta mais recente.", 409);
       }
 
       logBaseCadastroError("purchase_quote_negotiations.previous_update_failed", previousUpdateError);
       await rollbackCreatedQuote(supabase, createdQuoteId);
-      return apiError("Não foi possível marcar a cotação anterior como superada.", 500);
+      return apiError("NÃ£o foi possÃ­vel marcar a cotaÃ§Ã£o anterior como superada.", 500);
     }
 
     if (previousQuote.is_selected) {
@@ -574,15 +575,15 @@ export async function POST(_request: Request, { params }: { params: { id: string
                 approval_decided_by: null,
                 approval_decision_notes: null
               }),
-          updated_by: session.user.id
+          updated_by: context.session.user.id
         })
         .eq("id", requestRow.id);
 
       if (requestUpdateError) {
         logBaseCadastroError("purchase_quote_negotiations.request_unselect_failed", requestUpdateError);
-        await restorePreviousQuote(supabase, previousQuote, session.user.id);
+        await restorePreviousQuote(supabase, previousQuote, context.session.user.id);
         await rollbackCreatedQuote(supabase, createdQuoteId);
-        return apiError("Não foi possível atualizar a solicitação ao remover a vencedora anterior.", 500);
+        return apiError("NÃ£o foi possÃ­vel atualizar a solicitaÃ§Ã£o ao remover a vencedora anterior.", 500);
       }
     }
 
@@ -602,9 +603,9 @@ export async function POST(_request: Request, { params }: { params: { id: string
         discount_amount: discountAmount,
         discount_percent: discountPercent,
         negotiation_notes: payload.negotiationNotes ?? null,
-        negotiated_by: session.user.id,
+        negotiated_by: context.session.user.id,
         negotiated_at: new Date().toISOString(),
-        created_by: session.user.id
+        created_by: context.session.user.id
       })
       .select("*")
       .single();
@@ -612,11 +613,11 @@ export async function POST(_request: Request, { params }: { params: { id: string
     if (negotiationError) {
       logBaseCadastroError("purchase_quote_negotiations.create_failed", negotiationError);
       if (previousQuote.is_selected && requestForRollback) {
-        await restoreRequestSelectionState(supabase, requestForRollback, session.user.id);
+        await restoreRequestSelectionState(supabase, requestForRollback, context.session.user.id);
       }
-      await restorePreviousQuote(supabase, previousQuote, session.user.id);
+      await restorePreviousQuote(supabase, previousQuote, context.session.user.id);
       await rollbackCreatedQuote(supabase, createdQuoteId);
-      return apiError("Não foi possível registrar a negociação.", 500);
+      return apiError("NÃ£o foi possÃ­vel registrar a negociaÃ§Ã£o.", 500);
     }
 
     try {
@@ -628,16 +629,16 @@ export async function POST(_request: Request, { params }: { params: { id: string
         fromStatus: requestRow.status,
         toStatus: requestRow.status,
         description: `Nova proposta negociada registrada para o fornecedor ${supplier.trade_name || supplier.name}, rodada ${quoteRound}.`,
-        createdBy: session.user.id
+        createdBy: context.session.user.id
       });
     } catch (eventError) {
       await supabase.from("purchase_quote_negotiations").delete().eq("id", negotiation.id);
       if (previousQuote.is_selected && requestForRollback) {
-        await restoreRequestSelectionState(supabase, requestForRollback, session.user.id);
+        await restoreRequestSelectionState(supabase, requestForRollback, context.session.user.id);
       }
-      await restorePreviousQuote(supabase, previousQuote, session.user.id);
+      await restorePreviousQuote(supabase, previousQuote, context.session.user.id);
       await rollbackCreatedQuote(supabase, createdQuoteId);
-      return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar o evento da negociação.", 500);
+      return apiError(eventError instanceof Error ? eventError.message : "NÃ£o foi possÃ­vel registrar o evento da negociaÃ§Ã£o.", 500);
     }
 
     const { data: quote } = await supabase
@@ -654,22 +655,22 @@ export async function POST(_request: Request, { params }: { params: { id: string
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return apiError(error.errors[0]?.message ?? "Dados inválidos.", 422);
+      return apiError(error.errors[0]?.message ?? "Dados invÃ¡lidos.", 422);
     }
 
-    if (error instanceof Error && error.message === "Cotação não encontrada ou já removida.") {
+    if (error instanceof Error && error.message === "CotaÃ§Ã£o nÃ£o encontrada ou jÃ¡ removida.") {
       return apiError(error.message, 404);
     }
 
     if (previousQuoteForRollback && createdQuoteId) {
-      const supabase = createSupabaseAdminClient();
+      const supabase = context.supabase;
       if (requestForRollback && previousQuoteForRollback.is_selected) {
-        await restoreRequestSelectionState(supabase, requestForRollback, session.user.id);
+        await restoreRequestSelectionState(supabase, requestForRollback, context.session.user.id);
       }
-      await restorePreviousQuote(supabase, previousQuoteForRollback, session.user.id);
+      await restorePreviousQuote(supabase, previousQuoteForRollback, context.session.user.id);
       await rollbackCreatedQuote(supabase, createdQuoteId);
     }
 
-    return apiError(error instanceof Error ? error.message : "Não foi possível registrar a nova proposta negociada.", 500);
+    return apiError(error instanceof Error ? error.message : "NÃ£o foi possÃ­vel registrar a nova proposta negociada.", 500);
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { apiError, logBaseCadastroError, requireAuthenticatedRequest } from "@/lib/base-cadastros/api-helpers";
+import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
+import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import {
   classifyPurchaseQuoteEvidence,
   getPurchaseQuoteEvidenceConfidenceFromClassification,
@@ -467,21 +468,21 @@ function incrementSupplierRanking(map: Map<string, SupplierRanking>, input: {
 }
 
 export async function GET(request: Request) {
-  const { session, response } = await requireAuthenticatedRequest();
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.documentationView);
 
-  if (response || !session) {
+  if (response || !context) {
     return response;
   }
 
   try {
     const filters = readDateFilters(request.url);
-    const accessibleUnitIds = session.units.map((unit) => unit.id);
+    const accessibleUnitIds = context.accessibleUnitIds;
 
     if (!accessibleUnitIds.length) {
       return NextResponse.json(createEmptyPayload(filters));
     }
 
-    const supabase = createSupabaseAdminClient();
+    const supabase = context.supabase;
     let quoteQuery = supabase
       .from("purchase_quotes")
       .select(
