@@ -14,6 +14,7 @@ import { HrCandidateResumeCard } from "@/components/hr/hr-candidate-resume-card"
 import { HrCandidateScorecardClient } from "@/components/hr/hr-candidate-scorecard-client";
 import { HrCandidateAdmissionActionButton, HrCandidateAdmissionConversionCard } from "@/components/hr/hr-candidate-admission-conversion-card";
 import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
+import { calculateCandidatePhase } from "@/lib/hr/recruitment-phases";
 import {
   type Candidate,
   type CandidateAdmissionConversion,
@@ -187,6 +188,12 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
 
   const isCandidateApproved = candidate.status === "aprovado";
   const admissionWorkflowId = admissionConversion?.status === "completed" ? admissionConversion.admission_workflow_id : null;
+  const operationalPhase = calculateCandidatePhase({
+    status: candidate.status,
+    humanOpinion: candidate.human_opinion,
+    interviewCount: interviews.length,
+    hasAdmission: Boolean(admissionWorkflowId)
+  });
 
   return (
     <div className="space-y-5">
@@ -202,7 +209,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
+              <StatusBadge status={operationalPhase.tone} label={`Fase atual: ${operationalPhase.label}`} />
               <StatusBadge status="visual" label="Decisão humana" />
             </div>
             <h2 className="mt-2 break-words text-lg font-semibold text-foreground">{candidate.full_name}</h2>
@@ -229,7 +236,7 @@ export function HrCandidateDetailClient({ workflowId, candidateId }: { workflowI
             {isCandidateApproved && candidate.phone_redacted ? (
               <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Telefone oculto por permissão. Consulte apenas quando necessário para contato operacional.</p>
             ) : null}
-            {isCandidateApproved ? <p className="mt-3 text-sm text-muted-foreground">{admissionWorkflowId ? "Admissão já aberta para acompanhamento." : "Próxima etapa: encaminhar para admissão."}</p> : null}
+            {isCandidateApproved ? <p className="mt-3 text-sm text-muted-foreground">Próxima ação: {operationalPhase.nextAction}.</p> : null}
             {isCandidateApproved && decisionMessage ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{decisionMessage}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">

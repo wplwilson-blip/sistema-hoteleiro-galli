@@ -4,14 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BriefcaseBusiness, CheckCircle2, Loader2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Loader2, ShieldAlert } from "lucide-react";
 import { ErrorMessage, Field, SelectField, TextArea } from "@/components/base-cadastros/crud-components";
-import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
-import { HrRecruitmentTimeline } from "@/components/hr/hr-recruitment-timeline";
 import { useAppStore } from "@/store/app-store";
 
 type RecordStatus = "active" | "inactive" | "archived";
@@ -100,21 +98,6 @@ function compactText(value: string) {
 function managerLabel(user: UserOption | undefined) {
   if (!user) return "";
   return user.displayName || user.username;
-}
-
-function formatOperationalDeadline(minutes: number | null) {
-  if (!minutes) return null;
-
-  if (minutes % 1440 === 0) {
-    const days = minutes / 1440;
-    return `${days} ${days === 1 ? "dia" : "dias"}`;
-  }
-
-  if (minutes % 60 === 0) {
-    return `${minutes / 60}h`;
-  }
-
-  return `${minutes} min`;
 }
 
 function normalizeStepKey(value: string) {
@@ -303,31 +286,29 @@ export function HrJobOpeningCreateClient() {
   return (
     <div className="space-y-5">
       <HrRecruitmentBreadcrumb items={[{ label: "Vagas", href: "/rh/vagas" }, { label: "Nova vaga" }]} />
-      <HrRecruitmentTimeline
-        mode="job_opening"
-        currentStage="request"
-        title="Linha do tempo da vaga"
-        description="A abertura da vaga é o primeiro passo antes de aprovação, recrutamento, candidatos e admissão."
-      />
 
-      <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-normal text-foreground">Solicitação de abertura de vaga</h1>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Preencha as informações para o RH validar a necessidade da vaga.</p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Link href="/rh/vagas">
+            <ArrowLeft className="h-4 w-4" />
+            Voltar para Vagas
+          </Link>
+        </Button>
+      </div>
+
+      <Card className="min-w-0 border-border/80 bg-muted/15 p-4 shadow-sm shadow-primary/5">
+        <div className="flex min-w-0 gap-3">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status="info" label="Solicitação formal" />
-              <StatusBadge status="visual" label="Candidatos vinculados depois da abertura" />
-              {selectedTemplate ? <StatusBadge status="success" label={`Roteiro: ${selectedTemplate.name}`} /> : null}
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              A vaga será aberta para aprovação e acompanhamento operacional. Candidatos e entrevistas podem ser vinculados depois da abertura.
+            <h2 className="text-sm font-semibold">Atenção à LGPD</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Informe apenas dados necessários para justificar a abertura da vaga. Evite registrar dados pessoais sensíveis ou detalhes desnecessários sobre colaboradores ou candidatos.
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/rh/vagas">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar para Vagas
-            </Link>
-          </Button>
         </div>
       </Card>
 
@@ -335,7 +316,7 @@ export function HrJobOpeningCreateClient() {
       {error ? <ErrorMessage message={error} /> : null}
 
       <form
-        className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+        className="space-y-5"
         onSubmit={(event) => {
           event.preventDefault();
           if (!createMutation.isPending) createMutation.mutate();
@@ -398,55 +379,12 @@ export function HrJobOpeningCreateClient() {
 
         </Card>
 
-        <div className="space-y-4">
-          <Card className="hidden">
-            <div className="mb-3 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Etapas previstas</h2>
-            </div>
-            {templatesQuery.isLoading ? (
-              <div className="flex items-center rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
-                Carregando etapas previstas...
-              </div>
-            ) : selectedTemplate ? (
-              <div className="space-y-2">
-                <StatusBadge status="success" label={`${selectedTemplate.steps?.length ?? 0} etapas encontradas`} />
-                {(selectedTemplate.steps ?? []).slice().sort((left, right) => left.order_index - right.order_index).map((step) => (
-                  <div key={step.step_key} className="rounded-md border bg-background px-3 py-2 text-sm">
-                    <p className="font-medium">{step.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {step.requires_approval ? "Requer aprovação" : "Etapa operacional"}
-                      {formatOperationalDeadline(step.default_sla_minutes) ? ` · prazo previsto ${formatOperationalDeadline(step.default_sla_minutes)}` : ""}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Roteiro de vaga ativo com etapas não encontrado. A abertura fica bloqueada para preservar o processo correto.
-              </div>
-            )}
-          </Card>
-
-          <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
-            <div className="mb-3 flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Escopo e LGPD</h2>
-            </div>
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <p>Não informe salário, benefícios, dados pessoais de candidatos, documentos, anexos ou dados médicos.</p>
-              <p>A solicitação fica registrada para acompanhamento do RH, com candidatos e entrevistas vinculados ao processo quando necessário.</p>
-            </div>
-          </Card>
-
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button asChild type="button" variant="outline"><Link href="/rh/vagas">Cancelar</Link></Button>
-            <Button type="submit" disabled={createMutation.isPending || isLoadingLookups || templatesQuery.isLoading}>
-              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <BriefcaseBusiness className="h-4 w-4" />}
-              Abrir vaga
-            </Button>
-          </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button asChild type="button" variant="outline"><Link href="/rh/vagas">Cancelar</Link></Button>
+          <Button type="submit" disabled={createMutation.isPending || isLoadingLookups || templatesQuery.isLoading}>
+            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <BriefcaseBusiness className="h-4 w-4" />}
+            Enviar para validação do RH
+          </Button>
         </div>
       </form>
     </div>

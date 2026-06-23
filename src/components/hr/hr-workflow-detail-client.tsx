@@ -34,10 +34,11 @@ import { HrCandidateAdmissionActionButton } from "@/components/hr/hr-candidate-a
 import { HrJobRequirementPreview } from "@/components/hr/hr-job-requirement-preview";
 import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
 import { HrRecruitmentTimeline, type HrRecruitmentStageKey } from "@/components/hr/hr-recruitment-timeline";
-import { candidateStatusLabel, candidateStatusTone, formatPhone, type Candidate, type CandidateSummary } from "@/components/hr/hr-candidate-shared";
+import { formatPhone, type Candidate, type CandidateSummary } from "@/components/hr/hr-candidate-shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { calculateCandidatePhase, calculateJobOpeningPhase, isAdmissionActive, isAdmissionCompleted, parseRequestedQuantity } from "@/lib/hr/recruitment-phases";
 
 type StatusTone = "visual" | "warning" | "danger" | "success" | "info";
 
@@ -201,6 +202,18 @@ type AdmissionProcessForCandidate = {
 
 type AdmissionProcessesByJobOpeningResponse = {
   data: AdmissionProcessForCandidate[];
+};
+
+type JobOpeningOperationalContext = {
+  phase: ReturnType<typeof calculateJobOpeningPhase>;
+  requestedQuantity: number;
+  approvedWithoutAdmission: number;
+  admissionsInProgress: number;
+  admissionsCompleted: number;
+  activeCandidates: number;
+  totalCandidates: number;
+  coveredPositions: number;
+  remainingPositions: number;
 };
 
 type AdmissionPersistentProcess = {
@@ -799,7 +812,7 @@ function jobOpeningNextActionInfo(
   }
 
   return {
-    title: currentStep ? "Avancar etapa atual" : "Acompanhar solicitação da vaga",
+    title: currentStep ? "Conferir etapa atual" : "Acompanhar solicitação da vaga",
     description: currentStep
       ? "Use as ações disponíveis desta etapa para manter a vaga em movimento."
       : "A vaga ainda não possui etapa ativa exibida para o seu perfil.",
@@ -807,9 +820,65 @@ function jobOpeningNextActionInfo(
   };
 }
 
-function jobOpeningNextAction(workflow: WorkflowDetail, currentStep: WorkflowStep | null, summary?: CandidateSummary | null) {
-  const action = jobOpeningNextActionInfo(workflow, currentStep, summary);
-  return `${action.title}: ${action.description}`;
+function buildJobOpeningOperationalContext(
+  workflow: WorkflowDetail,
+  currentStep: WorkflowStep | null,
+  summary: CandidateSummary | null,
+  admissionProcesses: AdmissionProcessForCandidate[]
+): JobOpeningOperationalContext {
+  const requestedQuantity = parseRequestedQuantity(workflow.metadata);
+  const admissionsCompleted = admissionProcesses.filter((process) => isAdmissionCompleted(process.status)).length;
+  const admissionsInProgress = admissionProcesses.filter((process) => isAdmissionActive(process.status) && !isAdmissionCompleted(process.status)).length;
+  const approvedWithoutAdmission = Math.max(0, (summary?.aprovado ?? 0) - admissionProcesses.length);
+  const totalCandidates = summary?.total ?? 0;
+  const activeCandidates = Math.max(0, totalCandidates - (summary?.aprovado ?? 0) - (summary?.reprovado ?? 0));
+  const coveredPositions = Math.min(requestedQuantity, admissionsInProgress + admissionsCompleted);
+  const remainingPositions = Math.max(0, requestedQuantity - coveredPositions);
+  const phase = calculateJobOpeningPhase({
+    status: workflow.status,
+    currentStepName: currentStep?.name,
+    currentStepStatus: currentStep?.status,
+    canExecute: workflow.allowed_actions?.execute,
+    canApprove: workflow.allowed_actions?.approve,
+    requestedQuantity,
+    totalCandidates,
+    activeCandidates,
+    approvedWithoutAdmission,
+    admissionsInProgress,
+    admissionsCompleted
+  });
+
+  return {
+    phase,
+    requestedQuantity,
+    approvedWithoutAdmission,
+    admissionsInProgress,
+    admissionsCompleted,
+    activeCandidates,
+    totalCandidates,
+    coveredPositions,
+    remainingPositions
+  };
+}
+
+function positionLabel(quantity: number) {
+  return quantity === 1 ? "vaga" : "vagas";
+}
+
+function isJobOpeningRecruitmentReady(context: JobOpeningOperationalContext | null) {
+  return Boolean(
+    context &&
+      [
+        "approved_for_recruitment",
+        "recruiting",
+        "candidate_approved",
+        "in_admission",
+        "recruiting_partial_admission",
+        "ready_to_close",
+        "completed_with_hire",
+        "completed"
+      ].includes(context.phase.key)
+  );
 }
 
 function workflowReturnLink(workflow: WorkflowDetail, isJobOpening: boolean, isAdmission: boolean) {
@@ -829,9 +898,13 @@ function workflowReturnLink(workflow: WorkflowDetail, isJobOpening: boolean, isA
 function jobOpeningTimelineStage(
   workflow: WorkflowDetail,
   currentStep: WorkflowStep | null,
-  summary: CandidateSummaryResponse["summary"] | null | undefined
+  summary: CandidateSummaryResponse["summary"] | null | undefined,
+  context?: JobOpeningOperationalContext | null
 ): HrRecruitmentStageKey {
   const stepName = currentStep?.name.toLowerCase() ?? "";
+  if (context?.phase.key === "waiting_director_approval") return "approval";
+  if (context?.phase.key === "waiting_hr_validation" || context?.phase.key === "hr_validation" || context?.phase.key === "returned_for_adjustment") return "request";
+  if (context && !isJobOpeningRecruitmentReady(context)) return "request";
   if (stepName.includes("admiss")) return "admission";
   if ((summary?.aprovado ?? 0) > 0) return "candidate_approved";
   if ((summary?.total ?? 0) > 0 || stepName.includes("candidat") || stepName.includes("entrevista")) return "candidates";
@@ -935,6 +1008,58 @@ function TechnicalMetadataPanel({ metadata }: { metadata: Record<string, unknown
   );
 }
 
+function JobOpeningCompactHeader({
+  workflow,
+  context,
+  returnLink
+}: {
+  workflow: WorkflowDetail;
+  context: JobOpeningOperationalContext;
+  returnLink: { href: string; label: string };
+}) {
+  const department = metadataText(workflow.metadata, "department") || "Departamento a confirmar";
+  const jobPosition = metadataText(workflow.metadata, "job_position") || "Cargo a confirmar";
+  const dueText = workflow.sla?.due_at ? formatRelativeSla(workflow.sla) : formatDate(metadataText(workflow.metadata, "requested_start_date"));
+  const subtitleParts = [
+    unitDisplayName(workflow),
+    department,
+    `${context.requestedQuantity} ${positionLabel(context.requestedQuantity)}`,
+    context.phase.label,
+    dueText
+  ].filter(Boolean);
+
+  return (
+    <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-2">
+          <HrRecruitmentBreadcrumb items={[{ label: "Vagas", href: "/rh/vagas" }, { label: "Detalhe da vaga" }]} />
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="break-words text-lg font-semibold text-foreground">Solicitação de vaga — {jobPosition}</h1>
+            <StatusBadge status={context.phase.tone} label={context.phase.label} />
+            <StatusBadge status={slaTone(workflow.sla?.status)} label={slaLabel(workflow.sla)} />
+            {workflow.is_sensitive ? <StatusBadge status="warning" label="Restrito" /> : null}
+          </div>
+          <p className="break-words text-sm text-muted-foreground">{subtitleParts.join(" · ")}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/rh">
+              <LayoutDashboard className="h-4 w-4" />
+              Painel
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href={returnLink.href}>
+              <ArrowLeft className="h-4 w-4" />
+              {returnLink.label}
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function JobOpeningSummaryPanel({ workflow }: { workflow: WorkflowDetail }) {
   const metadata = workflow.metadata ?? {};
   const department = metadataText(metadata, "department") || "Não informado";
@@ -999,25 +1124,21 @@ function CandidateSummaryPanel({
   workflowId,
   summary,
   candidates,
+  admissionProcesses,
   isLoading,
   error
 }: {
   workflowId: string;
   summary: CandidateSummaryResponse["summary"] | null;
   candidates: Candidate[];
+  admissionProcesses: AdmissionProcessForCandidate[];
   isLoading: boolean;
   error: unknown;
 }) {
   const values = summary ?? { total: 0, triagem: 0, entrevista: 0, aprovado: 0, reprovado: 0 };
-  const admissionProcessesQuery = useQuery({
-    queryKey: ["hr", "admission-processes", "job-opening", workflowId],
-    queryFn: async () => requestJson<AdmissionProcessesByJobOpeningResponse>(`/api/hr/admission-processes?jobOpeningWorkflowId=${workflowId}&pageSize=100`),
-    enabled: values.aprovado > 0
-  });
-  const admissionProcesses = admissionProcessesQuery.data?.data;
   const admissionByCandidateId = useMemo(() => {
     const map = new Map<string, AdmissionProcessForCandidate>();
-    for (const process of admissionProcesses ?? []) {
+    for (const process of admissionProcesses) {
       if (process.source_candidate_id) map.set(process.source_candidate_id, process);
     }
     return map;
@@ -1028,17 +1149,6 @@ function CandidateSummaryPanel({
     return [...approved, ...active].slice(0, 8);
   }, [candidates]);
   const counterText = `Total: ${values.total} · Triagem: ${values.triagem} · Entrevista: ${values.entrevista} · Aprovados: ${values.aprovado} · Reprovados: ${values.reprovado}`;
-
-  function candidateNextAction(candidate: Candidate, admissionWorkflowId: string | null) {
-    if (candidate.status === "aprovado") return admissionWorkflowId ? "Acompanhar admissão" : "Encaminhar admissão";
-    if (candidate.status === "novo") return "Fazer triagem";
-    if (candidate.status === "triagem") return "Registrar parecer";
-    if (candidate.status === "entrevista") return "Concluir entrevista";
-    if (candidate.status === "banco_de_talentos") return "Consultar histórico";
-    if (candidate.status === "reprovado") return "Consultar decisão";
-    if (candidate.status === "desistiu") return "Consultar desistência";
-    return "Abrir candidato";
-  }
 
   return (
     <Card className="min-w-0 border-border/80 p-4 shadow-sm shadow-primary/5">
@@ -1072,7 +1182,7 @@ function CandidateSummaryPanel({
             <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Fase</th>
                   <th className="px-3 py-2">Candidato</th>
                   <th className="px-3 py-2">Origem</th>
                   <th className="px-3 py-2">Telefone</th>
@@ -1083,13 +1193,18 @@ function CandidateSummaryPanel({
               </thead>
               <tbody className="divide-y">
             {previewCandidates.map((candidate) => {
-              const admissionWorkflowId = admissionByCandidateId.get(candidate.id)?.admission_workflow_id ?? null;
+              const admissionProcess = admissionByCandidateId.get(candidate.id) ?? null;
+              const admissionWorkflowId = admissionProcess?.admission_workflow_id ?? null;
+              const phase = calculateCandidatePhase({
+                status: candidate.status,
+                humanOpinion: candidate.human_opinion,
+                hasAdmission: Boolean(admissionWorkflowId || admissionProcess?.id)
+              });
               return (
                 <tr key={candidate.id} className={cn("align-top hover:bg-muted/30", candidate.status === "aprovado" && "bg-emerald-50/50 hover:bg-emerald-50")}>
                   <td className="px-3 py-3">
                     <div className="flex flex-col items-start gap-1.5">
-                        <StatusBadge status={candidateStatusTone(candidate.status)} label={candidateStatusLabel(candidate.status)} />
-                        {candidate.status === "aprovado" && admissionWorkflowId ? <StatusBadge status="success" label="Em admissão" /> : null}
+                        <StatusBadge status={phase.tone} label={phase.label} />
                     </div>
                   </td>
                   <td className="px-3 py-3">
@@ -1098,7 +1213,7 @@ function CandidateSummaryPanel({
                   <td className="px-3 py-3 text-muted-foreground">{candidate.source || "-"}</td>
                   <td className="px-3 py-3 text-muted-foreground">{candidate.phone_redacted ? "Telefone restrito" : formatPhone(candidate.phone)}</td>
                   <td className="px-3 py-3 text-muted-foreground">{candidate.human_opinion || "Sem parecer"}</td>
-                  <td className="px-3 py-3 text-muted-foreground">{candidateNextAction(candidate, admissionWorkflowId)}</td>
+                  <td className="px-3 py-3 text-muted-foreground">{phase.nextAction}</td>
                   <td className="px-3 py-3 text-right">
                     <div className="flex flex-wrap justify-end gap-2">
                       {candidate.status === "aprovado" ? (
@@ -1131,25 +1246,58 @@ function hasEscalationAlert(escalation: WorkflowEscalation | null | undefined) {
 function JobOpeningNextActionPanel({
   workflow,
   currentStep,
-  summary
+  summary,
+  context
 }: {
   workflow: WorkflowDetail;
   currentStep: WorkflowStep | null;
   summary: CandidateSummary | null;
+  context: JobOpeningOperationalContext;
 }) {
+  const phase = context.phase;
   const action = jobOpeningNextActionInfo(workflow, currentStep, summary);
+  const title = phase.key === "follow_up" ? action.title : phase.nextAction;
+  const showQuantityProgress = isJobOpeningRecruitmentReady(context);
+  const phaseDescriptions: Record<string, string> = {
+    draft: "A solicitação ainda está em preparação e deve ser revisada antes do envio.",
+    waiting_hr_validation: "O RH deve revisar os dados da solicitação antes de enviar para aprovação.",
+    hr_validation: "O RH deve validar cargo, quantidade, gestor e prioridade antes de encaminhar para a diretoria.",
+    waiting_director_approval: "A diretoria deve aprovar, devolver ou reprovar a abertura da vaga.",
+    returned_for_adjustment: "A solicitação foi devolvida e precisa de ajuste antes de seguir.",
+    approved_for_recruitment: "Adicione candidatos para iniciar a captação.",
+    recruiting: "Acompanhe triagem, entrevistas e pareceres dos candidatos vinculados.",
+    candidate_approved: "Encaminhe o candidato aprovado para admissão.",
+    in_admission: "Acompanhe as admissões vinculadas até cobrir a quantidade solicitada.",
+    recruiting_partial_admission: "Há admissão em andamento, mas ainda existem posições a preencher.",
+    ready_to_close: "A quantidade solicitada já está coberta por admissões concluídas."
+  };
+  const description = showQuantityProgress
+    ? context.remainingPositions > 0
+      ? `${context.remainingPositions} ${positionLabel(context.remainingPositions)} ainda sem admissão concluída ou em andamento.`
+      : "Quantidade solicitada coberta por admissões em andamento ou concluídas."
+    : phaseDescriptions[phase.key] ?? action.description;
+  const tone = phase.key === "follow_up" ? action.tone : phase.tone;
 
   return (
-    <Card className="min-w-0 border-primary/30 bg-primary/5 px-4 py-3 shadow-sm shadow-primary/10">
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <Card className="min-w-0 border-primary/30 bg-primary/5 p-4 shadow-sm shadow-primary/10">
+      <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <SquareCheckBig className="h-4 w-4 shrink-0 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Próxima ação: {action.title}</h2>
-            <StatusBadge status={action.tone} label="Ação operacional" />
+            <h2 className="text-sm font-semibold text-foreground">Próxima ação: {title}</h2>
+            <StatusBadge status={tone} label={phase.label} />
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{action.description}</p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
         </div>
+        {showQuantityProgress ? (
+          <div className="grid min-w-0 gap-2 sm:grid-cols-5 xl:w-[620px]">
+            <InfoTile label="Solicitadas" value={String(context.requestedQuantity)} icon={UsersRound} />
+            <InfoTile label="Aprovadas" value={String(context.approvedWithoutAdmission)} icon={CheckCircle2} />
+            <InfoTile label="Em admissão" value={String(context.admissionsInProgress)} icon={UserPlus} />
+            <InfoTile label="Concluídas" value={String(context.admissionsCompleted)} icon={SquareCheckBig} />
+            <InfoTile label="Restantes" value={String(context.remainingPositions)} icon={ListChecks} />
+          </div>
+        ) : null}
       </div>
     </Card>
   );
@@ -1983,7 +2131,7 @@ const actionLabelsForUi: Record<
   }
 > = {
   execute: {
-    label: "Avançar etapa",
+    label: "Registrar etapa",
     success: "Etapa concluída com sucesso.",
     confirmTitle: "Confirmar avanço da etapa",
     confirmDescription: "A etapa atual será registrada como concluída.",
@@ -2052,6 +2200,11 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
     queryFn: async () => requestJson<CandidateSummaryResponse>(`/api/hr/workflows/${workflowId}/candidates?page_size=8`),
     enabled: workflow?.workflow_type === "job_opening"
   });
+  const jobOpeningAdmissionProcessesQuery = useQuery({
+    queryKey: ["hr", "admission-processes", "job-opening-detail", workflowId],
+    queryFn: async () => requestJson<AdmissionProcessesByJobOpeningResponse>(`/api/hr/admission-processes?jobOpeningWorkflowId=${workflowId}&pageSize=100`),
+    enabled: workflow?.workflow_type === "job_opening" && (candidateSummaryQuery.data?.summary?.aprovado ?? 0) > 0
+  });
   const persistentAdmissionQuery = useQuery({
     queryKey: ["hr", "admission-process", "workflow", workflowId],
     queryFn: async () => requestJson<AdmissionPersistentLookupResponse>(`/api/hr/admission-processes?workflowId=${workflowId}`),
@@ -2080,9 +2233,14 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
   const isAdmission = workflow.workflow_type === "admission";
   const returnLink = workflowReturnLink(workflow, isJobOpening, isAdmission);
   const candidateSummary = candidateSummaryQuery.data?.summary ?? null;
+  const jobOpeningAdmissionProcesses = jobOpeningAdmissionProcessesQuery.data?.data ?? [];
+  const jobOpeningContext = isJobOpening ? buildJobOpeningOperationalContext(workflow, currentStep, candidateSummary, jobOpeningAdmissionProcesses) : null;
+  const showJobOpeningRecruitmentArea = isJobOpeningRecruitmentReady(jobOpeningContext);
 
   return (
     <div className="space-y-5">
+      {isJobOpening && jobOpeningContext ? <JobOpeningCompactHeader workflow={workflow} context={jobOpeningContext} returnLink={returnLink} /> : null}
+      {!isJobOpening ? (
       <Card className="min-w-0 border-border/80 bg-card/95 p-4 shadow-sm shadow-primary/5 backdrop-blur">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-2">
@@ -2129,14 +2287,16 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
           </div>
         </div>
       </Card>
+      ) : null}
 
-      {isJobOpening ? <JobOpeningNextActionPanel workflow={workflow} currentStep={currentStep} summary={candidateSummary} /> : null}
+      {isJobOpening && jobOpeningContext ? <JobOpeningNextActionPanel workflow={workflow} currentStep={currentStep} summary={candidateSummary} context={jobOpeningContext} /> : null}
 
-      {isJobOpening ? (
+      {isJobOpening && showJobOpeningRecruitmentArea ? (
         <CandidateSummaryPanel
           workflowId={workflow.id}
           summary={candidateSummaryQuery.data?.summary ?? null}
           candidates={candidateSummaryQuery.data?.data ?? []}
+          admissionProcesses={jobOpeningAdmissionProcesses}
           isLoading={candidateSummaryQuery.isLoading}
           error={candidateSummaryQuery.error}
         />
@@ -2175,12 +2335,12 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
       {isJobOpening ? <JobOpeningSummaryPanel workflow={workflow} /> : null}
       {isJobOpening ? (
         <details className="rounded-lg border border-border/80 bg-card p-4 shadow-sm shadow-primary/5">
-          <summary className="cursor-pointer text-sm font-semibold text-foreground">Ver linha do tempo da vaga</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-foreground">Ver histórico da vaga</summary>
           <div className="mt-4">
             <HrRecruitmentTimeline
               mode="job_opening"
-              currentStage={jobOpeningTimelineStage(workflow, currentStep, candidateSummary)}
-              title="Linha do tempo da vaga"
+              currentStage={jobOpeningTimelineStage(workflow, currentStep, candidateSummary, jobOpeningContext)}
+              title="Histórico da vaga"
               description="Resumo da vaga desde a solicitação até o início da admissão."
             />
           </div>
@@ -2203,7 +2363,7 @@ export function HrWorkflowDetailClient({ workflowId }: { workflowId: string }) {
         </Card>
       ) : null}
 
-      <WorkflowActionPanel workflow={workflow} currentStep={currentStep} onSuccess={() => undefined} />
+      {!isJobOpening ? <WorkflowActionPanel workflow={workflow} currentStep={currentStep} onSuccess={() => undefined} /> : null}
 
       {isJobOpening ? (
         <EscalationPanel escalation={workflow.escalation} hideWhenQuiet />

@@ -95,6 +95,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Painel RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
       { label: "Fila RH", href: "/rh/inbox", icon: Inbox },
       { type: "section", label: "RECRUTAMENTO E SELEÇÃO" },
+      { label: "Dashboard", href: "/rh/recrutamento", icon: BarChart3, match: "exact" },
       { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
       { type: "section", label: "ADMISSÃO" },
       { label: "Admissões", href: "/rh/admissoes", icon: ClipboardCheck, match: "exact" },
