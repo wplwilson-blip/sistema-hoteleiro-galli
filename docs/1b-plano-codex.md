@@ -11,7 +11,7 @@ Esta etapa ainda e plano. Nao altera codigo, banco, Auth, login, Supabase Auth, 
 - `supabase/migrations/065_purchase_approval_decision_grants_split.sql`
 - `src/lib/auth/permissions.ts`
 - `src/lib/purchases/approval-authorization.ts`
-- `tests/unit/purchases/approval-authorization.spec.ts`
+- `src/app/api/purchases/approvals/[requestId]/decision/route.ts`
 
 ## Migration prevista
 
@@ -144,6 +144,8 @@ where profile_permission.permission_id = permission.id
 
 ## Validacoes SQL previstas apos aplicacao
 
+SELECT 1 - permissao antiga e permissoes novas:
+
 ```sql
 select code, status, deleted_at
 from public.permissions
@@ -154,6 +156,14 @@ where code in (
 )
 order by code;
 ```
+
+Resultado esperado:
+
+- `PURCHASES:approvals.decide.administrative` existe e esta ativa.
+- `PURCHASES:approvals.decide.directorate` existe e esta ativa.
+- `PURCHASES:approvals.decide` pode continuar existindo em `permissions`, mas nao deve ter grants ativos.
+
+SELECT 2 - grants ativos por perfil:
 
 ```sql
 select
@@ -172,17 +182,18 @@ where permission.code in (
   'PURCHASES:approvals.decide.administrative',
   'PURCHASES:approvals.decide.directorate'
 )
+  and profile_permission.is_allowed = true
+  and profile_permission.status = 'active'
+  and profile_permission.deleted_at is null
 order by access_profile.code, permission.code;
 ```
 
 Resultado esperado:
 
-- `PURCHASES:approvals.decide.administrative` existe e esta ativa.
-- `PURCHASES:approvals.decide.directorate` existe e esta ativa.
 - `DEPARTMENT_MANAGER` tem grant ativo apenas de `PURCHASES:approvals.decide.administrative`.
 - `UNIT_DIRECTOR` tem grants ativos de `PURCHASES:approvals.decide.administrative` e `PURCHASES:approvals.decide.directorate`.
 - `NETWORK_MANAGER` tem grants ativos de `PURCHASES:approvals.decide.administrative` e `PURCHASES:approvals.decide.directorate`.
-- Nao existe grant ativo restante para `PURCHASES:approvals.decide`.
+- Nao aparece nenhum grant ativo para `PURCHASES:approvals.decide`.
 - `SUPER_ADMIN` nao precisa de grant novo nem antigo porque passa pelo atalho do helper.
 
 ## Nova logica da funcao
@@ -243,41 +254,47 @@ Mensagens previstas:
 
 Observacao: o bloqueio da Gerencia Administrativa em `general_directorate` fica garantido pela ausencia do grant `PURCHASES:approvals.decide.directorate` para `DEPARTMENT_MANAGER`, nao por `if` baseado em nome de perfil.
 
-## Testes unitarios previstos
+## Gate da rota de decisao
 
-Como o projeto nao tem runner unitario dedicado e ja usa `@playwright/test`, os testes serao criados em:
+Arquivo:
 
 ```text
-tests/unit/purchases/approval-authorization.spec.ts
+src/app/api/purchases/approvals/[requestId]/decision/route.ts
 ```
 
-Runner previsto:
+Mudanca prevista:
 
-```powershell
-npx playwright test tests/unit/purchases/approval-authorization.spec.ts --project=chromium
-```
+- Trocar o gate inicial de `requirePermission(PURCHASES_PERMISSIONS.approvalsDecide)` para `requirePermission(PURCHASES_PERMISSIONS.approvalsView)`.
+- `approvalsView` serve apenas para autenticar, montar `context`, obter `context.supabase` e carregar `context.accessibleUnitIds`.
+- A autoridade real de decisao continua exclusivamente em `assertCanDecidePurchaseApprovalLevel`, depois que o `approvalLevel` real e resolvido pelo snapshot.
+- Nao duplicar a checagem de alcada no gate da rota.
+- Manter o filtro de unidade ja existente antes de carregar/decidir a compra.
 
-Testes:
+Motivo:
 
-1. `DEPARTMENT_MANAGER` com permissao `PURCHASES:approvals.decide.administrative` e vinculo na unidade decide `administrative_management`.
-2. `DEPARTMENT_MANAGER` sem permissao `PURCHASES:approvals.decide.directorate` nao decide `general_directorate`.
-3. `UNIT_DIRECTOR` com permissao `PURCHASES:approvals.decide.directorate` e vinculo na unidade decide `general_directorate`.
-4. `UNIT_DIRECTOR` com permissao na unidade A nao decide compra da unidade B.
-5. `NETWORK_MANAGER` com permissao `PURCHASES:approvals.decide.directorate` e vinculo na unidade decide `general_directorate`.
-6. `NETWORK_MANAGER` tambem decide `administrative_management` quando tiver permissao administrativa na unidade.
-7. `SUPER_ADMIN` decide `administrative_management` sem depender de grant.
-8. `SUPER_ADMIN` decide `general_directorate` sem depender de grant.
-9. Falha tecnica na consulta de permissao vira `PurchaseApprovalAuthorizationError` com status `500`.
-10. Falta de permissao vira `PurchaseApprovalAuthorizationError` com status `403`.
+- A permissao antiga `PURCHASES:approvals.decide` sera revogada pela migration 065.
+- Se a rota continuar exigindo a permissao antiga no gate, a decisao quebra antes de chegar na nova validacao por alcada.
+- Todos os decisores previstos ja possuem `PURCHASES:approvals.view` no desenho atual.
 
-Os testes serao unitarios com Supabase mockado. Nao devem acessar banco real, nao devem alterar dados e nao devem depender de usuario real.
+## Casos de validacao funcional esperados
+
+Sem criar runner unitario novo e sem instalar `vitest`/`jest`.
+
+1. `DEPARTMENT_MANAGER` decide `administrative_management` somente na unidade em que possui vinculo/permissao.
+2. `DEPARTMENT_MANAGER` nao decide `general_directorate`, porque nao possui `PURCHASES:approvals.decide.directorate`.
+3. `UNIT_DIRECTOR` decide `general_directorate` somente na unidade em que possui vinculo/permissao.
+4. `UNIT_DIRECTOR` tambem decide `administrative_management` na unidade em que possui vinculo/permissao.
+5. `NETWORK_MANAGER` decide `general_directorate` somente em unidade dentro do seu escopo.
+6. `NETWORK_MANAGER` tambem decide `administrative_management` dentro do seu escopo.
+7. `SUPER_ADMIN` decide `administrative_management` e `general_directorate` pelo atalho ja existente em `userHasPermissionForUnit`.
+8. Usuario sem permissao de decisao da alcada recebe `PurchaseApprovalAuthorizationError` com status `403`.
+9. Falha tecnica de validacao de permissao vira `PurchaseApprovalAuthorizationError` com status `500`.
 
 ## Validacoes finais previstas
 
 Depois da aprovacao deste plano e da implementacao:
 
 ```powershell
-npx playwright test tests/unit/purchases/approval-authorization.spec.ts --project=chromium
 npm.cmd run lint
 npm.cmd run build
 git diff --check
