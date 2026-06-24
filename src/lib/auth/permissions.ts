@@ -36,6 +36,8 @@ export const PURCHASES_PERMISSIONS = {
   approvalsView: "PURCHASES:approvals.view",
   approvalsSubmit: "PURCHASES:approvals.submit",
   approvalsDecide: "PURCHASES:approvals.decide",
+  approvalsDecideAdministrative: "PURCHASES:approvals.decide.administrative",
+  approvalsDecideDirectorate: "PURCHASES:approvals.decide.directorate",
   documentationView: "PURCHASES:documentation.view"
 } as const;
 

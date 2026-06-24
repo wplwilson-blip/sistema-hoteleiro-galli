@@ -72,7 +72,7 @@ async function insertPurchaseRequestEvent(
 }
 
 export async function POST(request: Request, { params }: { params: { requestId: string } }) {
-  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsDecide);
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsView);
 
   if (response || !context) {
     return response;

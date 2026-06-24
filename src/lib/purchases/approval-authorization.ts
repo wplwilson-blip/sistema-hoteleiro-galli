@@ -1,8 +1,6 @@
 import type { SessionContext } from "@/lib/auth/types";
-import { SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
+import { PURCHASES_PERMISSIONS, PermissionAuthorizationError, userHasPermissionForUnit } from "@/lib/auth/permissions";
 import type { PurchaseApprovalLevel, SupabaseAdmin } from "@/lib/purchases/api";
-
-const DIRECTORATE_PROFILE_CODES = ["UNIT_DIRECTOR"];
 
 export class PurchaseApprovalAuthorizationError extends Error {
   status: number;
@@ -14,33 +12,6 @@ export class PurchaseApprovalAuthorizationError extends Error {
   }
 }
 
-async function hasActiveUnitProfile(
-  supabase: SupabaseAdmin,
-  input: {
-    userId: string;
-    unitId: string;
-    profileCodes: string[];
-  }
-) {
-  const { data, error } = await supabase
-    .from("user_unit_links")
-    .select("id, access_profiles!inner(code)")
-    .eq("app_user_id", input.userId)
-    .eq("unit_id", input.unitId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .in("access_profiles.code", input.profileCodes)
-    .eq("access_profiles.status", "active")
-    .is("access_profiles.deleted_at", null)
-    .limit(1);
-
-  if (error) {
-    throw new PurchaseApprovalAuthorizationError("Nao foi possivel validar a autoridade para decidir este dossie.", 500);
-  }
-
-  return Boolean(data?.length);
-}
-
 export async function assertCanDecidePurchaseApprovalLevel(
   supabase: SupabaseAdmin,
   input: {
@@ -49,24 +20,34 @@ export async function assertCanDecidePurchaseApprovalLevel(
     approvalLevel: PurchaseApprovalLevel;
   }
 ) {
-  if (input.approvalLevel !== "general_directorate") {
-    if (input.session.profile.code !== SUPER_ADMIN_PROFILE_CODE) {
-      throw new PurchaseApprovalAuthorizationError("Voce nao tem permissao para decidir aprovacoes de compras.", 403);
+  const requiredPermission =
+    input.approvalLevel === "general_directorate"
+      ? PURCHASES_PERMISSIONS.approvalsDecideDirectorate
+      : PURCHASES_PERMISSIONS.approvalsDecideAdministrative;
+  const forbiddenMessage =
+    input.approvalLevel === "general_directorate"
+      ? "Aprovacao restrita a Diretoria Geral. Seu perfil nao possui autoridade para decidir este dossie nesta unidade."
+      : "Voce nao tem permissao para decidir aprovacoes administrativas de compras nesta unidade.";
+
+  try {
+    const canDecide = await userHasPermissionForUnit(supabase, input.session, requiredPermission, input.unitId, {
+      validationErrorMessage: "Nao foi possivel validar a autoridade para decidir este dossie.",
+      unitValidationErrorMessage: "Nao foi possivel validar a autoridade para decidir este dossie."
+    });
+
+    if (canDecide) {
+      return;
+    }
+  } catch (error) {
+    if (error instanceof PermissionAuthorizationError) {
+      throw new PurchaseApprovalAuthorizationError(error.message, error.status);
     }
 
-    return;
-  }
-
-  const hasDirectorateAuthority = await hasActiveUnitProfile(supabase, {
-    userId: input.session.user.id,
-    unitId: input.unitId,
-    profileCodes: DIRECTORATE_PROFILE_CODES
-  });
-
-  if (!hasDirectorateAuthority) {
     throw new PurchaseApprovalAuthorizationError(
-      "Aprovacao restrita a Diretoria. Seu perfil nao possui autoridade para decidir este dossie.",
-      403
+      "Nao foi possivel validar a autoridade para decidir este dossie.",
+      500
     );
   }
+
+  throw new PurchaseApprovalAuthorizationError(forbiddenMessage, 403);
 }
