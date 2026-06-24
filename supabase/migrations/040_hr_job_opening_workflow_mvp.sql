@@ -1,4 +1,4 @@
-﻿-- RH-9.2B - Solicitacao de Vaga MVP.
+-- RH-9.2B - Solicitacao de Vaga MVP.
 -- Adiciona job_opening ao workflow engine RH existente e cria template operacional minimo.
 -- Nao cria ATS, candidatos, entrevistas, IA, upload, assinatura, folha, ponto ou engine paralelo.
 
