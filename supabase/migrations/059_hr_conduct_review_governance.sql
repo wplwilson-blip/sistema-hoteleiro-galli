@@ -39,16 +39,12 @@ create index if not exists employee_conduct_reviews_record_idx
 
 alter table public.employee_conduct_reviews enable row level security;
 
-insert into public.permissions (code, description)
+-- Permissao de revisao de conduta: formato correto (module_code, action_code, name, description).
+-- Sem grants aqui (ver 058): atribuicao de acesso a conduta e tratada sob criterio de RH/LGPD.
+insert into public.permissions (module_code, action_code, name, description)
 values
-  ('HR:conduct.review', 'Revisar, aprovar e rejeitar registros de conduta')
+  ('HR', 'conduct.review', 'Revisar conduta', 'Permite revisar, aprovar e rejeitar registros de conduta.')
 on conflict (code) do nothing;
-
-insert into public.role_permissions (role, permission_code)
-select 'SUPER_ADMIN', permission.code
-from public.permissions permission
-where permission.code = 'HR:conduct.review'
-on conflict (role, permission_code) do nothing;
 
 comment on table public.employee_conduct_reviews is
   'Historico formal de revisao de registros de conduta e ocorrencias para RH-21.2.';

@@ -72,22 +72,16 @@ begin
   end if;
 end $$;
 
-insert into public.permissions (code, description)
+-- Permissoes de conduta: formato correto (module_code, action_code, name, description).
+-- A coluna code e gerada (module_code || ':' || action_code) e nao pode ser inserida diretamente.
+-- Nao concede grants aqui: a atribuicao de acesso a conduta (dado sensivel) e tratada
+-- separadamente sob criterio de RH/LGPD. Espelha o estado real de producao.
+insert into public.permissions (module_code, action_code, name, description)
 values
-  ('HR:conduct.view', 'Visualizar conduta e ocorrencias de colaboradores'),
-  ('HR:conduct.manage', 'Gerenciar conduta e ocorrencias de colaboradores'),
-  ('HR:conduct.sensitive.view', 'Visualizar dados sensiveis de conduta e ocorrencias')
+  ('HR', 'conduct.view', 'Visualizar conduta', 'Permite visualizar conduta e ocorrências de colaboradores.'),
+  ('HR', 'conduct.manage', 'Gerenciar conduta', 'Permite criar e manter conduta e ocorrências de colaboradores.'),
+  ('HR', 'conduct.sensitive.view', 'Visualizar conduta sensível', 'Permite visualizar dados sensíveis de conduta e ocorrências.')
 on conflict (code) do nothing;
-
-insert into public.role_permissions (role, permission_code)
-select 'SUPER_ADMIN', permission.code
-from public.permissions permission
-where permission.code in (
-  'HR:conduct.view',
-  'HR:conduct.manage',
-  'HR:conduct.sensitive.view'
-)
-on conflict (role, permission_code) do nothing;
 
 comment on table public.employee_conduct_records is
   'Registros administrativos de conduta e ocorrencias do colaborador para RH-21.1.';
