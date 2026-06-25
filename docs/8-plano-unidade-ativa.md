@@ -46,13 +46,32 @@ Adiciona-se um **filtro final opcional** que estreita o resultado para a unidade
   1. calcula `allowedUnitIds` (união) exatamente como hoje (inclui o caminho super admin);
   2. se `scope === "active-unit"`: `accessibleUnitIds = uniao ∩ [activeUnitId]`
      (o `activeUnitId` validado vem do `session.activeUnit.id`, já resolvido server-side — §3);
-  3. `hasPermission` em `active-unit` = "a unidade ativa está na união permitida".
 - **Quem decide o modo é a ROTA**, explicitamente, passando `{ scope: "active-unit" }`.
   Rotas que não passam nada continuam em `aggregate` (nenhuma regressão).
 - `requirePermission(permissionCode, { scope })` apenas repassa a opção ao helper. Sem
   duplicação: o estreitamento é um único `intersect` no fim do cálculo já existente.
 - **Super admin em `active-unit`** → `[activeUnitId]` (não todas). Em `aggregate` → todas
   (inalterado).
+
+### 1.1 — 403 vs. lista vazia (leitura unit-scoped)
+
+No modo `active-unit` para **LISTAS**, NÃO responder sempre 403. Distinguir dois casos, sem
+afrouxar segurança (nos dois a pessoa não vê dado; muda só a resposta):
+
+- usuário **não tem a permissão em unidade nenhuma** (`hasPermission` na UNIÃO = `false`)
+  → **403** (igual a hoje);
+- usuário **tem a permissão em alguma unidade**, mas a **unidade ativa não está na união**
+  (interseção vazia) → **lista vazia (200)**, não 403.
+
+**Como o helper expõe a distinção (sem duplicar):** `getAccessibleUnitIdsForPermission`
+passa a retornar, além de `accessibleUnitIds` (já estreitado quando `active-unit`), os campos
+`hasPermission` (calculado SEMPRE sobre a UNIÃO — "tem permissão em ao menos uma unidade?") e
+`hasPermissionInScope` (`accessibleUnitIds.length > 0`). `requirePermission`:
+- se `hasPermission === false` → **403** (como hoje, em qualquer modo);
+- se `hasPermission === true` mas `hasPermissionInScope === false` (interseção vazia) → **não
+  bloqueia**: devolve `context` com `accessibleUnitIds = []`. A **rota de lista** então roda a
+  query com `in("unit_id", [])` e retorna naturalmente **lista vazia (200)**.
+- **Registro único / escrita (aggregate):** nada muda — seguem 403/404 como hoje.
 
 > **Importante:** este modo afeta **leitura/listagem**. A validação de **escrita** (ponto 5)
 > permanece em `aggregate` para não afrouxar nada.
@@ -77,12 +96,10 @@ Adiciona-se um **filtro final opcional** que estreita o resultado para a unidade
   - se válido → grava `active_unit_id` e retorna o `SessionContext` recalculado
     (`activeUnit` + `profile` novos). Helpers de cookie ficam em `src/lib/auth/active-unit.ts`
     (`getActiveUnitCookie`, `setActiveUnitCookie`, reusando o padrão de `server.ts`).
-- **Login:** *recomendação* — **não alterar** `login/route.ts` (área sensível). Quando não há
-  cookie ainda, o fallback de `session.ts` usa `units[0]` (idêntico ao de hoje). O cookie passa
-  a existir quando o usuário troca de unidade pela 1ª vez.
-  - *Alternativa sinalizada (decisão sua):* gravar `active_unit_id = activeUnit.id` ao final do
-    login bem-sucedido — é aditivo e **não** toca `signInWithPassword`/`auth_email`/`getUser`,
-    mas mexe no arquivo sensível de login. **Não decido sozinho.**
+- **Login (DECIDIDO):** **não alterar** `login/route.ts` (área sensível). Quando não há cookie
+  ainda, o fallback de `session.ts` usa `units[0]` (idêntico ao de hoje). O cookie passa a
+  existir quando o usuário troca de unidade pela 1ª vez. (A alternativa de gravar o cookie no
+  login foi **descartada** na revisão.)
 
 ---
 
@@ -96,12 +113,16 @@ Em `getSessionContextByAuthUserId`:
     `profile` = perfil **daquele** vínculo;
   - cookie ausente / inválido / vínculo removido → **fallback seguro**: `activeUnit = units[0]`,
     `profile = firstLink` (comportamento atual, sem erro).
-- **Múltiplos perfis na mesma unidade** (porque `(app_user_id, unit_id)` não é único): hoje o
-  `firstLink` descarta em silêncio. Proposta determinística (a confirmar):
+- **Múltiplos perfis na mesma unidade (DECIDIDO)** (porque `(app_user_id, unit_id)` não é
+  único): hoje o `firstLink` descarta em silêncio. Regra determinística aprovada:
   - **precedência por privilégio**: `SUPER_ADMIN` > demais; empate → `created_at asc` (estável,
     igual à ordenação atual). Assim a troca de unidade é previsível e nunca "sorteia" perfil.
-  - *Sinalizado:* se você preferir outra regra (ex.: perfil marcado como "primário"), defina —
-    **não decido sozinho**. (Schema atual não tem flag de primário.)
+  - **Limitação conhecida (dívida documentada):** o `profile` **não controla acesso a dado** —
+    `permissions.ts` une as permissões de **TODOS** os perfis ativos do usuário na unidade.
+    Logo a regra é praticamente **cosmética / de menu**. PORÉM, quando existir o **menu filtrado
+    por `access_profile` (RH-35C)**, um usuário com 2 perfis **não-super** na mesma unidade verá
+    o menu de **apenas um** (o mais antigo), podendo **esconder módulos** do outro perfil.
+    Registrar como **dívida conhecida a tratar no RH-35C**.
 - **Sem derivação no cliente:** `profile` continua sendo um campo único no `SessionContext`,
   resolvido no servidor — mantém coerência com `requireSuperAdminRequest` (`session.profile.code`).
 
@@ -162,41 +183,49 @@ troca local, sem persistir nem trocar perfil.
 
 ## 7. Ponto 7 — Classificação das 25 rotas
 
-Defaults aplicados (seus): Operação = unit-scoped; Aprovações de rede (lista) = aggregate;
-decisão/resubmit mantêm check **per-unit do request específico** (aggregate, sem estreitar);
-Cadastros = unit-scoped, com **exceção de fornecedor corporativo (`unit_id` nulo) sempre visível**.
-Casos que **não encaixam** estão marcados 🚩 com proposta (não decididos por mim).
+**PRINCÍPIO (revisão):** **Listas → unit-scoped.** **Busca de registro único por ID → AGGREGATE**,
+com o **check per-record** da unidade do registro contra a UNIÃO
+(`accessibleUnitIds.includes(registro.unit_id)`). A segurança do acesso por ID vem do **check
+por registro**, não do estreitamento por unidade ativa — assim um link/registro legítimo de
+outra unidade abre normalmente (sem 404 espúrio), e o que protege é a verificação de que o
+registro pertence a uma unidade da união do usuário.
+
+Defaults aplicados (seus): Operação (LISTAS) = unit-scoped; Aprovações de rede (lista) =
+aggregate; decisão/resubmit mantêm check **per-unit do request específico** (aggregate, sem
+estreitar); Cadastros (LISTAS) = unit-scoped, com **exceção de fornecedor corporativo
+(`unit_id` nulo) sempre visível**. Casos especiais marcados 🚩.
 
 | # | Rota (arquivo) | Método(s) | Permissão | Modo | Observação |
 |---|---|---|---|---|---|
-| 1 | base/units/route.ts | GET, POST | units.view/manage | 🚩 **aggregate** | A entidade É a unidade; registro/seletor/forms precisam de todas. Estreitar quebraria gestão e selects. Proponho aggregate. |
-| 2 | base/units/[id]/route.ts | PATCH | units.manage | 🚩 **aggregate** | Gerencia unidade específica; já usa `assertUnitInPermissionScope(params.id)`. Não estreitar. |
-| 3 | base/departments/route.ts | GET / POST | departments.view/manage | GET unit-scoped / POST aggregate(escrita) | Cadastro por hotel. |
+| 1 | base/units/route.ts | GET, POST | units.view/manage | 🚩 **aggregate** | A entidade É a unidade; registro/seletor/forms precisam de todas. |
+| 2 | base/units/[id]/route.ts | PATCH | units.manage | **aggregate** | Gerencia unidade específica; já usa `assertUnitInPermissionScope(params.id)`. |
+| 3 | base/departments/route.ts | GET (lista) / POST | departments.view/manage | GET **unit-scoped** / POST aggregate(escrita) | Lista por hotel. |
 | 4 | base/departments/[id]/route.ts | PATCH | departments.manage | aggregate(escrita) | Escrita valida `payload.unitId` na união. |
-| 5 | base/job-positions/route.ts | GET / POST | job_positions.view/manage | GET unit-scoped / POST aggregate | |
+| 5 | base/job-positions/route.ts | GET (lista) / POST | job_positions.view/manage | GET **unit-scoped** / POST aggregate | |
 | 6 | base/job-positions/[id]/route.ts | PATCH | job_positions.manage | aggregate(escrita) | |
-| 7 | base/employees/route.ts | GET / POST | employees.view/manage | GET unit-scoped / POST aggregate | |
+| 7 | base/employees/route.ts | GET (lista) / POST | employees.view/manage | GET **unit-scoped** / POST aggregate | |
 | 8 | base/employees/[id]/route.ts | PATCH | employees.manage | aggregate(escrita) | |
-| 9 | base/suppliers/route.ts | GET / POST | suppliers.view/manage | GET unit-scoped (+corporativo) / POST aggregate | **Exceção:** `unit_id` nulo (corporativo) continua visível (hoje já é gated por `isSuperAdmin`, não por accessibleUnitIds — preservar). |
-| 10 | base/suppliers/[id]/route.ts | GET / PATCH | suppliers.view/manage | GET unit-scoped (+corporativo) / PATCH aggregate | Idem corporativo na leitura. |
-| 11 | base/users/route.ts | GET, POST | users.view/manage | 🚩 **aggregate** | Usuários são globais (super-admin only); não são dado de 1 unidade. Não estreitar. |
+| 9 | base/suppliers/route.ts | GET (lista) / POST | suppliers.view/manage | GET **unit-scoped** (+corporativo) / POST aggregate | **Exceção:** `unit_id` nulo (corporativo) continua visível (gated por `isSuperAdmin`, não por accessibleUnitIds — preservar). |
+| 10 | base/suppliers/[id]/route.ts | GET (registro único) / PATCH | suppliers.view/manage | GET **aggregate + check per-record** / PATCH aggregate | **(Correção)** registro único por ID → aggregate; valida `registro.unit_id ∈ união` (preservando a exceção corporativa `unit_id` nulo já existente). |
+| 11 | base/users/route.ts | GET, POST | users.view/manage | 🚩 **aggregate** | Usuários são globais (super-admin only); não são dado de 1 unidade. |
 | 12 | base/users/[id]/route.ts | PATCH, DELETE | users.manage | 🚩 **aggregate** | Idem. |
 | 13 | base/users/[id]/reset-password/route.ts | POST | users.manage | 🚩 **aggregate** | Idem. |
-| 14 | purchases/requests/route.ts | GET / POST | requests.view/manage | GET unit-scoped / POST aggregate | Operação. |
-| 15 | purchases/requests/[id]/route.ts | GET / PATCH | requests.view/manage | GET unit-scoped / PATCH aggregate | 🚩 *Caveat:* deep-link a um request de OUTRA unidade dá 404 no GET unit-scoped. Aceitável (acesso pela unidade dele) — confirmar. |
+| 14 | purchases/requests/route.ts | GET (lista) / POST | requests.view/manage | GET **unit-scoped** / POST aggregate | Operação (lista). |
+| 15 | purchases/requests/[id]/route.ts | GET (registro único) / PATCH | requests.view/manage | GET **aggregate + check per-record** / PATCH aggregate | **(Correção)** registro único por ID → aggregate; valida `request.unit_id ∈ união`. **Caveat de 404 em deep-link deixa de existir.** |
 | 16 | purchases/requests/[id]/quotes/route.ts | POST | quotes.manage | aggregate(escrita) | |
 | 17 | purchases/requests/[id]/quotes/[quoteId]/route.ts | PATCH, DELETE | quotes.manage | aggregate(escrita) | |
 | 18 | purchases/requests/[id]/quotes/[quoteId]/negotiations/route.ts | POST | quotes.manage | aggregate(escrita) | |
-| 19 | purchases/quotes/route.ts | GET | quotes.view | unit-scoped | Operação. |
-| 20 | purchases/documentation-dashboard/route.ts | GET | documentation.view | unit-scoped | Operação. |
-| 21 | purchases/approvals/route.ts | GET | approvals.view | **aggregate** | Lista de rede (consolidada). |
-| 22 | purchases/approvals/[requestId]/decision/route.ts | POST | approvals.view | **aggregate** | **Mantém** o check per-unit já existente (`accessibleUnitIds.includes(request.unit_id)`). Não estreitar por unidade ativa. |
+| 19 | purchases/quotes/route.ts | GET (lista) | quotes.view | **unit-scoped** | Operação (lista). |
+| 20 | purchases/documentation-dashboard/route.ts | GET (lista) | documentation.view | **unit-scoped** | Operação (lista). |
+| 21 | purchases/approvals/route.ts | GET (lista) | approvals.view | **aggregate** | Lista de rede (consolidada). |
+| 22 | purchases/approvals/[requestId]/decision/route.ts | POST | approvals.view | **aggregate** | **Mantém** o check per-unit já existente (`accessibleUnitIds.includes(request.unit_id)`). |
 | 23 | purchases/approvals/[requestId]/resubmit/route.ts | POST | approvals.submit | **aggregate** | Idem (check per-unit do request específico). |
-| 24 | attachments/route.ts | GET, POST | purchases.view/manage | 🚩 propor **unit-scoped** | Anexos de compras (operacional). Confirmar que o GET filtra por entidade/unidade sem sumir anexos legítimos. |
+| 24 | attachments/route.ts | GET (busca por entidade) / POST | purchases.view/manage | GET **aggregate** / POST aggregate(escrita) | **(Correção)** GET é busca por entidade (`module=purchases`, `entity_type`, `entity_id`); o escopo vem da **acessibilidade da ENTIDADE-PAI** (quote/request), não da unidade ativa. Estreitar esconderia anexo de registro legitimamente aberto. Na Leva 2, confirmar que o GET valida acesso via entidade-pai e não some com anexos legítimos. |
 | 25 | attachments/[id]/route.ts | DELETE | purchases.manage | aggregate(escrita) | Operação por id. |
 
-🚩 **Casos sinalizados para sua decisão:** #1–2 (units), #11–13 (users), #15 (deep-link de
-request), #24 (attachments). Proponho o modo indicado; confirme antes da migração da família.
+🚩 **Casos especiais (já DECIDIDOS — ver §11):** #1–2 units = aggregate; #11–13 users = aggregate.
+Não há mais itens "a confirmar": #15 e #24 viraram **aggregate** pela Correção 1 (registro único /
+busca por entidade), e o caveat de 404 foi removido.
 
 ---
 
@@ -220,10 +249,25 @@ prepara a fundação: cookie validado, perfil ativo no servidor, `units[]` do su
 - **NÃO** tocar `permissions.ts` nesta leva (segue 100% aggregate).
 - **NÃO** tocar `login/route.ts` (fallback cobre "sem cookie").
 
+**Footguns de implementação (itens OBRIGATÓRIOS da Leva 1):**
+1. **Remover o mock do `app-store.ts` deixa o estado inicial vazio.** Garantir que **nada
+   renderize `activeUnit.id` antes da hidratação** — usar guard (ex.: `activeUnit?` /
+   render condicional) **ou** semear o store sincronamente pelos props do SSR
+   (`SessionContext` do `layout`/`AppProviders`) no 1º paint. **Sem flash/erro** na primeira
+   renderização. (Hoje o mock mascara isso; ao removê-lo, qualquer acesso direto a
+   `activeUnit.id` no 1º render quebraria.)
+2. **`units[]` do super admin cresce** de "unidades com link" para "todas as ativas".
+   Verificar que **nenhum componente** hoje itera `session.units` de modo que isso mude algo
+   visível para o super admin (ex.: contadores, listas, dashboards baseados em
+   `session.units`). Se mudar, a afirmação "Leva 1 não muda nada visível" ganha **ressalva**
+   explícita para o super admin (e o item deve ser tratado/aceito antes de fechar a Leva 1).
+
 **Critério de aceite (Leva 1):**
 - `build` e `lint` passam.
-- Comportamento **idêntico** ao atual para todos os usuários (tudo em união).
+- Comportamento **idêntico** ao atual para todos os usuários (tudo em união) — **com a ressalva
+  do footgun 2** caso algum componente reflita `session.units` do super admin.
 - Super admin passa a ter `units[]` completa no `SessionContext` (sem seletor ainda — Parte 3).
+- **Sem flash/erro no 1º paint** após remover o mock (footgun 1).
 - Trocar unidade via endpoint grava cookie, valida vínculo (403 quando indevido) e o
   `SessionContext` reflete `activeUnit`/`profile` corretos. Reload mantém a escolha (cookie).
 - `auth.getUser`/login/`auth_email` intactos.
@@ -233,22 +277,43 @@ prepara a fundação: cookie validado, perfil ativo no servidor, `units[]` do su
 ## 9. Leva 2 — B-misto de fato (estreitar leitura por família)
 
 Introduz os dois modos e migra **uma família por vez**, com invalidação de query no cliente.
+**Migra-se só os GET de LISTA para `active-unit`**; **GET de registro único / busca por
+entidade ficam `aggregate` com check per-record** (Correção 1 da revisão).
+
+> **CONDIÇÃO DE SEQUENCIAMENTO (regra do plano):** a **Parte 3** (indicador de unidade ativa
+> no header + troca) — que está **fora deste plano** — deve entrar **JUNTO COM ou ANTES** da
+> Leva 2. A **Leva 1 pode ir sozinha** (nada muda visualmente). A **Leva 2 NÃO pode ir antes
+> da Parte 3**: senão o usuário passa a ver só os dados de uma unidade **sem saber qual é nem
+> como trocar**.
 
 **Arquivos tocados:**
 - `src/lib/auth/permissions.ts` — `scope?: "aggregate" | "active-unit"` em
-  `PermissionAuthorizationOptions`; estreitamento por interseção; `requirePermission` repassa.
-- **Família Cadastros (primeiro):** handlers **GET** de departments, job-positions, employees,
-  suppliers (#3,5,7,9 e os `[id]` de leitura) passam `{ scope: "active-unit" }`. Escrita
-  inalterada (aggregate). Preservar exceção corporativa em suppliers.
-- **Família Compras (depois):** GET de requests, requests/[id], quotes, documentation-dashboard
-  (#14,15,19,20) → `active-unit`. Escrita inalterada. Aprovações (#21–23) permanecem aggregate.
+  `PermissionAuthorizationOptions`; estreitamento por interseção; expõe
+  `hasPermission` (união) e `hasPermissionInScope` (§1.1); `requirePermission` repassa.
+- **Família Cadastros (primeiro):** **apenas os GET de LISTA** de departments, job-positions,
+  employees, suppliers (#3,5,7,9) passam `{ scope: "active-unit" }`. Os **GET por ID** ficam
+  `aggregate + check per-record` (suppliers/[id] #10). Escrita inalterada (aggregate).
+  Preservar exceção corporativa em suppliers (lista e registro único).
+- **Família Compras (depois):** **GET de LISTA** de requests (#14), quotes (#19),
+  documentation-dashboard (#20) → `active-unit`. **requests/[id] GET (#15)** fica
+  `aggregate + check per-record`. Escrita inalterada. Aprovações (#21–23) permanecem aggregate.
+- **attachments GET (#24):** fica **aggregate** (busca por entidade-pai); confirmar na
+  implementação que valida acesso pela entidade-pai e não some com anexos legítimos.
+- **Listas que retornam vazio fora de escopo (§1.1):** as rotas de lista em `active-unit`
+  tratam interseção vazia como **lista vazia (200)**, não 403.
 - **Cliente:** `queryKey` das telas unit-scoped passam a incluir `activeUnit.id`;
   `setActiveUnit` invalida/refetch essas queries (store + componentes de lista das famílias).
-- 🚩 units (#1–2), users (#11–13), attachments (#24): **só após sua confirmação** do modo.
+- units (#1–2) e users (#11–13): permanecem **aggregate** (DECIDIDO, §11) — não migram.
 
 **Critério de aceite (Leva 2):**
-- Usuário multi-unidade troca de unidade → **dados operacionais e cadastros acompanham** a
+- **A Parte 3 (indicador + troca de unidade no header) está disponível** — Leva 2 não é
+  liberada sem ela (condição de sequenciamento acima).
+- Usuário multi-unidade troca de unidade → **listas operacionais e de cadastros acompanham** a
   unidade ativa; sem "vazar" dados da unidade anterior (queries invalidadas).
+- **Registro único / busca por entidade** seguem abrindo registros legítimos de qualquer
+  unidade da união (sem 404 espúrio), protegidos por **check per-record**.
+- Leitura unit-scoped: sem permissão em unidade nenhuma → **403**; com permissão mas unidade
+  ativa fora da união → **lista vazia (200)** (§1.1).
 - Perfil de **rede** mantém visão consolidada nas rotas **aggregate** (aprovações).
 - **Super admin** troca livremente entre quaisquer unidades.
 - **Unidade única** não percebe diferença (interseção = a própria unidade).
@@ -265,10 +330,20 @@ Introduz os dois modos e migra **uma família por vez**, com invalidação de qu
 - Estreitar é só **leitura**; escrita mantém validação ampla. Aprovações de rede não estreitam.
 - Sem libs novas (cookie nativo do Next; TanStack já presente).
 
-## 11. Decisões pendentes (não decididas aqui)
+## 11. Decisões (RESOLVIDAS na revisão)
 
-1. Cookie no login: manter login intacto (recomendado) **ou** gravar `active_unit_id` no login?
-2. Múltiplos perfis na mesma unidade: precedência `SUPER_ADMIN`>demais + `created_at` (proposto)
-   **ou** outra regra?
-3. Confirmar modo dos 🚩: units (aggregate), users (aggregate), attachments (unit-scoped),
-   deep-link de request (#15) com 404 fora da unidade ativa.
+1. **Cookie no login — DECIDIDO:** manter `login/route.ts` **intacto**. O fallback de
+   `session.ts` cobre "sem cookie" (usa `units[0]`). A alternativa de gravar no login foi
+   **descartada**.
+2. **Múltiplos perfis na mesma unidade — DECIDIDO:** precedência `SUPER_ADMIN` > demais, empate
+   por `created_at asc`.
+   - **Dívida conhecida (a tratar no RH-35C):** o `profile` **não** controla acesso a dado
+     (`permissions.ts` une as permissões de **todos** os perfis ativos do usuário na unidade),
+     então a regra é praticamente **cosmética / de menu**. Quando existir o **menu filtrado por
+     `access_profile` (RH-35C)**, um usuário com 2 perfis **não-super** na mesma unidade verá o
+     menu de **apenas um** (o mais antigo) e pode ter módulos do outro perfil escondidos.
+3. **Modos 🚩 — DECIDIDOS:** `units` = **aggregate**; `users` = **aggregate**;
+   `attachments` GET = **aggregate** (busca por entidade — Correção 1); `requests/[id]` GET =
+   **aggregate + check per-record** (Correção 1 — o **404 em deep-link deixa de existir**).
+
+> **Não há mais decisões pendentes neste plano.**
