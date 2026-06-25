@@ -16,6 +16,7 @@ import {
 } from "@/components/base-cadastros/crud-components";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
 type AccessStatus = "active" | "inactive" | "blocked" | "pending";
 
@@ -140,6 +141,8 @@ export function UsersClient() {
   const [resetPassword, setResetPassword] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetDone, setResetDone] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   const usersQuery = useQuery({
     queryKey: ["base", "users"],
@@ -193,6 +196,16 @@ export function UsersClient() {
       setResetDone(false);
       setResetError(mutationError instanceof Error ? mutationError.message : "Não foi possível redefinir a senha.");
     }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (user: UserRecord) => requestJson(`/api/base/users/${user.id}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      setDeleteError("");
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ["base", "users"] });
+    },
+    onError: (mutationError) => setDeleteError(mutationError instanceof Error ? mutationError.message : "Não foi possível excluir o usuário.")
   });
 
   function openNew() {
@@ -417,17 +430,71 @@ export function UsersClient() {
                     <AccessStatusBadge status={user.status} />
                   </td>
                   <td className="px-4 py-3">
-                    <RowActions
-                      onEdit={() => openEdit(user)}
-                      onInactivate={() => toggleStatus(user)}
-                      disableInactivate={!user.employeeId || !user.accessProfileId || !user.unitIds.length || saveMutation.isPending}
-                      inactivateLabel={user.status === "active" ? "Inativar" : "Ativar"}
-                    />
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <RowActions
+                        onEdit={() => openEdit(user)}
+                        onInactivate={() => toggleStatus(user)}
+                        disableInactivate={!user.employeeId || !user.accessProfileId || !user.unitIds.length || saveMutation.isPending}
+                        inactivateLabel={user.status === "active" ? "Inativar" : "Ativar"}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => {
+                          setDeleteTarget(user);
+                          setDeleteError("");
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Excluir
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-lg">
+            <h2 className="text-lg font-semibold">Excluir usuário</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Tem certeza que deseja excluir{" "}
+              <span className="font-medium text-foreground">@{deleteTarget.username}</span>? Esta ação remove o acesso do
+              usuário (exclusão lógica) e ele deixará de aparecer na lista. O login fica bloqueado imediatamente.
+            </p>
+            {deleteError ? (
+              <div className="mt-3">
+                <ErrorMessage message={deleteError} />
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteError("");
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => deleteMutation.mutate(deleteTarget)}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

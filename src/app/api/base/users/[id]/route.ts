@@ -4,6 +4,7 @@ import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserUpdatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -136,6 +137,62 @@ async function replaceUnitLinks(input: {
   }
 }
 
+// Conjunto de app_user_ids que sao super admins ATIVOS:
+// app_user ativo (status active, deleted_at null) COM vinculo user_unit_links ATIVO
+// (status active, deleted_at null) no perfil SUPER_ADMIN. Vinculo inativo nao conta.
+async function getActiveSuperAdminUserIds(supabase: SupabaseAdmin): Promise<string[]> {
+  const { data: profile, error: profileError } = await supabase
+    .from("access_profiles")
+    .select("id")
+    .eq("code", SUPER_ADMIN_PROFILE_CODE)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (profileError) {
+    logBaseCadastroError("users.super_admin_profile_lookup_failed", profileError);
+    throw new Error("Nao foi possivel validar os super admins ativos.");
+  }
+
+  const superAdminProfile = profile?.[0];
+
+  if (!superAdminProfile) {
+    return [];
+  }
+
+  const { data: links, error: linksError } = await supabase
+    .from("user_unit_links")
+    .select("app_user_id")
+    .eq("access_profile_id", superAdminProfile.id)
+    .eq("status", "active")
+    .is("deleted_at", null);
+
+  if (linksError) {
+    logBaseCadastroError("users.super_admin_link_lookup_failed", linksError);
+    throw new Error("Nao foi possivel validar os super admins ativos.");
+  }
+
+  const candidateIds = Array.from(new Set((links ?? []).map((link) => link.app_user_id).filter(Boolean)));
+
+  if (!candidateIds.length) {
+    return [];
+  }
+
+  const { data: activeUsers, error: activeUsersError } = await supabase
+    .from("app_users")
+    .select("id")
+    .in("id", candidateIds)
+    .eq("status", "active")
+    .is("deleted_at", null);
+
+  if (activeUsersError) {
+    logBaseCadastroError("users.super_admin_user_lookup_failed", activeUsersError);
+    throw new Error("Nao foi possivel validar os super admins ativos.");
+  }
+
+  return Array.from(new Set((activeUsers ?? []).map((user) => user.id)));
+}
+
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   const { context, response } = await requirePermission(BASE_PERMISSIONS.usersManage);
 
@@ -193,5 +250,83 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     return apiError(error instanceof Error ? error.message : "Nao foi possivel atualizar o usuario.", 500);
+  }
+}
+
+export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.usersManage);
+
+  if (response || !context) {
+    return response;
+  }
+
+  try {
+    if (!context.isSuperAdmin) {
+      return apiError("Voce nao tem permissao para gerenciar usuarios internos.", 403);
+    }
+
+    const actorUserId = context.session.user.id;
+
+    if (params.id === actorUserId) {
+      return apiError("Voce nao pode excluir o proprio usuario.", 409);
+    }
+
+    const supabase = context.supabase;
+
+    const { data: existing, error: existingError } = await supabase
+      .from("app_users")
+      .select("id")
+      .eq("id", params.id)
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (existingError) {
+      logBaseCadastroError("users.delete_lookup_failed", existingError);
+      return apiError("Nao foi possivel localizar o usuario.", 500);
+    }
+
+    if (!existing?.[0]) {
+      return apiError("Usuario nao encontrado.", 404);
+    }
+
+    // Anti-lockout: nao excluir o ultimo super admin ativo.
+    const activeSuperAdminIds = await getActiveSuperAdminUserIds(supabase);
+    const isTargetSuperAdmin = activeSuperAdminIds.includes(params.id);
+    const remainingSuperAdmins = activeSuperAdminIds.filter((id) => id !== params.id);
+
+    if (isTargetSuperAdmin && remainingSuperAdmins.length === 0) {
+      return apiError("Nao e possivel excluir o ultimo super admin ativo.", 409);
+    }
+
+    const now = new Date().toISOString();
+
+    // (a) desativar vinculos primeiro (mantem o usuario visivel/retryavel se algo falhar aqui)
+    const { error: linksError } = await supabase
+      .from("user_unit_links")
+      .update({ status: "inactive", deleted_at: now, updated_by: actorUserId })
+      .eq("app_user_id", params.id)
+      .eq("status", "active")
+      .is("deleted_at", null);
+
+    if (linksError) {
+      logBaseCadastroError("users.delete_unit_links_failed", linksError);
+      return apiError("Nao foi possivel desativar os vinculos do usuario.", 500);
+    }
+
+    // (b) commit: marcar o app_user como excluido (o que GET/login ja respeitam)
+    const { error: appUserError } = await supabase
+      .from("app_users")
+      .update({ deleted_at: now, status: "inactive", updated_by: actorUserId })
+      .eq("id", params.id)
+      .is("deleted_at", null);
+
+    if (appUserError) {
+      logBaseCadastroError("users.delete_app_user_failed", appUserError);
+      return apiError("Nao foi possivel excluir o usuario.", 500);
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return apiError(error instanceof Error ? error.message : "Nao foi possivel excluir o usuario.", 500);
   }
 }
