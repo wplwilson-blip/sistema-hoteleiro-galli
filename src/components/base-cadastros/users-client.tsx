@@ -15,6 +15,7 @@ import {
   TextInput
 } from "@/components/base-cadastros/crud-components";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Button } from "@/components/ui/button";
 
 type AccessStatus = "active" | "inactive" | "blocked" | "pending";
 
@@ -136,6 +137,9 @@ export function UsersClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetDone, setResetDone] = useState(false);
 
   const usersQuery = useQuery({
     queryKey: ["base", "users"],
@@ -169,6 +173,28 @@ export function UsersClient() {
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível salvar o usuário.")
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async () => {
+      if (!editing) {
+        throw new Error("Selecione um usuário para redefinir a senha.");
+      }
+
+      return requestJson(`/api/base/users/${editing.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ password: resetPassword })
+      });
+    },
+    onSuccess: () => {
+      setResetError("");
+      setResetDone(true);
+      setResetPassword("");
+    },
+    onError: (mutationError) => {
+      setResetDone(false);
+      setResetError(mutationError instanceof Error ? mutationError.message : "Não foi possível redefinir a senha.");
+    }
+  });
+
   function openNew() {
     const data = usersQuery.data;
 
@@ -180,6 +206,9 @@ export function UsersClient() {
       unitIds: data?.units[0]?.id ? [data.units[0].id] : []
     });
     setError("");
+    setResetPassword("");
+    setResetError("");
+    setResetDone(false);
     setFormOpen(true);
   }
 
@@ -194,6 +223,9 @@ export function UsersClient() {
       status: user.status
     });
     setError("");
+    setResetPassword("");
+    setResetError("");
+    setResetDone(false);
     setFormOpen(true);
   }
 
@@ -298,7 +330,34 @@ export function UsersClient() {
                   minLength={8}
                   onChange={(event) => setForm({ ...form, password: event.target.value })}
                 />
-                {editing ? <p className="text-xs text-muted-foreground">Troca de senha fica para sprint propria.</p> : null}
+                {editing ? (
+                  <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Redefinir senha</p>
+                    <TextInput
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Nova senha (mínimo 8 caracteres)"
+                      value={resetPassword}
+                      minLength={8}
+                      onChange={(event) => {
+                        setResetPassword(event.target.value);
+                        setResetError("");
+                        setResetDone(false);
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={resetPassword.length < 8 || resetPasswordMutation.isPending}
+                      onClick={() => resetPasswordMutation.mutate()}
+                    >
+                      {resetPasswordMutation.isPending ? "Definindo..." : "Definir nova senha"}
+                    </Button>
+                    {resetError ? <p className="text-xs text-destructive">{resetError}</p> : null}
+                    {resetDone ? <p className="text-xs text-emerald-600">Senha redefinida com sucesso.</p> : null}
+                  </div>
+                ) : null}
               </Field>
               <Field label="Status">
                 <SelectField value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as AccessStatus })}>

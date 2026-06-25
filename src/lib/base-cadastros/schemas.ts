@@ -92,3 +92,7 @@ export const internalUserUpdatePayloadSchema = z.object({
   unitIds: userUnitsSchema,
   status: z.enum(["active", "inactive", "blocked", "pending"]).default("active")
 });
+
+export const internalUserResetPasswordSchema = z.object({
+  password: z.string().min(8, "A nova senha deve ter pelo menos 8 caracteres.")
+});
