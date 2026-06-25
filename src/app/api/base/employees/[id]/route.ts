@@ -99,6 +99,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       .single();
 
     if (error) {
+      if (error.code === "23505" && error.message?.includes("employees_org_cpf_normalized_active_unique")) {
+        return apiError("Ja existe um colaborador com este CPF nesta organizacao.", 409);
+      }
+
       logBaseCadastroError("employee.update_failed", error);
       return apiError("Nao foi possivel atualizar o colaborador.", 500);
     }

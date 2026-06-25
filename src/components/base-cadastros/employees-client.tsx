@@ -93,6 +93,33 @@ const emptyForm: EmployeeForm = {
   status: "active"
 };
 
+// Mascaras progressivas (sem lib): formatam a partir dos digitos enquanto o usuario digita.
+function formatCpf(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  return digits
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
+}
+
+function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+
+  if (digits.length <= 2) {
+    return digits.replace(/^(\d{0,2})/, "($1");
+  }
+
+  if (digits.length <= 6) {
+    return digits.replace(/^(\d{2})(\d{0,4})/, "($1) $2");
+  }
+
+  if (digits.length <= 10) {
+    return digits.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+  }
+
+  return digits.replace(/^(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -314,10 +341,22 @@ export function EmployeesClient() {
                 <TextInput value={form.preferredName} onChange={(event) => setForm({ ...form, preferredName: event.target.value })} />
               </Field>
               <Field label="CPF/documento">
-                <TextInput value={form.documentNumber} onChange={(event) => setForm({ ...form, documentNumber: event.target.value })} />
+                <TextInput
+                  value={form.documentNumber}
+                  inputMode="numeric"
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                  onChange={(event) => setForm({ ...form, documentNumber: formatCpf(event.target.value) })}
+                />
               </Field>
               <Field label="Telefone">
-                <TextInput value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                <TextInput
+                  value={form.phone}
+                  inputMode="numeric"
+                  placeholder="(00) 00000-0000"
+                  maxLength={15}
+                  onChange={(event) => setForm({ ...form, phone: formatPhone(event.target.value) })}
+                />
               </Field>
               <Field label="E-mail corporativo">
                 <TextInput

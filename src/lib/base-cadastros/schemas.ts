@@ -3,6 +3,31 @@ import { usernameSchema } from "@/lib/auth/schemas";
 
 export const recordStatusSchema = z.enum(["active", "inactive", "archived"]);
 
+// Valida CPF (digito verificador). Aceita com ou sem mascara (normaliza antes).
+// Rejeita tamanho != 11 e sequencias repetidas (ex.: 111.111.111-11).
+export function isValidCpf(raw: string): boolean {
+  const cpf = raw.replace(/\D/g, "");
+
+  if (cpf.length !== 11) {
+    return false;
+  }
+
+  if (/^(\d)\1{10}$/.test(cpf)) {
+    return false;
+  }
+
+  const checkDigit = (length: number): number => {
+    let sum = 0;
+    for (let i = 0; i < length; i++) {
+      sum += Number(cpf[i]) * (length + 1 - i);
+    }
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+
+  return checkDigit(9) === Number(cpf[9]) && checkDigit(10) === Number(cpf[10]);
+}
+
 export const unitPayloadSchema = z.object({
   code: z
     .string()
@@ -66,7 +91,11 @@ export const employeePayloadSchema = z.object({
   jobPositionId: z.string().uuid("Selecione um cargo.").optional().or(z.literal("").transform(() => undefined)),
   fullName: z.string().trim().min(3, "Informe o nome completo do colaborador."),
   preferredName: z.string().trim().optional(),
-  documentNumber: z.string().trim().optional(),
+  documentNumber: z
+    .string()
+    .trim()
+    .optional()
+    .refine((value) => !value || isValidCpf(value), "Informe um CPF valido."),
   corporateEmail: z.string().trim().email("Informe um e-mail corporativo valido.").optional().or(z.literal("").transform(() => undefined)),
   personalEmail: z.string().trim().email("Informe um e-mail pessoal valido.").optional().or(z.literal("").transform(() => undefined)),
   phone: z.string().trim().optional(),

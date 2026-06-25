@@ -199,6 +199,10 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      if (error.code === "23505" && error.message?.includes("employees_org_cpf_normalized_active_unique")) {
+        return apiError("Ja existe um colaborador com este CPF nesta organizacao.", 409);
+      }
+
       logBaseCadastroError("employee.create_failed", error);
       return apiError("Nao foi possivel salvar o colaborador.", 500);
     }
