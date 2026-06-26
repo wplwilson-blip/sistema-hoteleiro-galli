@@ -7,7 +7,7 @@ import { evaluationTemplatePayloadSchema, evaluationTemplatesQuerySchema, format
 import { parseSearchParams } from "@/lib/hr/schemas";
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.evaluationsView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.evaluationsView, { scope: "active-unit" });
   if (response || !context) return response;
 
   try {
@@ -27,10 +27,11 @@ export async function GET(request: Request) {
       return hrApiError("Nao foi possivel carregar os modelos de avaliacao.", 500);
     }
 
-    const rows = ((data ?? []) as unknown as EvaluationTemplateRow[]).filter((row) => {
-      if (context.isSuperAdmin) return true;
-      return !row.unit_id || context.accessibleUnitIds.includes(row.unit_id);
-    });
+    // active-unit: accessibleUnitIds ja vem estreitado (super admin = [unidade ativa]).
+    // Catalogo: templates de rede (unit_id NULL) permanecem visiveis em qualquer unidade.
+    const rows = ((data ?? []) as unknown as EvaluationTemplateRow[]).filter(
+      (row) => !row.unit_id || context.accessibleUnitIds.includes(row.unit_id)
+    );
 
     return NextResponse.json({ ok: true, data: rows.map((row) => mapEvaluationTemplate(row)) });
   } catch (error) {

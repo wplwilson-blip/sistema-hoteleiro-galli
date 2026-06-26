@@ -12,7 +12,7 @@ import { documentRuleListSelect, mapHrDocumentRule, type HrDocumentRuleListRow }
 import { hrDocumentRulePayloadSchema, hrDocumentRulesQuerySchema, parseSearchParams } from "@/lib/hr/schemas";
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.documentsView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.documentsView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -39,10 +39,11 @@ export async function GET(request: Request) {
       return hrApiError("Nao foi possivel carregar as regras documentais.", 500);
     }
 
-    const rows = ((data ?? []) as unknown as HrDocumentRuleListRow[]).filter((row) => {
-      if (context.isSuperAdmin) return true;
-      return !row.unit_id || context.accessibleUnitIds.includes(row.unit_id);
-    });
+    // active-unit: accessibleUnitIds ja vem estreitado (super admin = [unidade ativa]).
+    // Catalogo: regras de rede (unit_id NULL) permanecem visiveis em qualquer unidade.
+    const rows = ((data ?? []) as unknown as HrDocumentRuleListRow[]).filter(
+      (row) => !row.unit_id || context.accessibleUnitIds.includes(row.unit_id)
+    );
 
     return NextResponse.json({
       ok: true,
