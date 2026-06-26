@@ -72,6 +72,12 @@ export type HrRequestContext = {
   requiredPermission: HrPermissionCode;
   accessibleUnitIds: string[];
   isSuperAdmin: boolean;
+  hasPermissionInScope: boolean;
+};
+
+// Opcoes de escopo encaminhadas ao nucleo (Leva 2 / B-misto). Default ausente = aggregate.
+export type HrScopeOptions = {
+  scope?: PermissionAuthorizationOptions["scope"];
 };
 
 export type HrEmployeeRow = {
@@ -127,9 +133,17 @@ function rethrowAsHrAuthorizationError(error: unknown): never {
   throw error;
 }
 
-export async function getHrAccessibleUnitIds(supabase: SupabaseAdmin, session: SessionContext, permissionCode: HrPermissionCode) {
+export async function getHrAccessibleUnitIds(
+  supabase: SupabaseAdmin,
+  session: SessionContext,
+  permissionCode: HrPermissionCode,
+  opts?: HrScopeOptions
+) {
   try {
-    return await getAccessibleUnitIdsForPermission(supabase, session, permissionCode, hrPermissionOptions);
+    return await getAccessibleUnitIdsForPermission(supabase, session, permissionCode, {
+      ...hrPermissionOptions,
+      scope: opts?.scope
+    });
   } catch (error) {
     rethrowAsHrAuthorizationError(error);
   }
@@ -148,9 +162,12 @@ export async function userHasHrPermissionForUnit(
   }
 }
 
-export async function requireHrPermission(permissionCode: HrPermissionCode) {
+export async function requireHrPermission(permissionCode: HrPermissionCode, opts?: HrScopeOptions) {
   try {
-    return await requirePermission<HrPermissionCode>(permissionCode, hrPermissionOptions);
+    return await requirePermission<HrPermissionCode>(permissionCode, {
+      ...hrPermissionOptions,
+      scope: opts?.scope
+    });
   } catch (error) {
     rethrowAsHrAuthorizationError(error);
   }
