@@ -13,7 +13,7 @@ import { parseSearchParams } from "@/lib/hr/schemas";
 import { onboardingPlanPayloadSchema, onboardingPlansQuerySchema } from "@/lib/hr/onboarding-plan-validation";
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.employeesView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.employeesView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -39,10 +39,11 @@ export async function GET(request: Request) {
       return hrApiError("Nao foi possivel carregar os planos de onboarding.", 500);
     }
 
-    const rows = ((data ?? []) as unknown as HrOnboardingPlanRow[]).filter((row) => {
-      if (context.isSuperAdmin) return true;
-      return !row.unit_id || context.accessibleUnitIds.includes(row.unit_id);
-    });
+    // active-unit: accessibleUnitIds ja vem estreitado (super admin = [unidade ativa]).
+    // Planos de rede (unit_id NULL) permanecem visiveis em qualquer unidade.
+    const rows = ((data ?? []) as unknown as HrOnboardingPlanRow[]).filter(
+      (row) => !row.unit_id || context.accessibleUnitIds.includes(row.unit_id)
+    );
 
     return NextResponse.json({
       ok: true,

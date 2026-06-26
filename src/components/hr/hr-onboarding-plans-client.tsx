@@ -9,6 +9,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAppStore } from "@/store/app-store";
 import { cn } from "@/lib/utils";
 
 type Option = { id: string; name: string; unitId?: string | null; departmentId?: string | null };
@@ -172,6 +173,8 @@ function toItemPayload(form: ItemForm) {
 
 export function HrOnboardingPlansClient() {
   const queryClient = useQueryClient();
+  // Unidade ativa escopa a lista de planos no servidor (planos de rede / NULL seguem visiveis).
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState("");
@@ -180,7 +183,7 @@ export function HrOnboardingPlansClient() {
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
   const [itemForm, setItemForm] = useState<ItemForm>(emptyItemForm);
 
-  const plansQuery = useQuery({ queryKey: ["hr", "onboarding-plans"], queryFn: async () => requestJson<PlansResponse>("/api/hr/onboarding-plans") });
+  const plansQuery = useQuery({ queryKey: ["hr", "onboarding-plans", activeUnitId], queryFn: async () => requestJson<PlansResponse>("/api/hr/onboarding-plans") });
   const itemsQuery = useQuery({
     queryKey: ["hr", "onboarding-plans", selectedPlanId, "items"],
     queryFn: async () => requestJson<ItemsResponse>(`/api/hr/onboarding-plans/${selectedPlanId}/items`),
