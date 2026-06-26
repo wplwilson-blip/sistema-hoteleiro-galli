@@ -154,7 +154,7 @@ export function HrEvaluationReportsClient() {
     queryFn: async () => requestJson<UnitResponse>("/api/base/units")
   });
   const departmentsQuery = useQuery({
-    queryKey: ["base", "departments", "evaluation-report"],
+    queryKey: ["base", "departments", "evaluation-report", activeUnitId],
     queryFn: async () => requestJson<DepartmentResponse>("/api/base/departments")
   });
 

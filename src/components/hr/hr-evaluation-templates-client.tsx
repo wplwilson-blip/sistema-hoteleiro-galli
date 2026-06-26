@@ -788,8 +788,7 @@ export function HrEvaluationTemplatesClient() {
         buildUrl("/api/hr/evaluation-templates", {
           search: filters.search,
           status: filters.status,
-          evaluationType: filters.evaluationType,
-          unitId: activeUnitId
+          evaluationType: filters.evaluationType
         })
       )
   });
@@ -804,8 +803,8 @@ export function HrEvaluationTemplatesClient() {
   });
 
   const unitsQuery = useQuery({ queryKey: ["base", "units"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
-  const departmentsQuery = useQuery({ queryKey: ["base", "departments"], queryFn: async () => requestJson<DepartmentsResponse>("/api/base/departments") });
-  const positionsQuery = useQuery({ queryKey: ["base", "job-positions"], queryFn: async () => requestJson<JobPositionsResponse>("/api/base/job-positions") });
+  const departmentsQuery = useQuery({ queryKey: ["base", "departments", activeUnitId], queryFn: async () => requestJson<DepartmentsResponse>("/api/base/departments") });
+  const positionsQuery = useQuery({ queryKey: ["base", "job-positions", activeUnitId], queryFn: async () => requestJson<JobPositionsResponse>("/api/base/job-positions") });
 
   const detail = detailQuery.data?.data ?? null;
   const units = unitsQuery.data?.units ?? [];

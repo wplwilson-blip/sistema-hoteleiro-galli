@@ -46,7 +46,14 @@ async function writeDevelopmentPlanCreatedEvent(input: {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.evaluationsView);
+  // Lista standalone estreita pela unidade ativa; quando filtrada por employeeId (card do
+  // detalhe do colaborador) fica aggregate + check per-record, preservando colaboradores de
+  // qualquer unidade da uniao.
+  const hasEmployeeFilter = Boolean(new URL(request.url).searchParams.get("employeeId")?.trim());
+  const { context, response } = await requireHrPermission(
+    HR_PERMISSIONS.evaluationsView,
+    hasEmployeeFilter ? undefined : { scope: "active-unit" }
+  );
   if (response || !context) return response;
 
   try {
@@ -58,7 +65,8 @@ export async function GET(request: Request) {
       .select(developmentPlanListSelect, { count: "exact" })
       .is("deleted_at", null);
 
-    if (!context.isSuperAdmin) plansQuery = plansQuery.in("unit_id", context.accessibleUnitIds);
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    plansQuery = plansQuery.in("unit_id", context.accessibleUnitIds);
     if (query.unitId) plansQuery = plansQuery.eq("unit_id", query.unitId);
     if (query.employeeId) plansQuery = plansQuery.eq("employee_id", query.employeeId);
     if (query.evaluationId) plansQuery = plansQuery.eq("evaluation_id", query.evaluationId);

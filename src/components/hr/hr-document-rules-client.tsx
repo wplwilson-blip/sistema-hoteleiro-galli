@@ -9,6 +9,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAppStore } from "@/store/app-store";
 
 type RuleOption = {
   id: string;
@@ -153,13 +154,16 @@ function recurrenceLabel(rule: DocumentRule) {
 
 export function HrDocumentRulesClient() {
   const queryClient = useQueryClient();
+  // Unidade ativa entra na queryKey: catalogo de regras agora escopado por unidade ativa
+  // no servidor (regras de rede / unit_id NULL seguem visiveis). Refetch ao trocar a unidade.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [form, setForm] = useState<RuleForm>(emptyForm);
 
   const rulesQuery = useQuery({
-    queryKey: ["hr", "document-rules"],
+    queryKey: ["hr", "document-rules", activeUnitId],
     queryFn: async () => requestJson<RulesResponse>("/api/hr/document-rules")
   });
 

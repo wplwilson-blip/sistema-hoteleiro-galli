@@ -47,7 +47,14 @@ async function writeEvaluationCreatedEvent(input: {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.evaluationsView);
+  // Lista standalone estreita pela unidade ativa; quando filtrada por employeeId (cards do
+  // detalhe do colaborador) fica aggregate + check per-record (o colaborador ja e controlado
+  // por unidade na pagina de detalhe), preservando colaboradores de qualquer unidade da uniao.
+  const hasEmployeeFilter = Boolean(new URL(request.url).searchParams.get("employeeId")?.trim());
+  const { context, response } = await requireHrPermission(
+    HR_PERMISSIONS.evaluationsView,
+    hasEmployeeFilter ? undefined : { scope: "active-unit" }
+  );
   if (response || !context) return response;
 
   try {
@@ -59,7 +66,8 @@ export async function GET(request: Request) {
       .select(employeeEvaluationListSelect, { count: "exact" })
       .is("deleted_at", null);
 
-    if (!context.isSuperAdmin) evaluationsQuery = evaluationsQuery.in("unit_id", context.accessibleUnitIds);
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    evaluationsQuery = evaluationsQuery.in("unit_id", context.accessibleUnitIds);
     if (query.unitId) evaluationsQuery = evaluationsQuery.eq("unit_id", query.unitId);
     if (query.employeeId) evaluationsQuery = evaluationsQuery.eq("employee_id", query.employeeId);
     if (query.evaluatorUserId) evaluationsQuery = evaluationsQuery.eq("evaluator_user_id", query.evaluatorUserId);
