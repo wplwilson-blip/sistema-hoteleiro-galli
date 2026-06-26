@@ -692,9 +692,11 @@ export function HrOccupationalHealthClient() {
 
   const processMutation = useMutation({
     mutationFn: async () =>
+      // Varredura de vencimentos: roda em TODAS as unidades acessiveis (rotina de governanca),
+      // nao na unidade ativa. A rota trata unitId ausente como "todas as acessiveis".
       requestJson<ProcessExpirationsResponse>("/api/hr/occupational-records/process-expirations", {
         method: "POST",
-        body: JSON.stringify({ unitId: activeUnitId })
+        body: JSON.stringify({})
       }),
     onSuccess: async () => {
       await Promise.all([
