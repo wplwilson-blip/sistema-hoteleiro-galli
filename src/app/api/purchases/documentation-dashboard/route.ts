@@ -468,7 +468,7 @@ function incrementSupplierRanking(map: Map<string, SupplierRanking>, input: {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.documentationView);
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.documentationView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;

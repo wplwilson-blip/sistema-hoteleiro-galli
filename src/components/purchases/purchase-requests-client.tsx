@@ -10,6 +10,7 @@ import { ErrorMessage, Field, FormCard, LoadingTable, SelectField, TextArea, Tex
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAppStore } from "@/store/app-store";
 import { StatusBadge } from "@/components/common/status-badge";
 import {
   getPurchasePriorityLabel,
@@ -251,8 +252,11 @@ export function PurchaseRequestsClient() {
   const [editingStatus, setEditingStatus] = useState<PurchaseRequestStatus | null>(null);
   const [submitAction, setSubmitAction] = useState<"save" | "submit">("save");
 
+  // Unidade ativa na queryKey: trocar a unidade no header refaz fetch da lista
+  // (agora escopada por unidade ativa no servidor), sem vazar a unidade anterior.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
   const purchasesQuery = useQuery({
-    queryKey: ["purchases", "requests"],
+    queryKey: ["purchases", "requests", activeUnitId],
     queryFn: async () => requestJson<PurchaseRequestsResponse>("/api/purchases/requests")
   });
 
