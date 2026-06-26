@@ -78,7 +78,6 @@ function buildEmployeesUrl(input: {
   pageSize: number;
   search: string;
   status: string;
-  unitId: string;
 }) {
   const params = new URLSearchParams({
     page: String(input.page),
@@ -87,7 +86,6 @@ function buildEmployeesUrl(input: {
 
   if (input.search.trim()) params.set("search", input.search.trim());
   if (input.status) params.set("status", input.status);
-  if (input.unitId) params.set("unitId", input.unitId);
 
   return `/api/hr/employees?${params.toString()}`;
 }
@@ -139,50 +137,33 @@ function DocumentSummary({ summary }: { summary: HrEmployeeListItem["documentSum
 }
 
 export function HrEmployeesClient() {
-  const sessionUnits = useAppStore((state) => state.units);
+  // Unidade ativa (header) e a fonte unica de escopo; entra na queryKey p/ refetch na troca.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
-  const [unitId, setUnitId] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   const employeesQuery = useQuery({
-    queryKey: ["hr", "employees", { page, pageSize, search, status, unitId }],
-    queryFn: async () => requestJson<HrEmployeesResponse>(buildEmployeesUrl({ page, pageSize, search, status, unitId }))
+    queryKey: ["hr", "employees", activeUnitId, { page, pageSize, search, status }],
+    queryFn: async () => requestJson<HrEmployeesResponse>(buildEmployeesUrl({ page, pageSize, search, status }))
   });
 
   const employees = employeesQuery.data?.data ?? emptyEmployees;
   const pagination = employeesQuery.data?.pagination ?? { page, pageSize, total: 0, totalPages: 0 };
   const canViewSensitive = Boolean(employeesQuery.data?.permissions.canViewSensitive);
 
-  const unitOptions = useMemo(() => {
-    const options = new Map<string, string>();
-
-    for (const unit of sessionUnits) {
-      options.set(unit.id, [unit.code, unit.name].filter(Boolean).join(" - ") || unit.name);
-    }
-
-    for (const employee of employees) {
-      if (employee.unitId && employee.unit) {
-        options.set(employee.unitId, metaLabel(employee.unit, employee.unitId));
-      }
-    }
-
-    return Array.from(options.entries()).map(([id, label]) => ({ id, label }));
-  }, [employees, sessionUnits]);
-
   function resetPage() {
     setPage(1);
   }
 
   function hasFilters() {
-    return Boolean(search.trim() || status || unitId);
+    return Boolean(search.trim() || status);
   }
 
   function clearFilters() {
     setSearch("");
     setStatus("");
-    setUnitId("");
     setPage(1);
   }
 
@@ -239,22 +220,6 @@ export function HrEmployeesClient() {
             </SelectField>
           </Field>
 
-          <Field label="Unidade">
-            <SelectField
-              value={unitId}
-              onChange={(event) => {
-                setUnitId(event.target.value);
-                resetPage();
-              }}
-            >
-              <option value="">Todas as unidades acessiveis</option>
-              {unitOptions.map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.label}
-                </option>
-              ))}
-            </SelectField>
-          </Field>
 
           <Field label="Por pagina">
             <SelectField

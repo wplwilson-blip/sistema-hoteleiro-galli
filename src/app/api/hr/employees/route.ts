@@ -27,7 +27,7 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.employeesView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.employeesView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -54,9 +54,8 @@ export async function GET(request: Request) {
       )
       .is("deleted_at", null);
 
-    if (!context.isSuperAdmin) {
-      employeesQuery = employeesQuery.in("unit_id", context.accessibleUnitIds);
-    }
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    employeesQuery = employeesQuery.in("unit_id", context.accessibleUnitIds);
 
     if (query.unitId) employeesQuery = employeesQuery.eq("unit_id", query.unitId);
     if (query.departmentId) employeesQuery = employeesQuery.eq("department_id", query.departmentId);
