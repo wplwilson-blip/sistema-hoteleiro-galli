@@ -24,6 +24,7 @@ type AppState = {
   activeUnitError: string | null;
   setSessionContext: (context: SessionContext) => void;
   setActiveUnit: (unitId: string) => Promise<void>;
+  clearActiveUnitError: () => void;
 };
 
 // Estado inicial NEUTRO (sem mock). Nunca undefined, para nada quebrar no 1o paint
@@ -82,5 +83,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       set({ activeUnitError: "Nao foi possivel trocar a unidade ativa." });
     }
-  }
+  },
+  clearActiveUnitError: () => set({ activeUnitError: null })
 }));
