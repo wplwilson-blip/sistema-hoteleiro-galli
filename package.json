@@ -10,7 +10,9 @@
     "screenshots:auth": "playwright test tests/screenshots/auth.manual.spec.ts --project=chromium --headed",
     "screenshots:compras": "playwright test tests/screenshots/compras.spec.ts --project=chromium",
     "screenshots:rh": "playwright test tests/screenshots/rh.spec.ts --project=chromium",
-    "screenshots:ui": "playwright test tests/screenshots --project=chromium"
+    "screenshots:ui": "playwright test tests/screenshots --project=chromium",
+    "test:e2e": "playwright test --config=playwright.e2e.config.ts",
+    "test:e2e:headed": "playwright test --config=playwright.e2e.config.ts --headed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
