@@ -10,6 +10,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAppStore } from "@/store/app-store";
 
 type OccupationalRecord = {
   id: string;
@@ -409,7 +410,9 @@ function nrPayload(form: NrForm) {
 
 export function HrOccupationalHealthClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ unitId: "", employeeId: "", recordType: "", status: "", search: "", quick: "" });
+  // Unidade ativa (header) e a fonte unica de escopo; sem filtro manual de unidade.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
+  const [filters, setFilters] = useState({ employeeId: "", recordType: "", status: "", search: "", quick: "" });
   const [recordForm, setRecordForm] = useState<RecordForm>(emptyRecordForm);
   const [nrForm, setNrForm] = useState<NrForm>(emptyNrForm);
   const [recordAttachmentForm, setRecordAttachmentForm] = useState<ContextualAttachmentForm>(emptyContextualAttachmentForm);
@@ -418,10 +421,9 @@ export function HrOccupationalHealthClient() {
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [showNrForm, setShowNrForm] = useState(false);
 
-  const recordsQuery = useQuery({ queryKey: ["hr", "occupational-records", filters], queryFn: async () => requestJson<RecordsResponse>(buildUrl("/api/hr/occupational-records", { unitId: filters.unitId, employeeId: filters.employeeId, recordType: filters.recordType, status: filters.status, search: filters.search, pageSize: "100" })) });
-  const nrQuery = useQuery({ queryKey: ["hr", "nr-certifications", filters], queryFn: async () => requestJson<NrResponse>(buildUrl("/api/hr/nr-certifications", { unitId: filters.unitId, employeeId: filters.employeeId, status: filters.status, search: filters.search, pageSize: "100" })) });
-  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "occupational-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
-  const unitsQuery = useQuery({ queryKey: ["base", "units", "occupational-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
+  const recordsQuery = useQuery({ queryKey: ["hr", "occupational-records", activeUnitId, filters], queryFn: async () => requestJson<RecordsResponse>(buildUrl("/api/hr/occupational-records", { employeeId: filters.employeeId, recordType: filters.recordType, status: filters.status, search: filters.search, pageSize: "100" })) });
+  const nrQuery = useQuery({ queryKey: ["hr", "nr-certifications", activeUnitId, filters], queryFn: async () => requestJson<NrResponse>(buildUrl("/api/hr/nr-certifications", { employeeId: filters.employeeId, status: filters.status, search: filters.search, pageSize: "100" })) });
+  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "occupational-options", activeUnitId], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const documentTypesQuery = useQuery({ queryKey: ["hr", "document-types", "occupational", "active"], queryFn: async () => requestJson<DocumentTypesResponse>("/api/hr/document-types?status=active") });
 
   const records = useMemo(() => recordsQuery.data?.data ?? [], [recordsQuery.data?.data]);
@@ -692,7 +694,7 @@ export function HrOccupationalHealthClient() {
     mutationFn: async () =>
       requestJson<ProcessExpirationsResponse>("/api/hr/occupational-records/process-expirations", {
         method: "POST",
-        body: JSON.stringify({ unitId: filters.unitId })
+        body: JSON.stringify({ unitId: activeUnitId })
       }),
     onSuccess: async () => {
       await Promise.all([
@@ -774,7 +776,6 @@ export function HrOccupationalHealthClient() {
         <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros</h2></div>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <SelectField value={filters.quick} onChange={(event) => setFilters((current) => ({ ...current, quick: event.target.value }))}>{quickFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>
-          <SelectField value={filters.unitId} onChange={(event) => setFilters((current) => ({ ...current, unitId: event.target.value }))}><option value="">Todas as unidades</option>{(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>)}</SelectField>
           <SelectField value={filters.employeeId} onChange={(event) => setFilters((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Todos os colaboradores</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField>
           <SelectField value={filters.recordType} onChange={(event) => setFilters((current) => ({ ...current, recordType: event.target.value }))}><option value="">Todos os tipos</option>{recordTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>
           <SelectField value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos os status</option>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>

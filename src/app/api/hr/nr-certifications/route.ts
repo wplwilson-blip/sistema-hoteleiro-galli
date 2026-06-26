@@ -9,7 +9,7 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.occupationalView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.occupationalView, { scope: "active-unit" });
   if (response || !context) return response;
 
   try {
@@ -19,7 +19,8 @@ export async function GET(request: Request) {
     const to = from + query.pageSize - 1;
     let nrQuery = context.supabase.from("employee_nr_certifications").select(nrCertificationListSelect, { count: "exact" }).is("deleted_at", null);
 
-    if (!context.isSuperAdmin) nrQuery = nrQuery.in("unit_id", context.accessibleUnitIds);
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    nrQuery = nrQuery.in("unit_id", context.accessibleUnitIds);
     if (query.employeeId) nrQuery = nrQuery.eq("employee_id", query.employeeId);
     if (query.unitId) nrQuery = nrQuery.eq("unit_id", query.unitId);
     if (query.nrCode) nrQuery = nrQuery.eq("nr_code", query.nrCode);
