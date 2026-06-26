@@ -54,7 +54,7 @@ async function validateDepartmentForUnit(supabase: ReturnType<typeof createSupab
 }
 
 export async function GET() {
-  const { context, response } = await requirePermission(BASE_PERMISSIONS.jobPositionsView);
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.jobPositionsView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -72,9 +72,8 @@ export async function GET() {
       .not("unit_id", "is", null)
       .order("name", { ascending: true });
 
-    if (!context.isSuperAdmin) {
-      positionsQuery = positionsQuery.in("unit_id", context.accessibleUnitIds);
-    }
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    positionsQuery = positionsQuery.in("unit_id", context.accessibleUnitIds);
 
     const { data: positions, error: positionsError } = await positionsQuery;
 

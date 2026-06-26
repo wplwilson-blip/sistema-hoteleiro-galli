@@ -11,6 +11,9 @@ export type PermissionRequestContext<TPermissionCode extends string = string> = 
   requiredPermission: TPermissionCode;
   accessibleUnitIds: string[];
   isSuperAdmin: boolean;
+  // Opcional para nao quebrar contextos paralelos (ex.: HrRequestContext) que ainda nao
+  // declaram o campo; requirePermission sempre o preenche.
+  hasPermissionInScope?: boolean;
 };
 
 export const BASE_PERMISSIONS = {
@@ -50,6 +53,7 @@ export type PermissionAccessResult = {
   isSuperAdmin: boolean;
   accessibleUnitIds: string[];
   hasPermission: boolean;
+  hasPermissionInScope: boolean;
 };
 
 export type PermissionAuthorizationOptions = {
@@ -58,6 +62,10 @@ export type PermissionAuthorizationOptions = {
   forbiddenMessage?: string;
   notFoundMessage?: string;
   logError?: (stage: string, error: { name?: string; message?: string; code?: string }) => void;
+  // Leva 2 (B-misto): "aggregate" (padrao) = UNIAO de unidades acessiveis;
+  // "active-unit" = UNIAO ∩ [unidade ativa]. So afeta o conjunto retornado (leitura);
+  // hasPermission continua calculado sobre a UNIAO (gateia o 403).
+  scope?: "aggregate" | "active-unit";
 };
 
 export class PermissionAuthorizationError extends Error {
@@ -252,40 +260,52 @@ export async function getAccessibleUnitIdsForPermission(
     session.profile.code === SUPER_ADMIN_PROFILE_CODE ||
     (await userHasActiveSuperAdminProfile(supabase, session.user.id, options));
 
+  // 1) UNIAO das unidades acessiveis (exatamente como antes).
+  let unionUnitIds: string[];
+  let hasPermission: boolean;
+
   if (isSuperAdmin) {
-    return {
-      isSuperAdmin,
-      accessibleUnitIds: await getAllActiveUnitIds(supabase, options),
-      hasPermission: true
-    };
+    unionUnitIds = await getAllActiveUnitIds(supabase, options);
+    hasPermission = true;
+  } else {
+    const permissionId = await getPermissionId(supabase, permissionCode, options);
+    if (!permissionId) {
+      return { isSuperAdmin, accessibleUnitIds: [], hasPermission: false, hasPermissionInScope: false };
+    }
+
+    const links = await getActiveUserUnitLinks(supabase, session.user.id, options);
+    const linkedUnitIds = new Set(unique(links.map((link) => link.unit_id)));
+    const profileIds = unique(links.map((link) => link.access_profile_id));
+    const allowedProfileIds = await getProfileAllowedIds(supabase, profileIds, permissionId, options);
+    const allowedUnitIds = new Set(
+      unique(links.filter((link) => allowedProfileIds.has(link.access_profile_id)).map((link) => link.unit_id))
+    );
+
+    await applyUserPermissionOverrides({
+      supabase,
+      userId: session.user.id,
+      permissionId,
+      linkedUnitIds,
+      allowedUnitIds,
+      options
+    });
+
+    unionUnitIds = Array.from(allowedUnitIds);
+    hasPermission = allowedUnitIds.size > 0;
   }
 
-  const permissionId = await getPermissionId(supabase, permissionCode, options);
-  if (!permissionId) {
-    return { isSuperAdmin, accessibleUnitIds: [], hasPermission: false };
-  }
-
-  const links = await getActiveUserUnitLinks(supabase, session.user.id, options);
-  const linkedUnitIds = new Set(unique(links.map((link) => link.unit_id)));
-  const profileIds = unique(links.map((link) => link.access_profile_id));
-  const allowedProfileIds = await getProfileAllowedIds(supabase, profileIds, permissionId, options);
-  const allowedUnitIds = new Set(
-    unique(links.filter((link) => allowedProfileIds.has(link.access_profile_id)).map((link) => link.unit_id))
-  );
-
-  await applyUserPermissionOverrides({
-    supabase,
-    userId: session.user.id,
-    permissionId,
-    linkedUnitIds,
-    allowedUnitIds,
-    options
-  });
+  // 2) Estreitamento opcional para a unidade ativa (Leva 2 / B-misto).
+  //    Default ausente = aggregate (uniao). hasPermission permanece sobre a UNIAO.
+  const accessibleUnitIds =
+    options?.scope === "active-unit"
+      ? unionUnitIds.filter((unitId) => unitId === session.activeUnit?.id)
+      : unionUnitIds;
 
   return {
     isSuperAdmin,
-    accessibleUnitIds: Array.from(allowedUnitIds),
-    hasPermission: allowedUnitIds.size > 0
+    accessibleUnitIds,
+    hasPermission,
+    hasPermissionInScope: accessibleUnitIds.length > 0
   };
 }
 
@@ -335,7 +355,8 @@ export async function requirePermission<TPermissionCode extends string = string>
       supabase,
       requiredPermission: permissionCode,
       accessibleUnitIds: access.accessibleUnitIds,
-      isSuperAdmin: access.isSuperAdmin
+      isSuperAdmin: access.isSuperAdmin,
+      hasPermissionInScope: access.hasPermissionInScope
     } satisfies PermissionRequestContext<TPermissionCode>,
     response: null
   };

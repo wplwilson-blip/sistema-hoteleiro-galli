@@ -55,7 +55,7 @@ async function validateEmployeeRelationsForUnit(
 }
 
 export async function GET() {
-  const { context, response } = await requirePermission(BASE_PERMISSIONS.employeesView);
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.employeesView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -74,9 +74,8 @@ export async function GET() {
       .is("deleted_at", null)
       .order("full_name", { ascending: true });
 
-    if (!context.isSuperAdmin) {
-      employeesQuery = employeesQuery.in("unit_id", context.accessibleUnitIds);
-    }
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    employeesQuery = employeesQuery.in("unit_id", context.accessibleUnitIds);
 
     const { data: employees, error: employeesError } = await employeesQuery;
 

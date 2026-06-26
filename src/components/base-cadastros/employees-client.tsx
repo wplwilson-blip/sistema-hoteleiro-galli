@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useAppStore } from "@/store/app-store";
 import { EmptyState } from "@/components/common/empty-state";
 import {
   ErrorMessage,
@@ -141,21 +142,24 @@ export function EmployeesClient() {
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  // Unidade ativa na queryKey: lista e opcoes (departments/positions agora escopados por
+  // unidade no servidor) refazem fetch ao trocar a unidade no header.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
 
   const unitsQuery = useQuery({
     queryKey: ["base", "units"],
     queryFn: async () => requestJson<{ ok: true; units: UnitOption[] }>("/api/base/units")
   });
   const departmentsQuery = useQuery({
-    queryKey: ["base", "departments"],
+    queryKey: ["base", "departments", activeUnitId],
     queryFn: async () => requestJson<{ ok: true; departments: DepartmentOption[] }>("/api/base/departments")
   });
   const positionsQuery = useQuery({
-    queryKey: ["base", "job-positions"],
+    queryKey: ["base", "job-positions", activeUnitId],
     queryFn: async () => requestJson<{ ok: true; positions: JobPositionOption[] }>("/api/base/job-positions")
   });
   const employeesQuery = useQuery({
-    queryKey: ["base", "employees"],
+    queryKey: ["base", "employees", activeUnitId],
     queryFn: async () => requestJson<{ ok: true; employees: EmployeeRecord[] }>("/api/base/employees")
   });
 

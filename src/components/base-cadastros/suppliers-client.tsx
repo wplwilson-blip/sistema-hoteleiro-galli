@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useAppStore } from "@/store/app-store";
 import { EmptyState } from "@/components/common/empty-state";
 import {
   ErrorMessage,
@@ -131,9 +132,12 @@ export function SuppliersClient() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | RecordStatus>("all");
+  // Unidade ativa na queryKey: trocar a unidade no header refaz fetch da lista escopada
+  // por unidade no servidor (fornecedor corporativo/unit_id nulo segue visivel ao super admin).
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
 
   const suppliersQuery = useQuery({
-    queryKey: ["base", "suppliers"],
+    queryKey: ["base", "suppliers", activeUnitId],
     queryFn: async () => requestJson<SupplierListResponse>("/api/base/suppliers")
   });
 

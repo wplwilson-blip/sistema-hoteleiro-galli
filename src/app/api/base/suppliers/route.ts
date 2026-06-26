@@ -119,7 +119,7 @@ async function validateDuplicateDocument(
 }
 
 export async function GET() {
-  const { context, response } = await requirePermission(BASE_PERMISSIONS.suppliersView);
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.suppliersView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -161,8 +161,11 @@ export async function GET() {
     }
 
     const unitsById = new Map((units ?? []).map((unit) => [unit.id, unit]));
+    // Fornecedor com unidade: visivel se a unidade esta no escopo JA estreitado
+    // (active-unit) — vale tambem para super admin (= [unidade ativa]).
+    // Fornecedor corporativo (unit_id nulo): exececao preservada, visivel ao super admin.
     const visibleSuppliers = ((suppliers ?? []) as SupplierRow[]).filter((supplier) =>
-      supplier.unit_id ? context.isSuperAdmin || accessibleUnitIds.includes(supplier.unit_id) : context.isSuperAdmin
+      supplier.unit_id ? accessibleUnitIds.includes(supplier.unit_id) : context.isSuperAdmin
     );
 
     return NextResponse.json({
