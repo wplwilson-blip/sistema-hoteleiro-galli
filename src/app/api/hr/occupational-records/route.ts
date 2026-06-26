@@ -15,7 +15,7 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.occupationalView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.occupationalView, { scope: "active-unit" });
   if (response || !context) return response;
 
   try {
@@ -25,7 +25,8 @@ export async function GET(request: Request) {
     const to = from + query.pageSize - 1;
     let recordsQuery = context.supabase.from("employee_occupational_records").select(occupationalRecordListSelect, { count: "exact" }).is("deleted_at", null);
 
-    if (!context.isSuperAdmin) recordsQuery = recordsQuery.in("unit_id", context.accessibleUnitIds);
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    recordsQuery = recordsQuery.in("unit_id", context.accessibleUnitIds);
     if (query.employeeId) recordsQuery = recordsQuery.eq("employee_id", query.employeeId);
     if (query.unitId) recordsQuery = recordsQuery.eq("unit_id", query.unitId);
     if (query.recordType) recordsQuery = recordsQuery.eq("record_type", query.recordType);
