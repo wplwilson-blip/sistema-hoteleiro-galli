@@ -111,7 +111,7 @@ export async function hasActiveSuperAdmin() {
   return (activeUsers?.length ?? 0) > 0;
 }
 
-export async function getCurrentSessionContext(): Promise<SessionContext | null> {
+export async function getCurrentSessionContext(activeUnitIdOverride?: string): Promise<SessionContext | null> {
   const serverClient = createSupabaseServerClient();
   const {
     data: { user },
@@ -122,10 +122,13 @@ export async function getCurrentSessionContext(): Promise<SessionContext | null>
     return null;
   }
 
-  return getSessionContextByAuthUserId(user.id);
+  return getSessionContextByAuthUserId(user.id, activeUnitIdOverride);
 }
 
-export async function getSessionContextByAuthUserId(authUserId: string): Promise<SessionContext | null> {
+export async function getSessionContextByAuthUserId(
+  authUserId: string,
+  activeUnitIdOverride?: string
+): Promise<SessionContext | null> {
   const supabase = createSupabaseAdminClient();
 
   const { data: appUser, error: appUserError } = await supabase
@@ -227,9 +230,11 @@ export async function getSessionContextByAuthUserId(authUserId: string): Promise
     units = Array.from(map.values());
   }
 
-  // Unidade ativa: cookie validado contra units[]; ausente/invalido -> fallback units[0].
-  const cookieUnitId = getActiveUnitCookie();
-  const activeUnit = (cookieUnitId ? units.find((unit) => unit.id === cookieUnitId) : undefined) ?? units[0];
+  // Unidade ativa: override explicito (ex.: unidade recem-validada no endpoint) tem
+  // prioridade sobre o cookie, evitando depender de ler cookie recem-gravado no mesmo
+  // request. Em ambos os casos, a unidade so vale se estiver em units[]; senao fallback.
+  const desiredUnitId = activeUnitIdOverride ?? getActiveUnitCookie();
+  const activeUnit = (desiredUnitId ? units.find((unit) => unit.id === desiredUnitId) : undefined) ?? units[0];
 
   return {
     user: {

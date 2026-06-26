@@ -33,16 +33,19 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdminClient();
 
-  // Validacao do vinculo: o usuario tem vinculo ATIVO (perfil ativo) nesta unidade?
+  // Validacao do vinculo: o usuario tem vinculo ATIVO (perfil ativo) nesta unidade,
+  // e a UNIDADE esta ativa?
   const { data: link, error: linkError } = await supabase
     .from("user_unit_links")
-    .select("id, access_profiles!inner(status, deleted_at)")
+    .select("id, access_profiles!inner(status, deleted_at), units!inner(status, deleted_at)")
     .eq("app_user_id", session.user.id)
     .eq("unit_id", unitId)
     .eq("status", "active")
     .is("deleted_at", null)
     .eq("access_profiles.status", "active")
     .is("access_profiles.deleted_at", null)
+    .eq("units.status", "active")
+    .is("units.deleted_at", null)
     .limit(1);
 
   if (linkError) {
@@ -73,9 +76,11 @@ export async function POST(request: Request) {
     return errorResponse("Voce nao tem acesso a esta unidade.", 403);
   }
 
-  // Grava o cookie e recalcula o SessionContext (activeUnit + profile da nova unidade).
+  // Grava o cookie e recalcula o SessionContext passando o unitId JA validado como
+  // override, para a resposta refletir a unidade nova independentemente do timing de
+  // leitura do cookie recem-gravado no mesmo request.
   setActiveUnitCookie(unitId);
-  const updated = await getCurrentSessionContext();
+  const updated = await getCurrentSessionContext(unitId);
 
   if (!updated) {
     return errorResponse("Nao foi possivel atualizar a unidade ativa.", 500);
