@@ -181,7 +181,19 @@ troca local, sem persistir nem trocar perfil.
 
 ---
 
-## 7. Ponto 7 — Classificação das 25 rotas
+## 7. Ponto 7 — Classificação das rotas
+
+> **REVALIDAÇÃO (Leva 2 — recontagem por inventário completo):** existem **128** `route.ts`
+> em `src/app/api`. A tabela original cobria só as **25** que usam `requirePermission`
+> (base/compras/attachments) — essas **25 continuam idênticas** (nenhuma adicionada/removida;
+> modos inalterados). **PORÉM faltava uma família inteira:** **~100 rotas de RH** em
+> `src/app/api/hr/**` que escopam por unidade via **helpers paralelos**
+> (`src/lib/hr/api-auth.ts` → `requireHrPermission`/`getHrAccessibleUnitIds`/`assertUnitInHrScope`
+> e `src/lib/hr/workflow-auth.ts` → `requireHrWorkflowPermission`/`assertWorkflowUnitScope`).
+> **Achado-chave:** esses wrappers **delegam ao mesmo núcleo** (`getAccessibleUnitIdsForPermission`
+> / `requirePermission` / `assertUnitInPermissionScope`, via `hrPermissionOptions`). Logo, o modo
+> `scope` (§1) é **herdado** pelo RH — basta os wrappers **encaminharem** a opção `scope`. A
+> classificação do RH (por família) está na **§7.1**.
 
 **PRINCÍPIO (revisão):** **Listas → unit-scoped.** **Busca de registro único por ID → AGGREGATE**,
 com o **check per-record** da unidade do registro contra a UNIÃO
@@ -226,6 +238,53 @@ estreitar); Cadastros (LISTAS) = unit-scoped, com **exceção de fornecedor corp
 🚩 **Casos especiais (já DECIDIDOS — ver §11):** #1–2 units = aggregate; #11–13 users = aggregate.
 Não há mais itens "a confirmar": #15 e #24 viraram **aggregate** pela Correção 1 (registro único /
 busca por entidade), e o caveat de 404 foi removido.
+
+### 7.1 — Família RH (~100 rotas, ausente da tabela original)
+
+Padrões observados no código (amostra ampla):
+- **Listas** (GET coleção) filtram `.in("unit_id", context.accessibleUnitIds)` → candidatas a **unit-scoped**.
+- **Registro único / ações por id** ([id], approve/submit/etc.) usam `assertCanAccessHrEmployee` /
+  `assertUnitInHrScope` / redação por unidade do registro → **aggregate + check per-record**.
+- **Consolidados/dashboards/relatórios** aceitam `unitId` opcional e validam `∈ acessíveis`,
+  senão agregam sobre todas as acessíveis → **aggregate** (o cliente já passa `unit_id=activeUnit`
+  nessas telas; o servidor permanece consolidável p/ gestor de rede).
+- **Escrita** (POST/PATCH/DELETE) → **aggregate** + `assertUnitInHrScope`/`assertWorkflowUnitScope` (inalterado).
+- **Exceção rede/global (`unit_id` nulo)**: algumas listas incluem registros globais
+  (`or(unit_id.is.null,…)` ou `!row.unit_id || …`) — **preservar** ao estreitar (análogo ao fornecedor corporativo).
+- **Redação sensível**: a 2ª chamada `getHrAccessibleUnitIds(*SensitiveView)` usada para redigir
+  campos sensíveis por linha **permanece AGGREGATE** (é capacidade por-registro, não filtro de lista) —
+  **não** estreitar essa chamada.
+
+Classificação por família (representativa; a migração detalhada vai por família na §9):
+
+| Família RH | Rotas (exemplos) | Modo |
+|---|---|---|
+| Colaboradores (lista) | `hr/employees` GET | **unit-scoped** |
+| Colaborador (registro/sub-recursos) | `hr/employees/[id]` e `[id]/{documents,conduct,occupational,nr-certifications,terminations,trainings,onboarding,history,document-links}` | **aggregate + check per-record** (`assertCanAccessHrEmployee`) |
+| Conduta (lista / id+ações) | `hr/conduct` GET ↔ `hr/conduct/[id]`,`/submit`,`/approve`,`/reject`,`/cancel` | lista **unit-scoped**; id/ações **aggregate+check**; POST aggregate |
+| Saúde ocupacional | `hr/occupational-records` GET ↔ `[id]`,`process-expirations` | lista **unit-scoped**; resto **aggregate(+check/escrita)** |
+| NR/SST | `hr/nr-certifications` GET ↔ `[id]` | lista **unit-scoped**; id **aggregate** |
+| Avaliações | `hr/employee-evaluations` GET ↔ `[id]`,`[id]/scores`; `evaluation-templates*` | lista **unit-scoped**; id/scores **aggregate+check**; **templates 🚩** (ver nota) |
+| Avaliações (relatórios) | `hr/employee-evaluations/reports` | **aggregate** (consolidado) |
+| Planos de desenvolvimento | `hr/development-plans` GET ↔ `[id]`,`[id]/items*` | lista **unit-scoped**; id/items **aggregate+check** |
+| Movimentações | `hr/movements` GET ↔ `[id]`,`/submit`,`/approve`,`/reject`,`/implement` | lista **unit-scoped**; id/ações **aggregate+check** |
+| Desligamentos | `hr/terminations` GET ↔ `[id]`,`/checklist*`,`/submit`,`/approve`,`/cancel`,`/implement` | lista **unit-scoped**; id/ações **aggregate+check** |
+| Treinamentos | `hr/trainings` GET ↔ `[id]`,`assignments`,`process-expirations` | lista **unit-scoped (+`unit_id` nulo rede)**; resto **aggregate** |
+| Onboarding | `hr/onboarding-plans*`, `hr/employees/[id]/onboarding*`, `hr/onboarding-dashboard*` | planos lista **unit-scoped (+nulo)**; dashboards **aggregate** |
+| Documentos (regras/tipos/pendências) | `hr/document-rules` (lista **+nulo**), `hr/document-types` (catálogo → **aggregate**), `hr/document-pendencies*` (**aggregate**), `hr/contextual-documents` (🚩) | ver células |
+| Admissão | `hr/admission-processes` GET ↔ `[id]`,`[id]/checklist*` | lista **unit-scoped**; id/checklist **aggregate+check** 🚩 |
+| Workflows/Recrutamento (`workflow-auth.ts`) | `hr/workflows` GET ↔ `hr/workflows/[id]/**` (candidates, interviews, scorecards, approve, execute, etc.) | lista **unit-scoped**; id/sub-recursos **aggregate + `assertWorkflowUnitScope`** 🚩 |
+| Consolidados / dashboards / auditoria | `hr/consolidated-reports`, `hr/executive-dashboard`, `hr/analytics`, `hr/dashboard`, `hr/audit`, `hr/pending-center` | **aggregate** (rede; `unitId` opcional já validado) |
+
+🚩 **A confirmar com você (não decidi):**
+1. **`evaluation-templates*`** e **`document-rules`/`document-types`**: catálogos de configuração —
+   podem ter `unit_id` próprio **ou** ser globais. Proposta: catálogo global → **aggregate**;
+   se tiver `unit_id`, lista **unit-scoped (+nulo)**. Confirmar caso a caso na migração da família.
+2. **`hr/contextual-documents`**: busca por contexto/entidade (provável **aggregate**, como attachments) — confirmar.
+3. **Admissão e Workflows/Recrutamento**: famílias grandes com máquina de estado; proponho
+   **lista unit-scoped + id/ações aggregate+check**, mas por serem fluxos de rede sensíveis,
+   confirmar se a **lista** deve seguir a unidade ativa ou permanecer consolidada (aggregate).
+4. **`hr/workflows`** usa um **3º wrapper** (`workflow-auth.ts`) que também precisa **encaminhar `scope`**.
 
 ---
 
@@ -286,39 +345,77 @@ entidade ficam `aggregate` com check per-record** (Correção 1 da revisão).
 > da Parte 3**: senão o usuário passa a ver só os dados de uma unidade **sem saber qual é nem
 > como trocar**.
 
-**Arquivos tocados:**
-- `src/lib/auth/permissions.ts` — `scope?: "aggregate" | "active-unit"` em
-  `PermissionAuthorizationOptions`; estreitamento por interseção; expõe
-  `hasPermission` (união) e `hasPermissionInScope` (§1.1); `requirePermission` repassa.
-- **Família Cadastros (primeiro):** **apenas os GET de LISTA** de departments, job-positions,
-  employees, suppliers (#3,5,7,9) passam `{ scope: "active-unit" }`. Os **GET por ID** ficam
-  `aggregate + check per-record` (suppliers/[id] #10). Escrita inalterada (aggregate).
-  Preservar exceção corporativa em suppliers (lista e registro único).
-- **Família Compras (depois):** **GET de LISTA** de requests (#14), quotes (#19),
-  documentation-dashboard (#20) → `active-unit`. **requests/[id] GET (#15)** fica
-  `aggregate + check per-record`. Escrita inalterada. Aprovações (#21–23) permanecem aggregate.
-- **attachments GET (#24):** fica **aggregate** (busca por entidade-pai); confirmar na
-  implementação que valida acesso pela entidade-pai e não some com anexos legítimos.
-- **Listas que retornam vazio fora de escopo (§1.1):** as rotas de lista em `active-unit`
-  tratam interseção vazia como **lista vazia (200)**, não 403.
-- **Cliente:** `queryKey` das telas unit-scoped passam a incluir `activeUnit.id`;
-  `setActiveUnit` invalida/refetch essas queries (store + componentes de lista das famílias).
-- units (#1–2) e users (#11–13): permanecem **aggregate** (DECIDIDO, §11) — não migram.
+### 9.1 — Mudança no núcleo (compartilhada com o RH)
 
-**Critério de aceite (Leva 2):**
-- **A Parte 3 (indicador + troca de unidade no header) está disponível** — Leva 2 não é
-  liberada sem ela (condição de sequenciamento acima).
-- Usuário multi-unidade troca de unidade → **listas operacionais e de cadastros acompanham** a
-  unidade ativa; sem "vazar" dados da unidade anterior (queries invalidadas).
-- **Registro único / busca por entidade** seguem abrindo registros legítimos de qualquer
-  unidade da união (sem 404 espúrio), protegidos por **check per-record**.
-- Leitura unit-scoped: sem permissão em unidade nenhuma → **403**; com permissão mas unidade
-  ativa fora da união → **lista vazia (200)** (§1.1).
-- Perfil de **rede** mantém visão consolidada nas rotas **aggregate** (aprovações).
-- **Super admin** troca livremente entre quaisquer unidades.
-- **Unidade única** não percebe diferença (interseção = a própria unidade).
-- Escrita continua validada server-side contra a união (sem afrouxar); default na unidade ativa.
+- `src/lib/auth/permissions.ts` — `scope?: "aggregate" | "active-unit"` em
+  `PermissionAuthorizationOptions`; estreitamento por interseção `união ∩ [activeUnitId]`.
+- **`hasPermission` continua calculado sobre a UNIÃO** (é o que dispara o 403 em
+  `requirePermission`); adiciona-se `hasPermissionInScope = accessibleUnitIds.length > 0`
+  (após estreitar). Isso garante o §1.1: usuário **com** permissão mas **fora** da unidade ativa
+  **não** leva 403 no `requirePermission` — recebe `context.accessibleUnitIds = []` e a rota de
+  lista devolve **vazio (200)**. Sem permissão na união → 403 como hoje.
+- **`requirePermission` repassa `scope`.** Default ausente = `aggregate` (zero regressão).
+- **Wrappers de RH encaminham `scope`** (mudança fina, sem duplicar):
+  `requireHrPermission(code, { scope })`, `getHrAccessibleUnitIds(..., { scope })` e
+  `requireHrWorkflowPermission(code, { scope })` passam `scope` para dentro de `hrPermissionOptions`.
+  **A 2ª chamada de redação sensível (`*SensitiveView`) NÃO recebe `scope`** (continua aggregate).
+
+### 9.2 — Guard de "lista vazia" hoje (a tratar no §1.1)
+
+Rotas de lista que já têm guard por `accessibleUnitIds.length` (mapeadas no código):
+`base/departments`, `base/employees`, `base/job-positions`, `base/suppliers`, `base/units`,
+`hr/employees`, `hr/trainings`, `hr/workflows`, `purchases/documentation-dashboard`,
+`purchases/quotes`, `purchases/requests`.
+- **Boa notícia:** hoje essas rotas, quando `!isSuperAdmin && !accessibleUnitIds.length`,
+  **já retornam lista vazia (200)** — não 403. Com o estreitamento + `hasPermission` na união,
+  o caso "tem permissão mas não na unidade ativa" cai **exatamente** nesse guard → **vazio (200)**,
+  sem novo código de erro. Cada rota dessas só precisa: (a) receber `scope:"active-unit"` (lista),
+  (b) confirmar que o filtro `.in("unit_id", accessibleUnitIds)` usa o conjunto **já estreitado**.
+- **Atenção (preservar global/nulo):** `base/suppliers` (corporativo), `hr/trainings`,
+  `hr/onboarding-plans`, `hr/document-rules` incluem `unit_id IS NULL` (rede). O estreitamento
+  **não pode** derrubar esses registros globais — manter o ramo `unit_id.is.null` no filtro.
+
+### 9.3 — Ordem das famílias e o que migra
+
+**Família 1 — Cadastros (base/*):** GET de LISTA de departments, job-positions, employees,
+suppliers → `active-unit`. `suppliers/[id]` e demais `[id]`/escrita → **aggregate**. Preservar
+corporativo (`unit_id` nulo). units/users → **aggregate** (não migram).
+
+**Família 2 — Compras (purchases/*):** GET de LISTA de requests, quotes,
+documentation-dashboard → `active-unit`. `requests/[id]` GET → **aggregate + check per-record**.
+Escrita e aprovações (lista/decisão/resubmit) → **aggregate**. attachments → **aggregate**.
+
+**Família 3 — RH (hr/*):** migrar **só os GET de LISTA** para `active-unit`, por sub-família,
+na ordem: employees → conduct → occupational-records → nr-certifications → employee-evaluations →
+movements → terminations → development-plans → trainings(+nulo) → onboarding-plans(+nulo) →
+document-rules(+nulo). **Mantêm `aggregate`:** todos os `[id]`/sub-recursos/ações
+(`assertCanAccessHrEmployee`/`assertUnitInHrScope`), escrita, e os **consolidados/dashboards/
+relatórios/auditoria** (`consolidated-reports`, `executive-dashboard`, `analytics`, `dashboard`,
+`audit`, `pending-center`, `onboarding-dashboard`, `document-pendencies`). **🚩 Confirmar antes:**
+evaluation-templates / document-rules / document-types (catálogo vs unit), contextual-documents,
+admission-processes e workflows/recrutamento (lista unit-scoped vs consolidada) — ver §7.1.
+
+**Cliente (por família):** as `queryKey` das telas de **lista** unit-scoped passam a incluir
+`activeUnit.id`; ao trocar a unidade, o `store.setActiveUnit` (que já reflete o novo
+`SessionContext`) dispara **invalidate/refetch** dessas queries. Telas que hoje filtram por um
+`<select>` manual de unidade (ex.: conduct, terminations, occupational) passam a usar a unidade
+ativa como filtro padrão; telas de dashboard que já passam `unit_id=activeUnit` (operational/
+management/evaluation-templates) só precisam manter o `activeUnit.id` na `queryKey`.
+
+**Critério de aceite — geral (Leva 2):**
+- A **Parte 3** está no ar (sequenciamento) — ✅ já em main.
+- `hasPermission` na união (403 só sem permissão em lugar nenhum); fora da unidade ativa → **vazio 200** (§1.1).
+- Registro único / entidade abrem registros legítimos de qualquer unidade da união (check per-record; sem 404 espúrio).
+- Escrita validada na união (sem afrouxar); aprovações/consolidados permanecem **aggregate** (gestor de rede mantém visão).
+- Super admin troca livremente; **unidade única** não percebe diferença; global/`unit_id` nulo preservado.
 - `build` e `lint` passam.
+
+**Critério de aceite — por família (repetir a cada migração):**
+- A lista da família passa a refletir **só** a unidade ativa; trocar a unidade **troca** os dados
+  (invalidação/refetch), sem vazar a unidade anterior.
+- `[id]`/ações/escrita da família **inalterados** (aggregate + check); consolidados da família inalterados.
+- Exceções global/nulo da família preservadas; redação sensível inalterada (aggregate).
+- Smoke test logado (app usa service_role → não quebra): a tela da família carrega e troca de unidade sem erro.
 
 ---
 
