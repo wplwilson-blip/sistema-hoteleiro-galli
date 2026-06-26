@@ -174,9 +174,11 @@ Recurso **concluído e no `main`** (Leva 1 + Parte 3 + Leva 2 completa).
 
 ## Pendências conhecidas (pós-Leva 2)
 
-- **`admission-processes` (GET lista) parece NÃO filtrar por unidade** — possível lacuna de
-  isolamento pré-existente; ficou **fora da Leva 2**. Investigação de isolamento separada a fazer
-  (decidir se vira unit-scoped ou permanece aggregate).
+- **`admission-processes` — INVESTIGADO, sem lacuna.** `listAdmissionProcesses`
+  (`src/lib/hr/admission-processes.ts`) filtra por unidade: `query.in('unit_id', accessibleUnitIds)`
+  para não-super + guard de vazio + recheck por registro (`canAccessAdmissionProcess`). É AGGREGATE
+  (união das unidades acessíveis), não unidade ativa — coerente com recrutamento/workflows, que
+  também é de rede e do qual a admissão é continuação. Decisão: permanece aggregate. Sem ação.
 - **RLS Etapa 2 — Camada 2:** levar o gate `HR:*.sensitive.view` ao banco. A `069` cobriu só o
   escopo **por unidade**; a checagem de permissão sensível continua na aplicação (`api-auth.ts`).
 - **Roadmap pré-existente ainda aberto:**
