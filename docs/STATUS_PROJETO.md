@@ -118,3 +118,70 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 - O modelo atual ainda usa `purchase_quotes.is_selected`; seleção de nova vencedora deve evoluir futuramente para evitar mutação em cotação congelada.
 - Contas a Pagar ainda é placeholder.
 - RH, Recepção, Manutenção, Governança e A&B ainda são entradas de módulo, não fluxos completos.
+
+## Unidade Ativa (multiunidade)
+
+Recurso **concluído e no `main`** (Leva 1 + Parte 3 + Leva 2 completa).
+
+- **Modelo A confirmado:** cada hotel é uma **unidade** (`unit_id`) da mesma organização; a
+  operação é isolada pela **unidade ativa**; a **rede** é usada para consolidados/relatórios.
+- **Seletor de unidade visível no header** (`ActiveUnitSwitcher`), com estados normal/trocando/
+  erro/unidade-única. A escolha é **persistida em cookie `httpOnly`** (`active_unit_id`),
+  validada server-side a cada request contra os vínculos reais do usuário.
+- **Núcleo de autorização:** `src/lib/auth/permissions.ts` ganhou `scope: "aggregate" |
+  "active-unit"` (default `aggregate` = sem regressão) e `hasPermissionInScope`. `hasPermission`
+  continua calculado sobre a **UNIÃO** (gateia o 403). Os wrappers de RH
+  (`src/lib/hr/api-auth.ts` e `src/lib/hr/workflow-auth.ts`) **encaminham** `scope` ao núcleo.
+- **Escopo por unidade ativa aplicado nas LISTAS operacionais de:**
+  - **Cadastros:** `departments`, `job-positions`, `employees`, `suppliers`.
+  - **Compras:** `requests`, `quotes` (lista), `documentation-dashboard`.
+  - **RH:** `employees`, `occupational-records`, `nr-certifications`, `employee-evaluations`*,
+    `development-plans`*, `evaluation-templates`, `document-rules`, `conduct`, `terminations`,
+    `movements`*, `trainings`, `onboarding-plans`.
+  - (\*) **condicional:** quando filtradas por `employeeId` (cards do detalhe do colaborador) e
+    `quotes` por `requestId`, a chamada volta a **aggregate + check per-record** — registro de
+    qualquer unidade da união abre normalmente.
+- **Permanecem AGGREGATE (visão de rede):** aprovações de compras (lista + decisão + reenvio),
+  `workflows`/inbox de recrutamento e todos os `workflows/[id]/**`, consolidados/dashboards/
+  relatórios de RH (`analytics`, `audit`, `dashboard`, `executive-dashboard`,
+  `consolidated-reports`, `pending-center`, `onboarding-dashboard`, `document-pendencies`,
+  `employee-evaluations/reports`, `trainings/assignments`) e **toda a escrita**.
+- **Exceções de rede preservadas (`unit_id NULL`):** fornecedor corporativo, templates e regras
+  de avaliação de rede, treinos de rede e planos de onboarding de rede continuam visíveis em
+  qualquer unidade.
+- **Transferência de colaborador entre hotéis:** a lista de movimentações é escopada pela
+  unidade ativa, mas as opções de **destino** (unidade/departamento/cargo) usam o **opt-out
+  explícito `?scope=aggregate`** em `base/departments` e `base/job-positions` (default dessas
+  rotas permanece `active-unit`).
+- **Redação de campos sensíveis** (`*SensitiveView` via `getHrAccessibleUnitIds`) permanece
+  decidida pela **UNIÃO**, não pela unidade ativa — estreitar quebraria a marcação de sensível.
+- **Hardening de RLS:** migration `069_rls_policies_hr_sensitive_core.sql` adicionou policies de
+  escopo **por unidade** em 10 tabelas sensíveis de RH (defesa em profundidade).
+- **Logout** limpa o cookie de unidade ativa (`clearActiveUnitCookie`).
+
+### Marcos (commits de merge no `main`)
+
+- `c5f0a85` — Leva 1 (cookie validado + perfil ativo no servidor + `units[]` do super admin + store sem mock).
+- `db24291` — Parte 3 (seletor de unidade no header).
+- `d18de37` — Leva 2 / Família 1 (Cadastros) + núcleo `scope`.
+- `b1a14e0` — Leva 2 / Família 2 (Compras).
+- `8720f57` — Família 3 / 3A (fundação: wrappers RH encaminham `scope`).
+- `8b84bfa` — Família 3 / 3B (Colaboradores).
+- `9e0b3b4` — Família 3 / 3D (Saúde ocupacional / SST).
+- `dc6fa77` — Família 3 / 3E (Avaliações & Desenvolvimento).
+- `4deba39` — Família 3 / 3F (Conduta, Desligamentos & Movimentações).
+- `8969297` — Família 3 / 3H (Recrutamento/Workflows & consolidados de rede).
+
+## Pendências conhecidas (pós-Leva 2)
+
+- **`admission-processes` (GET lista) parece NÃO filtrar por unidade** — possível lacuna de
+  isolamento pré-existente; ficou **fora da Leva 2**. Investigação de isolamento separada a fazer
+  (decidir se vira unit-scoped ou permanece aggregate).
+- **RLS Etapa 2 — Camada 2:** levar o gate `HR:*.sensitive.view` ao banco. A `069` cobriu só o
+  escopo **por unidade**; a checagem de permissão sensível continua na aplicação (`api-auth.ts`).
+- **Roadmap pré-existente ainda aberto:**
+  - **Prompt 1b** — `DEPARTMENT_MANAGER` em `approvals.decide` (alçada por departamento).
+  - **RH-35C** — menu filtrado por `access_profile` (impacta a regra de múltiplos perfis na mesma
+    unidade, hoje resolvida por precedência `SUPER_ADMIN` > demais, empate `created_at asc`).
+  - Limpar cookie de unidade ativa no logout — **já concluído** (`clearActiveUnitCookie` em
+    `src/app/api/auth/logout/route.ts`); mantido aqui apenas como confirmação.
