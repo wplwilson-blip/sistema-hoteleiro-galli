@@ -3,6 +3,7 @@ import "server-only";
 import type { SessionContext } from "@/lib/auth/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getActiveUnitCookie } from "@/lib/auth/active-unit";
 
 const initialSetupCheckMessage = "Nao foi possivel verificar o setup inicial.";
 export const SUPER_ADMIN_PROFILE_CODE = "SUPER_ADMIN";
@@ -110,7 +111,7 @@ export async function hasActiveSuperAdmin() {
   return (activeUsers?.length ?? 0) > 0;
 }
 
-export async function getCurrentSessionContext(): Promise<SessionContext | null> {
+export async function getCurrentSessionContext(activeUnitIdOverride?: string): Promise<SessionContext | null> {
   const serverClient = createSupabaseServerClient();
   const {
     data: { user },
@@ -121,10 +122,13 @@ export async function getCurrentSessionContext(): Promise<SessionContext | null>
     return null;
   }
 
-  return getSessionContextByAuthUserId(user.id);
+  return getSessionContextByAuthUserId(user.id, activeUnitIdOverride);
 }
 
-export async function getSessionContextByAuthUserId(authUserId: string): Promise<SessionContext | null> {
+export async function getSessionContextByAuthUserId(
+  authUserId: string,
+  activeUnitIdOverride?: string
+): Promise<SessionContext | null> {
   const supabase = createSupabaseAdminClient();
 
   const { data: appUser, error: appUserError } = await supabase
@@ -156,12 +160,81 @@ export async function getSessionContextByAuthUserId(authUserId: string): Promise
     return null;
   }
 
-  const firstLink = links[0] as any;
-  const units = links.map((link: any) => ({
-    id: link.units.id,
-    name: link.units.name,
-    code: link.units.code
-  }));
+  const typedLinks = links as any[];
+  const firstLink = typedLinks[0];
+
+  // Super admin: detectado por possuir vinculo ativo com perfil SUPER_ADMIN.
+  const superAdminLink = typedLinks.find((link) => link.access_profiles.code === SUPER_ADMIN_PROFILE_CODE);
+  const isSuperAdmin = Boolean(superAdminLink);
+
+  // Perfil de uma unidade: precedencia SUPER_ADMIN > demais, empate por created_at asc.
+  // (typedLinks ja vem ordenado por created_at asc; firstLink desse filtro = mais antigo.)
+  const profileForUnit = (unitId: string) => {
+    if (isSuperAdmin) {
+      return {
+        id: superAdminLink.access_profiles.id,
+        name: superAdminLink.access_profiles.name,
+        code: superAdminLink.access_profiles.code
+      };
+    }
+
+    const unitLinks = typedLinks.filter((link) => link.unit_id === unitId);
+    const chosen =
+      unitLinks.find((link) => link.access_profiles.code === SUPER_ADMIN_PROFILE_CODE) ?? unitLinks[0] ?? firstLink;
+
+    return {
+      id: chosen.access_profiles.id,
+      name: chosen.access_profiles.name,
+      code: chosen.access_profiles.code
+    };
+  };
+
+  // units[]: super admin enxerga TODAS as unidades ativas (para o seletor nao ficar
+  // preso a uma); demais usuarios enxergam apenas as unidades dos seus vinculos.
+  // Em ambos os casos, deduplica por id (um usuario pode ter mais de um perfil na
+  // mesma unidade -> a unidade aparece uma vez so).
+  let units: Array<{ id: string; name: string; code: string }>;
+
+  if (isSuperAdmin) {
+    const { data: allUnits, error: allUnitsError } = await supabase
+      .from("units")
+      .select("id, name, code")
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .order("name", { ascending: true });
+
+    if (allUnitsError) {
+      // Fallback seguro: nao derruba a sessao do super admin por falha aqui.
+      const map = new Map<string, { id: string; name: string; code: string }>();
+      for (const link of typedLinks) {
+        map.set(link.units.id, { id: link.units.id, name: link.units.name, code: link.units.code });
+      }
+      units = Array.from(map.values());
+    } else {
+      units = (allUnits ?? []).map((unit) => ({ id: unit.id, name: unit.name, code: unit.code }));
+    }
+  } else {
+    const map = new Map<string, { id: string; name: string; code: string }>();
+    for (const link of typedLinks) {
+      map.set(link.units.id, { id: link.units.id, name: link.units.name, code: link.units.code });
+    }
+    units = Array.from(map.values());
+  }
+
+  if (!units.length) {
+    // Garantia extra de fallback (ex.: super admin sem unidades ativas no banco).
+    const map = new Map<string, { id: string; name: string; code: string }>();
+    for (const link of typedLinks) {
+      map.set(link.units.id, { id: link.units.id, name: link.units.name, code: link.units.code });
+    }
+    units = Array.from(map.values());
+  }
+
+  // Unidade ativa: override explicito (ex.: unidade recem-validada no endpoint) tem
+  // prioridade sobre o cookie, evitando depender de ler cookie recem-gravado no mesmo
+  // request. Em ambos os casos, a unidade so vale se estiver em units[]; senao fallback.
+  const desiredUnitId = activeUnitIdOverride ?? getActiveUnitCookie();
+  const activeUnit = (desiredUnitId ? units.find((unit) => unit.id === desiredUnitId) : undefined) ?? units[0];
 
   return {
     user: {
@@ -169,12 +242,32 @@ export async function getSessionContextByAuthUserId(authUserId: string): Promise
       name: appUser.display_name,
       username: appUser.username
     },
-    profile: {
-      id: firstLink.access_profiles.id,
-      name: firstLink.access_profiles.name,
-      code: firstLink.access_profiles.code
-    },
+    profile: profileForUnit(activeUnit.id),
     units,
-    activeUnit: units[0]
+    activeUnit
   };
+}
+
+// Helper read-only para validacao de troca de unidade (endpoint active-unit):
+// o usuario possui algum vinculo ativo com perfil SUPER_ADMIN ativo?
+export async function appUserHasSuperAdminLink(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  appUserId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("user_unit_links")
+    .select("id, access_profiles!inner(code, status, deleted_at)")
+    .eq("app_user_id", appUserId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .eq("access_profiles.code", SUPER_ADMIN_PROFILE_CODE)
+    .eq("access_profiles.status", "active")
+    .is("access_profiles.deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    return false;
+  }
+
+  return Boolean(data?.length);
 }

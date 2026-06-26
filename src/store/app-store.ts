@@ -21,37 +21,66 @@ type AppState = {
   };
   units: Unit[];
   activeUnit: Unit;
+  activeUnitError: string | null;
   setSessionContext: (context: SessionContext) => void;
-  setActiveUnit: (unitId: string) => void;
+  setActiveUnit: (unitId: string) => Promise<void>;
 };
 
-const units: Unit[] = [
-  { id: "unit-matriz", name: "Matriz Corporativa" },
-  { id: "unit-rio", name: "Hotel Rio Centro" },
-  { id: "unit-sp", name: "Hotel São Paulo Jardins" }
-];
+// Estado inicial NEUTRO (sem mock). Nunca undefined, para nada quebrar no 1o paint
+// antes da hidratacao (footgun 1). E sobrescrito por setSessionContext (seed sincrono
+// no AppProviders a partir do SessionContext do SSR).
+const emptyUnit: Unit = { id: "", name: "" };
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   user: {
-    id: "user-demo",
-    name: "Marina Costa",
-    username: "marina.costa"
+    id: "",
+    name: "",
+    username: ""
   },
   profile: {
-    id: "profile-admin",
-    name: "Gestora Administrativa"
+    id: "",
+    name: ""
   },
-  units,
-  activeUnit: units[0],
+  units: [],
+  activeUnit: emptyUnit,
+  activeUnitError: null,
   setSessionContext: (context) =>
     set({
       user: context.user,
       profile: context.profile,
       units: context.units,
-      activeUnit: context.activeUnit
+      activeUnit: context.activeUnit,
+      activeUnitError: null
     }),
-  setActiveUnit: (unitId) =>
-    set((state) => ({
-      activeUnit: state.units.find((unit) => unit.id === unitId) ?? state.activeUnit
-    }))
+  setActiveUnit: async (unitId) => {
+    if (!unitId || unitId === get().activeUnit.id) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/auth/active-unit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitId })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        // 403 / erro: NAO troca a unidade; registra o erro (select controlado reverte).
+        set({ activeUnitError: payload.message ?? "Nao foi possivel trocar a unidade ativa." });
+        return;
+      }
+
+      const context = payload.user as SessionContext;
+      set({
+        user: context.user,
+        profile: context.profile,
+        units: context.units,
+        activeUnit: context.activeUnit,
+        activeUnitError: null
+      });
+    } catch {
+      set({ activeUnitError: "Nao foi possivel trocar a unidade ativa." });
+    }
+  }
 }));
