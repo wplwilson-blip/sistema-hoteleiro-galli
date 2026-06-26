@@ -15,7 +15,7 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.trainingsView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.trainingsView, { scope: "active-unit" });
   if (response || !context) return response;
 
   try {
@@ -24,11 +24,11 @@ export async function GET(request: Request) {
     const to = from + query.pageSize - 1;
     let trainingsQuery = context.supabase.from("hr_trainings").select(trainingListSelect, { count: "exact" }).is("deleted_at", null);
 
-    if (!context.isSuperAdmin) {
-      trainingsQuery = context.accessibleUnitIds.length
-        ? trainingsQuery.or(`unit_id.is.null,unit_id.in.(${context.accessibleUnitIds.join(",")})`)
-        : trainingsQuery.is("unit_id", null);
-    }
+    // active-unit: accessibleUnitIds ja vem estreitado (super admin = [unidade ativa]).
+    // Treinos de rede (unit_id NULL) permanecem visiveis em qualquer unidade.
+    trainingsQuery = context.accessibleUnitIds.length
+      ? trainingsQuery.or(`unit_id.is.null,unit_id.in.(${context.accessibleUnitIds.join(",")})`)
+      : trainingsQuery.is("unit_id", null);
     if (query.unitId) trainingsQuery = trainingsQuery.eq("unit_id", query.unitId);
     if (query.trainingType) trainingsQuery = trainingsQuery.eq("training_type", query.trainingType);
     if (query.deliveryMode) trainingsQuery = trainingsQuery.eq("delivery_mode", query.deliveryMode);

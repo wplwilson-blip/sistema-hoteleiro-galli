@@ -10,6 +10,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAppStore } from "@/store/app-store";
 
 type Training = {
   id: string;
@@ -286,7 +287,10 @@ function trainingPayload(form: TrainingForm) {
 
 export function HrTrainingsClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ status: "", trainingType: "", deliveryMode: "", mandatory: "", unitId: "", employeeId: "", expiresTo: "", search: "", quick: "" });
+  // Unidade ativa escopa o CATALOGO de treinos (treinos de rede / NULL seguem visiveis).
+  // A aba de atribuicoes (assignments) permanece de rede (aggregate) — sem activeUnit.id.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
+  const [filters, setFilters] = useState({ status: "", trainingType: "", deliveryMode: "", mandatory: "", employeeId: "", expiresTo: "", search: "", quick: "" });
   const [activeTrainingView, setActiveTrainingView] = useState<"assignments" | "catalog">("assignments");
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
@@ -301,20 +305,19 @@ export function HrTrainingsClient() {
   });
   const catalogFilters = useMemo(
     () => ({
-      unitId: filters.unitId,
       trainingType: filters.trainingType,
       deliveryMode: filters.deliveryMode,
       mandatory: filters.mandatory,
       search: filters.search,
       pageSize: "100"
     }),
-    [filters.deliveryMode, filters.mandatory, filters.search, filters.trainingType, filters.unitId]
+    [filters.deliveryMode, filters.mandatory, filters.search, filters.trainingType]
   );
   const trainingsQuery = useQuery({
-    queryKey: ["hr", "trainings", catalogFilters],
+    queryKey: ["hr", "trainings", activeUnitId, catalogFilters],
     queryFn: async () => requestJson<TrainingsResponse>(buildUrl("/api/hr/trainings", catalogFilters))
   });
-  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "training-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
+  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "training-options", activeUnitId], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const unitsQuery = useQuery({ queryKey: ["base", "units", "training-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
   const documentTypesQuery = useQuery({
     queryKey: ["hr", "document-types", "training", "active"],
@@ -442,9 +445,11 @@ export function HrTrainingsClient() {
 
   const processMutation = useMutation({
     mutationFn: async () =>
+      // Varredura de vencimentos: roda em TODAS as unidades acessiveis (governanca de rede),
+      // nao na unidade ativa. A rota trata unitId ausente como "todas as acessiveis".
       requestJson<{ ok: true; data: { processedCount: number; expiringCount: number; expiredCount: number; retrainingCount: number } }>("/api/hr/trainings/process-expirations", {
         method: "POST",
-        body: JSON.stringify({ unitId: filters.unitId })
+        body: JSON.stringify({})
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["hr", "training-assignments"] });
@@ -590,10 +595,6 @@ export function HrTrainingsClient() {
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros</h2></div>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SelectField value={filters.unitId} onChange={(event) => setFilters((current) => ({ ...current, unitId: event.target.value }))}>
-            <option value="">Todas as unidades</option>
-            {(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>)}
-          </SelectField>
           <SelectField value={filters.employeeId} onChange={(event) => setFilters((current) => ({ ...current, employeeId: event.target.value }))}>
             <option value="">Todos os colaboradores</option>
             {(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}
