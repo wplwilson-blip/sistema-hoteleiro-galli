@@ -8,7 +8,8 @@ import {
   HrAuthorizationError,
   logHrApiError,
   type HrPermissionCode,
-  type HrRequestContext
+  type HrRequestContext,
+  type HrScopeOptions
 } from "@/lib/hr/api-auth";
 
 export type HrPermissionAccess = {
@@ -33,7 +34,7 @@ export function hrWorkflowApiError(code: string, message: string, status: number
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
-export async function requireHrWorkflowPermission(permissionCode: HrPermissionCode) {
+export async function requireHrWorkflowPermission(permissionCode: HrPermissionCode, opts?: HrScopeOptions) {
   const { session } = await requireAuthenticatedRequest();
 
   if (!session) {
@@ -44,7 +45,7 @@ export async function requireHrWorkflowPermission(permissionCode: HrPermissionCo
   }
 
   const supabase = createSupabaseAdminClient();
-  const access = await getHrAccessibleUnitIds(supabase, session, permissionCode);
+  const access = await getHrAccessibleUnitIds(supabase, session, permissionCode, { scope: opts?.scope });
 
   if (!access.hasPermission) {
     return {
@@ -59,7 +60,8 @@ export async function requireHrWorkflowPermission(permissionCode: HrPermissionCo
       supabase,
       requiredPermission: permissionCode,
       accessibleUnitIds: access.accessibleUnitIds,
-      isSuperAdmin: access.isSuperAdmin
+      isSuperAdmin: access.isSuperAdmin,
+      hasPermissionInScope: access.hasPermissionInScope
     } satisfies HrRequestContext,
     response: null
   };

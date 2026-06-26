@@ -11,9 +11,7 @@ export type PermissionRequestContext<TPermissionCode extends string = string> = 
   requiredPermission: TPermissionCode;
   accessibleUnitIds: string[];
   isSuperAdmin: boolean;
-  // Opcional para nao quebrar contextos paralelos (ex.: HrRequestContext) que ainda nao
-  // declaram o campo; requirePermission sempre o preenche.
-  hasPermissionInScope?: boolean;
+  hasPermissionInScope: boolean;
 };
 
 export const BASE_PERMISSIONS = {
