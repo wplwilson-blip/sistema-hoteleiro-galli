@@ -26,8 +26,13 @@ async function hasDepartmentCodeInUnit(supabase: ReturnType<typeof createSupabas
   return Boolean(data?.[0]);
 }
 
-export async function GET() {
-  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsView, { scope: "active-unit" });
+export async function GET(request: Request) {
+  // Opt-out explicito de escopo: ?scope=aggregate retorna a UNIAO (usado p/ opcoes de
+  // destino de transferencia de colaborador). Default permanece active-unit.
+  const aggregateScope = new URL(request.url).searchParams.get("scope") === "aggregate";
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsView, {
+    scope: aggregateScope ? "aggregate" : "active-unit"
+  });
 
   if (response || !context) {
     return response;

@@ -10,6 +10,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAppStore } from "@/store/app-store";
 
 type RelatedMeta = { id: string; code: string; name: string; label: string } | null;
 
@@ -205,19 +206,24 @@ function toPayload(form: MovementForm) {
 
 export function HrMovementsClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ employeeId: "", unitId: "", departmentId: "", movementType: "", status: "", from: "", to: "", search: "" });
+  // Unidade ativa (header) escopa a LISTA. Sem filtro manual de unidade na lista.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
+  const [filters, setFilters] = useState({ employeeId: "", departmentId: "", movementType: "", status: "", from: "", to: "", search: "" });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<MovementForm>(emptyForm);
   const [commentsByAction, setCommentsByAction] = useState<Record<string, string>>({});
 
   const movementsQuery = useQuery({
-    queryKey: ["hr", "movements", filters],
+    queryKey: ["hr", "movements", activeUnitId, filters],
     queryFn: async () => requestJson<MovementsResponse>(buildMovementsUrl(filters))
   });
-  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "movement-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
+  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "movement-options", activeUnitId], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
+  // base/units ja e aggregate. departments/job-positions de DESTINO usam opt-out ?scope=aggregate
+  // (transferencia entre hoteis precisa enxergar unidades alem da ativa). Sao da rede inteira,
+  // por isso NAO entram na queryKey por unidade ativa.
   const unitsQuery = useQuery({ queryKey: ["base", "units", "movement-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
-  const departmentsQuery = useQuery({ queryKey: ["base", "departments", "movement-options"], queryFn: async () => requestJson<DepartmentsResponse>("/api/base/departments") });
-  const positionsQuery = useQuery({ queryKey: ["base", "positions", "movement-options"], queryFn: async () => requestJson<PositionsResponse>("/api/base/job-positions") });
+  const departmentsQuery = useQuery({ queryKey: ["base", "departments", "movement-destination"], queryFn: async () => requestJson<DepartmentsResponse>("/api/base/departments?scope=aggregate") });
+  const positionsQuery = useQuery({ queryKey: ["base", "positions", "movement-destination"], queryFn: async () => requestJson<PositionsResponse>("/api/base/job-positions?scope=aggregate") });
 
   const mutation = useMutation({
     mutationFn: async (input: MovementForm) =>
@@ -246,9 +252,11 @@ export function HrMovementsClient() {
 
   const selectedEmployee = useMemo(() => (employeesQuery.data?.data ?? []).find((employee) => employee.id === form.employeeId), [employeesQuery.data?.data, form.employeeId]);
   const departmentOptions = useMemo(() => departmentsQuery.data?.departments ?? [], [departmentsQuery.data?.departments]);
+  // Filtro de departamento da LISTA: restrito a unidade ativa (a lista ja e escopada por ela).
+  // (departmentOptions e a fonte agregada usada no destino do formulario.)
   const filteredDepartmentOptions = useMemo(
-    () => departmentOptions.filter((department) => !filters.unitId || department.unitId === filters.unitId),
-    [departmentOptions, filters.unitId]
+    () => departmentOptions.filter((department) => !activeUnitId || department.unitId === activeUnitId),
+    [departmentOptions, activeUnitId]
   );
   const positionOptions = positionsQuery.data?.positions ?? [];
   const rows = useMemo(() => movementsQuery.data?.data ?? [], [movementsQuery.data?.data]);
@@ -370,12 +378,6 @@ export function HrMovementsClient() {
           <h2 className="text-sm font-semibold">Filtros</h2>
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SelectField value={filters.unitId} onChange={(event) => setFilters((current) => ({ ...current, unitId: event.target.value, departmentId: "" }))}>
-            <option value="">Todas as unidades</option>
-            {(unitsQuery.data?.units ?? []).map((unit) => (
-              <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>
-            ))}
-          </SelectField>
           <SelectField value={filters.departmentId} onChange={(event) => setFilters((current) => ({ ...current, departmentId: event.target.value }))}>
             <option value="">Todos os departamentos</option>
             {filteredDepartmentOptions.map((department) => (
