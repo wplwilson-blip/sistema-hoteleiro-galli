@@ -27,7 +27,7 @@ async function hasDepartmentCodeInUnit(supabase: ReturnType<typeof createSupabas
 }
 
 export async function GET() {
-  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsView);
+  const { context, response } = await requirePermission(BASE_PERMISSIONS.departmentsView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -45,9 +45,8 @@ export async function GET() {
       .not("unit_id", "is", null)
       .order("name", { ascending: true });
 
-    if (!context.isSuperAdmin) {
-      departmentQuery = departmentQuery.in("unit_id", context.accessibleUnitIds);
-    }
+    // active-unit: accessibleUnitIds ja vem estreitado (inclui super admin = [unidade ativa]).
+    departmentQuery = departmentQuery.in("unit_id", context.accessibleUnitIds);
 
     const { data: departments, error: departmentsError } = await departmentQuery;
 

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useAppStore } from "@/store/app-store";
 import { EmptyState } from "@/components/common/empty-state";
 import {
   ErrorMessage,
@@ -85,13 +86,16 @@ export function DepartmentsClient() {
   const [form, setForm] = useState<DepartmentForm>(emptyForm);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
+  // Unidade ativa entra na queryKey: trocar a unidade no header invalida/refetch a lista
+  // (que agora e escopada por unidade ativa no servidor) e nao mostra dados da anterior.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
 
   const unitsQuery = useQuery({
     queryKey: ["base", "units"],
     queryFn: async () => requestJson<{ ok: true; units: UnitOption[] }>("/api/base/units")
   });
   const departmentsQuery = useQuery({
-    queryKey: ["base", "departments"],
+    queryKey: ["base", "departments", activeUnitId],
     queryFn: async () => requestJson<{ ok: true; departments: DepartmentRecord[] }>("/api/base/departments")
   });
 
