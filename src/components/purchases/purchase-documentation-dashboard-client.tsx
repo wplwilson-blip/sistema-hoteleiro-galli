@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAppStore } from "@/store/app-store";
 import {
   AlertTriangle,
   BarChart3,
@@ -296,7 +297,6 @@ function matchesSearch(item: DocumentationDashboardItem, search: string) {
 
 function hasFilter(filters: {
   search: string;
-  unit: string;
   classification: string;
   severity: string;
   quoteStatus: string;
@@ -312,7 +312,6 @@ function hasFilter(filters: {
 }) {
   return Boolean(
     filters.search.trim() ||
-      filters.unit !== "all" ||
       filters.classification !== "all" ||
       filters.severity !== "all" ||
       filters.quoteStatus !== "all" ||
@@ -399,7 +398,8 @@ function exportItemsToCsv(items: DocumentationDashboardItem[]) {
 
 export function PurchaseDocumentationDashboardClient() {
   const [search, setSearch] = useState("");
-  const [unitFilter, setUnitFilter] = useState("all");
+  // Unidade ativa (header) e a fonte unica de escopo de unidade; sem filtro manual de unidade.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
   const [classificationFilter, setClassificationFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [quoteStatusFilter, setQuoteStatusFilter] = useState("all");
@@ -428,7 +428,7 @@ export function PurchaseDocumentationDashboardClient() {
   const dashboardUrl = useMemo(() => buildDashboardUrl(dateFilters), [dateFilters]);
 
   const dashboardQuery = useQuery({
-    queryKey: ["purchases", "documentation-dashboard", dateFilters],
+    queryKey: ["purchases", "documentation-dashboard", activeUnitId, dateFilters],
     queryFn: async () => requestJson<DashboardResponse>(dashboardUrl)
   });
 
@@ -439,24 +439,13 @@ export function PurchaseDocumentationDashboardClient() {
   const supplierRanking = dashboardQuery.data?.supplierRanking ?? emptySupplierRanking;
 
   const filterOptions = useMemo(() => {
-    const units = Array.from(
-      new Map(
-        items.map((item) => [
-          item.unitId,
-          {
-            id: item.unitId,
-            label: getUnitLabel(item)
-          }
-        ])
-      ).values()
-    ).sort((left, right) => left.label.localeCompare(right.label));
     const statusLabelsByValue = new Map(items.map((item) => [item.status, item.statusLabel]));
     const statuses = uniqueOptions(items, "status").map((status) => ({ value: status, label: statusLabelsByValue.get(status) ?? status }));
     const pendencies = Array.from(new Map(items.flatMap((item) => item.pendencies).map((pendency) => [pendency.code, pendency])).values()).sort((left, right) =>
       left.label.localeCompare(right.label)
     );
 
-    return { units, statuses, pendencies };
+    return { statuses, pendencies };
   }, [items]);
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -464,7 +453,6 @@ export function PurchaseDocumentationDashboardClient() {
     () =>
       items.filter((item) => {
         if (!matchesSearch(item, normalizedSearch)) return false;
-        if (unitFilter !== "all" && item.unitId !== unitFilter) return false;
         if (classificationFilter !== "all" && item.documentationClassification !== classificationFilter) return false;
         if (severityFilter !== "all" && item.severity !== severityFilter) return false;
         if (quoteStatusFilter !== "all" && item.status !== quoteStatusFilter) return false;
@@ -473,7 +461,7 @@ export function PurchaseDocumentationDashboardClient() {
         if (criticalOnly && item.documentationClassification !== "critical" && !item.pendencies.some((pendency) => pendency.code === "critical_evidence")) return false;
         return true;
       }),
-    [classificationFilter, criticalOnly, items, normalizedSearch, pendencyFilter, quoteStatusFilter, severityFilter, supplierFilter, unitFilter]
+    [classificationFilter, criticalOnly, items, normalizedSearch, pendencyFilter, quoteStatusFilter, severityFilter, supplierFilter]
   );
 
   const detailItems = useMemo(
@@ -493,7 +481,6 @@ export function PurchaseDocumentationDashboardClient() {
   }, [filteredItems]);
   const filters = {
     search,
-    unit: unitFilter,
     classification: classificationFilter,
     severity: severityFilter,
     quoteStatus: quoteStatusFilter,
@@ -510,7 +497,6 @@ export function PurchaseDocumentationDashboardClient() {
 
   function clearFilters() {
     setSearch("");
-    setUnitFilter("all");
     setClassificationFilter("all");
     setSeverityFilter("all");
     setQuoteStatusFilter("all");
@@ -601,11 +587,6 @@ export function PurchaseDocumentationDashboardClient() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input aria-label="Buscar cotação, solicitação, unidade ou fornecedor" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cotação, solicitação, unidade ou fornecedor" className="pl-9" />
           </div>
-
-          <SelectField aria-label="Filtrar por unidade" value={unitFilter} onChange={(event) => setUnitFilter(event.target.value)}>
-            <option value="all">Todas as unidades</option>
-            {filterOptions.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.label}</option>)}
-          </SelectField>
 
           <SelectField aria-label="Filtrar por classificação documental" value={classificationFilter} onChange={(event) => setClassificationFilter(event.target.value)}>
             <option value="all">Todas as classificações</option>

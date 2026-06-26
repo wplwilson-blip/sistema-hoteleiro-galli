@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/status-badge";
+import { useAppStore } from "@/store/app-store";
 import { QuickSupplierDialog, type QuickSupplierRecord } from "@/components/purchases/quick-supplier-dialog";
 import { cn } from "@/lib/utils";
 import {
@@ -966,8 +967,11 @@ export function PurchaseQuotesClient() {
   const [expandedQuoteSections, setExpandedQuoteSections] = useState<Record<string, QuoteExpandedSection>>({});
   const [expandedQuoteActions, setExpandedQuoteActions] = useState<Record<string, boolean>>({});
 
+  // Unidade ativa na queryKey da LISTA: refaz fetch ao trocar a unidade no header.
+  // O detalhe (detailQuery, por requestId) segue aggregate + check per-record no servidor.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
   const listQuery = useQuery({
-    queryKey: ["purchases", "quotes", "requests"],
+    queryKey: ["purchases", "quotes", "requests", activeUnitId],
     queryFn: async () => requestJson<PurchaseQuotesResponse>("/api/purchases/quotes")
   });
 

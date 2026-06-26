@@ -478,7 +478,7 @@ function buildStatusChangeDescription(fromStatus: string, toStatus: string) {
 }
 
 export async function GET() {
-  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.requestsView);
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.requestsView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;

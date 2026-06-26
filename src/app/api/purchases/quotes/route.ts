@@ -450,15 +450,19 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.quotesView);
+  const requestId = new URL(request.url).searchParams.get("requestId")?.trim() ?? "";
+  // Lista (sem requestId) estreita pela unidade ativa; detalhe (?requestId) fica aggregate
+  // + check per-record (registro unico), preservando acesso a solicitacoes da uniao.
+  const { context, response } = await requirePermission(
+    PURCHASES_PERMISSIONS.quotesView,
+    requestId ? undefined : { scope: "active-unit" }
+  );
 
   if (response || !context) {
     return response;
   }
 
   try {
-    const url = new URL(request.url);
-    const requestId = url.searchParams.get("requestId")?.trim() ?? "";
     const supabase = context.supabase;
     const accessibleUnitIds = context.accessibleUnitIds;
 
