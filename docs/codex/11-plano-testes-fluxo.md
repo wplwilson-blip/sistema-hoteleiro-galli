@@ -32,11 +32,10 @@ Verificado no repo:
 `assertAuthenticatedRoute`, `normalizeStoredCookieValues`. **Falta criar:** helpers de
 login programático, criação/limpeza de dados, troca de unidade, geração de CPF, e os specs de fluxo.
 
-> 🚩 **Login para E2E de escrita:** o login atual é **manual/headed** (bom para screenshots, ruim
-> para CI/repetição). Para a sprint, proponho um **helper de login programático** que faz POST em
+> ✅ **DECIDIDO (login para E2E):** **APROVADO** o **helper de login programático** que faz POST em
 > `/api/auth/login` (username+senha do usuário de teste, vindos de env) e injeta os cookies no
-> contexto — reaproveitando o fluxo real de auth, sem UI. Mantém `screenshots:auth` como está.
-> Confirmar a abordagem.
+> `storageState` — reaproveitando o fluxo real de auth, sem UI. O `screenshots:auth` **manual
+> permanece** como está. (Ver §8.1.)
 
 ---
 
@@ -52,21 +51,19 @@ staging acumula lixo e (pior) colide em chaves únicas. Opções avaliadas:
 | **B. Marcador + script de EXPURGO (hard-delete) staging-only** | staging limpo de verdade | precisa de script com `service_role` (fora da app); risco se mal-guardado |
 | **C. Sem marcador, dados 100% únicos por execução** | zero colisão | acúmulo infinito; difícil auditar/limpar |
 
-**Recomendação:** **A + B combinados**:
+**✅ DECIDIDO: apenas A (soft-delete via app + marcador `[E2E]`).** O expurgo hard-delete (B) está
+**FORA DE ESCOPO por ora** (ver §8.2 e T7). Modelo aprovado:
 - **Todo dado de teste leva um marcador identificável** no nome/título: prefixo **`[E2E]`** +
   sufixo único por execução (ver 2.2). Ex.: colaborador `"[E2E] Fulano 1718900000-ab12"`.
 - Cada teste, no teardown, faz o **soft-delete pela própria app** (DELETE/inativar) — mantém o
   fluxo realista e tira o item das listas.
-- **Expurgo real opcional** (`scripts/e2e-purge.ts`, **fora** de `src/`, rodável sob demanda):
-  hard-delete das linhas com marcador `[E2E]`, **com guardas** (aborta se a URL não for o ref de
-  staging `jascnmgagejlvjlenduv`; nunca roda sozinho no CI sem flag explícita). Mantém o staging
-  enxuto sem poluir produção nem a app.
-- **Nota técnica que ajuda:** o índice único de CPF é **parcial** (`where deleted_at is null`),
-  então um colaborador **soft-deletado libera o CPF** — reduz colisão mesmo sem hard-delete.
-
-> 🚩 **Decisão sua:** aprovar o **script de expurgo hard-delete (B)** com `service_role`
-> staging-only, ou ficar só no **soft-delete + marcador (A)** e aceitar acúmulo? O hard-delete
-> toca o banco diretamente (área sensível) — **não decido sozinho.**
+- **Por que A basta (sem colisão de CPF):** o índice único de CPF é **parcial**
+  (`where deleted_at is null`, migration 068), então um colaborador **soft-deletado libera o CPF**.
+  Como cada execução ainda gera CPF/sufixo único (2.2), não há colisão entre runs **mesmo sem
+  hard-delete**.
+- **Acúmulo de linhas soft-deletadas:** aceito por ora. O **expurgo hard-delete só volta como
+  tarefa própria e revisada** (com `service_role` staging-only e guardas) **se o acúmulo
+  incomodar** — não agora.
 
 ### 2.2 CPF ÚNICO POR ORGANIZAÇÃO
 Colaborador tem CPF único por organização (índice parcial, migration 068). Dados fixos colidem
@@ -94,9 +91,9 @@ admin sempre enxerga todas as unidades acessíveis = todas).
 - O `E2E_MULTI` provavelmente **não existe** hoje. Opções: (i) criar uma vez via UI/seed manual no
   staging e guardar credenciais em env; (ii) um setup global do Playwright criar via API admin.
 
-> 🚩 **Decisão sua:** posso **criar o usuário `E2E_MULTI`** (não-super, 2 unidades) no staging
-> (seed único) **ou** você prefere fornecer credenciais de um usuário já existente que sirva?
-> Sem isso, os testes de estreitamento por unidade ativa ficam limitados ao super admin.
+> ✅ **DECIDIDO:** **APROVADO criar `E2E_MULTI` no staging** — **não-super**, **acesso às 2
+> unidades**, permissões **compras/RH view+manage**. As **credenciais ficam SEMPRE em variável de
+> ambiente, NUNCA hardcoded/commitadas**. (Ver §8.3.)
 
 ---
 
@@ -191,8 +188,9 @@ Cada item é uma branch/diff próprio, com aceite:
 - **T6 — Unidade ativa transversal:** troca no header + invariante B-misto (some da lista, fica no
   consolidado) + persistência por reload. **Aceite:** asserções de presença/ausência corretas com
   `E2E_MULTI`.
-- **T7 (opcional) — Expurgo:** `scripts/e2e-purge.ts` staging-only (se aprovado em 2.1/B).
-  **Aceite:** remove só linhas `[E2E]`, com guardas; dry-run por padrão.
+- **T7 (FUTURO — fora do escopo ativo) — Expurgo:** `scripts/e2e-purge.ts` staging-only.
+  **NÃO agora** (decisão §2.1/§8.2: limpeza só A). Só volta como tarefa própria e revisada se o
+  acúmulo de linhas soft-deletadas incomodar.
 
 Dependência: **T1 primeiro**; T2–T6 independentes após T1; T6 depende de `E2E_MULTI` (2.3).
 
@@ -212,10 +210,26 @@ Dependência: **T1 primeiro**; T2–T6 independentes após T1; T6 depende de `E2
 - **NÃO automatizar agora:** Recepção/Manutenção/Governança/A&B (placeholders), e-mails/notificações,
   upload real de arquivos grandes, e cenários de permissão exaustivos (deixar para teste manual).
 
-## 8. Decisões pendentes (resumo para aprovação)
+## 8. Decisões (RESOLVIDAS pelo dono)
 
-1. **Login programático** via `/api/auth/login` para E2E (mantendo `screenshots:auth` manual)?
-2. **Estratégia de limpeza:** soft-delete + marcador (A) **ou** A + **script de expurgo hard-delete
-   staging-only** (B)? (B toca o banco diretamente.)
-3. **Usuário `E2E_MULTI`** (não-super, 2 unidades): posso **criar no staging** (seed) ou você
-   fornece credenciais de um existente?
+As 3 pendências foram decididas. Resumo do que vale agora:
+
+### 8.1 Login programático — **APROVADO**
+Login de E2E via **POST `/api/auth/login`** (username+senha de **env**), capturando cookies para o
+`storageState`. O **`screenshots:auth` manual permanece** inalterado.
+
+### 8.2 Limpeza — **APROVADO apenas A** (soft-delete via app + marcador `[E2E]`)
+- O **script de expurgo hard-delete (B / T7) está FORA DE ESCOPO por ora.**
+- **Sem colisão de CPF:** o índice de CPF é **parcial** (`where deleted_at is null`), então o
+  soft-delete **já libera o CPF**; combinado com CPF/sufixo único por execução (2.2), não há
+  colisão entre runs.
+- O hard-delete **só voltaria como tarefa própria e revisada se o acúmulo incomodar** — não agora.
+
+### 8.3 Usuário `E2E_MULTI` — **APROVADO criar no staging**
+**Não-super**, com **acesso às 2 unidades** e permissões **compras/RH view+manage**.
+**Credenciais SEMPRE via variável de ambiente, NUNCA hardcoded nem commitadas.**
+
+### Variáveis de ambiente de E2E (nomes; valores nunca no repo)
+`PLAYWRIGHT_BASE_URL` (alvo; só localhost/127.0.0.1 — guard anti-produção), `E2E_ALLOWED_HOSTS`
+(opcional, estende a allowlist), `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD`, `E2E_MULTI_USERNAME`,
+`E2E_MULTI_PASSWORD`. Documentadas em `.env.e2e.example` (sem valores).
