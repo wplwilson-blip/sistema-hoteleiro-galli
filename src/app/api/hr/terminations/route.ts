@@ -16,7 +16,7 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.terminationsView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.terminationsView, { scope: "active-unit" });
   if (response || !context) return response;
 
   try {
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     const to = from + query.pageSize - 1;
 
     let terminationsQuery = context.supabase.from("employee_terminations").select(terminationListSelect, { count: "exact" }).is("deleted_at", null);
-    if (!context.isSuperAdmin) terminationsQuery = terminationsQuery.in("unit_id", context.accessibleUnitIds);
+    terminationsQuery = terminationsQuery.in("unit_id", context.accessibleUnitIds);
     if (query.employeeId) terminationsQuery = terminationsQuery.eq("employee_id", query.employeeId);
     if (query.unitId) terminationsQuery = terminationsQuery.eq("unit_id", query.unitId);
     if (query.terminationType) terminationsQuery = terminationsQuery.eq("termination_type", query.terminationType);

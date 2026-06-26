@@ -9,7 +9,7 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.conductView);
+  const { context, response } = await requireHrPermission(HR_PERMISSIONS.conductView, { scope: "active-unit" });
   if (response || !context) return response;
 
   try {
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     let conductQuery = context.supabase.from("employee_conduct_records").select(conductListSelect, { count: "exact" }).is("deleted_at", null);
 
-    if (!context.isSuperAdmin) conductQuery = conductQuery.in("unit_id", context.accessibleUnitIds);
+    conductQuery = conductQuery.in("unit_id", context.accessibleUnitIds);
     if (query.employeeId) conductQuery = conductQuery.eq("employee_id", query.employeeId);
     if (query.unitId) conductQuery = conductQuery.eq("unit_id", query.unitId);
     if (query.conductType) conductQuery = conductQuery.eq("conduct_type", query.conductType);

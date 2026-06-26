@@ -10,6 +10,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useAppStore } from "@/store/app-store";
 
 type ConductRecord = {
   id: string;
@@ -270,15 +271,16 @@ function payload(form: ConductForm) {
 
 export function HrConductClient() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ unitId: "", employeeId: "", conductType: "", status: "", severity: "", search: "" });
+  // Unidade ativa (header) e a fonte unica de escopo; sem filtro manual de unidade na lista.
+  const activeUnitId = useAppStore((state) => state.activeUnit.id);
+  const [filters, setFilters] = useState({ employeeId: "", conductType: "", status: "", severity: "", search: "" });
   const [form, setForm] = useState<ConductForm>(emptyForm);
   const [conductAttachmentForm, setConductAttachmentForm] = useState<ConductAttachmentForm>(emptyConductAttachmentForm);
   const [actionComments, setActionComments] = useState("");
   const [showForm, setShowForm] = useState(false);
 
-  const conductQuery = useQuery({ queryKey: ["hr", "conduct", filters], queryFn: async () => requestJson<ConductResponse>(buildUrl("/api/hr/conduct", { ...filters, pageSize: "100" })) });
-  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "conduct-options"], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
-  const unitsQuery = useQuery({ queryKey: ["base", "units", "conduct-options"], queryFn: async () => requestJson<UnitsResponse>("/api/base/units") });
+  const conductQuery = useQuery({ queryKey: ["hr", "conduct", activeUnitId, filters], queryFn: async () => requestJson<ConductResponse>(buildUrl("/api/hr/conduct", { ...filters, pageSize: "100" })) });
+  const employeesQuery = useQuery({ queryKey: ["hr", "employees", "conduct-options", activeUnitId], queryFn: async () => requestJson<EmployeesResponse>("/api/hr/employees?pageSize=100") });
   const documentTypesQuery = useQuery({
     queryKey: ["hr", "document-types", "conduct", "active"],
     queryFn: async () => requestJson<DocumentTypesResponse>("/api/hr/document-types?status=active")
@@ -465,7 +467,6 @@ export function HrConductClient() {
       <Card className="border-border/80 p-4 shadow-sm shadow-primary/5">
         <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Filtros</h2></div>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <SelectField value={filters.unitId} onChange={(event) => setFilters((current) => ({ ...current, unitId: event.target.value }))}><option value="">Todas as unidades</option>{(unitsQuery.data?.units ?? []).map((unit) => <option key={unit.id} value={unit.id}>{[unit.code, unit.name].filter(Boolean).join(" - ")}</option>)}</SelectField>
           <SelectField value={filters.employeeId} onChange={(event) => setFilters((current) => ({ ...current, employeeId: event.target.value }))}><option value="">Todos os colaboradores</option>{(employeesQuery.data?.data ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.preferredName || employee.fullName}</option>)}</SelectField>
           <SelectField value={filters.conductType} onChange={(event) => setFilters((current) => ({ ...current, conductType: event.target.value }))}><option value="">Todos os tipos</option>{conductTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>
           <SelectField value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">Todos os status</option>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField>

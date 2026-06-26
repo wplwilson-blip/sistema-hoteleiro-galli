@@ -21,7 +21,14 @@ function escapeIlikePattern(value: string) {
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requireHrPermission(HR_PERMISSIONS.movementsView);
+  // Lista standalone estreita pela unidade ativa; quando filtrada por employeeId (card de
+  // carreira no detalhe do colaborador) fica aggregate + check per-record, preservando o
+  // historico de colaboradores de qualquer unidade da uniao.
+  const hasEmployeeFilter = Boolean(new URL(request.url).searchParams.get("employeeId")?.trim());
+  const { context, response } = await requireHrPermission(
+    HR_PERMISSIONS.movementsView,
+    hasEmployeeFilter ? undefined : { scope: "active-unit" }
+  );
   if (response || !context) return response;
 
   try {
@@ -35,7 +42,7 @@ export async function GET(request: Request) {
       .select(movementListSelect, { count: "exact" })
       .is("deleted_at", null);
 
-    if (!context.isSuperAdmin) movementsQuery = movementsQuery.in("unit_id", context.accessibleUnitIds);
+    movementsQuery = movementsQuery.in("unit_id", context.accessibleUnitIds);
     if (query.employeeId) movementsQuery = movementsQuery.eq("employee_id", query.employeeId);
     if (query.unitId) movementsQuery = movementsQuery.eq("unit_id", query.unitId);
     if (query.departmentId) movementsQuery = movementsQuery.or(`old_department_id.eq.${query.departmentId},new_department_id.eq.${query.departmentId}`);
