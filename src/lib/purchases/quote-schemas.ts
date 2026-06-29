@@ -360,7 +360,7 @@ const purchaseQuoteEvidenceSchema = z.object({
   quoteSourceType: purchaseQuoteSourceTypeSchema.optional(),
   evidenceType: purchaseQuoteEvidenceTypeSchema.optional(),
   sourceContactName: optionalTrimmedStringSchema,
-  sourceContactChannel: purchaseQuoteSourceContactChannelSchema.optional(),
+  sourceContactChannel: purchaseQuoteSourceContactChannelSchema.optional().or(z.literal("").transform(() => undefined)),
   sourceReference: optionalTrimmedStringSchema,
   sourceUrl: optionalUrlSchema,
   sourceNotes: optionalTrimmedStringSchema,
@@ -392,7 +392,6 @@ const purchaseQuoteFormBaseSchema = z.object({
 }).merge(purchaseQuoteEvidenceSchema);
 
 function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSchema>, ctx: z.RefinementCtx) {
-  console.log("[diag-schema] validate", { quoteDate: value.quoteDate, validUntil: value.validUntil, tipos: { quoteDate: typeof value.quoteDate, validUntil: typeof value.validUntil }, itemsLen: value.items?.length });
   if (value.quoteValidityException && !value.quoteValidityExceptionReason) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

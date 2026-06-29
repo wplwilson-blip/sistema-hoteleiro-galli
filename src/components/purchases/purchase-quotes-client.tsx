@@ -2751,7 +2751,7 @@ export function PurchaseQuotesClient() {
                       </div>
 
                       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-                        <form className="space-y-4" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values), (errors) => console.log("[diag-cotacao] erros de validacao:", JSON.stringify(errors, null, 2)))}>
+                        <form className="space-y-4" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
                           {!availableSuppliers.length ? (
                             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                               <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
@@ -3215,16 +3215,7 @@ export function PurchaseQuotesClient() {
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={async () => {
-                            try {
-                              await quoteForm.handleSubmit(
-                                (values) => { console.log("[diag-submit] OK, vai mutate"); saveMutation.mutate(values); },
-                                (errors) => console.log("[diag-cotacao] erros:", JSON.stringify(errors, null, 2))
-                              )();
-                            } catch (e) {
-                              console.error("[diag-submit] EXCECAO no submit:", e);
-                            }
-                          }}>
+                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
                             <Pencil className="h-4 w-4" />
                             Salvar cotação
                           </Button>
