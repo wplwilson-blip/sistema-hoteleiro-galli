@@ -3215,7 +3215,16 @@ export function PurchaseQuotesClient() {
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values), (errors) => console.log("[diag-cotacao] erros de validacao:", JSON.stringify(errors, null, 2)))}>
+                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={async () => {
+                            try {
+                              await quoteForm.handleSubmit(
+                                (values) => { console.log("[diag-submit] OK, vai mutate"); saveMutation.mutate(values); },
+                                (errors) => console.log("[diag-cotacao] erros:", JSON.stringify(errors, null, 2))
+                              )();
+                            } catch (e) {
+                              console.error("[diag-submit] EXCECAO no submit:", e);
+                            }
+                          }}>
                             <Pencil className="h-4 w-4" />
                             Salvar cotação
                           </Button>
