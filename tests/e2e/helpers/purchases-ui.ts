@@ -35,7 +35,16 @@ export async function selectFieldOptionByText(scope: Page | Locator, labelText: 
 
 /** Seleciona num <select> a opcao cujo texto contem optionText (resolve o value real). */
 export async function selectByOptionText(select: Locator, optionText: string): Promise<void> {
-  const value = await select.locator("option", { hasText: optionText }).first().getAttribute("value");
+  // Selects assincronos (ex.: dependentes da unidade ativa) populam apos o render inicial.
+  // Espera a opcao alvo existir antes de ler o value.
+  const option = select.locator("option", { hasText: optionText }).first();
+  try {
+    await option.waitFor({ state: "attached", timeout: 15_000 });
+  } catch {
+    throw new Error(`[e2e] Opcao contendo "${optionText}" nao encontrada no select apos aguardar carregamento.`);
+  }
+
+  const value = await option.getAttribute("value");
   if (!value) {
     throw new Error(`[e2e] Opcao contendo "${optionText}" nao encontrada no select.`);
   }
@@ -45,6 +54,16 @@ export async function selectByOptionText(select: Locator, optionText: string): P
 /** Seleciona a primeira opcao "real" de um <select> de Field (ignora a primeira, tipo "Selecione"). */
 export async function selectFirstRealOption(scope: Page | Locator, labelText: string): Promise<string> {
   const select = fieldControl(scope, labelText);
+
+  // Select assincrono (ex.: Departamento depende da unidade ativa, setada apos o render inicial).
+  // Espera a primeira opcao com value nao-vazio carregar antes de ler as opcoes.
+  const firstReal = select.locator('option[value]:not([value=""])').first();
+  try {
+    await firstReal.waitFor({ state: "attached", timeout: 15_000 });
+  } catch {
+    throw new Error(`[e2e] Nenhuma opcao valida no select "${labelText}" apos aguardar carregamento.`);
+  }
+
   const values = await select.locator("option").evaluateAll((opts) =>
     (opts as HTMLOptionElement[]).map((o) => ({ value: o.value, text: o.textContent ?? "" }))
   );
