@@ -76,7 +76,12 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
     await openAuthenticated(page, "/compras/solicitacoes");
     await page.getByRole("button", { name: "Nova solicitação" }).click();
     const reqForm = page.locator("form");
-    await selectByOptionText(fieldControl(reqForm, "Unidade"), unitA);
+    // O campo "Unidade" so aparece para super admin; para nao-super (E2E_MULTI) com unidade ativa,
+    // a solicitacao herda a unidade ativa (definida via switchActiveUnit(unitA) acima). Condicional.
+    const unidadeField = fieldControl(reqForm, "Unidade");
+    if ((await unidadeField.count()) > 0) {
+      await selectByOptionText(unidadeField, unitA);
+    }
     await selectFirstRealOption(reqForm, "Departamento");
     await fillField(reqForm, "Título", title);
     await fillField(reqForm, "O que precisa ser comprado?", `Descricao ${suffix}`);
