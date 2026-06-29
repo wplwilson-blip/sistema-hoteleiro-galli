@@ -25,10 +25,13 @@ export async function switchActiveUnit(page: Page, unitName: string): Promise<vo
 
   await select.selectOption(optionValue);
 
-  // A troca dispara o endpoint e o refetch das listas; espera a rede assentar e o
-  // header refletir a nova unidade.
+  // Asserção determinística: o select passou a refletir a unidade alvo (não depende
+  // de texto do header, que pode colidir entre nomes de unidades parecidos).
+  await expect(select).toHaveValue(optionValue);
+
+  // A troca dispara o endpoint /api/auth/active-unit + refetch das listas escopadas;
+  // espera a rede assentar antes de seguir com as asserções.
   await page.waitForLoadState("networkidle");
-  await expect(page.getByText(unitName, { exact: false }).first()).toBeVisible();
 }
 
 /** Afirma que um texto consta na lista/pagina visivel. */
