@@ -60,13 +60,24 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
   const page = await context.newPage();
 
   try {
-    // Unidade A ativa (ponto de partida do fluxo operacional).
+    // Unidade A ativa (ponto de partida do fluxo operacional). Navega UMA vez e estabiliza antes
+    // do clique — evita a corrida do refetch da troca de unidade engolir o clique em "Nova solicitacao".
     await openAuthenticated(page, "/compras/solicitacoes");
     await switchActiveUnit(page, unitA);
+    await page.waitForLoadState("networkidle");
 
     // ===== 2. Criar SOLICITACAO [E2E] (unidade A) =====
-    await openAuthenticated(page, "/compras/solicitacoes");
     await page.getByTestId("solicitacao-nova").click();
+
+    // O form pode nao abrir se o clique competir com o refetch/navegacao -> retry leve: aguarda o
+    // form (campo Departamento) aparecer; se nao abriu apos o timeout, clica de novo uma vez.
+    const departamento = page.getByTestId("solicitacao-departamento");
+    try {
+      await expect(departamento).toBeVisible({ timeout: 10_000 });
+    } catch {
+      await page.getByTestId("solicitacao-nova").click();
+      await expect(departamento).toBeVisible({ timeout: 10_000 });
+    }
 
     // "Unidade" so aparece para super admin; para nao-super (E2E_MULTI) a solicitacao herda a
     // unidade ativa (definida via switchActiveUnit acima). Condicional.
@@ -74,7 +85,7 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
     if ((await unidadeField.count()) > 0) {
       await selectByOptionText(unidadeField, unitA);
     }
-    await selectFirstReal(page.getByTestId("solicitacao-departamento"), "Departamento");
+    await selectFirstReal(departamento, "Departamento");
     await page.getByTestId("solicitacao-titulo").fill(title);
     await page.getByTestId("solicitacao-descricao").fill(`Descricao ${suffix}`);
     await page.getByTestId("solicitacao-justificativa").fill(`[E2E] justificativa ${suffix}`);
