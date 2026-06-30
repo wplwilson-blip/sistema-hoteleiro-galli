@@ -359,7 +359,10 @@ export function PurchaseRequestsClient() {
   });
 
   function openNew() {
-    const firstUnit = units[0]?.id ?? "";
+    // Pré-seleciona a unidade ATIVA (a que o usuário está operando), não a primeira arbitraria.
+    // Fallback defensivo: se a unidade ativa nao estiver entre as unidades de compras, usa units[0].
+    const initialUnitId =
+      activeUnitId && units.some((unit) => unit.id === activeUnitId) ? activeUnitId : units[0]?.id ?? "";
 
     setEditingId(null);
     setEditingStatus("draft");
@@ -368,7 +371,7 @@ export function PurchaseRequestsClient() {
     form.clearErrors();
     form.reset({
       ...emptyForm,
-      unitId: firstUnit
+      unitId: initialUnitId
     });
     replace([emptyItem]);
     setFormOpen(true);
