@@ -115,7 +115,7 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
 
     // Fornecedor [E2E] via dialogo "Novo fornecedor" dentro do form (auto-selecionado ao salvar).
     await modal.getByTestId("cotacao-novo-fornecedor").click();
-    const supplierDialog = page.getByRole("dialog", { name: "Cadastrar novo fornecedor" });
+    const supplierDialog = page.getByRole("dialog", { name: /cadastrar novo fornecedor/i });
     await supplierDialog.getByTestId("fornecedor-razao-social").fill(supplierName);
     await selectByOptionText(supplierDialog.getByTestId("fornecedor-tipo-documento"), "Outro");
     await supplierDialog.getByTestId("fornecedor-documento").fill(`E2E-${suffix}`);
@@ -180,7 +180,9 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
     await page.locator("article").filter({ hasText: title }).getByTestId("aprovacao-ver-dossie").click();
     const approvalModal = page.getByRole("dialog");
     await approvalModal.getByTestId("aprovacao-aprovar").click();
-    const decisionModal = page.getByRole("dialog", { name: "Aprovar compra" });
+    // O modal de decisao nao tem aria-labelledby: o accessible name e' o conteudo concatenado
+    // (titulo "Aprovar compra" + numero SC-... + textarea). Regex substring case-insensitive.
+    const decisionModal = page.getByRole("dialog", { name: /aprovar compra/i });
     await withApi(page, { url: "/decision", method: "POST" }, () =>
       decisionModal.getByTestId("aprovacao-confirmar").click()
     );
