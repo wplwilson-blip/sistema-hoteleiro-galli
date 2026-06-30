@@ -157,9 +157,10 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
     // AFIRMA status na lista de Solicitacoes.
     await openAuthenticated(page, "/compras/solicitacoes");
     await filterSolicitacoesAll(page, title);
-    await expect(page.getByText("Aguardando aprovação da Gerência Administrativa").first()).toBeVisible({
-      timeout: 30_000
-    });
+    // Matcher tolerante a quebra de linha/espacamento (badge em coluna estreita fragmenta o texto).
+    await expect(
+      page.getByText(/Aguardando\s+aprovação[\s\S]*Gerência\s+Administrativa/).first()
+    ).toBeVisible({ timeout: 30_000 });
 
     // ===== INVARIANTE — estreitamento por unidade ativa =====
     // Unidade A ativa: consta. Unidade B ativa: some da lista operacional.
@@ -188,7 +189,8 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
     await switchActiveUnit(page, unitA);
     await openAuthenticated(page, "/compras/solicitacoes");
     await filterSolicitacoesAll(page, title);
-    await expect(page.getByText("Compra aprovada").first()).toBeVisible({ timeout: 30_000 });
+    // Matcher tolerante a quebra de linha/espacamento (badge em coluna estreita pode quebrar).
+    await expect(page.getByText(/Compra\s+aprovada/).first()).toBeVisible({ timeout: 30_000 });
   } finally {
     // ===== Teardown (decisao A) =====
     // Compra aprovada e' imutavel pela regra de negocio: nao ha cancelamento via UI. O registro
