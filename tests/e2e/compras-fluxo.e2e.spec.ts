@@ -178,11 +178,11 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
 
     // ===== 5. APROVAR (como E2E_MULTI) =====
     await page.locator("article").filter({ hasText: title }).getByTestId("aprovacao-ver-dossie").click();
-    const approvalModal = page.getByRole("dialog");
+    // Ancora cada dialog pelo botao que SO existe nele (evita ambiguidade entre o dossie e o modal
+    // de decisao, que ficam abertos ao mesmo tempo; nomes/accessible names se sobrepoem).
+    const approvalModal = page.getByRole("dialog").filter({ has: page.getByTestId("aprovacao-aprovar") });
     await approvalModal.getByTestId("aprovacao-aprovar").click();
-    // O modal de decisao nao tem aria-labelledby: o accessible name e' o conteudo concatenado
-    // (titulo "Aprovar compra" + numero SC-... + textarea). Regex substring case-insensitive.
-    const decisionModal = page.getByRole("dialog", { name: /aprovar compra/i });
+    const decisionModal = page.getByRole("dialog").filter({ has: page.getByTestId("aprovacao-confirmar") });
     await withApi(page, { url: "/decision", method: "POST" }, () =>
       decisionModal.getByTestId("aprovacao-confirmar").click()
     );
