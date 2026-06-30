@@ -449,7 +449,7 @@ export function PurchaseRequestsClient() {
           </div>
           <div className="space-y-2">
             <Label>Fila</Label>
-            <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as PurchaseRequestQueueFilter)}>
+            <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as PurchaseRequestQueueFilter)} data-testid="solicitacao-filtro-fila">
               <option value="active">Aguardando tratamento</option>
               <option value="quotation">Em cotação</option>
               <option value="pending_approval">Aguardando aprovação</option>
