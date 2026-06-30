@@ -216,20 +216,20 @@ export function QuickSupplierDialog({ open, unitId, onClose, onCreated }: QuickS
 
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Razão social / Nome do fornecedor">
-                <TextInput value={form.name} onChange={(event) => updateField("name", event.target.value)} disabled={isSaving} />
+                <TextInput value={form.name} onChange={(event) => updateField("name", event.target.value)} disabled={isSaving} data-testid="fornecedor-razao-social" />
               </Field>
               <Field label="Nome fantasia">
                 <TextInput value={form.tradeName} onChange={(event) => updateField("tradeName", event.target.value)} disabled={isSaving} />
               </Field>
               <Field label="Tipo de documento">
-                <SelectField value={form.documentType} onChange={(event) => updateField("documentType", event.target.value as QuickSupplierForm["documentType"])} disabled={isSaving}>
+                <SelectField value={form.documentType} onChange={(event) => updateField("documentType", event.target.value as QuickSupplierForm["documentType"])} disabled={isSaving} data-testid="fornecedor-tipo-documento">
                   <option value="CNPJ">CNPJ</option>
                   <option value="CPF">CPF</option>
                   <option value="OTHER">Outro</option>
                 </SelectField>
               </Field>
               <Field label="CNPJ/CPF">
-                <TextInput value={form.documentNumber} onChange={(event) => updateField("documentNumber", event.target.value)} disabled={isSaving} />
+                <TextInput value={form.documentNumber} onChange={(event) => updateField("documentNumber", event.target.value)} disabled={isSaving} data-testid="fornecedor-documento" />
               </Field>
               <Field label="E-mail">
                 <TextInput type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} disabled={isSaving} />
@@ -255,7 +255,7 @@ export function QuickSupplierDialog({ open, unitId, onClose, onCreated }: QuickS
               <Button type="button" variant="outline" onClick={closeDialog} disabled={isSaving}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isSaving || !canSubmit}>
+              <Button type="submit" disabled={isSaving || !canSubmit} data-testid="fornecedor-salvar">
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Salvar fornecedor
               </Button>

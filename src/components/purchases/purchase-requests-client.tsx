@@ -477,7 +477,7 @@ export function PurchaseRequestsClient() {
             </SelectField>
           </div>
         </div>
-        <Button onClick={openNew}>
+        <Button onClick={openNew} data-testid="solicitacao-nova">
           <Plus className="h-4 w-4" />
           Nova solicitação
         </Button>
@@ -509,6 +509,7 @@ export function PurchaseRequestsClient() {
                         field.onChange(event.target.value);
                         form.clearErrors("unitId");
                       }}
+                      data-testid="solicitacao-unidade"
                     >
                       <option value="">Selecione</option>
                       {units.map((unit) => (
@@ -534,6 +535,7 @@ export function PurchaseRequestsClient() {
                         field.onChange(event.target.value);
                         form.clearErrors("departmentId");
                       }}
+                      data-testid="solicitacao-departamento"
                     >
                       <option value="">Selecione</option>
                       {activeDepartments.map((department) => (
@@ -583,6 +585,7 @@ export function PurchaseRequestsClient() {
                         field.onChange(event.target.value);
                         form.clearErrors("title");
                       }}
+                      data-testid="solicitacao-titulo"
                     />
                   )}
                 />
@@ -650,6 +653,7 @@ export function PurchaseRequestsClient() {
                         field.onChange(event.target.value);
                         form.clearErrors("description");
                       }}
+                      data-testid="solicitacao-descricao"
                     />
                   )}
                 />
@@ -669,6 +673,7 @@ export function PurchaseRequestsClient() {
                         field.onChange(event.target.value);
                         form.clearErrors("justification");
                       }}
+                      data-testid="solicitacao-justificativa"
                     />
                   )}
                 />
@@ -704,6 +709,7 @@ export function PurchaseRequestsClient() {
                                 field.onChange(event.target.value);
                                 form.clearErrors(`items.${index}.description`);
                               }}
+                              data-testid={`solicitacao-item-${index}-descricao`}
                             />
                           )}
                         />
@@ -723,6 +729,7 @@ export function PurchaseRequestsClient() {
                                 field.onChange(event.target.value);
                                 form.clearErrors(`items.${index}.quantity`);
                               }}
+                              data-testid={`solicitacao-item-${index}-quantidade`}
                             />
                           )}
                         />
@@ -741,6 +748,7 @@ export function PurchaseRequestsClient() {
                                 field.onChange(event.target.value);
                                 form.clearErrors(`items.${index}.unitOfMeasure`);
                               }}
+                              data-testid={`solicitacao-item-${index}-unidade-medida`}
                             >
                               <option value="">Selecione</option>
                               {purchaseUnitOfMeasureOptions.map((option) => (
@@ -784,12 +792,12 @@ export function PurchaseRequestsClient() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">O valor será definido posteriormente pelo setor de Compras durante a cotação.</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending}>
+                  <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending} data-testid="solicitacao-salvar">
                     <Pencil className="h-4 w-4" />
                     {isSubmittedEdit ? "Salvar alterações" : "Salvar rascunho"}
                   </Button>
                   {!isSubmittedEdit ? (
-                    <Button type="button" onClick={() => submitForm("submit")} disabled={saveMutation.isPending}>
+                    <Button type="button" onClick={() => submitForm("submit")} disabled={saveMutation.isPending} data-testid="solicitacao-enviar">
                       {submitAction === "submit" ? <Send className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                       Enviar para análise
                     </Button>
