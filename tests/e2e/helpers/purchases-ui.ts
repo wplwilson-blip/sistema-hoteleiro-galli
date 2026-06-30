@@ -87,7 +87,10 @@ export async function openAuthenticated(page: Page, route: string): Promise<void
 
 /** /compras/solicitacoes: Fila = Todas (1o select do main) + busca (mesmo padrao do screenshots spec). */
 export async function filterSolicitacoesAll(page: Page, term: string): Promise<void> {
-  await page.locator("main select").first().selectOption("all");
+  // Fila = "Todas" de forma DETERMINISTICA: ancora pelo label "Fila" (o select tem
+  // <option value="all">Todas</option>). O antigo .first() pegava outro filtro e deixava a Fila
+  // em "Aguardando tratamento", escondendo itens ja enviados para aprovacao.
+  await fieldControl(page, "Fila").selectOption("all");
   const box = page.getByPlaceholder("Número, título, unidade, departamento ou solicitante");
   await box.fill("");
   await box.fill(term);
