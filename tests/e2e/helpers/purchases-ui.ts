@@ -85,11 +85,19 @@ export async function openAuthenticated(page: Page, route: string): Promise<void
   await expect(page.locator("main").first()).toBeVisible({ timeout: 30_000 });
 }
 
-/** /compras/solicitacoes: Fila = Todas (1o select do main) + busca (mesmo padrao do screenshots spec). */
+/** /compras/solicitacoes: Fila = Todas (via data-testid, auto-verificado) + busca. */
 export async function filterSolicitacoesAll(page: Page, term: string): Promise<void> {
-  // Fila = "Todas" via data-testid (o filtro usa <div><Label/>><SelectField/></div>, estrutura
-  // diferente do <Field>, entao o XPath por label nao casava). O select tem <option value="all">.
-  await page.getByTestId("solicitacao-filtro-fila").selectOption("all");
+  // O select Fila e' nativo CONTROLADO (value={statusFilter} + onChange setStatusFilter). Se a
+  // selecao ocorre antes da hidratacao/refetch inicial, o onChange nao dispara e o React
+  // re-renderiza de volta para "active". Por isso: (1) espera a tela assentar (networkidle) e
+  // (2) re-tenta selecionar ate o value fixar em "all" (toPass + toHaveValue confirmam o estado).
+  await page.waitForLoadState("networkidle");
+  const fila = page.getByTestId("solicitacao-filtro-fila");
+  await expect(async () => {
+    await fila.selectOption("all");
+    await expect(fila).toHaveValue("all");
+  }).toPass({ timeout: 10_000 });
+
   const box = page.getByPlaceholder("Número, título, unidade, departamento ou solicitante");
   await box.fill("");
   await box.fill(term);
