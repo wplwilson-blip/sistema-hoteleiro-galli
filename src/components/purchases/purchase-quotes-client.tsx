@@ -1826,7 +1826,7 @@ export function PurchaseQuotesClient() {
                             Iniciar
                           </Button>
                         ) : null}
-                        <Button type="button" size="sm" variant="outline" onClick={() => openRequest(request.id)}>
+                        <Button type="button" size="sm" variant="outline" onClick={() => openRequest(request.id)} data-testid="cotacao-ver">
                           <Search className="h-4 w-4" />
                           Ver cotações
                         </Button>
@@ -1908,7 +1908,7 @@ export function PurchaseQuotesClient() {
                         </div>
                       </div>
                       {canStart ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => startMutation.mutate(selectedRequest.id)} disabled={startMutation.isPending}>
+                        <Button type="button" size="sm" variant="outline" onClick={() => startMutation.mutate(selectedRequest.id)} disabled={startMutation.isPending} data-testid="cotacao-iniciar">
                           <Truck className="h-4 w-4" />
                           Iniciar cotação
                         </Button>
@@ -1992,7 +1992,7 @@ export function PurchaseQuotesClient() {
                     <p className="text-xs text-muted-foreground">Compare fornecedor, prazo, condição e validade.</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button type="button" variant="outline" onClick={openNewQuote} disabled={!selectedRequest || !canCreateQuote}>
+                    <Button type="button" variant="outline" onClick={openNewQuote} disabled={!selectedRequest || !canCreateQuote} data-testid="cotacao-nova">
                       <Plus className="h-4 w-4" />
                       Nova cotação
                     </Button>
@@ -2116,6 +2116,7 @@ export function PurchaseQuotesClient() {
                                   size="sm"
                                   onClick={() => selectMutation.mutate({ requestId: selectedRequest.id, quoteId: quote.id })}
                                   disabled={selectMutation.isPending || !canMutateQuote}
+                                  data-testid="cotacao-selecionar"
                                 >
                                   <Check className="h-4 w-4" />
                                   Selecionar
@@ -2166,13 +2167,13 @@ export function PurchaseQuotesClient() {
                           ) : null}
 
                           <div className="flex flex-wrap gap-2 border-t pt-2">
-                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "details")}>
+                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "details")} data-testid="cotacao-ver-detalhes">
                               Ver detalhes
                             </Button>
                             <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "items")}>
                               Itens
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "attachments")}>
+                            <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteSection(quote.id, "attachments")} data-testid="cotacao-anexos">
                               Anexos {quoteAttachments.length ? `(${quoteAttachments.length})` : ""}
                             </Button>
                           </div>
@@ -2186,7 +2187,7 @@ export function PurchaseQuotesClient() {
                                 <span>Rodada: <strong className="font-medium text-foreground">{quote.quoteRound ?? 1}</strong></span>
                                 <span>Origem: <strong className="font-medium text-foreground">{getPurchaseQuoteSourceTypeLabel(quote.quoteSourceType || null)}</strong></span>
                                 <span>Evidência: <strong className="font-medium text-foreground">{getPurchaseQuoteEvidenceTypeLabel(quote.evidenceType || null)}</strong></span>
-                                <span>Classificação: <strong className="font-medium text-foreground">{quoteDocumentaryClassification.label}</strong></span>
+                                <span>Classificação: <strong className="font-medium text-foreground" data-testid="cotacao-classificacao">{quoteDocumentaryClassification.label}</strong></span>
                                 <span>Canal: <strong className="font-medium text-foreground">{getPurchaseQuoteSourceContactChannelLabel(quote.sourceContactChannel || null)}</strong></span>
                                 <span>Contato: <strong className="font-medium text-foreground">{quote.sourceContactName || "-"}</strong></span>
                                 <span>Referência: <strong className="font-medium text-foreground">{quote.sourceReference || "-"}</strong></span>
@@ -2260,6 +2261,7 @@ export function PurchaseQuotesClient() {
                                   key={`${quote.id}-${selectedFile?.name ?? "empty"}`}
                                   type="file"
                                   accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                  data-testid="cotacao-anexo-arquivo"
                                   className="w-full min-w-0 max-w-full text-xs sm:text-sm"
                                   disabled={!canMutateQuote}
                                   onChange={(event) => {
@@ -2274,6 +2276,7 @@ export function PurchaseQuotesClient() {
                                 onClick={() => uploadQuoteAttachment(quote.id)}
                                 disabled={uploadAttachmentMutation.isPending || !canMutateQuote}
                                 className="w-full justify-center whitespace-nowrap xl:w-auto"
+                                data-testid="cotacao-anexo-enviar"
                               >
                                 <Upload className="h-4 w-4" />
                                 Enviar anexo
@@ -2792,7 +2795,7 @@ export function PurchaseQuotesClient() {
                                           quoteForm.clearErrors("supplierId");
                                         }}
                                       />
-                                      <Button type="button" variant="outline" onClick={() => setQuickSupplierOpen(true)} className="shrink-0">
+                                      <Button type="button" variant="outline" onClick={() => setQuickSupplierOpen(true)} className="shrink-0" data-testid="cotacao-novo-fornecedor">
                                         <Plus className="h-4 w-4" />
                                         Novo fornecedor
                                       </Button>
@@ -2939,7 +2942,7 @@ export function PurchaseQuotesClient() {
 
                             <div className="grid min-w-0 gap-4 xl:grid-cols-3">
                               <Field label="Origem da cotação">
-                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...quoteForm.register("quoteSourceType")}>
+                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" data-testid="cotacao-origem" {...quoteForm.register("quoteSourceType")}>
                                   {quoteSourceTypeOptions.map(([value, label]) => (
                                     <option key={value} value={value}>{label}</option>
                                   ))}
@@ -2947,7 +2950,7 @@ export function PurchaseQuotesClient() {
                                 <FieldError message={quoteForm.formState.errors.quoteSourceType?.message} />
                               </Field>
                               <Field label="Tipo de evidência">
-                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...quoteForm.register("evidenceType")}>
+                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" data-testid="cotacao-tipo-evidencia" {...quoteForm.register("evidenceType")}>
                                   {evidenceTypeOptions.map(([value, label]) => (
                                     <option key={value} value={value}>{label}</option>
                                   ))}
@@ -3176,6 +3179,7 @@ export function PurchaseQuotesClient() {
                                                 itemField.onChange(event.target.value);
                                                 quoteForm.clearErrors(`items.${index}.unitPrice`);
                                               }}
+                                              data-testid={`cotacao-item-${index}-valor-unitario`}
                                             />
                                           )}
                                         />
@@ -3215,7 +3219,7 @@ export function PurchaseQuotesClient() {
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
+                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))} data-testid="cotacao-salvar">
                             <Pencil className="h-4 w-4" />
                             Salvar cotação
                           </Button>
@@ -3249,7 +3253,7 @@ export function PurchaseQuotesClient() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {canSubmitApproval ? (
-                      <Button type="button" size="sm" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
+                      <Button type="button" size="sm" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending} data-testid="cotacao-enviar-aprovacao">
                         <Check className="h-4 w-4" />
                         Enviar para aprovação
                       </Button>

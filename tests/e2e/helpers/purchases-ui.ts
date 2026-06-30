@@ -51,17 +51,15 @@ export async function selectByOptionText(select: Locator, optionText: string): P
   await select.selectOption(value);
 }
 
-/** Seleciona a primeira opcao "real" de um <select> de Field (ignora a primeira, tipo "Selecione"). */
-export async function selectFirstRealOption(scope: Page | Locator, labelText: string): Promise<string> {
-  const select = fieldControl(scope, labelText);
-
+/** Seleciona a primeira opcao "real" (value nao-vazio) de um <select> ja localizado. */
+export async function selectFirstReal(select: Locator, name = "select"): Promise<string> {
   // Select assincrono (ex.: Departamento depende da unidade ativa, setada apos o render inicial).
   // Espera a primeira opcao com value nao-vazio carregar antes de ler as opcoes.
   const firstReal = select.locator('option[value]:not([value=""])').first();
   try {
     await firstReal.waitFor({ state: "attached", timeout: 15_000 });
   } catch {
-    throw new Error(`[e2e] Nenhuma opcao valida no select "${labelText}" apos aguardar carregamento.`);
+    throw new Error(`[e2e] Nenhuma opcao valida no ${name} apos aguardar carregamento.`);
   }
 
   const values = await select.locator("option").evaluateAll((opts) =>
@@ -69,10 +67,15 @@ export async function selectFirstRealOption(scope: Page | Locator, labelText: st
   );
   const real = values.find((o) => o.value && o.value.trim() !== "");
   if (!real) {
-    throw new Error(`[e2e] Nenhuma opcao valida no select "${labelText}".`);
+    throw new Error(`[e2e] Nenhuma opcao valida no ${name}.`);
   }
   await select.selectOption(real.value);
   return real.text.trim();
+}
+
+/** Variante por label (Field): mantida para compatibilidade. */
+export async function selectFirstRealOption(scope: Page | Locator, labelText: string): Promise<string> {
+  return selectFirstReal(fieldControl(scope, labelText), `select "${labelText}"`);
 }
 
 /** Abre uma rota autenticada e confirma que a sessao esta ativa. */

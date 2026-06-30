@@ -625,7 +625,7 @@ export function PurchaseApprovalsClient() {
                     ) : (
                       <p className="text-xs text-muted-foreground">Fotografia formal do envio para aprovação.</p>
                     )}
-                    <Button type="button" size="sm" onClick={() => setSelectedApprovalId(approval.id)}>
+                    <Button type="button" size="sm" onClick={() => setSelectedApprovalId(approval.id)} data-testid="aprovacao-ver-dossie">
                       <Search className="h-4 w-4" />
                       Ver dossiê
                     </Button>
@@ -696,7 +696,7 @@ export function PurchaseApprovalsClient() {
                       <div className="rounded-md border bg-muted/30 p-3">
                         <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Decisão administrativa</p>
                         <div className="flex flex-wrap gap-2">
-                        <Button type="button" onClick={() => openDecision(selectedApproval, "approved")}>
+                        <Button type="button" onClick={() => openDecision(selectedApproval, "approved")} data-testid="aprovacao-aprovar">
                           <Check className="h-4 w-4" />
                           Aprovar
                         </Button>
@@ -885,7 +885,7 @@ export function PurchaseApprovalsClient() {
                 <Button type="button" variant="outline" onClick={() => setDecisionState(emptyDecisionState)}>
                   Cancelar
                 </Button>
-                <Button type="button" variant={decisionState.decision === "rejected" ? "danger" : "default"} onClick={submitDecision} disabled={decisionMutation.isPending}>
+                <Button type="button" variant={decisionState.decision === "rejected" ? "danger" : "default"} onClick={submitDecision} disabled={decisionMutation.isPending} data-testid="aprovacao-confirmar">
                   {decisionState.decision === "approved" ? <Check className="h-4 w-4" /> : decisionState.decision === "rejected" ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
                   Confirmar {decisionState.decision === "approved" ? "aprovação" : decisionState.decision === "rejected" ? "reprovação" : "devolução"}
                 </Button>
