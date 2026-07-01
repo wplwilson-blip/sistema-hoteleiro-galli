@@ -8,6 +8,8 @@ import { ErrorMessage, Field, LoadingTable, TextArea } from "@/components/base-c
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useAppStore } from "@/store/app-store";
+import { canAny } from "@/lib/auth/permissions-ui";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -407,6 +409,10 @@ function AttachmentsList({ attachments }: { attachments: ApprovalAttachment[] })
 
 export function PurchaseApprovalsClient() {
   const queryClient = useQueryClient();
+  // Fase 2: gate de UI por permissao (UNIAO). O botao de decidir aparece se o usuario pode decidir
+  // em ALGUM nivel; o servidor recusa (403) quando o nivel/unidade nao confere (T3 prova). "*" => tudo.
+  const permissions = useAppStore((state) => state.permissions);
+  const canDecide = canAny(permissions, ["PURCHASES:approvals.decide.administrative", "PURCHASES:approvals.decide.directorate"]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ApprovalStatus>("pending");
   const [levelFilter, setLevelFilter] = useState<"all" | ApprovalLevel>("all");
@@ -692,7 +698,7 @@ export function PurchaseApprovalsClient() {
                         <DossierInfoTile label="Envio formal" value={formatDateTime(selectedApproval.submittedAt)} icon={CalendarClock} />
                       </div>
                     </div>
-                    {selectedApproval.approvalStatus === "pending" && !selectedApproval.isLegacyWithoutSnapshot ? (
+                    {selectedApproval.approvalStatus === "pending" && !selectedApproval.isLegacyWithoutSnapshot && canDecide ? (
                       <div className="rounded-md border bg-muted/30 p-3">
                         <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Decisão administrativa</p>
                         <div className="flex flex-wrap gap-2">
@@ -885,10 +891,12 @@ export function PurchaseApprovalsClient() {
                 <Button type="button" variant="outline" onClick={() => setDecisionState(emptyDecisionState)}>
                   Cancelar
                 </Button>
-                <Button type="button" variant={decisionState.decision === "rejected" ? "danger" : "default"} onClick={submitDecision} disabled={decisionMutation.isPending} data-testid="aprovacao-confirmar">
-                  {decisionState.decision === "approved" ? <Check className="h-4 w-4" /> : decisionState.decision === "rejected" ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
-                  Confirmar {decisionState.decision === "approved" ? "aprovação" : decisionState.decision === "rejected" ? "reprovação" : "devolução"}
-                </Button>
+                {canDecide ? (
+                  <Button type="button" variant={decisionState.decision === "rejected" ? "danger" : "default"} onClick={submitDecision} disabled={decisionMutation.isPending} data-testid="aprovacao-confirmar">
+                    {decisionState.decision === "approved" ? <Check className="h-4 w-4" /> : decisionState.decision === "rejected" ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                    Confirmar {decisionState.decision === "approved" ? "aprovação" : decisionState.decision === "rejected" ? "reprovação" : "devolução"}
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>

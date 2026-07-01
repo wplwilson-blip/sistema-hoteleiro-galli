@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAppStore } from "@/store/app-store";
+import { canDo } from "@/lib/auth/permissions-ui";
 import { StatusBadge } from "@/components/common/status-badge";
 import {
   getPurchasePriorityLabel,
@@ -255,6 +256,10 @@ export function PurchaseRequestsClient() {
   // Unidade ativa na queryKey: trocar a unidade no header refaz fetch da lista
   // (agora escopada por unidade ativa no servidor), sem vazar a unidade anterior.
   const activeUnitId = useAppStore((state) => state.activeUnit.id);
+  // Fase 2: gate de UI. Esconde acoes de mutacao para quem nao tem requests.manage (UNIAO); o
+  // servidor continua barrando por unidade. "*" (super admin) => tudo. O disabled de fluxo e' mantido.
+  const permissions = useAppStore((state) => state.permissions);
+  const canManageRequests = canDo(permissions, "PURCHASES:requests.manage");
   const purchasesQuery = useQuery({
     queryKey: ["purchases", "requests", activeUnitId],
     queryFn: async () => requestJson<PurchaseRequestsResponse>("/api/purchases/requests")
@@ -480,10 +485,12 @@ export function PurchaseRequestsClient() {
             </SelectField>
           </div>
         </div>
-        <Button onClick={openNew} data-testid="solicitacao-nova">
-          <Plus className="h-4 w-4" />
-          Nova solicitação
-        </Button>
+        {canManageRequests ? (
+          <Button onClick={openNew} data-testid="solicitacao-nova">
+            <Plus className="h-4 w-4" />
+            Nova solicitação
+          </Button>
+        ) : null}
       </div>
 
       {formOpen ? (
@@ -795,11 +802,14 @@ export function PurchaseRequestsClient() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">O valor será definido posteriormente pelo setor de Compras durante a cotação.</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending} data-testid="solicitacao-salvar">
-                    <Pencil className="h-4 w-4" />
-                    {isSubmittedEdit ? "Salvar alterações" : "Salvar rascunho"}
-                  </Button>
-                  {!isSubmittedEdit ? (
+                  {canManageRequests ? (
+                    <Button type="button" variant="outline" onClick={() => submitForm("save")} disabled={saveMutation.isPending} data-testid="solicitacao-salvar">
+                      <Pencil className="h-4 w-4" />
+                      {isSubmittedEdit ? "Salvar alterações" : "Salvar rascunho"}
+                    </Button>
+                  ) : null}
+                  {canManageRequests ? (
+                    !isSubmittedEdit ? (
                     <Button type="button" onClick={() => submitForm("submit")} disabled={saveMutation.isPending} data-testid="solicitacao-enviar">
                       {submitAction === "submit" ? <Send className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                       Enviar para análise
@@ -814,6 +824,7 @@ export function PurchaseRequestsClient() {
                       <Ban className="h-4 w-4" />
                       Cancelar solicitação
                     </Button>
+                  ) : null
                   ) : null}
                 <Button
                   type="button"
@@ -892,13 +903,13 @@ export function PurchaseRequestsClient() {
                           <Eye className="h-4 w-4" />
                           Itens
                         </Button>
-                        {canEdit(request) ? (
+                        {canManageRequests && canEdit(request) ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => openEdit(request)}>
                             <Pencil className="h-4 w-4" />
                             Editar
                           </Button>
                         ) : null}
-                        {canCancelPurchaseRequest(request) ? (
+                        {canManageRequests && canCancelPurchaseRequest(request) ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => cancelMutation.mutate(request.id)} disabled={cancelMutation.isPending}>
                             <Ban className="h-4 w-4" />
                             Cancelar
