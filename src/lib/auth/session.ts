@@ -111,6 +111,111 @@ export async function hasActiveSuperAdmin() {
   return (activeUsers?.length ?? 0) > 0;
 }
 
+/**
+ * Fase 1: codigos de permissao EFETIVOS do usuario (uniao entre unidades), para filtrar a UI.
+ * Read-only e ADITIVO — NAO altera a validacao server-side (requirePermission/policies).
+ * Espelha a semantica do resolver por-codigo (permissions.ts): grants por perfil
+ * (profile_permissions) + overrides (user_permission_overrides.is_allowed; unit_id nulo = todas as
+ * unidades vinculadas). Um codigo e' "efetivo" se o usuario o tem em AO MENOS uma unidade.
+ * Super admin => ["*"] (sentinela). Em erro de query: loga e retorna [] (degrade seguro; o menu so
+ * mostra itens sem permissao — o servidor continua barrando o acesso real).
+ */
+export async function getEffectivePermissionCodes(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  input: { isSuperAdmin: boolean; appUserId: string; links: Array<{ unit_id: string; access_profile_id: string }> }
+): Promise<string[]> {
+  if (input.isSuperAdmin) {
+    return ["*"];
+  }
+
+  const profileIds = Array.from(new Set(input.links.map((link) => link.access_profile_id)));
+  const linkedUnitIds = new Set(input.links.map((link) => link.unit_id));
+  if (!profileIds.length) {
+    return [];
+  }
+
+  const unitsByProfile = new Map<string, string[]>();
+  for (const link of input.links) {
+    unitsByProfile.set(link.access_profile_id, [...(unitsByProfile.get(link.access_profile_id) ?? []), link.unit_id]);
+  }
+
+  // permissionId -> code ; permissionId -> Set<unitId> permitido
+  const codeById = new Map<string, string>();
+  const allowedUnitsByPermission = new Map<string, Set<string>>();
+
+  try {
+    // 1) Grants por perfil (profile_permissions -> permissions).
+    const { data: grantRows, error: grantError } = await supabase
+      .from("profile_permissions")
+      .select("access_profile_id, permissions!inner(id, code)")
+      .in("access_profile_id", profileIds);
+
+    if (grantError) {
+      logInitialSetupCheckError("effective_permissions_grants", grantError);
+      return [];
+    }
+
+    for (const row of (grantRows ?? []) as any[]) {
+      const permission = row.permissions as { id: string; code: string };
+      codeById.set(permission.id, permission.code);
+      const set = allowedUnitsByPermission.get(permission.id) ?? new Set<string>();
+      for (const unitId of unitsByProfile.get(row.access_profile_id) ?? []) {
+        set.add(unitId);
+      }
+      allowedUnitsByPermission.set(permission.id, set);
+    }
+
+    // 2) Overrides por usuario (mesma semantica do resolver por-codigo).
+    const { data: overrideRows, error: overrideError } = await supabase
+      .from("user_permission_overrides")
+      .select("permission_id, unit_id, is_allowed, permissions!inner(id, code)")
+      .eq("app_user_id", input.appUserId)
+      .eq("status", "active")
+      .is("deleted_at", null);
+
+    if (overrideError) {
+      logInitialSetupCheckError("effective_permissions_overrides", overrideError);
+      return [];
+    }
+
+    for (const override of (overrideRows ?? []) as any[]) {
+      codeById.set(override.permission_id, (override.permissions as { code: string }).code);
+      const set = allowedUnitsByPermission.get(override.permission_id) ?? new Set<string>();
+
+      if (!override.unit_id) {
+        if (override.is_allowed) {
+          linkedUnitIds.forEach((unitId) => set.add(unitId));
+        } else {
+          set.clear();
+        }
+      } else if (linkedUnitIds.has(override.unit_id)) {
+        if (override.is_allowed) {
+          set.add(override.unit_id);
+        } else {
+          set.delete(override.unit_id);
+        }
+      }
+
+      allowedUnitsByPermission.set(override.permission_id, set);
+    }
+  } catch (error) {
+    logInitialSetupCheckError("effective_permissions_unexpected", error);
+    return [];
+  }
+
+  const codes: string[] = [];
+  allowedUnitsByPermission.forEach((units, permissionId) => {
+    if (units.size > 0) {
+      const code = codeById.get(permissionId);
+      if (code) {
+        codes.push(code);
+      }
+    }
+  });
+
+  return Array.from(new Set(codes));
+}
+
 export async function getCurrentSessionContext(activeUnitIdOverride?: string): Promise<SessionContext | null> {
   const serverClient = createSupabaseServerClient();
   const {
@@ -236,6 +341,13 @@ export async function getSessionContextByAuthUserId(
   const desiredUnitId = activeUnitIdOverride ?? getActiveUnitCookie();
   const activeUnit = (desiredUnitId ? units.find((unit) => unit.id === desiredUnitId) : undefined) ?? units[0];
 
+  // Fase 1: permissoes efetivas (uniao entre unidades) para filtrar a UI (1 resolucao por load).
+  const permissions = await getEffectivePermissionCodes(supabase, {
+    isSuperAdmin,
+    appUserId: appUser.id,
+    links: typedLinks.map((link) => ({ unit_id: link.unit_id, access_profile_id: link.access_profile_id }))
+  });
+
   return {
     user: {
       id: appUser.id,
@@ -244,7 +356,8 @@ export async function getSessionContextByAuthUserId(
     },
     profile: profileForUnit(activeUnit.id),
     units,
-    activeUnit
+    activeUnit,
+    permissions
   };
 }
 

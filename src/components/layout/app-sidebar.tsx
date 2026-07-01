@@ -34,6 +34,7 @@ import {
   Wrench
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/app-store";
 
 type SidebarLink = {
   type?: "link";
@@ -41,6 +42,10 @@ type SidebarLink = {
   href: string;
   icon: typeof LayoutDashboard;
   match?: "exact" | "prefix";
+  // Fase 1: visibilidade por permissao. Ausentes = visivel a todos. requiredAnyOf = qualquer uma
+  // satisfaz. Super admin (permissions inclui "*") ve tudo. Filtro de UI; server ainda valida.
+  requiredPermission?: string;
+  requiredAnyOf?: string[];
 };
 
 type SidebarSection = {
@@ -66,12 +71,12 @@ const menuGroups: SidebarGroup[] = [
     icon: SlidersHorizontal,
     items: [
       { label: "Dashboard", href: "/cadastros", icon: LayoutDashboard, match: "exact" },
-      { label: "Unidades", href: "/cadastros/unidades", icon: Building2 },
-      { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags },
-      { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness },
-      { label: "Colaboradores", href: "/cadastros/colaboradores", icon: UserRound },
-      { label: "Usuários internos", href: "/cadastros/usuarios", icon: Users },
-      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: IdCard }
+      { label: "Unidades", href: "/cadastros/unidades", icon: Building2, requiredPermission: "BASE:units.view" },
+      { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags, requiredPermission: "BASE:departments.view" },
+      { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness, requiredPermission: "BASE:job_positions.view" },
+      { label: "Colaboradores", href: "/cadastros/colaboradores", icon: UserRound, requiredPermission: "BASE:employees.view" },
+      { label: "Usuários internos", href: "/cadastros/usuarios", icon: Users, requiredPermission: "BASE:users.view" },
+      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: IdCard, requiredPermission: "BASE:suppliers.view" }
     ]
   },
   {
@@ -80,10 +85,10 @@ const menuGroups: SidebarGroup[] = [
     icon: ShoppingCart,
     items: [
       { label: "Dashboard", href: "/compras", icon: LayoutDashboard, match: "exact" },
-      { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList },
-      { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck },
-      { label: "Aprovações", href: "/compras/aprovacoes", icon: ShieldCheck },
-      { label: "Pendências Documentais", href: "/compras/pendencias-documentais", icon: FileWarning }
+      { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList, requiredPermission: "PURCHASES:requests.view" },
+      { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck, requiredPermission: "PURCHASES:quotes.view" },
+      { label: "Aprovações", href: "/compras/aprovacoes", icon: ShieldCheck, requiredPermission: "PURCHASES:approvals.view" },
+      { label: "Pendências Documentais", href: "/compras/pendencias-documentais", icon: FileWarning, requiredPermission: "PURCHASES:documentation.view" }
     ]
   },
   {
@@ -93,29 +98,29 @@ const menuGroups: SidebarGroup[] = [
     items: [
       { type: "section", label: "GESTÃO RH" },
       { label: "Painel RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
-      { label: "Fila RH", href: "/rh/inbox", icon: Inbox },
+      { label: "Fila RH", href: "/rh/inbox", icon: Inbox, requiredPermission: "HR:workflows.view" },
       { type: "section", label: "RECRUTAMENTO E SELEÇÃO" },
       { label: "Dashboard", href: "/rh/recrutamento", icon: BarChart3, match: "exact" },
-      { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness },
+      { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness, requiredPermission: "HR:workflows.view" },
       { type: "section", label: "ADMISSÃO" },
-      { label: "Admissões", href: "/rh/admissoes", icon: ClipboardCheck, match: "exact" },
-      { label: "Documentos RH", href: "/rh/pendencias-documentais", icon: FileWarning },
-      { label: "Onboarding", href: "/rh/onboarding", icon: ClipboardCheck },
+      { label: "Admissões", href: "/rh/admissoes", icon: ClipboardCheck, match: "exact", requiredPermission: "HR:workflows.view" },
+      { label: "Documentos RH", href: "/rh/pendencias-documentais", icon: FileWarning, requiredPermission: "HR:documents.view" },
+      { label: "Onboarding", href: "/rh/onboarding", icon: ClipboardCheck, requiredPermission: "HR:employees.view" },
       { type: "section", label: "COLABORADORES" },
-      { label: "Colaboradores", href: "/rh/employees", icon: UserRound },
+      { label: "Colaboradores", href: "/rh/employees", icon: UserRound, requiredPermission: "HR:employees.view" },
       { type: "section", label: "DESENVOLVIMENTO" },
-      { label: "Avaliações", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact" },
-      { label: "Plano de Desenvolvimento (PDI)", href: "/rh/employees?tab=development", icon: ClipboardList },
-      { label: "Treinamentos", href: "/rh/gestao/treinamentos", icon: GraduationCap, match: "exact" },
+      { label: "Avaliações", href: "/rh/gestao/avaliacoes", icon: ListChecks, match: "exact", requiredPermission: "HR:evaluations.view" },
+      { label: "Plano de Desenvolvimento (PDI)", href: "/rh/employees?tab=development", icon: ClipboardList, requiredPermission: "HR:employees.view" },
+      { label: "Treinamentos", href: "/rh/gestao/treinamentos", icon: GraduationCap, match: "exact", requiredPermission: "HR:trainings.view" },
       { type: "section", label: "VIDA FUNCIONAL" },
-      { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact" },
-      { label: "Saúde Ocupacional", href: "/rh/gestao/saude-ocupacional", icon: HeartPulse, match: "exact" },
+      { label: "Movimentações", href: "/rh/gestao/movimentacoes", icon: Shuffle, match: "exact", requiredPermission: "HR:movements.view" },
+      { label: "Saúde Ocupacional", href: "/rh/gestao/saude-ocupacional", icon: HeartPulse, match: "exact", requiredPermission: "HR:occupational.view" },
       { type: "section", label: "CONDUTA" },
-      { label: "Conduta", href: "/rh/gestao/conduta", icon: MessageSquareText, match: "exact" },
+      { label: "Conduta", href: "/rh/gestao/conduta", icon: MessageSquareText, match: "exact", requiredPermission: "HR:conduct.view" },
       { type: "section", label: "DESLIGAMENTO" },
-      { label: "Desligamentos", href: "/rh/gestao/desligamentos", icon: LogOut, match: "exact" },
-      { label: "Dashboard Executivo", href: "/rh/dashboard-executivo", icon: BarChart3, match: "exact" },
-      { label: "Relatórios RH", href: "/rh/relatorios", icon: FileText, match: "exact" },
+      { label: "Desligamentos", href: "/rh/gestao/desligamentos", icon: LogOut, match: "exact", requiredPermission: "HR:terminations.view" },
+      { label: "Dashboard Executivo", href: "/rh/dashboard-executivo", icon: BarChart3, match: "exact", requiredPermission: "HR:employees.view" },
+      { label: "Relatórios RH", href: "/rh/relatorios", icon: FileText, match: "exact", requiredAnyOf: ["HR:employees.view", "HR:evaluations.view"] },
       { label: "Gestão RH", href: "/rh/gestao", icon: BarChart3, match: "exact" }
     ]
   },
@@ -174,6 +179,36 @@ function isSidebarLink(item: SidebarEntry): item is SidebarLink {
   return item.type !== "section";
 }
 
+// Fase 1: visibilidade por permissao. "*" (super admin) => tudo. Sem requisito => visivel.
+function canSee(permissions: string[], item: SidebarLink): boolean {
+  if (permissions.includes("*")) return true;
+  if (item.requiredPermission) return permissions.includes(item.requiredPermission);
+  if (item.requiredAnyOf) return item.requiredAnyOf.some((code) => permissions.includes(code));
+  return true;
+}
+
+// Filtra os itens de um grupo: links por canSee; secoes (headers) so aparecem se houver ao menos
+// um link VISIVEL subsequente ate a proxima secao (evita cabecalho orfao).
+function visibleGroupEntries(items: SidebarEntry[], permissions: string[]): SidebarEntry[] {
+  const result: SidebarEntry[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (isSidebarLink(item)) {
+      if (canSee(permissions, item)) result.push(item);
+      continue;
+    }
+    let hasVisibleLink = false;
+    for (let next = index + 1; next < items.length && isSidebarLink(items[next]); next += 1) {
+      if (canSee(permissions, items[next] as SidebarLink)) {
+        hasVisibleLink = true;
+        break;
+      }
+    }
+    if (hasVisibleLink) result.push(item);
+  }
+  return result;
+}
+
 function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
   const Icon = item.icon;
 
@@ -195,12 +230,23 @@ function SidebarItem({ item, active }: { item: SidebarLink; active: boolean }) {
 export function AppSidebar() {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
-  const activeGroups = useMemo(
+  const permissions = useAppStore((state) => state.permissions);
+
+  // Fase 1: grupos com itens filtrados por permissao; grupos sem nenhum link visivel somem.
+  const visibleGroups = useMemo(
     () =>
       menuGroups
+        .map((group) => ({ ...group, items: visibleGroupEntries(group.items, permissions) }))
+        .filter((group) => group.items.some(isSidebarLink)),
+    [permissions]
+  );
+
+  const activeGroups = useMemo(
+    () =>
+      visibleGroups
         .filter((group) => isPathActive(pathname, group.href) || group.items.some((item) => isSidebarLink(item) && isLinkActive(pathname, item)))
         .map((group) => group.label),
-    [pathname]
+    [pathname, visibleGroups]
   );
   const [openGroups, setOpenGroups] = useState<string[]>(activeGroups);
 
@@ -231,11 +277,11 @@ export function AppSidebar() {
       </div>
 
       <nav ref={navRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4">
-        {mainItems.map((item) => (
+        {mainItems.filter((item) => canSee(permissions, item)).map((item) => (
           <SidebarItem key={item.label} item={item} active={isLinkActive(pathname, item)} />
         ))}
 
-        {menuGroups.map((group) => {
+        {visibleGroups.map((group) => {
           const Icon = group.icon;
           const isGroupActive = isPathActive(pathname, group.href) || group.items.some((item) => isSidebarLink(item) && isLinkActive(pathname, item));
           const isOpen = openGroups.includes(group.label) || activeGroups.includes(group.label);
@@ -273,7 +319,7 @@ export function AppSidebar() {
         })}
 
         <div className="border-t border-border/80 pt-2">
-          {footerItems.map((item) => (
+          {footerItems.filter((item) => canSee(permissions, item)).map((item) => (
             <SidebarItem key={item.label} item={item} active={isLinkActive(pathname, item)} />
           ))}
         </div>
