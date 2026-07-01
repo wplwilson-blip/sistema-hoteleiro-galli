@@ -64,13 +64,42 @@ type SidebarGroup = {
 
 const mainItems: SidebarLink[] = [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }];
 
+// Fase 1 (ajuste): landings/dashboards de MODULOS REAIS aparecem so para quem tem ao menos uma
+// permissao .view do modulo -> assim o grupo inteiro some para quem nao pertence ao modulo
+// (via visibleGroupEntries). Placeholders (Recepcao, Manutencao, etc.) seguem livres.
+const BASE_VIEW_ANY = [
+  "BASE:units.view",
+  "BASE:departments.view",
+  "BASE:job_positions.view",
+  "BASE:employees.view",
+  "BASE:users.view",
+  "BASE:suppliers.view"
+];
+const PURCHASES_VIEW_ANY = [
+  "PURCHASES:requests.view",
+  "PURCHASES:quotes.view",
+  "PURCHASES:approvals.view",
+  "PURCHASES:documentation.view"
+];
+const HR_VIEW_ANY = [
+  "HR:workflows.view",
+  "HR:documents.view",
+  "HR:employees.view",
+  "HR:evaluations.view",
+  "HR:trainings.view",
+  "HR:movements.view",
+  "HR:occupational.view",
+  "HR:conduct.view",
+  "HR:terminations.view"
+];
+
 const menuGroups: SidebarGroup[] = [
   {
     label: "Cadastros",
     href: "/cadastros",
     icon: SlidersHorizontal,
     items: [
-      { label: "Dashboard", href: "/cadastros", icon: LayoutDashboard, match: "exact" },
+      { label: "Dashboard", href: "/cadastros", icon: LayoutDashboard, match: "exact", requiredAnyOf: BASE_VIEW_ANY },
       { label: "Unidades", href: "/cadastros/unidades", icon: Building2, requiredPermission: "BASE:units.view" },
       { label: "Departamentos", href: "/cadastros/departamentos", icon: Tags, requiredPermission: "BASE:departments.view" },
       { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness, requiredPermission: "BASE:job_positions.view" },
@@ -84,7 +113,7 @@ const menuGroups: SidebarGroup[] = [
     href: "/compras",
     icon: ShoppingCart,
     items: [
-      { label: "Dashboard", href: "/compras", icon: LayoutDashboard, match: "exact" },
+      { label: "Dashboard", href: "/compras", icon: LayoutDashboard, match: "exact", requiredAnyOf: PURCHASES_VIEW_ANY },
       { label: "Solicitações", href: "/compras/solicitacoes", icon: ClipboardList, requiredPermission: "PURCHASES:requests.view" },
       { label: "Cotações", href: "/compras/cotacoes", icon: ClipboardCheck, requiredPermission: "PURCHASES:quotes.view" },
       { label: "Aprovações", href: "/compras/aprovacoes", icon: ShieldCheck, requiredPermission: "PURCHASES:approvals.view" },
@@ -97,10 +126,10 @@ const menuGroups: SidebarGroup[] = [
     icon: Users,
     items: [
       { type: "section", label: "GESTÃO RH" },
-      { label: "Painel RH", href: "/rh", icon: LayoutDashboard, match: "exact" },
+      { label: "Painel RH", href: "/rh", icon: LayoutDashboard, match: "exact", requiredAnyOf: HR_VIEW_ANY },
       { label: "Fila RH", href: "/rh/inbox", icon: Inbox, requiredPermission: "HR:workflows.view" },
       { type: "section", label: "RECRUTAMENTO E SELEÇÃO" },
-      { label: "Dashboard", href: "/rh/recrutamento", icon: BarChart3, match: "exact" },
+      { label: "Dashboard", href: "/rh/recrutamento", icon: BarChart3, match: "exact", requiredAnyOf: HR_VIEW_ANY },
       { label: "Vagas", href: "/rh/vagas", icon: BriefcaseBusiness, requiredPermission: "HR:workflows.view" },
       { type: "section", label: "ADMISSÃO" },
       { label: "Admissões", href: "/rh/admissoes", icon: ClipboardCheck, match: "exact", requiredPermission: "HR:workflows.view" },
@@ -121,7 +150,7 @@ const menuGroups: SidebarGroup[] = [
       { label: "Desligamentos", href: "/rh/gestao/desligamentos", icon: LogOut, match: "exact", requiredPermission: "HR:terminations.view" },
       { label: "Dashboard Executivo", href: "/rh/dashboard-executivo", icon: BarChart3, match: "exact", requiredPermission: "HR:employees.view" },
       { label: "Relatórios RH", href: "/rh/relatorios", icon: FileText, match: "exact", requiredAnyOf: ["HR:employees.view", "HR:evaluations.view"] },
-      { label: "Gestão RH", href: "/rh/gestao", icon: BarChart3, match: "exact" }
+      { label: "Gestão RH", href: "/rh/gestao", icon: BarChart3, match: "exact", requiredAnyOf: HR_VIEW_ANY }
     ]
   },
   {
