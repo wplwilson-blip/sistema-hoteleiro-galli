@@ -22,6 +22,8 @@ type AppState = {
   units: Unit[];
   activeUnit: Unit;
   activeUnitError: string | null;
+  // Fase 1: permissoes efetivas para filtrar a UI (menu). Super admin => ["*"]. Ver docs/codex/17.
+  permissions: string[];
   setSessionContext: (context: SessionContext) => void;
   setActiveUnit: (unitId: string) => Promise<void>;
   clearActiveUnitError: () => void;
@@ -45,12 +47,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   units: [],
   activeUnit: emptyUnit,
   activeUnitError: null,
+  permissions: [],
   setSessionContext: (context) =>
     set({
       user: context.user,
       profile: context.profile,
       units: context.units,
       activeUnit: context.activeUnit,
+      permissions: context.permissions ?? [],
       activeUnitError: null
     }),
   setActiveUnit: async (unitId) => {
@@ -78,6 +82,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         profile: context.profile,
         units: context.units,
         activeUnit: context.activeUnit,
+        permissions: context.permissions ?? [],
         activeUnitError: null
       });
     } catch {
