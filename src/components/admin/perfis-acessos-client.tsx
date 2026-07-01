@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Check, ShieldCheck, Users } from "lucide-react";
+import { Ban, Check, Minus, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
@@ -335,6 +335,8 @@ function UsersTab() {
                     {group.permissions.map((permission) => {
                       const state = stateFor(permission.code);
                       const current = controlValueFor(permission.code);
+                      // Indicador visual de acesso EFETIVO (tem/nao tem) — leitura rapida; nao substitui STATE_LABEL (origem).
+                      const hasAccess = state === "profile" || state === "granted-override";
                       const isSelfProtected = selectedUserId === myUserId && PROTECTED_ADMIN.includes(permission.code);
                       const options: Array<{ value: ControlValue; label: string; disabled?: boolean }> = [
                         { value: "seguir", label: "Seguir perfil", disabled: isSelfProtected },
@@ -342,10 +344,27 @@ function UsersTab() {
                         { value: "negar", label: "Negar", disabled: isSelfProtected }
                       ];
                       return (
-                        <li key={permission.code} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground">{permission.name}</p>
-                            <p className="text-xs text-muted-foreground">{permission.description || permission.code} · <span className="italic">{STATE_LABEL[state]}</span></p>
+                        <li
+                          key={permission.code}
+                          className={cn(
+                            "flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between",
+                            hasAccess && "-mx-2 rounded-md border-l-2 border-emerald-500 bg-emerald-500/5 px-2"
+                          )}
+                        >
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span
+                              className={cn(
+                                "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+                                hasAccess ? "bg-emerald-500/15 text-emerald-600" : "text-muted-foreground/40"
+                              )}
+                              aria-hidden="true"
+                            >
+                              {hasAccess ? <Check className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">{permission.name}</p>
+                              <p className="text-xs text-muted-foreground">{permission.description || permission.code} · <span className="italic">{STATE_LABEL[state]}</span></p>
+                            </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-1">
                             {options.map((option) => (
