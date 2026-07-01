@@ -24,6 +24,7 @@ import {
   LogOut,
   MessageSquareText,
   ShieldCheck,
+  Settings,
   Shuffle,
   ShoppingCart,
   SlidersHorizontal,
@@ -191,6 +192,16 @@ const menuGroups: SidebarGroup[] = [
     items: [
       { label: "Dashboard", href: "/administrativo", icon: LayoutDashboard },
       { label: "Minha Operação", href: "/minha-operacao", icon: BedDouble }
+    ]
+  },
+  {
+    label: "Configurações",
+    href: "/configuracoes",
+    icon: Settings,
+    items: [
+      // Fase 3-A: so aparece para quem tem ADMIN:permissions.view (hoje super admin). O grupo some
+      // sozinho via visibleGroupEntries quando nao ha item visivel.
+      { label: "Perfis e Acessos", href: "/configuracoes/perfis-acessos", icon: ShieldCheck, requiredPermission: "ADMIN:permissions.view" }
     ]
   }
 ];
