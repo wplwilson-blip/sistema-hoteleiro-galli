@@ -62,12 +62,59 @@ export async function GET(_request: Request, { params }: { params: { id: string 
           .order("name", { ascending: true })
       : { data: [] };
 
+    // Fase 3-B (read-only): breakdown para a UI de edicao.
+    // profilePermissions = codigos concedidos pelos PERFIS do alvo (SEM overrides).
+    const { data: grantRows, error: grantError } = profileIds.length
+      ? await supabase
+          .from("profile_permissions")
+          .select("permissions!inner(code, status, deleted_at)")
+          .in("access_profile_id", profileIds)
+          .eq("is_allowed", true)
+          .eq("status", "active")
+          .is("deleted_at", null)
+      : { data: [], error: null };
+
+    if (grantError) {
+      logBaseCadastroError("admin_permissions.user_profile_grants_failed", grantError);
+      return apiError("Nao foi possivel carregar as permissoes de perfil do usuario.", 500);
+    }
+
+    const profilePermissions = Array.from(
+      new Set(
+        ((grantRows ?? []) as any[])
+          .map((row) => row.permissions as { code: string; status: string; deleted_at: string | null })
+          .filter((permission) => permission && permission.status === "active" && !permission.deleted_at)
+          .map((permission) => permission.code)
+      )
+    );
+
+    // overrides ativos do alvo (escopo global: unit_id null).
+    const { data: overrideRows, error: overrideError } = await supabase
+      .from("user_permission_overrides")
+      .select("is_allowed, permissions!inner(code)")
+      .eq("app_user_id", targetId)
+      .is("unit_id", null)
+      .eq("status", "active")
+      .is("deleted_at", null);
+
+    if (overrideError) {
+      logBaseCadastroError("admin_permissions.user_overrides_failed", overrideError);
+      return apiError("Nao foi possivel carregar as excecoes do usuario.", 500);
+    }
+
+    const overrides = ((overrideRows ?? []) as any[]).map((row) => ({
+      permissionCode: (row.permissions as { code: string }).code,
+      isAllowed: Boolean(row.is_allowed)
+    }));
+
     return NextResponse.json({
       ok: true,
       user: { id: target.id, username: target.username, displayName: target.display_name },
       isSuperAdmin,
       permissions,
-      profiles: (profileRows ?? []).map((profile) => ({ code: profile.code, name: profile.name }))
+      profiles: (profileRows ?? []).map((profile) => ({ code: profile.code, name: profile.name })),
+      profilePermissions,
+      overrides
     });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Nao foi possivel carregar as permissoes do usuario.", 500);
