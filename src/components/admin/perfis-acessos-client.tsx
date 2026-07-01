@@ -1,16 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ShieldCheck, Users } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Ban, Check, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store/app-store";
+import { canDo } from "@/lib/auth/permissions-ui";
 
-// Fase 3-A: tela READ-ONLY de Perfis e Acessos. So consome GETs; nao escreve nada.
+// Fase 3-A (leitura) + Fase 3-B (edicao de excecoes por usuario).
 
 type Tab = "perfis" | "usuarios";
+
+// Permissoes de administracao protegidas contra auto-trancamento (espelha o backend).
+const PROTECTED_ADMIN = ["ADMIN:permissions.view", "ADMIN:overrides.manage", "ADMIN:profiles.manage"];
 
 type CatalogPermission = { code: string; moduleCode: string; actionCode: string; name: string; description: string };
 type CatalogResponse = { ok: true; permissions: CatalogPermission[] };
@@ -28,6 +33,8 @@ type UserDetailResponse = {
   isSuperAdmin: boolean;
   permissions: string[];
   profiles: Array<{ code: string; name: string }>;
+  profilePermissions: string[];
+  overrides: Array<{ permissionCode: string; isAllowed: boolean }>;
 };
 
 const MODULE_LABELS: Record<string, string> = {
@@ -47,6 +54,15 @@ async function fetchJson<T>(url: string): Promise<T> {
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
     throw new Error(payload.message ?? "Não foi possível carregar os dados.");
+  }
+  return payload;
+}
+
+async function writeJson<T>(url: string, method: "PUT" | "DELETE", body: unknown): Promise<T> {
+  const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.message ?? "Não foi possível concluir a operação.");
   }
   return payload;
 }
@@ -145,10 +161,30 @@ function ProfilesTab() {
   );
 }
 
+type OverrideState = "profile" | "granted-override" | "denied-override" | "none";
+type ControlValue = "seguir" | "conceder" | "negar";
+type PendingChange = { code: string; name: string; target: ControlValue };
+
+const STATE_LABEL: Record<OverrideState, string> = {
+  profile: "Herdada do perfil",
+  "granted-override": "Concedida por exceção",
+  "denied-override": "Negada por exceção",
+  none: "Sem acesso"
+};
+
 function UsersTab() {
+  const queryClient = useQueryClient();
+  const myPermissions = useAppStore((state) => state.permissions);
+  const myUserId = useAppStore((state) => state.user.id);
+  const canEditOverrides = canDo(myPermissions, "ADMIN:overrides.manage");
+
   const usersQuery = useQuery({ queryKey: ["admin", "permissions", "users-picker"], queryFn: () => fetchJson<UsersResponse>("/api/base/users") });
   const catalogQuery = useQuery({ queryKey: ["admin", "permissions", "catalog"], queryFn: () => fetchJson<CatalogResponse>("/api/admin/permissions/catalog") });
   const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [pending, setPending] = useState<PendingChange | null>(null);
+  const [reason, setReason] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
 
   const userDetailQuery = useQuery({
     queryKey: ["admin", "permissions", "user", selectedUserId],
@@ -156,16 +192,63 @@ function UsersTab() {
     enabled: Boolean(selectedUserId)
   });
 
-  const users = usersQuery.data?.users ?? [];
-  const catalogByCode = useMemo(() => {
-    const map = new Map<string, CatalogPermission>();
-    for (const permission of catalogQuery.data?.permissions ?? []) map.set(permission.code, permission);
-    return map;
-  }, [catalogQuery.data?.permissions]);
+  const mutation = useMutation({
+    mutationFn: async (change: { code: string; target: ControlValue; reason: string }) => {
+      if (change.target === "seguir") {
+        return writeJson("/api/admin/permissions/overrides", "DELETE", { targetUserId: selectedUserId, permissionCode: change.code });
+      }
+      return writeJson("/api/admin/permissions/overrides", "PUT", {
+        targetUserId: selectedUserId,
+        permissionCode: change.code,
+        isAllowed: change.target === "conceder",
+        reason: change.reason || undefined
+      });
+    },
+    onSuccess: async () => {
+      setError("");
+      setFeedback("Acesso atualizado com sucesso.");
+      setPending(null);
+      setReason("");
+      await queryClient.invalidateQueries({ queryKey: ["admin", "permissions", "user", selectedUserId] });
+    },
+    onError: (mutationError) => {
+      setFeedback("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível atualizar o acesso.");
+    }
+  });
 
+  const users = usersQuery.data?.users ?? [];
+  const catalog = useMemo(() => catalogQuery.data?.permissions ?? [], [catalogQuery.data?.permissions]);
   const detail = userDetailQuery.data;
   const isTotalAccess = Boolean(detail && (detail.isSuperAdmin || detail.permissions.includes("*")));
-  const groups = useMemo(() => {
+
+  const catalogByCode = useMemo(() => {
+    const map = new Map<string, CatalogPermission>();
+    for (const permission of catalog) map.set(permission.code, permission);
+    return map;
+  }, [catalog]);
+
+  const overrideMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const override of detail?.overrides ?? []) map.set(override.permissionCode, override.isAllowed);
+    return map;
+  }, [detail?.overrides]);
+
+  const profileSet = useMemo(() => new Set(detail?.profilePermissions ?? []), [detail?.profilePermissions]);
+
+  function stateFor(code: string): OverrideState {
+    if (overrideMap.has(code)) return overrideMap.get(code) ? "granted-override" : "denied-override";
+    if (profileSet.has(code)) return "profile";
+    return "none";
+  }
+
+  function controlValueFor(code: string): ControlValue {
+    if (overrideMap.has(code)) return overrideMap.get(code) ? "conceder" : "negar";
+    return "seguir";
+  }
+
+  // Read-only (aba efetiva) para quem NAO edita: mesmo comportamento da 3-A.
+  const readonlyGroups = useMemo(() => {
     if (!detail || isTotalAccess) return [];
     const enriched = detail.permissions.map((code) => {
       const fromCatalog = catalogByCode.get(code);
@@ -178,6 +261,17 @@ function UsersTab() {
     });
     return groupByModule(enriched);
   }, [catalogByCode, detail, isTotalAccess]);
+
+  const catalogGroups = useMemo(() => groupByModule(catalog), [catalog]);
+
+  function requestChange(code: string, name: string, target: ControlValue) {
+    setError("");
+    setFeedback("");
+    setReason("");
+    setPending({ code, name, target });
+  }
+
+  const loadingDetail = Boolean(selectedUserId) && userDetailQuery.isLoading;
 
   return (
     <div className="space-y-4">
@@ -192,7 +286,11 @@ function UsersTab() {
             id="admin-user-select"
             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             value={selectedUserId}
-            onChange={(event) => setSelectedUserId(event.target.value)}
+            onChange={(event) => {
+              setSelectedUserId(event.target.value);
+              setError("");
+              setFeedback("");
+            }}
           >
             <option value="">Selecione um usuário</option>
             {users.map((user) => (
@@ -204,9 +302,12 @@ function UsersTab() {
         )}
       </div>
 
+      {feedback ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback}</p> : null}
+      {error ? <ErrorMessage message={error} /> : null}
+
       {!selectedUserId ? (
-        <EmptyState title="Selecione um usuário" description="Escolha um usuário para ver suas permissões efetivas (perfil + exceções)." />
-      ) : userDetailQuery.isLoading ? (
+        <EmptyState title="Selecione um usuário" description="Escolha um usuário para ver e ajustar suas permissões efetivas (perfil + exceções)." />
+      ) : loadingDetail ? (
         <LoadingTable label="Carregando permissões do usuário..." />
       ) : userDetailQuery.error ? (
         <ErrorMessage message={userDetailQuery.error instanceof Error ? userDetailQuery.error.message : "Erro ao carregar permissões."} />
@@ -219,14 +320,106 @@ function UsersTab() {
               {detail.profiles.length ? ` • ${detail.profiles.map((profile) => profile.name).join(", ")}` : ""}
             </p>
           </div>
+
           {isTotalAccess ? (
             <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
               <ShieldCheck className="h-4 w-4" />
               Acesso total (super admin) — todas as permissões do sistema.
             </div>
+          ) : canEditOverrides ? (
+            <div className="space-y-4">
+              {catalogGroups.map((group) => (
+                <div key={group.moduleCode} className="rounded-md border bg-background p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{moduleLabel(group.moduleCode)}</p>
+                  <ul className="mt-2 divide-y">
+                    {group.permissions.map((permission) => {
+                      const state = stateFor(permission.code);
+                      const current = controlValueFor(permission.code);
+                      const isSelfProtected = selectedUserId === myUserId && PROTECTED_ADMIN.includes(permission.code);
+                      const options: Array<{ value: ControlValue; label: string; disabled?: boolean }> = [
+                        { value: "seguir", label: "Seguir perfil", disabled: isSelfProtected },
+                        { value: "conceder", label: "Conceder" },
+                        { value: "negar", label: "Negar", disabled: isSelfProtected }
+                      ];
+                      return (
+                        <li key={permission.code} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground">{permission.name}</p>
+                            <p className="text-xs text-muted-foreground">{permission.description || permission.code} · <span className="italic">{STATE_LABEL[state]}</span></p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-1">
+                            {options.map((option) => (
+                              <Button
+                                key={option.value}
+                                type="button"
+                                size="sm"
+                                variant={current === option.value ? "default" : "outline"}
+                                disabled={mutation.isPending || Boolean(option.disabled)}
+                                onClick={() => (current === option.value ? undefined : requestChange(permission.code, permission.name, option.value))}
+                              >
+                                {option.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           ) : (
-            <ModulePermissionList groups={groups} />
+            <ModulePermissionList groups={readonlyGroups} />
           )}
+        </div>
+      ) : null}
+
+      {pending ? (
+        <div className="fixed inset-0 z-[70] bg-black/50 px-4 py-6 backdrop-blur-sm" role="presentation" onClick={() => (mutation.isPending ? undefined : setPending(null))}>
+          <div className="mx-auto flex min-h-full w-full max-w-md items-center justify-center">
+            <div role="dialog" aria-modal="true" className="w-full rounded-lg border bg-card p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-foreground">
+                {pending.target === "seguir" ? "Seguir o perfil" : pending.target === "conceder" ? "Conceder acesso" : "Negar acesso"}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {pending.target === "seguir"
+                  ? "Remover a exceção e voltar a seguir o perfil para "
+                  : pending.target === "conceder"
+                    ? "Conceder por exceção a permissão "
+                    : "Negar por exceção a permissão "}
+                <span className="font-medium text-foreground">{pending.name}</span>?
+              </p>
+
+              {pending.target !== "seguir" ? (
+                <div className="mt-3 space-y-1">
+                  <label htmlFor="override-reason" className="text-sm font-medium text-foreground">Justificativa (opcional)</label>
+                  <textarea
+                    id="override-reason"
+                    rows={3}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Motivo da exceção (opcional)"
+                  />
+                </div>
+              ) : null}
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setPending(null)} disabled={mutation.isPending}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant={pending.target === "negar" ? "danger" : "default"}
+                  disabled={mutation.isPending}
+                  onClick={() => mutation.mutate({ code: pending.code, target: pending.target, reason })}
+                >
+                  {pending.target === "negar" ? <Ban className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
@@ -240,7 +433,7 @@ export function PerfisAcessosClient() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Perfis e Acessos</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Visualização (somente leitura) dos perfis de acesso e das permissões efetivas dos usuários.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Visualização dos perfis de acesso e das permissões efetivas dos usuários, com edição de exceções por usuário.</p>
       </div>
 
       <div className="flex gap-1.5">
