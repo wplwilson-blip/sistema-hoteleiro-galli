@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/status-badge";
 import { useAppStore } from "@/store/app-store";
+import { canDo } from "@/lib/auth/permissions-ui";
 import { QuickSupplierDialog, type QuickSupplierRecord } from "@/components/purchases/quick-supplier-dialog";
 import { cn } from "@/lib/utils";
 import {
@@ -970,6 +971,12 @@ export function PurchaseQuotesClient() {
   // Unidade ativa na queryKey da LISTA: refaz fetch ao trocar a unidade no header.
   // O detalhe (detailQuery, por requestId) segue aggregate + check per-record no servidor.
   const activeUnitId = useAppStore((state) => state.activeUnit.id);
+  // Fase 2: gates de UI (UNIAO). Mutacoes de cotacao => quotes.manage; envio p/ aprovacao =>
+  // approvals.submit. Esconde sem permissao; o disabled/condicao de fluxo e' preservado (AND).
+  // "*" (super admin) => tudo. Servidor continua barrando por unidade (403).
+  const permissions = useAppStore((state) => state.permissions);
+  const canManageQuotes = canDo(permissions, "PURCHASES:quotes.manage");
+  const canSubmitApprovalPerm = canDo(permissions, "PURCHASES:approvals.submit");
   const listQuery = useQuery({
     queryKey: ["purchases", "quotes", "requests", activeUnitId],
     queryFn: async () => requestJson<PurchaseQuotesResponse>("/api/purchases/quotes")
@@ -1811,7 +1818,7 @@ export function PurchaseQuotesClient() {
                         {hasWinner ? <span className="ml-2">vencedora</span> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {(request.status === "submitted" || request.status === "under_review") ? (
+                        {canManageQuotes && (request.status === "submitted" || request.status === "under_review") ? (
                           <Button
                             type="button"
                             size="sm"
@@ -1907,7 +1914,7 @@ export function PurchaseQuotesClient() {
                           <span>Criação: {formatDate(selectedRequest.createdAt)}</span>
                         </div>
                       </div>
-                      {canStart ? (
+                      {canManageQuotes && canStart ? (
                         <Button type="button" size="sm" variant="outline" onClick={() => startMutation.mutate(selectedRequest.id)} disabled={startMutation.isPending} data-testid="cotacao-iniciar">
                           <Truck className="h-4 w-4" />
                           Iniciar cotação
@@ -1992,10 +1999,12 @@ export function PurchaseQuotesClient() {
                     <p className="text-xs text-muted-foreground">Compare fornecedor, prazo, condição e validade.</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button type="button" variant="outline" onClick={openNewQuote} disabled={!selectedRequest || !canCreateQuote} data-testid="cotacao-nova">
-                      <Plus className="h-4 w-4" />
-                      Nova cotação
-                    </Button>
+                    {canManageQuotes ? (
+                      <Button type="button" variant="outline" onClick={openNewQuote} disabled={!selectedRequest || !canCreateQuote} data-testid="cotacao-nova">
+                        <Plus className="h-4 w-4" />
+                        Nova cotação
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -2110,7 +2119,7 @@ export function PurchaseQuotesClient() {
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2 xl:justify-end">
-                              {!quote.isSuperseded && !quote.isSelected && quote.status === "received" ? (
+                              {canManageQuotes && !quote.isSuperseded && !quote.isSelected && quote.status === "received" ? (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -2126,15 +2135,15 @@ export function PurchaseQuotesClient() {
                                 <span className="inline-flex min-h-9 items-center rounded-md border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
                                   Superada por proposta mais recente
                                 </span>
-                              ) : (
+                              ) : canManageQuotes ? (
                                 <Button type="button" size="sm" variant="outline" onClick={() => toggleQuoteActions(quote.id)}>
                                   Mais ações
                                 </Button>
-                              )}
+                              ) : null}
                             </div>
                           </div>
 
-                          {actionsOpen && !quote.isSuperseded ? (
+                          {actionsOpen && !quote.isSuperseded && canManageQuotes ? (
                             <div className="flex flex-wrap gap-2 rounded-md border bg-muted/20 p-2">
                               <Button type="button" size="sm" variant="outline" onClick={() => openEditQuote(quote)} disabled={!canMutateQuote}>
                                 <Pencil className="h-4 w-4" />
@@ -3219,10 +3228,12 @@ export function PurchaseQuotesClient() {
                           </p>
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))} data-testid="cotacao-salvar">
-                            <Pencil className="h-4 w-4" />
-                            Salvar cotação
-                          </Button>
+                          {canManageQuotes ? (
+                            <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))} data-testid="cotacao-salvar">
+                              <Pencil className="h-4 w-4" />
+                              Salvar cotação
+                            </Button>
+                          ) : null}
                           <Button type="button" variant="ghost" onClick={closeQuoteForm}>
                             Fechar
                           </Button>
@@ -3252,13 +3263,13 @@ export function PurchaseQuotesClient() {
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {canSubmitApproval ? (
+                    {canSubmitApprovalPerm && canSubmitApproval ? (
                       <Button type="button" size="sm" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending} data-testid="cotacao-enviar-aprovacao">
                         <Check className="h-4 w-4" />
                         Enviar para aprovação
                       </Button>
                     ) : null}
-                    {canResubmitApproval ? (
+                    {canSubmitApprovalPerm && canResubmitApproval ? (
                       <Button type="button" size="sm" onClick={() => resubmitMutation.mutate(selectedRequest.id)} disabled={resubmitMutation.isPending}>
                         <RotateCcw className="h-4 w-4" />
                         Reenviar para aprovação

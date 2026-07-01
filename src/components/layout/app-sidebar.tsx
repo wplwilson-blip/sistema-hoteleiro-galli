@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { canAny, canDo } from "@/lib/auth/permissions-ui";
 
 type SidebarLink = {
   type?: "link";
@@ -208,11 +209,11 @@ function isSidebarLink(item: SidebarEntry): item is SidebarLink {
   return item.type !== "section";
 }
 
-// Fase 1: visibilidade por permissao. "*" (super admin) => tudo. Sem requisito => visivel.
+// Fase 1: visibilidade por permissao. Delegado aos helpers compartilhados (Fase 2) — comportamento
+// identico: "*" (super admin) => tudo; sem requisito => visivel.
 function canSee(permissions: string[], item: SidebarLink): boolean {
-  if (permissions.includes("*")) return true;
-  if (item.requiredPermission) return permissions.includes(item.requiredPermission);
-  if (item.requiredAnyOf) return item.requiredAnyOf.some((code) => permissions.includes(code));
+  if (item.requiredPermission) return canDo(permissions, item.requiredPermission);
+  if (item.requiredAnyOf) return canAny(permissions, item.requiredAnyOf);
   return true;
 }
 
