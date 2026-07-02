@@ -7,10 +7,142 @@
 > Cobre **três** comportamentos server-side: **(b)** SUPER_ADMIN intocável, **(c)** soft-delete ao
 > revogar, **(d)** "afeta N usuários". (A regra **(a)** anti-auto-trancamento fica fora deste lote —
 > ver Riscos §5.)
+>
+> **⚠️ Atualização 2026-07-02 (revisão):** adotada a **Opção 2** — implementar AGORA **só (b)**,
+> em HTTP puro, sem banco/service_role. **(c)** e **(d)** estão **ADIADAS** (ver marcações). O
+> conteúdo original de (c)/(d) e do mecanismo service_role foi **preservado** abaixo para o bloco
+> futuro. **Leia primeiro a seção "DECISÃO: Opção 2".**
 
 ---
 
-## 0. ACHADO CRÍTICO — qual mecanismo de escrita de fixtures existe hoje
+## DECISÃO: Opção 2 — só (b) SUPER_ADMIN intocável, HTTP puro (ATIVO)
+
+Da revisão: cobrir **agora apenas o comportamento (b)** via teste E2E **API-level HTTP puro** —
+**sem tocar o banco**, **sem cliente service_role**, **sem fixture**. **(c)** soft-delete e **(d)**
+userCount ficam **ADIADAS** para um bloco futuro, junto com **(a)** auto-trancamento (que exigirá
+fixture de banco de qualquer forma). As seções §0, §3 e §4 abaixo permanecem como **referência
+futura** e estão marcadas **[ADIADA]**.
+
+### Por que isto dispensa banco/fixture/service_role
+
+- **Ator: E2E_ADMIN (super admin).** Ele já **passa** o gate `ADMIN:profiles.manage`
+  (`requirePermission` retorna `hasPermission = true` para super admin — `permissions.ts:265-267`),
+  então a requisição **alcança** o handler e bate **direto na regra (b)**. Não é preciso conceder
+  nada (sem override), nem criar perfil-alvo.
+- Usa o **`storageState` de E2E_ADMIN** já produzido pelo projeto `setup` (`auth.setup.ts:8-11`).
+
+### 1. Como o teste identifica o perfil SUPER_ADMIN e monta PUT/DELETE
+
+**Assinatura real da rota (id, não code, no BODY):** PUT e DELETE compartilham o mesmo schema
+`writeSchema` (`route.ts:17-20`):
+
+```ts
+// route.ts:17-20
+const writeSchema = z.object({
+  profileId: z.string().uuid("Perfil invalido."),      // <- UUID do perfil no BODY
+  permissionCode: z.string().trim().min(1, "Permissao invalida.")
+});
+```
+
+- `PUT(request)` — `route.ts:230,238`: `writeSchema.parse(await request.json())` ⇒ corpo JSON
+  `{ profileId, permissionCode }`. **Não** há id no path (a rota é estática
+  `/api/admin/permissions/profiles`, sem `[id]`).
+- `DELETE(request)` — `route.ts:352,360`: idêntico, mesmo `writeSchema`, mesmo corpo.
+
+Portanto o teste precisa do **UUID** do perfil SUPER_ADMIN (o `profileId` é validado como `uuid`; um
+literal `"SUPER_ADMIN"` seria rejeitado pelo Zod com 422 **de validação**, não pela regra (b) — não
+serve). **Como obter o UUID só por HTTP:** chamar o **GET** da própria rota como E2E_ADMIN e achar o
+perfil por `code`:
+
+- `GET /api/admin/permissions/profiles` — gate `ADMIN:permissions.view` (`route.ts:130`), que
+  E2E_ADMIN tem (super). Retorna `profiles: [{ id, code, name, ..., permissions: [...] }]`
+  (`route.ts:209-224`). O teste seleciona `profiles.find(p => p.code === "SUPER_ADMIN").id` →
+  `superAdminId`. (O `code` esperado é `SUPER_ADMIN`, `session.ts:9`.)
+- Do mesmo GET, para escolher `permissionCode`: usar `SUPER_ADMIN.permissions[].code` (ex.:
+  `ADMIN:profiles.manage`, seedado) para o caso DELETE; e qualquer código do catálogo **fora** dessa
+  lista para o caso PUT. *(Na prática a regra (b) barra antes de resolver a permissão — §3 — então o
+  código exato é indiferente para o 422; escolhemos coerentes só por clareza.)*
+
+Montagem:
+- **PUT** `context.request.put("/api/admin/permissions/profiles", { data: { profileId: superAdminId,
+  permissionCode: <código qualquer válido> } })`.
+- **DELETE** `context.request.delete("/api/admin/permissions/profiles", { data: { profileId:
+  superAdminId, permissionCode: "ADMIN:profiles.manage" } })`.
+  (Playwright `request` aceita `data` em DELETE.)
+
+### 2. SPEC (b) — dois casos
+
+- **(b1) PUT** como E2E_ADMIN, corpo `{ profileId: superAdminId, permissionCode: <código válido> }`
+  → **assert HTTP 422** e corpo `message === "O perfil Super Administrador nao pode ser editado."`
+  (`route.ts:248-250`).
+- **(b2) DELETE** como E2E_ADMIN, corpo `{ profileId: superAdminId, permissionCode:
+  "ADMIN:profiles.manage" }` → **assert HTTP 422** e a **mesma** mensagem (`route.ts:370-372`).
+
+**É 422, não 403 — confirmado no código.** O 403 só ocorreria se o ator **não** passasse
+`requirePermission` (`permissions.ts:343-347`). E2E_ADMIN é super admin ⇒ `hasPermission = true`
+⇒ o handler roda e retorna o **422 específico do Super Admin**. Ou seja: o ator **passa o gate** e é
+barrado pela regra dedicada. (Sanidade: pode-se afirmar `status === 422` e **`!== 403`**.)
+
+### 3. Verificação "nada gravado" — só por HTTP (sem service_role)
+
+Não há acesso direto ao banco neste lote. A verificação mais forte disponível por HTTP é o
+**diff do GET** (que o ator E2E_ADMIN pode chamar):
+
+1. **Antes:** `GET` → capturar o conjunto de códigos concedidos do SUPER_ADMIN
+   (`profiles.find(code==='SUPER_ADMIN').permissions.map(p=>p.code)`), ordenado.
+2. Executar **(b1)** e **(b2)** (ambos 422).
+3. **Depois:** `GET` novamente → assert que o conjunto de códigos do SUPER_ADMIN é **idêntico** ao de
+   antes (nada concedido pelo PUT, nada removido pelo DELETE).
+
+**Limitação (reportada honestamente):** o GET só expõe grants **efetivos**
+(`is_allowed=true`, `status=active`, `deleted_at null` — `route.ts:154-161`). Ele **não** revela
+linhas soft-deletadas nem `is_allowed=false`. Porém **qualquer** mutação real no conjunto concedido
+(insert, soft-delete, ou flip de `is_allowed`) **encolheria ou aumentaria** esse conjunto e seria
+detectada pelo diff. Como a regra (b) barra **antes de qualquer escrita** (§5), o esperado é conjunto
+**inalterado** — e é exatamente isso que asseramos. **Não** introduzimos service_role só para
+inspecionar linhas invisíveis; o diff do GET é a asserção mais forte possível sem banco. *(A prova
+de nível de linha — status/deleted_at/is_allowed — fica para o bloco futuro §3-ADIADA, que já terá
+service_role.)*
+
+### 4. Arquivo
+
+- **Spec novo:** `tests/e2e/perfis-super-admin.e2e.spec.ts` (nome sugerido).
+- **Projeto do Playwright:** casa o `testMatch: /.*\.e2e\.spec\.ts$/` do projeto **`chromium`**
+  (`playwright.e2e.config.ts:48-53`), que **depende** do projeto `setup` (`dependencies: ["setup"]`)
+  — logo o `storageState` de **E2E_ADMIN** já existe quando a spec roda. A spec faz
+  `test.use({ storageState: authStatePath("E2E_ADMIN") })` (helper `authStatePath`,
+  `helpers/auth.ts:24`).
+- **Nível:** usa `request` do fixture de página autenticada (ou `browser.newContext({ storageState })`
+  + `context.request`). Sem UI.
+- **Nada de app/migration/config** é tocado; o spec novo já é coberto pelo `testMatch` existente
+  (sem editar a config).
+
+### 5. Risco de borda — PUT/DELETE real contra o SUPER_ADMIN no staging
+
+**Seguro: nada é escrito.** A ordem no handler garante que a regra (b) barra **antes** de qualquer
+operação de escrita. Sequência do PUT (`route.ts:237-259`):
+
+1. `writeSchema.parse` (validação) → 2. `loadProfile` (SELECT) → 3. **guard SUPER_ADMIN → return 422
+(`:248-250`)**. Só **depois** (`:252+`) viriam `resolvePermissionId` e o `insert/update`. O guard
+está **antes** de todos eles ⇒ **nenhuma escrita**.
+
+DELETE idêntico (`route.ts:359-372`): `parse` → `loadProfile` → **guard SUPER_ADMIN return 422
+(`:370-372`)**; a anti-auto-trancamento (`:381`) e o `update` de soft-delete (`:406`) só viriam
+depois — **não são alcançados**.
+
+**Nenhum caminho escreve antes do barramento.** A única "escrita" possível em toda a rota seria
+`writeProfilePermissionAudit` (audit_trail), mas ela só é chamada **após** os writes de sucesso
+(`route.ts:296,327,418`) — jamais no caminho do 422. ⇒ O teste **não corrompe** o perfil Super Admin
+do staging e **não deixa resíduo** (nem em `profile_permissions`, nem em `audit_trail`).
+
+> Único pré-requisito de ambiente: o perfil `SUPER_ADMIN` precisa existir **ativo** no staging para o
+> `loadProfile` retorná-lo e a regra (b) disparar (se não existisse, viria 404 "Perfil nao
+> encontrado" e o teste falharia de forma clara, sem escrever nada). É garantido pelo seed
+> `070_admin_permissions_catalog.sql` / base.
+
+---
+
+## 0. [ADIADA] ACHADO CRÍTICO — qual mecanismo de escrita de fixtures existe hoje
 
 A decisão do pedido diz "a escrita de fixtures usa o mesmo mecanismo/credencial que os helpers E2E
 já usam". **Verificado no código: essa premissa não se sustenta como está.** Os helpers E2E **não
@@ -110,7 +242,12 @@ tabela** `audit_trail` apenas para nossos `entity_id`.
 
 ---
 
-## 2. SPEC (b) — SUPER_ADMIN intocável
+## 2. [SUPERSEDED] SPEC (b) via E2E_MULTI+override — substituída pela "DECISÃO: Opção 2"
+
+> **Superada** para o lote atual: a versão ATIVA de (b) é HTTP puro com **E2E_ADMIN**, sem override
+> (ver seção "DECISÃO: Opção 2" no topo). O texto abaixo (ator E2E_MULTI + override + service_role
+> para verificar estado) só valeria se um dia quiséssemos exercer (b) com um ator **não-super** —
+> mantido como referência histórica.
 
 Ator: E2E_MULTI (já com override ⇒ passa o gate `ADMIN:profiles.manage`). Alvo: perfil `SUPER_ADMIN`.
 
@@ -128,7 +265,11 @@ Ator: E2E_MULTI (já com override ⇒ passa o gate `ADMIN:profiles.manage`). Alv
     (o seed a mantém; `070_admin_permissions_catalog.sql:35`). Comparar `updated_at` antes/depois
     para provar não-escrita.
 
-## 3. SPEC (c) — soft-delete ao revogar
+## 3. [ADIADA] SPEC (c) — soft-delete ao revogar
+
+> **ADIADA (Opção 2).** Reservada para o bloco futuro com fixture de banco (junto de (a) e (d)).
+> Conteúdo preservado abaixo como referência.
+
 
 Ator: E2E_MULTI. Alvo: `E2E_PROFILE_TARGET`. Permissão: `INOCUA = BASE:suppliers.view` (fora de
 `PROTECTED_ADMIN`, então nenhum guard de auto-trancamento interfere).
@@ -147,7 +288,11 @@ Ator: E2E_MULTI. Alvo: `E2E_PROFILE_TARGET`. Permissão: `INOCUA = BASE:supplier
    Query que confirma: `select id, status, is_allowed, deleted_at from profile_permissions where
    id = <capturado>` → 1 linha com os valores acima.
 
-## 4. SPEC (d) — "afeta N usuários"
+## 4. [ADIADA] SPEC (d) — "afeta N usuários"
+
+> **ADIADA (Opção 2).** Reservada para o bloco futuro com fixture de banco (junto de (a) e (c)).
+> Conteúdo preservado abaixo como referência.
+
 
 Confirmado no código: o número vem do **GET** da rota, campo **`userCount`** por perfil
 (`route.ts:219`; contagem de `app_user_id` distintos em `user_unit_links` ativos, `route.ts:188-207`).
