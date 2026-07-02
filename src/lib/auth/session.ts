@@ -148,7 +148,10 @@ export async function getEffectivePermissionCodes(
     const { data: grantRows, error: grantError } = await supabase
       .from("profile_permissions")
       .select("access_profile_id, permissions!inner(id, code)")
-      .in("access_profile_id", profileIds);
+      .in("access_profile_id", profileIds)
+      .eq("is_allowed", true)
+      .eq("status", "active")
+      .is("deleted_at", null);
 
     if (grantError) {
       logInitialSetupCheckError("effective_permissions_grants", grantError);
