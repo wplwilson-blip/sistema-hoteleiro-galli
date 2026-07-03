@@ -35,6 +35,19 @@ export default defineConfig({
   timeout: 60_000,
   fullyParallel: false,
   reporter: [["list"]],
+  // Producao local (opt-in via E2E_WEBSERVER=1, setado pelo script test:e2e:prod): o Playwright sobe
+  // `next start` (build ja feito antes, no script) e derruba ao final. `reuseExistingServer` permite
+  // reaproveitar um servidor ja no ar (ex.: um next start manual). Sem a flag, este bloco fica
+  // undefined => o fluxo `test:e2e` (dev, servidor manual) permanece 100% intacto.
+  webServer:
+    process.env.E2E_WEBSERVER === "1"
+      ? {
+          command: "npm run start",
+          url: "http://localhost:3000/login",
+          reuseExistingServer: true,
+          timeout: 180_000
+        }
+      : undefined,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
     viewport: { width: 1440, height: 1200 },

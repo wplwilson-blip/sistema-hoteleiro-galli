@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { e2eLabel, runSuffix } from "./data";
 import { switchActiveUnit } from "./active-unit";
-import { filterSolicitacoesAll, openAuthenticated, selectByOptionText, selectFirstReal } from "./purchases-ui";
+import { createE2ESupplierViaDialog, filterSolicitacoesAll, openAuthenticated, selectByOptionText, selectFirstReal } from "./purchases-ui";
 
 // Jornada COMUM do fluxo de compras (100% UI, E2E_MULTI) extraida do T2, parametrizada por valor.
 // Vai de "criar solicitacao" ate "enviar para aprovacao", deixando a compra pendente de aprovacao.
@@ -116,15 +116,8 @@ export async function createPurchaseAwaitingApproval(
   await modal.getByRole("button", { name: "Cotações", exact: true }).click();
   await modal.getByTestId("cotacao-nova").click();
 
-  // Fornecedor [E2E] via dialogo (auto-selecionado ao salvar).
-  await modal.getByTestId("cotacao-novo-fornecedor").click();
-  const supplierDialog = page.getByRole("dialog", { name: /cadastrar novo fornecedor/i });
-  await supplierDialog.getByTestId("fornecedor-razao-social").fill(supplierName);
-  await selectByOptionText(supplierDialog.getByTestId("fornecedor-tipo-documento"), "Outro");
-  await supplierDialog.getByTestId("fornecedor-documento").fill(`E2E-${suffix}`);
-  await withApi(page, { url: "/api/base/suppliers", method: "POST" }, () =>
-    supplierDialog.getByTestId("fornecedor-salvar").click()
-  );
+  // Fornecedor [E2E] via dialogo (auto-selecionado ao salvar) — caminho unico compartilhado.
+  await createE2ESupplierViaDialog(page, modal, supplierName);
 
   // Evidencia formal + valor parametrizado.
   await selectByOptionText(modal.getByTestId("cotacao-origem"), "Proposta formal/PDF");

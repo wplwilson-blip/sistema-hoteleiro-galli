@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { authStatePath } from "./helpers/auth";
 import { e2eLabel, runSuffix } from "./helpers/data";
 import { expectAbsentFromList, expectVisibleInList, switchActiveUnit } from "./helpers/active-unit";
-import { filterSolicitacoesAll, openAuthenticated, selectByOptionText, selectFirstReal } from "./helpers/purchases-ui";
+import { createE2ESupplierViaDialog, filterSolicitacoesAll, openAuthenticated, selectByOptionText, selectFirstReal } from "./helpers/purchases-ui";
 
 // T2 — Fluxo de COMPRAS completo (100% UI) com E2E_MULTI (Gerente Departamental, nao-super,
 // 2 unidades, com autoridade de aprovacao administrativa) + invariante de unidade ativa (Leva 2).
@@ -113,15 +113,8 @@ test("compras: fluxo completo (<=R$200, com anexo) + invariante de unidade ativa
     await modal.getByRole("button", { name: "Cotações", exact: true }).click();
     await modal.getByTestId("cotacao-nova").click();
 
-    // Fornecedor [E2E] via dialogo "Novo fornecedor" dentro do form (auto-selecionado ao salvar).
-    await modal.getByTestId("cotacao-novo-fornecedor").click();
-    const supplierDialog = page.getByRole("dialog", { name: /cadastrar novo fornecedor/i });
-    await supplierDialog.getByTestId("fornecedor-razao-social").fill(supplierName);
-    await selectByOptionText(supplierDialog.getByTestId("fornecedor-tipo-documento"), "Outro");
-    await supplierDialog.getByTestId("fornecedor-documento").fill(`E2E-${suffix}`);
-    await withApi(page, { url: "/api/base/suppliers", method: "POST" }, () =>
-      supplierDialog.getByTestId("fornecedor-salvar").click()
-    );
+    // Fornecedor [E2E] via dialogo "Novo fornecedor" — caminho unico compartilhado (mesmo do helper T3).
+    await createE2ESupplierViaDialog(page, modal, supplierName);
 
     // Evidencia formal + valor <= R$200.
     await selectByOptionText(modal.getByTestId("cotacao-origem"), "Proposta formal/PDF");

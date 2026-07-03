@@ -21,8 +21,20 @@ type CatalogPermission = { code: string; moduleCode: string; actionCode: string;
 type CatalogResponse = { ok: true; permissions: CatalogPermission[] };
 
 type ProfilePermission = { code: string; moduleCode: string; actionCode: string; name: string; description: string };
-type ProfileRecord = { id: string; code: string; name: string; description: string; isSystemDefault: boolean; permissions: ProfilePermission[] };
+type ProfileRecord = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  isSystemDefault: boolean;
+  userCount: number;
+  usedByActor: boolean;
+  permissions: ProfilePermission[];
+};
 type ProfilesResponse = { ok: true; profiles: ProfileRecord[] };
+
+// Codigo interno do perfil Super Administrador (espelha SUPER_ADMIN_PROFILE_CODE do backend).
+const SUPER_ADMIN_PROFILE_CODE = "SUPER_ADMIN";
 
 type UserListItem = { id: string; username: string; displayName: string };
 type UsersResponse = { ok: true; users: UserListItem[] };
@@ -107,13 +119,53 @@ function ModulePermissionList({ groups }: { groups: ModuleGroup[] }) {
   );
 }
 
+type ProfilePendingChange = { code: string; name: string; grant: boolean };
+
 function ProfilesTab() {
+  const queryClient = useQueryClient();
+  const myPermissions = useAppStore((state) => state.permissions);
+  const canEditProfiles = canDo(myPermissions, "ADMIN:profiles.manage");
+
   const profilesQuery = useQuery({ queryKey: ["admin", "permissions", "profiles"], queryFn: () => fetchJson<ProfilesResponse>("/api/admin/permissions/profiles") });
+  const catalogQuery = useQuery({ queryKey: ["admin", "permissions", "catalog"], queryFn: () => fetchJson<CatalogResponse>("/api/admin/permissions/catalog") });
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+  const [pending, setPending] = useState<ProfilePendingChange | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
 
   const profiles = profilesQuery.data?.profiles ?? [];
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0] ?? null;
-  const groups = useMemo(() => groupByModule(selectedProfile?.permissions ?? []), [selectedProfile]);
+  const isSuperAdminProfile = selectedProfile?.code === SUPER_ADMIN_PROFILE_CODE;
+
+  const catalog = useMemo(() => catalogQuery.data?.permissions ?? [], [catalogQuery.data?.permissions]);
+  const readonlyGroups = useMemo(() => groupByModule(selectedProfile?.permissions ?? []), [selectedProfile]);
+  const catalogGroups = useMemo(() => groupByModule(catalog), [catalog]);
+  const grantedSet = useMemo(() => new Set((selectedProfile?.permissions ?? []).map((permission) => permission.code)), [selectedProfile]);
+
+  const mutation = useMutation({
+    mutationFn: async (change: ProfilePendingChange) => {
+      if (!selectedProfile) throw new Error("Nenhum perfil selecionado.");
+      const method = change.grant ? "PUT" : "DELETE";
+      return writeJson(`/api/admin/permissions/profiles`, method, { profileId: selectedProfile.id, permissionCode: change.code });
+    },
+    onSuccess: async (_data, change) => {
+      setError("");
+      setFeedback(change.grant ? "Permissão concedida ao perfil." : "Permissão revogada do perfil.");
+      setPending(null);
+      // Afeta o efetivo de todos os usuarios do perfil: invalida perfis e detalhes de usuario.
+      await queryClient.invalidateQueries({ queryKey: ["admin", "permissions"] });
+    },
+    onError: (mutationError) => {
+      setFeedback("");
+      setError(mutationError instanceof Error ? mutationError.message : "Não foi possível atualizar a permissão do perfil.");
+    }
+  });
+
+  function requestToggle(code: string, name: string, grant: boolean) {
+    setError("");
+    setFeedback("");
+    setPending({ code, name, grant });
+  }
 
   if (profilesQuery.isLoading) return <LoadingTable label="Carregando perfis..." />;
   if (profilesQuery.error) return <ErrorMessage message={profilesQuery.error instanceof Error ? profilesQuery.error.message : "Erro ao carregar perfis."} />;
@@ -128,7 +180,11 @@ function ProfilesTab() {
             <button
               key={profile.id}
               type="button"
-              onClick={() => setSelectedProfileId(profile.id)}
+              onClick={() => {
+                setSelectedProfileId(profile.id);
+                setError("");
+                setFeedback("");
+              }}
               className={cn(
                 "flex w-full flex-col rounded-md border px-3 py-2 text-left transition-colors hover:border-primary/40",
                 active ? "border-primary bg-primary/5" : "bg-card"
@@ -146,17 +202,115 @@ function ProfilesTab() {
         })}
       </div>
 
-      <div className="min-w-0 rounded-lg border bg-card p-4 shadow-sm shadow-primary/5">
-        {selectedProfile ? (
-          <>
-            <div className="mb-3">
-              <h3 className="text-base font-semibold text-foreground">{selectedProfile.name}</h3>
-              {selectedProfile.description ? <p className="mt-1 text-sm text-muted-foreground">{selectedProfile.description}</p> : null}
-            </div>
-            <ModulePermissionList groups={groups} />
-          </>
-        ) : null}
+      <div className="min-w-0 space-y-3">
+        {feedback ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{feedback}</p> : null}
+        {error ? <ErrorMessage message={error} /> : null}
+
+        <div className="rounded-lg border bg-card p-4 shadow-sm shadow-primary/5">
+          {selectedProfile ? (
+            <>
+              <div className="mb-3">
+                <h3 className="text-base font-semibold text-foreground">{selectedProfile.name}</h3>
+                {selectedProfile.description ? <p className="mt-1 text-sm text-muted-foreground">{selectedProfile.description}</p> : null}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {selectedProfile.userCount > 0
+                    ? `Usado por ${selectedProfile.userCount} usuário${selectedProfile.userCount > 1 ? "s" : ""}.`
+                    : "Nenhum usuário usa este perfil atualmente."}
+                </p>
+              </div>
+
+              {isSuperAdminProfile ? (
+                <>
+                  <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Super Administrador tem <span className="font-medium">acesso total</span> e não pode ser editado.
+                  </p>
+                  <ModulePermissionList groups={readonlyGroups} />
+                </>
+              ) : !canEditProfiles ? (
+                <ModulePermissionList groups={readonlyGroups} />
+              ) : catalogQuery.isLoading ? (
+                <LoadingTable label="Carregando catálogo..." />
+              ) : catalogQuery.error ? (
+                <ErrorMessage message={catalogQuery.error instanceof Error ? catalogQuery.error.message : "Erro ao carregar catálogo."} />
+              ) : (
+                <div className="space-y-4">
+                  {catalogGroups.map((group) => (
+                    <div key={group.moduleCode} className="rounded-md border bg-background p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{moduleLabel(group.moduleCode)}</p>
+                      <ul className="mt-2 divide-y">
+                        {group.permissions.map((permission) => {
+                          const granted = grantedSet.has(permission.code);
+                          // Espelho da trava server-side: nao deixar REVOGAR permissao de administracao
+                          // de um perfil que o proprio ator usa (a trava real esta no backend).
+                          const lockedBySelfProtection = granted && PROTECTED_ADMIN.includes(permission.code) && selectedProfile.usedByActor;
+                          const disabled = mutation.isPending || lockedBySelfProtection;
+                          return (
+                            <li key={permission.code} className="flex items-center justify-between gap-3 py-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground">{permission.name}</p>
+                                <p className="text-xs text-muted-foreground">{permission.description || permission.code}</p>
+                              </div>
+                              <label
+                                className={cn("flex shrink-0 items-center gap-2 text-xs", disabled ? "cursor-not-allowed text-muted-foreground/60" : "cursor-pointer text-muted-foreground")}
+                                title={lockedBySelfProtection ? "Você não pode remover permissões de administração de um perfil que você mesmo utiliza." : undefined}
+                              >
+                                <span>{granted ? "Concedida" : "Sem acesso"}</span>
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 accent-emerald-600 disabled:cursor-not-allowed"
+                                  checked={granted}
+                                  disabled={disabled}
+                                  onChange={() => requestToggle(permission.code, permission.name, !granted)}
+                                />
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
       </div>
+
+      {pending && selectedProfile ? (
+        <div className="fixed inset-0 z-[70] bg-black/50 px-4 py-6 backdrop-blur-sm" role="presentation" onClick={() => (mutation.isPending ? undefined : setPending(null))}>
+          <div className="mx-auto flex min-h-full w-full max-w-md items-center justify-center">
+            <div role="dialog" aria-modal="true" className="w-full rounded-lg border bg-card p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-foreground">{pending.grant ? "Conceder permissão ao perfil" : "Revogar permissão do perfil"}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {pending.grant ? "Conceder " : "Revogar "}
+                <span className="font-medium text-foreground">{pending.name}</span>
+                {pending.grant ? " ao perfil " : " do perfil "}
+                <span className="font-medium text-foreground">{selectedProfile.name}</span>?
+              </p>
+              <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {selectedProfile.userCount > 0
+                  ? `Este perfil é usado por ${selectedProfile.userCount} usuário${selectedProfile.userCount > 1 ? "s" : ""}; a mudança afeta todos eles AGORA.`
+                  : "Nenhum usuário usa este perfil atualmente; a mudança valerá para quem for vinculado a ele."}
+              </p>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setPending(null)} disabled={mutation.isPending}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant={pending.grant ? "default" : "danger"}
+                  disabled={mutation.isPending}
+                  onClick={() => mutation.mutate(pending)}
+                >
+                  {pending.grant ? <Check className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

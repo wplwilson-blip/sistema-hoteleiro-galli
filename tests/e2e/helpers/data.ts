@@ -73,3 +73,24 @@ let cpfCounter = 0;
 export function uniqueValidCpf(): string {
   return generateValidCpf(`${RUN_SUFFIX}-${cpfCounter++}`);
 }
+
+let supplierDocCounter = 0;
+
+/**
+ * document_number SO DIGITOS, unico por chamada E por rodada, para o fornecedor [E2E]
+ * (document_type "Outro"/OTHER).
+ *
+ * PRECISA ser so digitos: o indice unico de suppliers (migration 014_suppliers_unique_document)
+ * compara o documento normalizado por regexp_replace(document_number, '\D', '', 'g') — ou seja,
+ * remove tudo que nao e' digito. Um valor pobre em digitos (ex.: "E2E-<suffix>") colapsa para
+ * poucos digitos e COLIDE entre rodadas (Postgres 23505 -> HTTP 409), ainda mais com residual
+ * que nunca sofre hard-delete. Aqui geramos ~22 digitos: Date.now() (ms, ~13 digitos, muda a cada
+ * rodada) + contador incremental (garante unicidade dentro do mesmo processo/ms) + 6 digitos
+ * aleatorios. Colisao entre/dentro de rodadas fica desprezivel.
+ */
+export function uniqueE2ESupplierDocument(): string {
+  const ms = Date.now().toString();
+  const seq = (supplierDocCounter++).toString().padStart(3, "0");
+  const rand = Math.floor(Math.random() * 1_000_000).toString().padStart(6, "0");
+  return `${ms}${seq}${rand}`;
+}
