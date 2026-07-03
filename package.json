@@ -12,7 +12,8 @@
     "screenshots:rh": "playwright test tests/screenshots/rh.spec.ts --project=chromium",
     "screenshots:ui": "playwright test tests/screenshots --project=chromium",
     "test:e2e": "playwright test --config=playwright.e2e.config.ts",
-    "test:e2e:headed": "playwright test --config=playwright.e2e.config.ts --headed"
+    "test:e2e:headed": "playwright test --config=playwright.e2e.config.ts --headed",
+    "test:e2e:prod": "node scripts/assert-staging-env.mjs && next build && set E2E_WEBSERVER=1&& playwright test --config=playwright.e2e.config.ts --project=chromium"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
