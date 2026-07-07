@@ -10,10 +10,22 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   try {
     const { id } = hrIdParamSchema.parse(params);
-    employeeTerminationDecisionPayloadSchema.parse(await request.json().catch(() => ({})));
+    const payload = employeeTerminationDecisionPayloadSchema.parse(await request.json().catch(() => ({})));
     const termination = await loadEmployeeTermination(context, id);
     if (!termination) return hrApiError("Desligamento nao encontrado.", 404);
-    const updated = await transitionEmployeeTermination({ context, termination, action: "cancel" });
+
+    // RH-E-05: cancelar um desligamento ja 'implemented' (mas ainda NAO efetivado no cadastro) exige
+    // justificativa. Fora dessa janela (draft/approved), o comportamento segue como antes.
+    const isLateCancel = termination.status === "implemented" && termination.applied_at === null;
+    let reason: string | undefined;
+    if (isLateCancel) {
+      reason = payload.comments?.trim();
+      if (!reason) {
+        return hrApiError("Informe a justificativa para cancelar um desligamento ja efetivado administrativamente.", 422);
+      }
+    }
+
+    const updated = await transitionEmployeeTermination({ context, termination, action: "cancel", reason });
     return NextResponse.json({ ok: true, data: redactEmployeeTermination(updated, true) });
   } catch (error) {
     if (error instanceof z.ZodError) return hrApiError(error.errors[0]?.message ?? "Dados invalidos.", 422);

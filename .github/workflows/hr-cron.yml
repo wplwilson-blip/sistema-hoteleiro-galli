@@ -1,4 +1,4 @@
-name: HR Cron - Efetivador de Movimentacoes
+name: HR Cron - Efetivador de Desligamentos e Movimentacoes
 
 on:
   schedule:
@@ -7,14 +7,14 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  apply-due-movements:
+  apply-due:
     runs-on: ubuntu-latest
     steps:
       - name: Chamar endpoint de efetivacao
         run: |
-          echo "Disparando efetivador de movimentacoes..."
+          echo "Disparando efetivador (desligamentos + movimentacoes)..."
           response=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://sistema-hoteleiro-galli.vercel.app/api/hr/movements/apply-due" \
+            "https://sistema-hoteleiro-galli.vercel.app/api/hr/apply-due" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
           body=$(echo "$response" | head -n -1)
           code=$(echo "$response" | tail -n 1)

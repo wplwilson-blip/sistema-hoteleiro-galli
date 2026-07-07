@@ -40,6 +40,7 @@ export type EmployeeTerminationRow = {
   approved_at: string | null;
   implemented_by: string | null;
   implemented_at: string | null;
+  applied_at: string | null;
   cancelled_by: string | null;
   cancelled_at: string | null;
   notes: string | null;
@@ -67,6 +68,7 @@ export const terminationSelect = [
   "approved_at",
   "implemented_by",
   "implemented_at",
+  "applied_at",
   "cancelled_by",
   "cancelled_at",
   "notes",
@@ -212,19 +214,28 @@ export async function loadEmployeeTermination(context: HrRequestContext, id: str
   return row;
 }
 
-export function assertTerminationTransition(currentStatus: EmployeeTerminationStatus, action: "submit" | "approve" | "implement" | "cancel") {
+export function assertTerminationTransition(
+  current: { status: EmployeeTerminationStatus; applied_at: string | null },
+  action: "submit" | "approve" | "implement" | "cancel"
+) {
+  const currentStatus = current.status;
   if (action === "submit" && currentStatus !== "draft") throw new HrAuthorizationError("Somente rascunhos podem ser enviados para revisao.", 422);
   if (action === "approve" && currentStatus !== "pending_review") throw new HrAuthorizationError("Somente desligamentos aguardando revisao podem ser aprovados.", 422);
   if (action === "implement" && currentStatus !== "approved") throw new HrAuthorizationError("Somente desligamentos aprovados podem ser efetivados.", 422);
-  if (action === "cancel" && currentStatus === "implemented") throw new HrAuthorizationError("Desligamentos efetivados nao podem ser cancelados.", 422);
+  // RH-E-05: cancelar um desligamento 'implemented' e' permitido ENQUANTO nao foi efetivado no cadastro
+  // (applied_at is null). Depois de efetivado (applied_at preenchido pelo efetivador diario), bloqueia.
+  if (action === "cancel" && currentStatus === "implemented" && current.applied_at !== null) {
+    throw new HrAuthorizationError("Desligamento ja efetivado no cadastro nao pode ser cancelado.", 422);
+  }
 }
 
 export async function transitionEmployeeTermination(input: {
   context: HrRequestContext;
   termination: EmployeeTerminationRow;
   action: "submit" | "approve" | "implement" | "cancel";
+  reason?: string;
 }) {
-  assertTerminationTransition(input.termination.status, input.action);
+  assertTerminationTransition(input.termination, input.action);
   const now = new Date().toISOString();
   const updates: Record<string, unknown> = {
     updated_by: input.context.session.user.id
@@ -245,6 +256,15 @@ export async function transitionEmployeeTermination(input: {
     updates.status = "cancelled";
     updates.cancelled_at = now;
     updates.cancelled_by = input.context.session.user.id;
+    // RH-E-05: justificativa do cancelamento tardio e' ANEXADA em notes (nunca sobrescreve o conteudo
+    // existente), com data + autor. O texto ja vem validado pelo schema (anti-PII), compativel com o
+    // notes_safe_check da 060.
+    const reason = input.reason?.trim();
+    if (reason) {
+      const stamp = `[cancelamento ${now} por ${input.context.session.user.id}] ${reason}`;
+      const existing = input.termination.notes?.trim();
+      updates.notes = existing ? `${existing}\n${stamp}` : stamp;
+    }
   }
 
   const { data, error } = await input.context.supabase
