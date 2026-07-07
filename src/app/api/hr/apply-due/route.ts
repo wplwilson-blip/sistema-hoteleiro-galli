@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logHrApiError } from "@/lib/hr/api-auth";
+import { requireCronAuth } from "@/lib/cron/require-cron-auth";
 import { applyDueEmployeeTerminations } from "@/lib/hr/apply-due-terminations";
 import { applyDueEmployeeMovements } from "@/lib/hr/apply-due-movements";
 
@@ -17,18 +18,8 @@ import { applyDueEmployeeMovements } from "@/lib/hr/apply-due-movements";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const secret = process.env.CRON_SECRET;
-
-  // Nunca rodar sem segredo configurado (evita endpoint aberto por engano).
-  if (!secret) {
-    logHrApiError("apply_due.missing_secret", { message: "CRON_SECRET nao definido no ambiente." });
-    return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
-  }
-
-  const authorization = request.headers.get("authorization");
-  if (authorization !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const gate = requireCronAuth(request);
+  if ("response" in gate) return gate.response;
 
   try {
     const supabase = createSupabaseAdminClient();
