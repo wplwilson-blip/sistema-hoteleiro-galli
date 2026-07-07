@@ -1,0 +1,26 @@
+name: HR Cron - Efetivador de Movimentacoes
+
+on:
+  schedule:
+    # 06:00 UTC = 03:00 horario de Brasilia (BRT, UTC-3)
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  apply-due-movements:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de efetivacao
+        run: |
+          echo "Disparando efetivador de movimentacoes..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://sistema-hoteleiro-galli.vercel.app/api/hr/movements/apply-due" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          body=$(echo "$response" | head -n -1)
+          code=$(echo "$response" | tail -n 1)
+          echo "HTTP $code"
+          echo "$body"
+          if [ "$code" != "200" ]; then
+            echo "ERRO: efetivador retornou HTTP $code"
+            exit 1
+          fi
