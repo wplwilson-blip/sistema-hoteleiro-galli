@@ -160,6 +160,8 @@ const eventTypeLabels: Record<EmployeeFunctionalEventType, string> = {
   aso_completed: "ASO concluido",
   aso_expiring: "ASO vencendo",
   aso_expired: "ASO vencido",
+  nr_expiring: "Certificação NR vencendo",
+  nr_expired: "Certificação NR vencida",
   occupational_restriction_registered: "Restricao ocupacional registrada",
   occupational_exam_registered: "Exame ocupacional registrado",
   termination_checklist_created: "Checklist de desligamento criado",
@@ -193,7 +195,7 @@ function eventDomain(eventType: EmployeeFunctionalEventType): FunctionalEventDom
     return "conduct";
   }
   if (eventType.startsWith("training_")) return "training";
-  if (eventType.startsWith("aso_") || eventType.startsWith("occupational_")) return "occupational_health";
+  if (eventType.startsWith("aso_") || eventType.startsWith("occupational_") || eventType.startsWith("nr_")) return "occupational_health";
   if (eventType.startsWith("termination_") || eventType === "employee_inactivated") return "termination";
   return "other";
 }
