@@ -19,8 +19,10 @@
   (`occupational-health.ts:443`); `sourceEntityType` canônico = **`"employee_nr_certification"`** — já usado
   pelo evento de **criação** de NR existente `publishNrCertificationEvent` (`:303`). Anexo do NR =
   `certificate_attachment_id` (`:45`, usado em `:305`), **não** `attachment_id` (esse é do ASO).
-- **`NrCertificationRow`** (`occupational-health.ts:36-46`): tem `id`, `employee_id`, `nr_code` (`:41`),
-  `status`, `expires_at` (`:44`), `certificate_attachment_id` (`:45`), `is_sensitive`, `visibility_scope`.
+- **`NrCertificationRow`** (`occupational-health.ts:36-49`): tem `id`, `employee_id` (`:40`), `nr_code`
+  (`:41`), `expires_at` (`:44`), `certificate_attachment_id` (`:45`), `status` (`:46`), **`is_sensitive`
+  (`:47`)** e **`visibility_scope` (`:48`)** — confirmados; são a base da derivação de sensibilidade (§5).
+  *(O dono citou `:44-46`; o real é `:47-48` — `:44-46` é `expires_at`/`certificate_attachment_id`/`status`.)*
 - **Classificação de domínio:** a função é **`eventDomain`** (`employee-functional-events.ts:175-199`) — o
   dono citou `defaultDomainFromEventType:196`, que **não existe** com esse nome; o mapeamento
   `aso_`/`occupational_` → `occupational_health` está em `:196` dentro de `eventDomain`. `defaultSeverity`
@@ -74,12 +76,15 @@ if (eventType.startsWith("aso_") || eventType.startsWith("occupational_")) retur
 // depois:
 if (eventType.startsWith("aso_") || eventType.startsWith("occupational_") || eventType.startsWith("nr_")) return "occupational_health";
 ```
-Sem isso, `nr_expiring/nr_expired` cairiam em `"other"` → `defaultSeverity` erraria (info em vez de
+**Inalterado nesta atualização.** `domínio ≠ sensibilidade`: `nr_` continua em `occupational_health` (é
+SST/compliance), mas isso **não** o torna restrito — a **sensibilidade/visibilidade são derivadas do
+registro** no publish (§5), com default `unit`/não-sensível para o líder ver.
+Sem esta extensão, `nr_expiring/nr_expired` cairiam em `"other"` → `defaultSeverity` erraria (info em vez de
 warning) e qualquer consumidor que agrupe por domínio classificaria NR fora de SST. O **publish helper**
-(item 5) já seta `severity`/`visibilityScope` **explicitamente**, então o evento em si fica correto mesmo
-sem isto; ainda assim a extensão é **obrigatória** (catch) para não vazar domínio errado a outros
-consumidores. **(não verificado)** se `defaultVisibilityScope` também deriva de `eventDomain` — se derivar,
-esta extensão o cobre; de todo modo o publish seta `visibilityScope` explícito.
+(§5) seta `severity` (fixa) e `visibilityScope`/`isSensitive` (derivados do registro) **explicitamente**,
+então o evento fica correto mesmo sem isto; ainda assim a extensão é **obrigatória** (catch) para não vazar
+domínio errado a outros consumidores. **(não verificado)** se `defaultVisibilityScope` também deriva de
+`eventDomain` — irrelevante para correção, pois o publish define visibilidade explícita.
 
 ## 5. Publish helper NR + fiação no ramo NR
 
@@ -95,13 +100,24 @@ async function publishNrExpirationEvent(input: {
   previous?: NrCertificationRow | null;
 }) { ... }
 ```
-Campos (item 2 das decisões do dono — sensível/restrito):
+Campos (sensibilidade/visibilidade **derivadas do registro** — ver bullet abaixo):
 - `employeeId: input.certification.employee_id`
 - `eventType: input.eventType`
 - `title`: do `eventTypeLabels` (item 3)
 - `description`: ex. `` `Certificacao NR ${input.certification.nr_code} ${eventType === "nr_expired" ? "vencida" : "em janela de vencimento"}.` ``
-- `severity: input.eventType === "nr_expired" ? "warning" : "notice"` (igual ao ASO)
-- `visibilityScope: "restricted"`, `isSensitive: true`
+- `severity: input.eventType === "nr_expired" ? "warning" : "notice"` (igual ao ASO — **severidade é
+  independente de sensibilidade**)
+- **Sensibilidade/visibilidade DERIVADAS do registro (decisão do dono — NÃO espelha o ASO):** o NR é
+  **competência/compliance**, e o líder do setor **precisa ver** ("colaborador com NR vencida não pode
+  exercer atividade"). Portanto **não** hardcodar `restricted/true` (isso é do ASO, que é saúde e o líder
+  não vê). Derivar do cadastro, com **default não-sensível**:
+  - `isSensitive: input.certification.is_sensitive ?? false`
+  - `visibilityScope: input.certification.visibility_scope ?? "unit"`
+  - **Regra:** se a `NrCertificationRow` estiver marcada sensível no cadastro (`is_sensitive` /
+    `visibility_scope` — **campos reais** em `occupational-health.ts:47-48`; o dono citou `:44-46`, mas
+    `:44-46` é `expires_at`/`certificate_attachment_id`/`status`), o evento **respeita o registro**
+    (restrito). Caso contrário, nasce **visível na unidade (`unit`) e não-sensível**, para o roteamento
+    futuro ao líder (CORE de demandas) funcionar **sem uma terceira fatia**.
 - `sourceModule: "hr"`, `sourceEntityType: "employee_nr_certification"` (**confirmado `:303`**),
   `sourceEntityId: input.certification.id`
 - `relatedAttachmentId: input.certification.certificate_attachment_id` (**NR usa este**, `:45`)
@@ -139,19 +155,32 @@ histórico; confirmar no momento da implementação da fatia**)**.
   confirmar; se exigir fluxo, usar a cadeia real.)**
 - **Ação:** rodar a varredura — pelo runner (`POST /api/cron/run-jobs` com `CRON_SECRET`) **ou** pela rota
   manual `POST /api/hr/occupational-records/process-expirations` (ator com permissão).
-- **Asserções:**
-  1. Aparece **1** evento `nr_expired` (e/ou `nr_expiring`) para o colaborador, **sensível/restrito**
-     (`isSensitive`/`visibilityScope` corretos; redigido para quem não tem `occupational.sensitive.view`).
-  2. **Idempotência:** rodar 2× → **não** duplica (dedupe por `occupational-nr:{id}:expired|expiring`).
-  3. **ASO intacto:** um registro ASO vencido no mesmo run continua gerando `aso_expired` normalmente
-     (nenhuma regressão).
-  4. **Domínio:** o evento NR classifica como `occupational_health` (item 4).
+- **Asserções (sensibilidade INVERTIDA vs ASO — o líder precisa ver o NR):**
+  1. **NR não-sensível é VISÍVEL a quem não tem `occupational.sensitive.view`:** com uma certificação NR
+     **não** marcada sensível no cadastro (`is_sensitive=false`/`visibility_scope='unit'`), um usuário
+     **sem** `occupational.sensitive.view` **DEVE** conseguir ver o evento `nr_expired`/`nr_expiring`
+     (senão o líder nunca veria). Aparece **1** evento por certificação/tipo.
+  2. **ASO segue restrito (não-regressão da separação):** no **mesmo run**, esse mesmo usuário (sem
+     `occupational.sensitive.view`) **continua NÃO vendo** o evento `aso_expired` (redigido/oculto). Prova
+     de que NR-visível e ASO-restrito coexistem.
+  3. **Registro sensível é respeitado:** uma certificação NR **marcada** sensível no cadastro gera evento
+     restrito (esse usuário **não** vê) — o evento deriva do registro, não hardcoda. *(opcional, se houver
+     como marcar um NR sensível no setup.)*
+  4. **Idempotência:** rodar 2× → **não** duplica (dedupe por `occupational-nr:{id}:expired|expiring`).
+  5. **ASO intacto:** um registro ASO vencido no mesmo run continua gerando `aso_expired` normalmente
+     (nenhuma regressão funcional).
+  6. **Domínio:** o evento NR classifica como `occupational_health` (§4) — domínio ≠ sensibilidade.
 
 ## 8. Follow-up explícito (NÃO nesta fatia)
 
 **Aviso ao líder do setor** ("colaborador com NR vencida — não pode exercer atividade") é **operacional** e
 depende da **CORE de demandas globais**, que **não existe** hoje. Fica registrado como follow-up; **não**
 implementar aqui. Esta fatia entrega só o **evento funcional** (rastro/SST-RH), não a notificação/demanda.
+
+**Por que a decisão de sensibilidade (§5) já destrava isso:** como o evento NR **nasce visível na unidade**
+(`unit`/não-sensível por padrão), quando a CORE de demandas existir o roteamento ao líder **lê o evento
+diretamente** — sem precisar de uma terceira fatia para "abrir" a visibilidade. O ASO, restrito, permanece
+fora do alcance do líder (correto: é saúde).
 
 ## Ordem de implementação (quando aprovado)
 
