@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       }
 
       try {
-        const result = await processOccupationalExpirationGovernance({ context, unitId });
+        const result = await processOccupationalExpirationGovernance(context.supabase, unitId, context.session.user.id);
         await completeBackgroundJob({
           supabase: context.supabase,
           jobId: job.id,

@@ -24,3 +24,38 @@ jobs:
             echo "ERRO: efetivador retornou HTTP $code"
             exit 1
           fi
+
+      - name: Rodar runner de jobs (vencimentos)
+        # Independente do efetivador: roda mesmo se o step acima falhar.
+        if: always()
+        run: |
+          echo "Disparando runner de jobs (vencimentos treinamento/ASO/NR)..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://sistema-hoteleiro-galli.vercel.app/api/cron/run-jobs" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          body=$(echo "$response" | head -n -1)
+          code=$(echo "$response" | tail -n 1)
+          echo "HTTP $code"
+          echo "$body"
+          # Contrato com /api/cron/run-jobs: campos no NIVEL RAIZ do corpo ({ ok: true, ...summary }).
+          # Se a rota passar a embrulhar em { data: summary }, prefixe os filtros abaixo com .data (ex: .data.failed).
+          # Sem isso, jq le o nivel errado, cai no // 0, e a barreira failed > 0 passa verde com jobs falhando.
+          failed=$(echo "$body" | jq -r '.failed // 0' 2>/dev/null || echo "parse_error")
+          # Contagens de dominio (paliativo do NR ate a Fatia 2.1): tornam visivel no log o que esta vencendo.
+          aso_expired=$(echo "$body" | jq -r '.asoExpired // "?"' 2>/dev/null || echo "?")
+          nr_expired=$(echo "$body" | jq -r '.nrExpired // "?"' 2>/dev/null || echo "?")
+          nr_expiring=$(echo "$body" | jq -r '.nrExpiring // "?"' 2>/dev/null || echo "?")
+          echo "Vencimentos -> ASO vencidos: $aso_expired | NR vencidas: $nr_expired | NR a vencer: $nr_expiring"
+          # Barra em HTTP != 200 OU em failed > 0 no resumo.
+          if [ "$code" != "200" ]; then
+            echo "ERRO: runner retornou HTTP $code"
+            exit 1
+          fi
+          if [ "$failed" = "parse_error" ]; then
+            echo "ERRO: nao foi possivel interpretar o resumo do runner"
+            exit 1
+          fi
+          if [ "$failed" -gt 0 ]; then
+            echo "ERRO: runner reportou $failed job(s) com falha"
+            exit 1
+          fi

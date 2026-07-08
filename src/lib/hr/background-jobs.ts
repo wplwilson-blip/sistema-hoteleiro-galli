@@ -199,6 +199,74 @@ export async function createBackgroundJob(input: {
   return data as HrBackgroundJobRow;
 }
 
+// CORE Fatia 2: variante SYSTEM (cron/service_role, sem sessao). Grava created_by/updated_by = null;
+// resolve organization_id reusando getUnitOrganizationId (que ja recebe SupabaseAdmin). claim/complete/fail
+// ja sao session-free e nao precisam de variante.
+export async function createBackgroundJobSystem(
+  supabase: SupabaseAdmin,
+  input: {
+    unitId: string;
+    jobType: HrBackgroundJobType;
+    status: Extract<HrBackgroundJobStatus, "pending" | "scheduled">;
+    priority: HrBackgroundJobPriority;
+    payload?: Record<string, unknown>;
+    scheduledAt?: string;
+    correlationId?: string;
+    maxAttempts: number;
+  }
+) {
+  const organizationId = await getUnitOrganizationId(supabase, input.unitId);
+  if (!organizationId) throw new Error("Unidade nao encontrada.");
+
+  const { data, error } = await supabase
+    .from("hr_background_jobs")
+    .insert({
+      organization_id: organizationId,
+      unit_id: input.unitId,
+      job_type: input.jobType,
+      status: input.status,
+      priority: input.priority,
+      payload: sanitizeBackgroundJobPayload(input.payload),
+      scheduled_at: input.scheduledAt ?? null,
+      correlation_id: input.correlationId ?? null,
+      max_attempts: input.maxAttempts,
+      created_by: null,
+      updated_by: null
+    })
+    .select(HR_BACKGROUND_JOB_SELECT)
+    .single();
+
+  if (error) {
+    logHrApiError("background_jobs.system_insert_failed", error);
+    throw new Error("Nao foi possivel criar o job background (system).");
+  }
+
+  return data as HrBackgroundJobRow;
+}
+
+/**
+ * Pre-check de idempotencia diaria: existe job COMPLETED (nao deletado) com este correlation_id?
+ * So conta 'completed' de proposito: jobs 'failed'/'cancelled'/'retrying' ou nunca claimados NAO barram o
+ * reprocessamento — assim uma nova chamada ao runner no mesmo dia RECUPERA a unidade que falhou (a rede de
+ * seguranca continua ativa). O indice correlation_idx (039) NAO e' unico; a trava e' aplicacional aqui.
+ */
+export async function completedBackgroundJobExistsByCorrelation(supabase: SupabaseAdmin, correlationId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("hr_background_jobs")
+    .select("id")
+    .eq("correlation_id", correlationId)
+    .eq("status", "completed")
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logHrApiError("background_jobs.correlation_lookup_failed", error);
+    throw new Error("Nao foi possivel verificar duplicidade do job background.");
+  }
+
+  return (data?.length ?? 0) > 0;
+}
+
 export async function loadBackgroundJobs(input: {
   supabase: SupabaseAdmin;
   scope: HrBackgroundJobsScope;

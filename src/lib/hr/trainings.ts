@@ -2,6 +2,7 @@ import "server-only";
 
 import type { z } from "zod";
 import { HrAuthorizationError, assertCanAccessHrEmployee, assertUnitInHrScope, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
+import type { SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 import type { employeeTrainingAssignPayloadSchema, employeeTrainingUpdatePayloadSchema, hrTrainingPayloadSchema } from "@/lib/hr/schemas";
 
@@ -309,7 +310,8 @@ export function prepareEmployeeTrainingUpdate(existing: EmployeeTrainingRow, pay
 }
 
 export async function publishEmployeeTrainingEvent(input: {
-  context: HrRequestContext;
+  supabase: SupabaseAdmin;
+  actorUserId: string | null;
   eventType:
     | "training_required"
     | "training_completed"
@@ -332,7 +334,7 @@ export async function publishEmployeeTrainingEvent(input: {
   const warningEvents = new Set(["training_expired", "training_retraining_required"]);
 
   try {
-    const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    const result = await createEmployeeFunctionalEvent(input.supabase, {
       employeeId: input.employeeTraining.employee_id,
       eventType: input.eventType,
       title: titles[input.eventType],
@@ -344,7 +346,9 @@ export async function publishEmployeeTrainingEvent(input: {
       sourceEntityType: "employee_training",
       sourceEntityId: input.employeeTraining.id,
       relatedAttachmentId: input.eventType === "training_certificate_uploaded" ? input.employeeTraining.certificate_attachment_id : null,
-      actorUserId: input.context.session.user.id,
+      // actorUserId null = execucao de sistema (cron). A origem "cron" fica carimbada no payload para a
+      // auditoria distinguir maquina de humano; o caminho manual (actorUserId setado) permanece identico.
+      actorUserId: input.actorUserId,
       dedupeKey: `employee-training:${input.employeeTraining.id}:${input.eventType}`,
       eventPayload: {
         training_title: training?.title,
@@ -356,7 +360,8 @@ export async function publishEmployeeTrainingEvent(input: {
         previous_status: input.previous?.status,
         new_status: input.employeeTraining.status,
         requires_certificate: training?.requires_certificate,
-        has_expiration: training?.has_expiration
+        has_expiration: training?.has_expiration,
+        ...(input.actorUserId === null ? { source: "cron" } : {})
       }
     });
 
@@ -366,13 +371,14 @@ export async function publishEmployeeTrainingEvent(input: {
   }
 }
 
-export async function processTrainingExpirationGovernance(input: { context: HrRequestContext; unitId: string }) {
-  assertUnitInHrScope(input.context, input.unitId);
-
-  const { data, error } = await input.context.supabase
+// CORE Fatia 2: desacoplado de HrRequestContext -> roda por sessao (rota manual) OU por cron (runner
+// service_role). A garantia de escopo do caminho manual esta NA ROTA (requireHrPermission + filtro de
+// unidade); por isso o assertUnitInHrScope interno foi removido (era redundante). actorUserId=null no cron.
+export async function processTrainingExpirationGovernance(supabase: SupabaseAdmin, unitId: string, actorUserId: string | null) {
+  const { data, error } = await supabase
     .from("employee_trainings")
     .select(employeeTrainingListSelect)
-    .eq("unit_id", input.unitId)
+    .eq("unit_id", unitId)
     .is("deleted_at", null)
     .not("expires_at", "is", null)
     .in("status", ["assigned", "scheduled", "in_progress", "completed", "expired", "retraining_required"]);
@@ -395,7 +401,7 @@ export async function processTrainingExpirationGovernance(input: { context: HrRe
 
     if (state.expiresSoon) {
       result.expiringCount += 1;
-      await publishEmployeeTrainingEvent({ context: input.context, eventType: "training_expiring", employeeTraining: row });
+      await publishEmployeeTrainingEvent({ supabase, actorUserId, eventType: "training_expiring", employeeTraining: row });
     }
 
     if (!state.expiredByDate) {
@@ -407,9 +413,9 @@ export async function processTrainingExpirationGovernance(input: { context: HrRe
     let currentRow = row;
 
     if (row.status !== nextStatus) {
-      const { data: updated, error: updateError } = await input.context.supabase
+      const { data: updated, error: updateError } = await supabase
         .from("employee_trainings")
-        .update({ status: nextStatus, updated_by: input.context.session.user.id })
+        .update({ status: nextStatus, updated_by: actorUserId })
         .eq("id", row.id)
         .select(employeeTrainingListSelect)
         .single();
@@ -421,12 +427,12 @@ export async function processTrainingExpirationGovernance(input: { context: HrRe
 
       currentRow = updated as unknown as EmployeeTrainingRow;
       result.expiredCount += 1;
-      await publishEmployeeTrainingEvent({ context: input.context, eventType: "training_expired", employeeTraining: currentRow, previous: row });
+      await publishEmployeeTrainingEvent({ supabase, actorUserId, eventType: "training_expired", employeeTraining: currentRow, previous: row });
     }
 
     if (trainingExpirationState(currentRow).needsRetraining) {
       result.retrainingCount += 1;
-      await publishEmployeeTrainingEvent({ context: input.context, eventType: "training_retraining_required", employeeTraining: currentRow, previous: row });
+      await publishEmployeeTrainingEvent({ supabase, actorUserId, eventType: "training_retraining_required", employeeTraining: currentRow, previous: row });
     }
   }
 
