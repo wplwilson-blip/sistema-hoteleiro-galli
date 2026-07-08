@@ -88,7 +88,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     const employeeTraining = data as unknown as EmployeeTrainingRow;
-    await publishEmployeeTrainingEvent({ context, eventType: "training_required", employeeTraining });
+    await publishEmployeeTrainingEvent({ supabase: context.supabase, actorUserId: context.session.user.id, eventType: "training_required", employeeTraining });
 
     return NextResponse.json({ ok: true, data: redactEmployeeTraining(employeeTraining, true) }, { status: 201 });
   } catch (error) {

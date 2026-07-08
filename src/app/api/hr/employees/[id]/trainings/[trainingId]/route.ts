@@ -40,16 +40,16 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     const updated = data as unknown as EmployeeTrainingRow;
     if (existing.status !== "completed" && updated.status === "completed") {
-      await publishEmployeeTrainingEvent({ context, eventType: "training_completed", employeeTraining: updated, previous: existing });
+      await publishEmployeeTrainingEvent({ supabase: context.supabase, actorUserId: context.session.user.id, eventType: "training_completed", employeeTraining: updated, previous: existing });
     }
     if (existing.status !== "expired" && updated.status === "expired") {
-      await publishEmployeeTrainingEvent({ context, eventType: "training_expired", employeeTraining: updated, previous: existing });
+      await publishEmployeeTrainingEvent({ supabase: context.supabase, actorUserId: context.session.user.id, eventType: "training_expired", employeeTraining: updated, previous: existing });
     }
     if (existing.status !== "retraining_required" && updated.status === "retraining_required") {
-      await publishEmployeeTrainingEvent({ context, eventType: "training_retraining_required", employeeTraining: updated, previous: existing });
+      await publishEmployeeTrainingEvent({ supabase: context.supabase, actorUserId: context.session.user.id, eventType: "training_retraining_required", employeeTraining: updated, previous: existing });
     }
     if (!existing.certificate_attachment_id && updated.certificate_attachment_id) {
-      await publishEmployeeTrainingEvent({ context, eventType: "training_certificate_uploaded", employeeTraining: updated, previous: existing });
+      await publishEmployeeTrainingEvent({ supabase: context.supabase, actorUserId: context.session.user.id, eventType: "training_certificate_uploaded", employeeTraining: updated, previous: existing });
     }
 
     return NextResponse.json({ ok: true, data: redactEmployeeTraining(updated, true) });

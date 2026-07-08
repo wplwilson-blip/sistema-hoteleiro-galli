@@ -2,6 +2,7 @@ import "server-only";
 
 import type { z } from "zod";
 import { assertCanAccessHrEmployee, assertUnitInHrScope, HrAuthorizationError, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
+import type { SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
 import type { nrCertificationPayloadSchema, occupationalRecordPayloadSchema } from "@/lib/hr/schemas";
 
@@ -317,7 +318,8 @@ export async function publishNrCertificationEvent(input: { context: HrRequestCon
 }
 
 async function publishAsoExpirationEvent(input: {
-  context: HrRequestContext;
+  supabase: SupabaseAdmin;
+  actorUserId: string | null;
   eventType: "aso_expiring" | "aso_expired";
   record: OccupationalRecordRow;
   previous?: OccupationalRecordRow | null;
@@ -328,7 +330,7 @@ async function publishAsoExpirationEvent(input: {
   };
 
   try {
-    const result = await createEmployeeFunctionalEvent(input.context.supabase, {
+    const result = await createEmployeeFunctionalEvent(input.supabase, {
       employeeId: input.record.employee_id,
       eventType: input.eventType,
       title: titles[input.eventType],
@@ -340,14 +342,16 @@ async function publishAsoExpirationEvent(input: {
       sourceEntityType: "employee_occupational_record",
       sourceEntityId: input.record.id,
       relatedAttachmentId: input.record.attachment_id,
-      actorUserId: input.context.session.user.id,
+      // actorUserId null = execucao de sistema (cron); origem carimbada no payload. Manual inalterado.
+      actorUserId: input.actorUserId,
       dedupeKey: `occupational:${input.record.id}:${input.eventType === "aso_expired" ? "expired" : "expiring"}`,
       eventPayload: {
         record_type: input.record.record_type,
         exam_date: input.record.exam_date,
         expires_at: input.record.expires_at,
         previous_status: input.previous?.status,
-        new_status: input.record.status
+        new_status: input.record.status,
+        ...(input.actorUserId === null ? { source: "cron" } : {})
       }
     });
     if (!result.ok) logHrApiError("occupational.expiration_event_failed", { message: result.error.message, code: result.error.code });
@@ -356,9 +360,10 @@ async function publishAsoExpirationEvent(input: {
   }
 }
 
-export async function processOccupationalExpirationGovernance(input: { context: HrRequestContext; unitId: string }) {
-  assertUnitInHrScope(input.context, input.unitId);
-
+// CORE Fatia 2: desacoplado de HrRequestContext -> roda por sessao (rota manual) OU por cron (runner
+// service_role). Escopo do caminho manual garantido NA ROTA (requireHrPermission + filtro de unidade);
+// assertUnitInHrScope interno removido (redundante). actorUserId=null no cron.
+export async function processOccupationalExpirationGovernance(supabase: SupabaseAdmin, unitId: string, actorUserId: string | null) {
   const asoTypes = ["aso_admission", "aso_periodic", "aso_return", "aso_role_change", "aso_termination"];
   const result = {
     processedCount: 0,
@@ -369,10 +374,10 @@ export async function processOccupationalExpirationGovernance(input: { context: 
     restrictionCount: 0
   };
 
-  const { data: recordData, error: recordError } = await input.context.supabase
+  const { data: recordData, error: recordError } = await supabase
     .from("employee_occupational_records")
     .select(occupationalRecordListSelect)
-    .eq("unit_id", input.unitId)
+    .eq("unit_id", unitId)
     .is("deleted_at", null);
 
   if (recordError) {
@@ -390,14 +395,14 @@ export async function processOccupationalExpirationGovernance(input: { context: 
 
     if (state.expiresSoon) {
       result.asoExpiringCount += 1;
-      await publishAsoExpirationEvent({ context: input.context, eventType: "aso_expiring", record });
+      await publishAsoExpirationEvent({ supabase, actorUserId, eventType: "aso_expiring", record });
     }
 
     if (!state.expiredByDate || record.status === "expired") continue;
 
-    const { data: updated, error: updateError } = await input.context.supabase
+    const { data: updated, error: updateError } = await supabase
       .from("employee_occupational_records")
-      .update({ status: "expired", updated_by: input.context.session.user.id })
+      .update({ status: "expired", updated_by: actorUserId })
       .eq("id", record.id)
       .select(occupationalRecordListSelect)
       .single();
@@ -409,13 +414,13 @@ export async function processOccupationalExpirationGovernance(input: { context: 
 
     const updatedRecord = updated as unknown as OccupationalRecordRow;
     result.asoExpiredCount += 1;
-    await publishAsoExpirationEvent({ context: input.context, eventType: "aso_expired", record: updatedRecord, previous: record });
+    await publishAsoExpirationEvent({ supabase, actorUserId, eventType: "aso_expired", record: updatedRecord, previous: record });
   }
 
-  const { data: nrData, error: nrError } = await input.context.supabase
+  const { data: nrData, error: nrError } = await supabase
     .from("employee_nr_certifications")
     .select(nrCertificationListSelect)
-    .eq("unit_id", input.unitId)
+    .eq("unit_id", unitId)
     .is("deleted_at", null)
     .not("expires_at", "is", null)
     .neq("status", "cancelled");
@@ -434,9 +439,9 @@ export async function processOccupationalExpirationGovernance(input: { context: 
     if (state.expiresSoon) result.nrExpiringCount += 1;
     if (!state.expiredByDate || nr.status === "expired") continue;
 
-    const { error: updateError } = await input.context.supabase
+    const { error: updateError } = await supabase
       .from("employee_nr_certifications")
-      .update({ status: "expired", updated_by: input.context.session.user.id })
+      .update({ status: "expired", updated_by: actorUserId })
       .eq("id", nr.id);
 
     if (updateError) {
@@ -444,6 +449,9 @@ export async function processOccupationalExpirationGovernance(input: { context: 
       continue;
     }
 
+    // TODO(CORE Fatia 2 / item 7 ADIADO): publicar evento funcional de vencimento de NR aqui, espelhando
+    // publishAsoExpirationEvent. BLOQUEADO: nao existe event type de NR (nem no TS/Zod nem no CHECK do
+    // banco em migration 051). Exige novo enum + migration -> fatia propria. Ver docs/codex/29.
     result.nrExpiredCount += 1;
   }
 
