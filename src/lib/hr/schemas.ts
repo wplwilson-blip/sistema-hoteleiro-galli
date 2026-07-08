@@ -302,6 +302,8 @@ export const employeeFunctionalEventTypeSchema = z.enum([
   "aso_completed",
   "aso_expiring",
   "aso_expired",
+  "nr_expiring",
+  "nr_expired",
   "occupational_restriction_registered",
   "occupational_exam_registered",
   "termination_checklist_created",

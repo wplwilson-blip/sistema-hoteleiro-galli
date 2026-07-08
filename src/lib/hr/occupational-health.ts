@@ -3,7 +3,7 @@ import "server-only";
 import type { z } from "zod";
 import { assertCanAccessHrEmployee, assertUnitInHrScope, HrAuthorizationError, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
 import type { SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
-import { createEmployeeFunctionalEvent } from "@/lib/hr/employee-functional-events";
+import { createEmployeeFunctionalEvent, type EmployeeFunctionalEventVisibilityScope } from "@/lib/hr/employee-functional-events";
 import type { nrCertificationPayloadSchema, occupationalRecordPayloadSchema } from "@/lib/hr/schemas";
 
 type OccupationalRecordPayload = z.infer<typeof occupationalRecordPayloadSchema>;
@@ -360,6 +360,53 @@ async function publishAsoExpirationEvent(input: {
   }
 }
 
+// CORE Fatia 2.1: evento de vencimento de NR. Espelha publishAsoExpirationEvent, MAS a sensibilidade NAO e'
+// hardcoded restrita: NR e' competencia/compliance e o lider precisa ver. Por isso deriva do cadastro com
+// default nao-sensivel/unit -> se o registro NAO estiver marcado sensivel, o evento nasce visivel na unidade
+// (o lider ve quando a CORE de demandas rotear). Registro sensivel e' respeitado (restrito).
+async function publishNrExpirationEvent(input: {
+  supabase: SupabaseAdmin;
+  actorUserId: string | null;
+  eventType: "nr_expiring" | "nr_expired";
+  certification: NrCertificationRow;
+  previous?: NrCertificationRow | null;
+}) {
+  const titles = {
+    nr_expiring: "Certificação NR vencendo",
+    nr_expired: "Certificação NR vencida"
+  };
+
+  try {
+    const result = await createEmployeeFunctionalEvent(input.supabase, {
+      employeeId: input.certification.employee_id,
+      eventType: input.eventType,
+      title: titles[input.eventType],
+      description: `Certificacao NR ${input.certification.nr_code} ${input.eventType === "nr_expired" ? "vencida" : "em janela de vencimento"}.`,
+      severity: input.eventType === "nr_expired" ? "warning" : "notice",
+      // Sensibilidade/visibilidade DERIVADAS do registro (default nao-sensivel/unit). Nao espelha o ASO.
+      visibilityScope: (input.certification.visibility_scope ?? "unit") as EmployeeFunctionalEventVisibilityScope,
+      isSensitive: input.certification.is_sensitive ?? false,
+      sourceModule: "hr",
+      sourceEntityType: "employee_nr_certification",
+      sourceEntityId: input.certification.id,
+      relatedAttachmentId: input.certification.certificate_attachment_id,
+      // actorUserId null = execucao de sistema (cron); origem carimbada no payload. Manual inalterado.
+      actorUserId: input.actorUserId,
+      dedupeKey: `occupational-nr:${input.certification.id}:${input.eventType === "nr_expired" ? "expired" : "expiring"}`,
+      eventPayload: {
+        nr_code: input.certification.nr_code,
+        expires_at: input.certification.expires_at,
+        previous_status: input.previous?.status,
+        new_status: input.certification.status,
+        ...(input.actorUserId === null ? { source: "cron" } : {})
+      }
+    });
+    if (!result.ok) logHrApiError("occupational.nr_expiration_event_failed", { message: result.error.message, code: result.error.code });
+  } catch (error) {
+    logHrApiError("occupational.nr_expiration_event_failed", error instanceof Error ? error : { message: "Erro desconhecido ao publicar vencimento de NR." });
+  }
+}
+
 // CORE Fatia 2: desacoplado de HrRequestContext -> roda por sessao (rota manual) OU por cron (runner
 // service_role). Escopo do caminho manual garantido NA ROTA (requireHrPermission + filtro de unidade);
 // assertUnitInHrScope interno removido (redundante). actorUserId=null no cron.
@@ -436,23 +483,28 @@ export async function processOccupationalExpirationGovernance(supabase: Supabase
   for (const nr of nrRows) {
     const state = expirationState(nr.expires_at, nr.status);
 
-    if (state.expiresSoon) result.nrExpiringCount += 1;
+    if (state.expiresSoon) {
+      result.nrExpiringCount += 1;
+      await publishNrExpirationEvent({ supabase, actorUserId, eventType: "nr_expiring", certification: nr });
+    }
+
     if (!state.expiredByDate || nr.status === "expired") continue;
 
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from("employee_nr_certifications")
       .update({ status: "expired", updated_by: actorUserId })
-      .eq("id", nr.id);
+      .eq("id", nr.id)
+      .select(nrCertificationListSelect)
+      .single();
 
     if (updateError) {
       logHrApiError("occupational.nr_expiration_update_failed", updateError);
       continue;
     }
 
-    // TODO(CORE Fatia 2 / item 7 ADIADO): publicar evento funcional de vencimento de NR aqui, espelhando
-    // publishAsoExpirationEvent. BLOQUEADO: nao existe event type de NR (nem no TS/Zod nem no CHECK do
-    // banco em migration 051). Exige novo enum + migration -> fatia propria. Ver docs/codex/29.
+    const updatedNr = updated as unknown as NrCertificationRow;
     result.nrExpiredCount += 1;
+    await publishNrExpirationEvent({ supabase, actorUserId, eventType: "nr_expired", certification: updatedNr, previous: nr });
   }
 
   return result;
