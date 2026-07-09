@@ -83,6 +83,9 @@ re-runnáveis.
 --       public.user_has_unit_access(target_unit_id uuid)
 --   * Sem policy de delete: delete fica negado para anon/authenticated (soft delete via update).
 --   * Sem policy para anon: anon fica negado.
+--   * hr_workflow_audit_logs e APPEND-ONLY: so select + insert, SEM update por design
+--       (trilha de auditoria imutavel). As outras 7 tabelas tem select/insert/update.
+--       Total: 23 policies (7 tabelas x 3 + audit_logs x 2).
 --   * hr_admission_processes e hr_admission_checklist_items tem unit_id NULLABLE:
 --       user_has_unit_access(NULL) = false => linha sem unidade fica SEM acesso authenticated
 --       (fail-closed, seguro e intencional; ver plano §2).
@@ -200,7 +203,7 @@ to authenticated
 using (public.user_has_unit_access(unit_id))
 with check (public.user_has_unit_access(unit_id));
 
--- hr_workflow_audit_logs
+-- hr_workflow_audit_logs  (APPEND-ONLY: so select + insert; SEM update por design)
 drop policy if exists "hr_workflow_audit_logs_authenticated_select_by_unit" on public.hr_workflow_audit_logs;
 create policy "hr_workflow_audit_logs_authenticated_select_by_unit"
 on public.hr_workflow_audit_logs
@@ -213,14 +216,6 @@ create policy "hr_workflow_audit_logs_authenticated_insert_by_unit"
 on public.hr_workflow_audit_logs
 for insert
 to authenticated
-with check (public.user_has_unit_access(unit_id));
-
-drop policy if exists "hr_workflow_audit_logs_authenticated_update_by_unit" on public.hr_workflow_audit_logs;
-create policy "hr_workflow_audit_logs_authenticated_update_by_unit"
-on public.hr_workflow_audit_logs
-for update
-to authenticated
-using (public.user_has_unit_access(unit_id))
 with check (public.user_has_unit_access(unit_id));
 
 -- hr_workflow_approver_delegations
@@ -298,7 +293,9 @@ Observações:
   índice, trigger ou helper.
 - Nomes de policy dentro do limite de 63 chars do Postgres (o mais longo,
   `hr_workflow_approver_delegations_authenticated_update_by_unit` = 61).
-- 24 policies no total (8 × 3). Re-runnável: cada `create` é precedido de `drop policy if exists`.
+- **23 policies no total**: 7 tabelas × 3 (select/insert/update) + `hr_workflow_audit_logs` × 2
+  (select/insert — **append-only**, sem update por design: trilha de auditoria imutável).
+  Re-runnável: cada `create` é precedido de `drop policy if exists`.
 
 ---
 
@@ -361,7 +358,7 @@ Passo-a-passo:
    `select current_database();` e, se útil, um marcador conhecido, para ter certeza de que
    **não** é produção.
 2. **Aplicar em staging.** Colar o conteúdo de `077_...sql` inteiro e executar. Esperado: sem
-   erro; 24 policies criadas (re-runnável — pode rodar 2× sem efeito colateral).
+   erro; 23 policies criadas (re-runnável — pode rodar 2× sem efeito colateral).
 3. **Smoke test em staging** (ver §5): (a) verificar as policies criadas; (b) prova de escopo
    com sessão `authenticated`; (c) abrir as telas de workflow/admissão no app apontado para
    staging e confirmar que **nada quebrou** (app usa `service_role`).
@@ -390,7 +387,8 @@ where schemaname = 'public'
                     'hr_workflow_approver_delegations','hr_admission_processes',
                     'hr_admission_checklist_items')
 order by tablename, cmd;
--- Esperado: 24 linhas (8 tabelas x select/insert/update), roles = {authenticated}, sem delete.
+-- Esperado: 23 linhas (7 tabelas x 3 + hr_workflow_audit_logs x 2, append-only),
+--           roles = {authenticated}, sem delete, sem update em hr_workflow_audit_logs.
 
 select relname, relrowsecurity
 from pg_class
@@ -403,30 +401,70 @@ where relnamespace = 'public'::regnamespace
 ```
 
 ### 5.2 Prova de escopo com sessão `authenticated` (não-super-admin)
-Em **staging**, com uma sessão `authenticated` (JWT de um usuário real **não** super-admin,
-via app/PostgREST ou `set role`/`set request.jwt.claims` no SQL Editor simulando o usuário):
 
-- **Contagem por unidade** (comparar service_role vs authenticated):
-  ```sql
-  -- Como service_role (ignora RLS): total geral.
-  select count(*) from public.hr_workflows;
+Sem infra de teste nova: a sessão `authenticated` é **simulada no próprio SQL Editor** com
+`set local role authenticated` + `set local request.jwt.claims`, dentro de
+`begin; ... rollback;` (sem efeito colateral).
 
-  -- Como authenticated (RLS ativo): so unidades vinculadas ao usuario.
-  -- Esperado: count <= total, e == numero de hr_workflows nas unidades do usuario.
-  select count(*) from public.hr_workflows;
-  ```
-- **Cross-unidade**: escolher um `hr_workflows.id` de uma unidade **não** vinculada ao usuário
-  e confirmar que `select ... where id = <esse id>` como `authenticated` retorna **0 linhas**.
-- **Linha sem unidade (admissão)**: confirmar que um `hr_admission_processes` com
-  `unit_id IS NULL` retorna **0 linhas** como `authenticated` (fail-closed §2), e **1 linha**
-  como `service_role`.
-- **service_role**: repetir as leituras como `service_role` e confirmar que **vê tudo**
-  (RLS ignorado).
+**Cadeia de identidade (confirmada nas migrations):** a policy chama
+`user_has_unit_access(unit_id)` → helper (009) usa `current_app_user_id()` →
+`current_app_user_id()` (009) resolve `app_users.id where auth_user_id = current_auth_user_id()`
+→ `current_auth_user_id()` (**migration 067**) lê `request.jwt.claims ->> 'sub'`. Portanto o
+`sub` do claim tem de ser o **`app_users.auth_user_id`** do usuário-alvo — **NÃO** o
+`app_users.id`.
 
-> Como não há infra de teste nova (sem libs), a simulação da sessão `authenticated` é feita no
-> próprio SQL Editor com `set local role authenticated` + `set local request.jwt.claims`
-> apontando o `sub` do usuário-alvo (mesmo mecanismo que o PostgREST usa), dentro de uma
-> transação `begin; ... rollback;` para não deixar efeito.
+**Escolha do usuário-alvo (fora da transação, como service_role):** um `app_users` **ativo,
+não super-admin**, com **vínculo ativo** em `user_unit_links`. Anote o `auth_user_id` dele
+como `AUTH_USER_ID`.
+
+```sql
+begin;
+
+-- Simula a sessao authenticated do usuario-alvo.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"<AUTH_USER_ID>","role":"authenticated"}';
+-- <AUTH_USER_ID> = app_users.auth_user_id (NAO app_users.id) do usuario nao-super-admin.
+
+-- (0) CONTROLE POSITIVO — PRE-CONDICAO OBRIGATORIA.
+-- Tem de ver > 0 linhas nas SUAS unidades. Se der 0, o claim/sub esta errado
+-- (ou o usuario nao tem workflow nas unidades dele) -> NAO e prova de policy.
+-- PARE e corrija o AUTH_USER_ID antes de seguir. Um 0 aqui invalida os testes (1)/(2).
+select count(*) as devo_ver_positivo
+from public.hr_workflows
+where unit_id in (
+  select uul.unit_id from public.user_unit_links uul
+  join public.app_users au on au.id = uul.app_user_id
+  where au.auth_user_id = '<AUTH_USER_ID>'
+    and uul.status = 'active' and uul.deleted_at is null
+);
+-- Esperado: > 0. (controle positivo: a policy DEIXA ver o que e da unidade do usuario)
+
+-- (1) CROSS-UNIDADE: uma linha de unidade NAO vinculada deve ser invisivel.
+-- <ID_OUTRA_UNIDADE> = um hr_workflows.id (obtido antes, como service_role) cuja unit_id
+-- NAO esta entre as unidades do usuario.
+select count(*) as devo_ver_zero_cross
+from public.hr_workflows
+where id = '<ID_OUTRA_UNIDADE>';
+-- Esperado: 0.
+
+-- (2) LINHA SEM UNIDADE (admissao, fail-closed §2): unit_id IS NULL invisivel p/ authenticated.
+select count(*) as devo_ver_zero_null
+from public.hr_admission_processes
+where unit_id is null;
+-- Esperado: 0.
+
+rollback;
+```
+
+**Contraprova com `service_role`** (fora da transação / role service_role — ignora RLS):
+- `select count(*) from public.hr_admission_processes where unit_id is null;` → **> 0** se
+  existir linha sem unidade (service_role **vê** o que authenticated não vê).
+- `select count(*) from public.hr_workflows;` como service_role = **total geral** (todas as
+  unidades), confirmando que só o `authenticated` é restringido.
+
+Interpretação: **(0) > 0 é pré-condição** (prova que a simulação de identidade funciona e que
+a policy não é falso-negativo trivial); só com (0) positivo é que **(1)=0 e (2)=0** provam o
+corte por unidade e o fail-closed. `service_role` continua vendo tudo.
 
 ### 5.3 Smoke test do app — confirma zero regressão
 O app usa **`service_role`** para estas tabelas, então RLS não deveria alterar nada. Provar:
@@ -462,7 +500,7 @@ intacto, a policy é **defesa-em-profundidade efetiva sem regressão**.
 
 ## 7. Critério de aceite deste plano
 
-- [x] 8 tabelas com SQL completo no padrão 071 (24 policies select/insert/update, sem delete).
+- [x] 8 tabelas com SQL completo no padrão 071 (23 policies: 7×3 + audit_logs×2 append-only, sem delete).
 - [x] Decisão fail-closed do `unit_id` NULLABLE documentada (admissão: processes **e** checklist_items).
 - [x] Número de migration confirmado (**077** livre; nome definido).
 - [x] Checklist staging (`jascnmgagejlvjlenduv`) → produção (`chnamldrlwohaudmjrez`), aplicado por Wilson.
