@@ -1,5 +1,7 @@
 "use client";
 
+export { formatDateTimeShortYear as formatDateTime } from "@/lib/format";
+
 export type CandidateStatus = "novo" | "triagem" | "entrevista" | "aprovado" | "banco_de_talentos" | "reprovado" | "desistiu";
 export type InterviewOpinion = "recomendado" | "parcialmente_recomendado" | "nao_recomendado";
 
@@ -86,13 +88,6 @@ export function candidateStatusTone(status: string) {
   if (status === "reprovado" || status === "desistiu") return "danger" as const;
   if (status === "entrevista" || status === "triagem") return "warning" as const;
   return "info" as const;
-}
-
-export function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatPhone(value: string | null | undefined) {

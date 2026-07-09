@@ -41,6 +41,7 @@ import { HrEmployeeRhSummaryCard } from "@/components/hr/hr-employee-rh-summary-
 import { HrEmployeeTerminationsCard } from "@/components/hr/hr-employee-terminations-card";
 import { HrEmployeeTrainingsCard } from "@/components/hr/hr-employee-trainings-card";
 import { cn } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 type RelatedMeta = {
   id: string;
@@ -305,26 +306,6 @@ async function requestJson<T>(url: string): Promise<T> {
   }
 
   return payload as T;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
 }
 
 function metaLabel(meta: RelatedMeta, fallback = "-") {

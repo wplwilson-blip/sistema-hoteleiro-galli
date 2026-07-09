@@ -9,6 +9,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 type HrDocumentType = {
   id: string;
@@ -93,26 +94,6 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return payload as T;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
 }
 
 function formatBytes(value: number) {

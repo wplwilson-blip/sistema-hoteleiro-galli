@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { hotelGalliEvaluationTemplatePresets, type EvaluationTemplatePreset } from "@/lib/hr/evaluation-template-presets";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { formatDateLocal as formatDate } from "@/lib/format";
 
 type OptionRow = {
   id: string;
@@ -273,13 +274,6 @@ function toCode(value: string, fallback: string) {
     .toUpperCase()
     .slice(0, 40);
   return normalized || fallback;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR");
 }
 
 function templateToForm(template: EvaluationTemplate): TemplateForm {

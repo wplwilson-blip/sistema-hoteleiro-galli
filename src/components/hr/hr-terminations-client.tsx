@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/store/app-store";
+import { formatDate } from "@/lib/format";
 
 type ChecklistItem = {
   id: string;
@@ -184,13 +185,6 @@ function selectTerminationDocumentType(documentTypes: DocumentTypeOption[]): Doc
 
 function terminationTypeLabel(value: string) {
   return terminationTypes.find(([type]) => type === value)?.[1] ?? "Desligamento";
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
 }
 
 function statusTone(status: string) {

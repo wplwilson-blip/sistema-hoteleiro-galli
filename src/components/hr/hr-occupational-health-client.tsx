@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/store/app-store";
+import { formatDate } from "@/lib/format";
 
 type OccupationalRecord = {
   id: string;
@@ -238,13 +239,6 @@ function buildUrl(path: string, filters: Record<string, string>) {
 
 function employeeDocumentsHref(employeeId: string) {
   return `/rh/employees/${employeeId}?tab=documents`;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
 }
 
 function statusTone(status: string) {

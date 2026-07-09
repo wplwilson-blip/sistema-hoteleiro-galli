@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { formatDateTimeShortYear as formatDateTime } from "@/lib/format";
 
 type StatusTone = "visual" | "warning" | "danger" | "success" | "info";
 type SlaFilter = "all" | "overdue" | "warning" | "on_time";
@@ -196,20 +197,6 @@ function buildUrl(path: string, params: Record<string, string | number | undefin
 
   const query = searchParams.toString();
   return query ? `${path}?${query}` : path;
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
 }
 
 function formatDueDate(value: string | null | undefined) {

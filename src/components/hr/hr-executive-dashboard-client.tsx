@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable, SelectField } from "@/components/base-cadastros/crud-components";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { formatDateOnlyUtc as formatDate } from "@/lib/format";
 
 type IndicatorData = {
   headcountTotal: number;
@@ -181,13 +182,6 @@ function nextActionText(item: Pendency) {
   if (item.type === "terminations") return "Concluir checklist obrigatorio.";
   if (item.type === "onboarding") return item.typeLabel ? `Concluir ${item.typeLabel.replace(/^Onboarding:\s*/i, "").toLowerCase()}.` : "Concluir etapa de onboarding.";
   return "Verificar pendencia.";
-}
-
-function formatDate(value: string) {
-  if (!value) return "-";
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 function InfoHint({ text }: { text: string }) {

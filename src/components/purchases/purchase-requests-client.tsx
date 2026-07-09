@@ -24,6 +24,7 @@ import {
   purchaseRequestTypeSchema,
   purchaseRequestWriteSchema
 } from "@/lib/purchases/schemas";
+import { formatCurrency } from "@/lib/format";
 import { z } from "zod";
 
 const purchaseRequestFormSchema = purchaseRequestWriteSchema.omit({ action: true });
@@ -128,10 +129,6 @@ const emptyForm: PurchaseRequestFormValues = {
 };
 
 type PurchaseRequestQueueFilter = "active" | "quotation" | "pending_approval" | "returned" | "finished" | "all";
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
 
 function isPurchaseRequestAwaitingApproval(request: PurchaseRequestRecord) {
   return request.approvalStatus === "pending" && request.approvalRequired && request.totalApprovedAmount > 0;

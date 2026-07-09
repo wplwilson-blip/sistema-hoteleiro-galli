@@ -10,6 +10,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/bas
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatDateTimeShortYear as formatDateTime } from "@/lib/format";
 
 type AuditLog = {
   id: string;
@@ -49,12 +50,6 @@ function buildAuditUrl(input: { action: string; risk: string; workflowId: string
   if (input.from) params.set("from", input.from);
   if (input.to) params.set("to", input.to);
   return `/api/hr/audit?${params.toString()}`;
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function actionLabel(action: string) {

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/store/app-store";
+import { formatDate } from "@/lib/format";
 
 type ReportRow = {
   id: string;
@@ -85,13 +86,6 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.ok === false) throw new Error(payload?.message ?? "Não foi possível carregar relatório de avaliações.");
   return payload as T;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
 }
 
 function formatScore(value: number | null | undefined) {
