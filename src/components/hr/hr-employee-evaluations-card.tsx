@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format";
 
 type EvaluationTemplate = {
   id: string;
@@ -171,13 +172,6 @@ function statusTone(status: string) {
   if (status === "cancelled") return "danger" as const;
   if (status === "submitted" || status === "reviewed" || status === "feedback_given") return "info" as const;
   return "warning" as const;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
 }
 
 type ScoreForm = Record<string, { score: string; isNotApplicable: boolean; comment: string }>;

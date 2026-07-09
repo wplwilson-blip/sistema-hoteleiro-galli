@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { calculateCandidatePhase, calculateJobOpeningPhase, isAdmissionActive, isAdmissionCompleted, parseRequestedQuantity } from "@/lib/hr/recruitment-phases";
+import { formatDateShortYearFlexible as formatDate, formatDateTimeShortYear as formatDateTime } from "@/lib/format";
 
 type StatusTone = "visual" | "warning" | "danger" | "success" | "info";
 
@@ -499,35 +500,6 @@ async function postWorkflowAction(input: {
   }
 
   return body as WorkflowMutationResponse;
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dateOnlyMatch) return `${dateOnlyMatch[3]}/${dateOnlyMatch[2]}/${dateOnlyMatch[1]}`;
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit"
-  });
 }
 
 function formatDueDate(value: string | null | undefined) {

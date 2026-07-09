@@ -39,6 +39,7 @@ import {
   type PurchaseQuoteSourceContactChannel,
   type PurchaseQuoteSourceType
 } from "@/lib/purchases/quote-schemas";
+import { formatCurrency, formatDateWithFallbackNaoInformado as formatDate, formatFileSize, parseLocalizedNumber } from "@/lib/format";
 import { z } from "zod";
 
 type PurchaseRequestSummary = {
@@ -322,34 +323,11 @@ function getEvidenceUploadHint(sourceType: PurchaseQuoteSourceType | "" | null |
   }
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
-
 function formatDecimalInputValue(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return "Não informado";
-  }
-
-  const normalized = value.length === 10 ? `${value}T00:00:00` : value;
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Não informado";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  }).format(date);
 }
 
 function addDays(base: Date, days: number) {
@@ -360,27 +338,6 @@ function addDays(base: Date, days: number) {
 
 function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function parseLocalizedNumber(value: string | number | null | undefined) {
-  if (typeof value === "number") {
-    return value;
-  }
-
-  if (typeof value !== "string") {
-    return 0;
-  }
-
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return 0;
-  }
-
-  const normalized = trimmed.includes(",") ? trimmed.replace(/\./g, "").replace(",", ".") : trimmed;
-  const parsed = Number(normalized);
-
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function parseLocalizedNumberStrict(value: string | number | null | undefined) {
@@ -416,18 +373,6 @@ function parseDeliveryDays(value: number | string | null | undefined) {
   const parsed = Number.parseInt(value.replace(/\D/g, ""), 10);
 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
-  }
-
-  if (bytes >= 1024) {
-    return `${Math.ceil(bytes / 1024)} KB`;
-  }
-
-  return `${bytes} bytes`;
 }
 
 function FieldError({ message }: { message?: string }) {

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/store/app-store";
+import { formatDateTime } from "@/lib/format";
 
 type RuleOption = {
   id: string;
@@ -102,19 +103,6 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return payload as T;
-}
-
-function formatDateTime(value: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
 }
 
 function toPayload(form: RuleForm) {

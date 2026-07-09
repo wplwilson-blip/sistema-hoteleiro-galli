@@ -13,6 +13,7 @@ import { canAny } from "@/lib/auth/permissions-ui";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { formatDateTime, formatFileSize } from "@/lib/format";
 import type { LucideIcon } from "lucide-react";
 
 type ApprovalStatus = "pending" | "approved" | "rejected" | "returned_to_purchases";
@@ -148,26 +149,6 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return payload;
-}
-
-function formatDateTime(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
 }
 
 function getApprovalStatusLabel(status: ApprovalStatus) {
@@ -373,12 +354,6 @@ function QuoteBox({ title, quote, tone = "default" }: { title: string; quote: Ap
       )}
     </div>
   );
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
-  if (bytes >= 1024) return `${Math.ceil(bytes / 1024)} KB`;
-  return `${bytes} bytes`;
 }
 
 function AttachmentsList({ attachments }: { attachments: ApprovalAttachment[] }) {

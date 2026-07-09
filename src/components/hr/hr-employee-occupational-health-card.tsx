@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, LoadingTable } from "@/components/base-cadastros/crud-components";
 import { Card } from "@/components/ui/card";
+import { formatDate } from "@/lib/format";
 
 type OccupationalRecord = {
   id: string;
@@ -50,13 +51,6 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? "Não foi possível carregar Saúde Ocupacional.");
   return payload as T;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", value.includes("T") ? undefined : { timeZone: "UTC" });
 }
 
 function statusTone(status: string) {

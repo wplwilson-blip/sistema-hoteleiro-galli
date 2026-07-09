@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/store/app-store";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
 
 type Option = { id: string; name: string; unitId?: string | null; departmentId?: string | null };
 type Status = "active" | "inactive" | "archived";
@@ -133,12 +134,6 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function statusTone(status: Status) {
   return status === "active" ? ("success" as const) : ("visual" as const);
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function toPlanPayload(form: PlanForm) {

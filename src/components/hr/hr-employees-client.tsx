@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/store/app-store";
+import { formatDateOnlyUtc as formatDate } from "@/lib/format";
 
 type HrRecordStatus = "active" | "inactive" | "archived";
 
@@ -88,19 +89,6 @@ function buildEmployeesUrl(input: {
   if (input.status) params.set("status", input.status);
 
   return `/api/hr/employees?${params.toString()}`;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  return date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 function metaLabel(meta: RelatedMeta, fallback = "-") {

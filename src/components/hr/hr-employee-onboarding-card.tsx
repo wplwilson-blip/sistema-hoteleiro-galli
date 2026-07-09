@@ -9,6 +9,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextArea } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatDateLocalIntl as formatDate } from "@/lib/format";
 
 type HrOnboardingItem = {
   id: string;
@@ -97,17 +98,6 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return payload as T;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  }).format(date);
 }
 
 function onboardingStatusLabel(status: string) {

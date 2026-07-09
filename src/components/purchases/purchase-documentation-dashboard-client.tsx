@@ -25,6 +25,7 @@ import { ErrorMessage, LoadingTable, SelectField } from "@/components/base-cadas
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatDateOnlyUtcNoGuard as formatDate, formatDateLocalNoGuard as formatDateTime } from "@/lib/format";
 
 type DashboardSeverity = "critical" | "high" | "medium" | "low" | "ok";
 type PendencySeverity = Exclude<DashboardSeverity, "ok">;
@@ -208,22 +209,6 @@ async function requestJson<T>(url: string): Promise<T> {
   }
 
   return payload as T;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString("pt-BR", { timeZone: "UTC" });
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Date(value).toLocaleDateString("pt-BR");
 }
 
 function formatPercentage(value: number) {

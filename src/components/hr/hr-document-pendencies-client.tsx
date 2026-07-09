@@ -22,6 +22,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/bas
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatDateOnlyUtc as formatDate } from "@/lib/format";
 
 type PendingType = "missing_required" | "pending" | "awaiting_review" | "rejected" | "expired" | "expiring_soon";
 type QueueView = "admission" | "active" | "expirations" | "rejected" | "dossiers";
@@ -134,13 +135,6 @@ function buildUrl(input: {
   if (input.dueTo) params.set("dueTo", input.dueTo);
 
   return `/api/hr/document-pendencies?${params.toString()}`;
-}
-
-function formatDate(value: string) {
-  if (!value) return "-";
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 function dueLabel(item: PendingItem) {

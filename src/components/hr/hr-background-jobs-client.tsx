@@ -10,6 +10,7 @@ import { ErrorMessage, Field, LoadingTable, SelectField } from "@/components/bas
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatDateTimeShortYear as formatDateTime } from "@/lib/format";
 
 type Job = {
   id: string;
@@ -54,13 +55,6 @@ function buildJobsUrl(input: { status: string; type: string; priority: string; f
   if (input.to) params.set("to", input.to);
   const query = params.toString();
   return query ? `/api/hr/background-jobs?${query}` : "/api/hr/background-jobs";
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function statusTone(status: string) {

@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { HrRecruitmentBreadcrumb } from "@/components/hr/hr-recruitment-navigation";
 import { useAppStore } from "@/store/app-store";
+import { formatDateTimeShortYear as formatDateTime } from "@/lib/format";
 
 type StatusTone = "visual" | "warning" | "danger" | "success" | "info";
 
@@ -95,13 +96,6 @@ async function requestJson<T>(url: string): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.message ?? payload?.error?.message ?? "Não foi possível carregar vagas.");
   return payload as T;
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function statusTone(status: string): StatusTone {

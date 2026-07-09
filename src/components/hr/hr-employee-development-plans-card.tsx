@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { formatDateLocal as formatDate } from "@/lib/format";
 
 type DevelopmentPlan = {
   id: string;
@@ -101,13 +102,6 @@ function actionTypeLabel(type: string) {
     other: "Outra acao"
   };
   return labels[type] ?? type;
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR");
 }
 
 function isClosedItem(status: string) {
