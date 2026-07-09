@@ -390,3 +390,71 @@ internas — otimização de performance com comportamento preservado 1:1.
   4. Trocar as 3 chamadas em `getAccessibleUnitIdsForPermission`.
 
 Nenhum outro arquivo de produção é tocado no Plano A.
+
+---
+
+## 10. Resultado empírico e decisão
+
+### 10.1 Prova §6.2 executada — Plano A REPROVADO
+
+`cache()` do React **NÃO deduplica dentro de Route Handlers** (`app/**/route.ts`) no
+**Next 14.2**. Medido com um probe temporário (`/api/cache-probe-temp`) usando o **mesmo
+padrão `cache()`** proposto para as folhas, com a mesma chave resolvida 5× num único request:
+
+| Ambiente | `executionsSameKey` (esperado **1**) | `totalExecutionsAcrossRequests` (sequência de requests) |
+|---|---|---|
+| `next dev` | **5** | 6 → 12 → 18 |
+| `next build && next start` (prod) | **5** | 6 → 12 |
+
+Leitura dos números:
+- **`executionsSameKey = 5` (não 1):** o corpo memoizado rodou nas 5 chamadas → **sem
+  dedup** no Route Handler. `cache()` degrada para **no-op** (recomputa a cada chamada).
+- **`totalExecutionsAcrossRequests` cresce entre requests (6→12→18):** **não há persistência
+  entre requests** → a degradação é **segura**, sem cache module-level implícito e **sem
+  vazamento de escopo entre usuários** (a invariante de segurança da §4 se mantém mesmo no
+  modo degradado). O problema é só de eficácia (não deduplica), nunca de correção/segurança.
+
+Confirmado em **dev e prod**: o caminho quente permaneceria em ~5 resoluções por folha (não
+cai para 1). `cache()` funciona em render RSC, **não** em Route Handlers nesta versão.
+
+### 10.2 Decisão
+
+- **Plano A (cache()) abandonado.** Código revertido; `src/lib/auth/permissions.ts` volta
+  ao estado do `main` (sem nenhuma edição no working tree).
+- **Otimização despriorizada.** Retomar como **Plano B** **depois da RLS Fatia 3**.
+- Este documento passa a ser o registro da decisão (docs-only; segue para o `main`).
+
+### 10.3 Opções de Plano B (para quando for retomado) — recomendação = Opção A
+
+O memo precisa de escopo **por-request explícito** (não confiar em `cache()`):
+
+- **Opção A — threading explícito das 3 folhas pré-resolvidas via `context`
+  (RECOMENDADA).** Resolver as 3 folhas idempotentes **uma vez** no boundary do request
+  (onde o `supabase` admin e a `session` já são criados uma vez — `requirePermission` /
+  `requireHrWorkflowPermission`) e **passar os valores já resolvidos** adiante pelo
+  `context`/parâmetros internos, em vez de re-consultar dentro de
+  `getAccessibleUnitIdsForPermission`.
+  - **Tradeoff:** diff maior (toca assinaturas internas / possivelmente `api-helpers`),
+    porém **obviamente correto** — não há estado compartilhado escondido; o escopo é o
+    tempo de vida do `context` do request. Preferível em **área sensível** de autorização.
+
+- **Opção B — `WeakMap<SupabaseClient, Map<chave, valor>>` por instância de client.**
+  Memo keyed pela instância do client admin (criada 1×/request), lida/populada dentro das
+  folhas.
+  - **Tradeoff:** diff menor e localizado em `permissions.ts`, **mas** a correção depende de
+    uma premissa forte: **"a instância do client nunca é compartilhada entre requests"**. Se
+    algum caminho reaproveitar um client entre requests, o `WeakMap` vaza escopo entre
+    usuários. Além disso é um `WeakMap` module-level (fere a letra de "sem Map estático" da
+    §4, ainda que GC-safe). Maior risco de raciocínio em área sensível → **não recomendada**.
+
+### 10.4 Reaproveitamento
+
+O refactor das folhas continua válido e **reaproveitável no Plano B** — só o **mecanismo de
+memoização** muda:
+- as 3 folhas como leitores puros devolvendo **objeto-resultado discriminado**
+  (`{ ok, value } | { ok:false, stage, error }`), e
+- o helper **`unwrapLeaf` option-aware** que preserva a **mensagem do 500** e o **prefixo de
+  log** (`base_cadastros.hr.*` / `base_cadastros.permissions.*`) exatamente como hoje.
+
+Só a camada de dedup (que no Plano A era `cache()`) é substituída pelo memo request-scoped
+da Opção A.
