@@ -59,31 +59,33 @@ begin
     raise exception 'PURCHASE_SNAPSHOT_NOT_PENDING';
   end if;
 
-  insert into public.purchase_approval_decisions (
-    organization_id,
-    unit_id,
-    purchase_request_id,
-    purchase_quote_id,
-    approval_level,
-    decision,
-    justification,
-    decided_by,
-    decided_at
-  )
-  values (
-    v_req.organization_id,
-    v_req.unit_id,
-    p_request_id,
-    p_winning_quote_id,
-    v_level,
-    p_decision,
-    nullif(btrim(p_justification), ''),
-    p_decided_by,
-    p_decided_at
-  );
+  if p_decision in ('approved', 'rejected') then
+    insert into public.purchase_approval_decisions (
+      organization_id,
+      unit_id,
+      purchase_request_id,
+      purchase_quote_id,
+      approval_level,
+      decision,
+      justification,
+      decided_by,
+      decided_at
+    )
+    values (
+      v_req.organization_id,
+      v_req.unit_id,
+      p_request_id,
+      p_winning_quote_id,
+      v_level,
+      p_decision,
+      nullif(btrim(p_justification), ''),
+      p_decided_by,
+      p_decided_at
+    );
+  end if;
 
   update public.purchase_requests
-  set status = p_next_status,
+  set status = p_next_status::public.purchase_request_status,
       approval_status = p_decision,
       approval_level = v_level,
       approval_decided_at = p_decided_at,
@@ -107,8 +109,8 @@ begin
     v_req.unit_id,
     p_request_id,
     p_event_type,
-    p_from_status,
-    p_next_status,
+    p_from_status::public.purchase_request_status,
+    p_next_status::public.purchase_request_status,
     p_event_description,
     p_decided_by
   );
