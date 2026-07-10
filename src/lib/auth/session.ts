@@ -7,6 +7,7 @@ import { getActiveUnitCookie } from "@/lib/auth/active-unit";
 
 const initialSetupCheckMessage = "Nao foi possivel verificar o setup inicial.";
 export const SUPER_ADMIN_PROFILE_CODE = "SUPER_ADMIN";
+export const NETWORK_MANAGER_PROFILE_CODE = "NETWORK_MANAGER";
 const noRowsPostgrestCodes = new Set(["PGRST116", "PGRST125"]);
 
 export class InitialSetupCheckError extends Error {
