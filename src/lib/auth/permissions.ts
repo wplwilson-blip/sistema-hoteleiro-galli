@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SessionContext } from "@/lib/auth/types";
-import { SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
+import { NETWORK_MANAGER_PROFILE_CODE, SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest, type SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -161,7 +161,7 @@ async function getActiveUserUnitLinks(
 ) {
   const { data, error } = await supabase
     .from("user_unit_links")
-    .select("unit_id, access_profile_id, units!inner(id, status), access_profiles!inner(id, status)")
+    .select("unit_id, access_profile_id, units!inner(id, status), access_profiles!inner(id, status, code)")
     .eq("app_user_id", userId)
     .eq("status", "active")
     .is("deleted_at", null)
@@ -261,6 +261,10 @@ export async function getAccessibleUnitIdsForPermission(
   // 1) UNIAO das unidades acessiveis (exatamente como antes).
   let unionUnitIds: string[];
   let hasPermission: boolean;
+  // Visao de rede: NETWORK_MANAGER ve a rede toda e NAO deve ser estreitado para a
+  // unidade ativa. Super admin ja e coberto por !isSuperAdmin. No ramo super admin os
+  // links nao sao carregados; a flag permanece false (irrelevante, super admin ve tudo).
+  let hasNetworkScope = false;
 
   if (isSuperAdmin) {
     unionUnitIds = await getAllActiveUnitIds(supabase, options);
@@ -272,6 +276,11 @@ export async function getAccessibleUnitIdsForPermission(
     }
 
     const links = await getActiveUserUnitLinks(supabase, session.user.id, options);
+    // Mesma fonte e padrao do SUPER_ADMIN (link.access_profiles.code): reusa os links
+    // ja carregados, sem query nova.
+    hasNetworkScope = links.some(
+      (link) => (link as any).access_profiles?.code === NETWORK_MANAGER_PROFILE_CODE
+    );
     const linkedUnitIds = new Set(unique(links.map((link) => link.unit_id)));
     const profileIds = unique(links.map((link) => link.access_profile_id));
     const allowedProfileIds = await getProfileAllowedIds(supabase, profileIds, permissionId, options);
@@ -294,10 +303,12 @@ export async function getAccessibleUnitIdsForPermission(
 
   // 2) Estreitamento opcional para a unidade ativa (Leva 2 / B-misto).
   //    Default ausente = aggregate (uniao). hasPermission permanece sobre a UNIAO.
-  const accessibleUnitIds =
-    options?.scope === "active-unit"
-      ? unionUnitIds.filter((unitId) => unitId === session.activeUnit?.id)
-      : unionUnitIds;
+  //    NAO estreita para quem tem visao de rede (super admin ou NETWORK_MANAGER).
+  const applyActiveUnitNarrowing =
+    options?.scope === "active-unit" && !isSuperAdmin && !hasNetworkScope;
+  const accessibleUnitIds = applyActiveUnitNarrowing
+    ? unionUnitIds.filter((unitId) => unitId === session.activeUnit?.id)
+    : unionUnitIds;
 
   return {
     isSuperAdmin,

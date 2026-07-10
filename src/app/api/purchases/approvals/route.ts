@@ -378,7 +378,7 @@ function mapLegacyQuote(row: PurchaseQuoteRow | null | undefined, supplier?: Sup
 }
 
 export async function GET(request: Request) {
-  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsView);
+  const { context, response } = await requirePermission(PURCHASES_PERMISSIONS.approvalsView, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
