@@ -192,6 +192,22 @@ type CreatePurchaseApprovalSnapshotInput = {
   totalAmount: number;
   approvalStatusAtCreation: PurchaseApprovalStatus;
   isResubmission: boolean;
+  // Valores calculados na rota para a atualizacao da purchase_requests e os dois eventos,
+  // gravados junto com o snapshot dentro da RPC transacional.
+  requestUpdate: {
+    nextStatus: string;
+    fromStatus: string;
+    totalApprovedAmount: number;
+    quotationRequired: boolean;
+    requiredQuoteCount: number;
+    approvalRequired: boolean;
+    directorApprovalRequired: boolean;
+  };
+  events: {
+    submitEventType: string;
+    submitEventDescription: string;
+    snapshotEventType: string;
+  };
 };
 
 type CreatedPurchaseApprovalSnapshot = {
@@ -442,40 +458,6 @@ function mapRequestItem(row: PurchaseRequestItemRow) {
   };
 }
 
-async function fetchNextSnapshotNumber(supabase: SupabaseAdmin, purchaseRequestId: string) {
-  const { data, error } = await supabase
-    .from("purchase_approval_snapshots")
-    .select("snapshot_number")
-    .eq("purchase_request_id", purchaseRequestId)
-    .is("deleted_at", null)
-    .order("snapshot_number", { ascending: false })
-    .limit(1);
-
-  if (error) {
-    throw new PurchaseApprovalSnapshotError("Não foi possível calcular o número do dossiê formal.", 500);
-  }
-
-  return Number(data?.[0]?.snapshot_number ?? 0) + 1;
-}
-
-async function assertNoPendingSnapshot(supabase: SupabaseAdmin, purchaseRequestId: string) {
-  const { data, error } = await supabase
-    .from("purchase_approval_snapshots")
-    .select("id")
-    .eq("purchase_request_id", purchaseRequestId)
-    .eq("snapshot_status", "pending")
-    .is("deleted_at", null)
-    .limit(1);
-
-  if (error) {
-    throw new PurchaseApprovalSnapshotError("Não foi possível validar dossiês formais pendentes.", 500);
-  }
-
-  if (data?.length) {
-    throw new PurchaseApprovalSnapshotError("Já existe um dossiê formal aguardando aprovação para esta compra.", 409);
-  }
-}
-
 export async function deletePurchaseApprovalSnapshot(supabase: SupabaseAdmin, snapshotId: string) {
   await supabase.from("purchase_approval_snapshots").delete().eq("id", snapshotId);
 }
@@ -532,9 +514,7 @@ export async function updatePendingPurchaseApprovalSnapshotDecision(input: Updat
 }
 
 export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprovalSnapshotInput) {
-  const { supabase, purchaseRequestId, selectedQuoteId, submittedBy, approvalLevel, totalAmount, approvalStatusAtCreation, isResubmission } = input;
-
-  await assertNoPendingSnapshot(supabase, purchaseRequestId);
+  const { supabase, purchaseRequestId, selectedQuoteId, submittedBy, approvalLevel, totalAmount, approvalStatusAtCreation, isResubmission, requestUpdate, events } = input;
 
   const { data: requestData, error: requestError } = await supabase
     .from("purchase_requests")
@@ -648,7 +628,6 @@ export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprov
   const recommendedQuote = [...quotes.filter(isQuoteValidForRecommendation)].sort(compareRecommendedQuotes)[0] ?? null;
   const recommendationReason = buildRecommendationReason(recommendedQuote);
   const selectedSupplier = suppliersById.get(selectedQuote.supplier_id);
-  const snapshotNumber = await fetchNextSnapshotNumber(supabase, purchaseRequest.id);
   const now = new Date().toISOString();
   const unit = ((unitResult.data ?? []) as UnitRow[])[0] ?? null;
   const department = ((departmentResult.data ?? []) as DepartmentRow[])[0] ?? null;
@@ -771,41 +750,56 @@ export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprov
     }
   };
 
-  const { data: snapshot, error: snapshotError } = await supabase
-    .from("purchase_approval_snapshots")
-    .insert({
-      organization_id: purchaseRequest.organization_id,
-      unit_id: purchaseRequest.unit_id,
-      purchase_request_id: purchaseRequest.id,
-      selected_quote_id: selectedQuote.id,
-      selected_supplier_id: selectedQuote.supplier_id,
-      snapshot_number: snapshotNumber,
-      snapshot_status: "pending",
-      approval_status_at_creation: approvalStatusAtCreation,
-      approval_rule: PURCHASE_APPROVAL_SNAPSHOT_RULE,
-      approval_level: approvalLevel,
-      total_amount: roundMoney(totalAmount),
-      currency: "BRL",
-      is_selected_quote_recommended: recommendedQuote?.id === selectedQuote.id,
-      recommendation_reason: recommendationReason,
-      submitted_by: submittedBy,
-      submitted_at: now,
-      snapshot_payload: snapshotPayload,
-      created_at: now,
-      updated_at: now,
-      created_by: submittedBy,
-      updated_by: submittedBy
-    })
-    .select("id, snapshot_number")
-    .single();
+  // Gravacao atomica (snapshot + update da purchase_requests + dois eventos) na RPC.
+  // O snapshot_number e o gate de "ja pendente" sao resolvidos sob o lock dentro da RPC.
+  const { data: rpcData, error: snapshotError } = await supabase.rpc("purchase_submit_approval_snapshot", {
+    p_request_id: purchaseRequest.id,
+    p_organization_id: purchaseRequest.organization_id,
+    p_unit_id: purchaseRequest.unit_id,
+    p_selected_quote_id: selectedQuote.id,
+    p_selected_supplier_id: selectedQuote.supplier_id,
+    p_approval_status_at_creation: approvalStatusAtCreation,
+    p_approval_rule: PURCHASE_APPROVAL_SNAPSHOT_RULE,
+    p_approval_level: approvalLevel,
+    p_total_amount: roundMoney(totalAmount),
+    p_currency: "BRL",
+    p_is_selected_quote_recommended: recommendedQuote?.id === selectedQuote.id,
+    p_recommendation_reason: recommendationReason,
+    p_submitted_by: submittedBy,
+    p_now: now,
+    p_snapshot_payload: snapshotPayload,
+    p_next_status: requestUpdate.nextStatus,
+    p_from_status: requestUpdate.fromStatus,
+    p_total_approved_amount: requestUpdate.totalApprovedAmount,
+    p_quotation_required: requestUpdate.quotationRequired,
+    p_required_quote_count: requestUpdate.requiredQuoteCount,
+    p_approval_required: requestUpdate.approvalRequired,
+    p_director_approval_required: requestUpdate.directorApprovalRequired,
+    p_submit_event_type: events.submitEventType,
+    p_submit_event_description: events.submitEventDescription,
+    p_snapshot_event_type: events.snapshotEventType,
+    p_request_number: purchaseRequest.request_number
+  });
 
   if (snapshotError) {
-    if (snapshotError.code === "23505") {
+    const message = snapshotError.message ?? "";
+
+    if (message.includes("PURCHASE_SNAPSHOT_ALREADY_PENDING")) {
       throw new PurchaseApprovalSnapshotError("Já existe um dossiê formal aguardando aprovação para esta compra.", 409);
+    }
+
+    if (message.includes("PURCHASE_REQUEST_NOT_FOUND")) {
+      throw new PurchaseApprovalSnapshotError("Solicitação de compra não encontrada.", 404);
     }
 
     throw new PurchaseApprovalSnapshotError("Não foi possível criar o dossiê formal da aprovação.", 500);
   }
 
-  return snapshot as CreatedPurchaseApprovalSnapshot;
+  const snapshot = (rpcData as Array<{ snapshot_id: string; snapshot_number: number }> | null)?.[0];
+
+  if (!snapshot) {
+    throw new PurchaseApprovalSnapshotError("Não foi possível criar o dossiê formal da aprovação.", 500);
+  }
+
+  return { id: snapshot.snapshot_id, snapshot_number: snapshot.snapshot_number } satisfies CreatedPurchaseApprovalSnapshot;
 }
