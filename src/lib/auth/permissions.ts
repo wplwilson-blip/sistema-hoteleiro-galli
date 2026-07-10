@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SessionContext } from "@/lib/auth/types";
+import { resolveOverrideAccess } from "@/lib/auth/override-precedence";
 import { NETWORK_MANAGER_PROFILE_CODE, SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
 import { apiError, logBaseCadastroError, requireAuthenticatedRequest, type SupabaseAdmin } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -226,26 +227,9 @@ async function applyUserPermissionOverrides(input: {
     throw new PermissionAuthorizationError(input.options?.validationErrorMessage ?? defaultValidationErrorMessage, 500);
   }
 
-  for (const override of data ?? []) {
-    if (!override.unit_id) {
-      if (override.is_allowed) {
-        Array.from(input.linkedUnitIds).forEach((unitId) => input.allowedUnitIds.add(unitId));
-      } else {
-        input.allowedUnitIds.clear();
-      }
-      continue;
-    }
-
-    if (!input.linkedUnitIds.has(override.unit_id)) {
-      continue;
-    }
-
-    if (override.is_allowed) {
-      input.allowedUnitIds.add(override.unit_id);
-    } else {
-      input.allowedUnitIds.delete(override.unit_id);
-    }
-  }
+  const resolved = resolveOverrideAccess(input.allowedUnitIds, input.linkedUnitIds, data ?? []);
+  input.allowedUnitIds.clear();
+  resolved.forEach((unitId) => input.allowedUnitIds.add(unitId));
 }
 
 export async function getAccessibleUnitIdsForPermission(
