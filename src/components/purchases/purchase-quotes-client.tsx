@@ -43,6 +43,9 @@ import { formatCurrency, formatDateWithFallbackNaoInformado as formatDate, forma
 import { z } from "zod";
 import {
   addDays,
+  buildDefaultNegotiationForm,
+  buildDefaultQuoteForm,
+  buildEditQuoteForm,
   buildEvidenceClassificationInput,
   canMutatePurchaseQuotation,
   compareRecommendedQuotes,
@@ -50,6 +53,9 @@ import {
   getEvidenceUploadHint,
   getMostCommonPaymentTerms,
   getPurchaseRequestQuotationFlowStatus,
+  getQuoteHighlight,
+  getQuoteRoundLabel,
+  getQuoteSupplierLabel,
   getSupplierSummaryParts,
   isPurchaseAwaitingApproval,
   isPurchaseClosedForQuotation,
@@ -315,156 +321,6 @@ async function uploadEvidenceFilesToQuote(input: { quoteId: string; files: File[
   }
 
   return { uploaded, failed };
-}
-
-function buildDefaultQuoteForm(request: PurchaseRequestDetail | null): PurchaseQuoteFormValues {
-  const today = new Date();
-  const validUntil = addDays(today, 90);
-  const requestItems = request?.items ?? [];
-
-  return {
-    supplierId: "",
-    quoteDate: toDateInputValue(today),
-    validUntil: toDateInputValue(validUntil),
-    deliveryDays: "",
-    paymentTerms: "",
-    notes: "",
-    isRecurringSupplierQuote: false,
-    quoteValidityException: false,
-    quoteValidityExceptionReason: "",
-    quoteSourceType: "formal_proposal",
-    evidenceType: "attached_file",
-    evidenceConfidence: "critical",
-    sourceContactName: "",
-    sourceContactChannel: "",
-    sourceReference: "",
-    sourceUrl: "",
-    sourceNotes: "",
-    evidenceMissingReason: "",
-    requiresAttachment: false,
-    requiresJustification: false,
-    hasFormalEvidence: false,
-    isVerbalQuote: false,
-    isEmergencyQuote: false,
-    emergencyReason: "",
-    regularizationRequired: false,
-    regularizationDeadline: "",
-    items: requestItems.map((item) => ({
-      purchaseRequestItemId: item.id,
-      itemDescription: item.description,
-      quantity: String(item.quantity),
-      unitPrice: "",
-      deliveryNotes: ""
-    })) ?? []
-  };
-}
-
-function buildEditQuoteForm(quote: PurchaseQuoteRecord): PurchaseQuoteFormValues {
-  const quoteItems = quote.items ?? [];
-
-  return {
-    supplierId: quote.supplierId,
-    quoteDate: quote.quoteDate,
-    validUntil: quote.validUntil,
-    deliveryDays: quote.deliveryDays === "" ? "" : String(quote.deliveryDays),
-    paymentTerms: quote.paymentTerms,
-    notes: quote.notes,
-    isRecurringSupplierQuote: quote.isRecurringSupplierQuote,
-    quoteValidityException: quote.quoteValidityException,
-    quoteValidityExceptionReason: quote.quoteValidityExceptionReason,
-    quoteSourceType: quote.quoteSourceType,
-    evidenceType: quote.evidenceType,
-    evidenceConfidence: quote.evidenceConfidence,
-    sourceContactName: quote.sourceContactName,
-    sourceContactChannel: quote.sourceContactChannel,
-    sourceReference: quote.sourceReference,
-    sourceUrl: quote.sourceUrl,
-    sourceNotes: quote.sourceNotes,
-    evidenceMissingReason: quote.evidenceMissingReason,
-    requiresAttachment: quote.requiresAttachment,
-    requiresJustification: quote.requiresJustification,
-    hasFormalEvidence: quote.hasFormalEvidence,
-    isVerbalQuote: quote.isVerbalQuote,
-    isEmergencyQuote: quote.isEmergencyQuote,
-    emergencyReason: quote.emergencyReason,
-    regularizationRequired: quote.regularizationRequired,
-    regularizationDeadline: quote.regularizationDeadline,
-    items: quoteItems.map((item) => ({
-      purchaseRequestItemId: item.purchaseRequestItemId,
-      itemDescription: item.description,
-      quantity: String(item.quantity),
-      unitPrice: String(item.unitPrice),
-      deliveryNotes: item.deliveryNotes
-    }))
-  };
-}
-
-function buildDefaultNegotiationForm(quote: PurchaseQuoteRecord | null): NegotiationFormValues {
-  const today = new Date();
-  const validUntil = addDays(today, 30);
-
-  return {
-    quoteDate: toDateInputValue(today),
-    validUntil: toDateInputValue(validUntil),
-    deliveryDays: quote?.deliveryDays === "" || quote?.deliveryDays == null ? "" : String(quote.deliveryDays),
-    paymentTerms: quote?.paymentTerms ?? "",
-    negotiationNotes: "",
-    quoteSourceType: quote?.quoteSourceType || "formal_proposal",
-    evidenceType: quote?.evidenceType || "attached_file",
-    evidenceConfidence: quote?.evidenceConfidence || "critical",
-    sourceContactName: quote?.sourceContactName ?? "",
-    sourceContactChannel: quote?.sourceContactChannel ?? "",
-    sourceReference: quote?.sourceReference ?? "",
-    sourceUrl: quote?.sourceUrl ?? "",
-    sourceNotes: quote?.sourceNotes ?? "",
-    evidenceMissingReason: quote?.evidenceMissingReason ?? "",
-    requiresAttachment: quote?.requiresAttachment ?? false,
-    requiresJustification: quote?.requiresJustification ?? false,
-    hasFormalEvidence: quote?.hasFormalEvidence ?? false,
-    isVerbalQuote: quote?.isVerbalQuote ?? false,
-    isEmergencyQuote: quote?.isEmergencyQuote ?? false,
-    emergencyReason: quote?.emergencyReason ?? "",
-    regularizationRequired: quote?.regularizationRequired ?? false,
-    regularizationDeadline: quote?.regularizationDeadline ?? "",
-    items: (quote?.items ?? []).map((item) => ({
-      purchaseRequestItemId: item.purchaseRequestItemId,
-      itemDescription: item.description,
-      quantity: String(item.quantity),
-      previousUnitPrice: String(item.unitPrice),
-      unitPrice: String(item.unitPrice),
-      notes: item.deliveryNotes ?? ""
-    }))
-  };
-}
-
-function getQuoteSupplierLabel(quote: PurchaseQuoteRecord | null) {
-  if (!quote) {
-    return "";
-  }
-
-  return quote.supplierTradeName || quote.supplierName || "Fornecedor não informado";
-}
-
-function getQuoteRoundLabel(quote: PurchaseQuoteRecord | null) {
-  return `Rodada ${quote?.quoteRound ?? 1}`;
-}
-
-function getQuoteHighlight(quote: PurchaseQuoteRecord, isRecommendedQuote: boolean, selectedDiffersFromRecommendation: boolean) {
-  if (quote.isSuperseded) {
-    return { label: "Superada", tone: "visual" as const };
-  }
-
-  if (quote.isSelected) {
-    return selectedDiffersFromRecommendation
-      ? { label: "Vencedora fora da recomendação", tone: "warning" as const }
-      : { label: "Vencedora", tone: "success" as const };
-  }
-
-  if (isRecommendedQuote) {
-    return { label: "Recomendada", tone: "info" as const };
-  }
-
-  return null;
 }
 
 export function PurchaseQuotesClient() {
