@@ -2,16 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import { assertCanDecidePurchaseApprovalLevel, PurchaseApprovalAuthorizationError } from "@/lib/purchases/approval-authorization";
 import {
   PurchaseApprovalSnapshotError,
-  assertPendingPurchaseApprovalSnapshot,
-  updatePendingPurchaseApprovalSnapshotDecision
+  assertPendingPurchaseApprovalSnapshot
 } from "@/lib/purchases/approval-snapshots";
-
-type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
 type PurchaseRequestRow = {
   id: string;
@@ -39,36 +35,6 @@ const decisionSchema = z.object({
 
 function toNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
-}
-
-async function insertPurchaseRequestEvent(
-  supabase: SupabaseAdmin,
-  input: {
-    organizationId: string;
-    unitId: string;
-    purchaseRequestId: string;
-    eventType: string;
-    fromStatus: string | null;
-    toStatus: string | null;
-    description: string;
-    createdBy: string;
-  }
-) {
-  const { error } = await supabase.from("purchase_request_events").insert({
-    organization_id: input.organizationId,
-    unit_id: input.unitId,
-    purchase_request_id: input.purchaseRequestId,
-    event_type: input.eventType,
-    from_status: input.fromStatus,
-    to_status: input.toStatus,
-    description: input.description,
-    created_by: input.createdBy
-  });
-
-  if (error) {
-    logBaseCadastroError("purchase_approvals.event_create_failed", error);
-    throw new Error("NÃ£o foi possÃ­vel registrar o evento da aprovaÃ§Ã£o.");
-  }
 }
 
 export async function POST(request: Request, { params }: { params: { requestId: string } }) {
@@ -135,7 +101,6 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     let approvalLevel = purchaseRequest.approval_level ?? getPurchaseApprovalLevel(toNumber(purchaseRequest.total_approved_amount));
     const decidedAt = new Date().toISOString();
-    const decisionReason = payload.justification.trim() || null;
     const nextStatus = payload.decision === "approved" ? "approved" : payload.decision === "rejected" ? "rejected" : "quotation";
     const eventDescription =
       payload.decision === "approved"
@@ -171,69 +136,36 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       return apiError("Nao foi possivel validar a autoridade para decidir este dossie.", 500);
     }
 
-    const { error: decisionError } = await supabase.from("purchase_approval_decisions").insert({
-      organization_id: purchaseRequest.organization_id,
-      unit_id: purchaseRequest.unit_id,
-      purchase_request_id: purchaseRequest.id,
-      purchase_quote_id: winningQuote.id,
-      approval_level: approvalLevel,
-      decision: payload.decision,
-      justification: decisionReason,
-      decided_by: context.session.user.id,
-      decided_at: decidedAt
+    const { error: rpcError } = await supabase.rpc("purchase_apply_approval_decision", {
+      p_request_id: purchaseRequest.id,
+      p_winning_quote_id: winningQuote.id,
+      p_decision: payload.decision,
+      p_justification: payload.justification,
+      p_decided_by: context.session.user.id,
+      p_decided_at: decidedAt,
+      p_next_status: nextStatus,
+      p_from_status: purchaseRequest.status,
+      p_event_type:
+        payload.decision === "approved"
+          ? "purchase_approved"
+          : payload.decision === "rejected"
+            ? "purchase_rejected"
+            : "purchase_returned_to_purchases",
+      p_event_description: eventDescription
     });
 
-    if (decisionError) {
-      logBaseCadastroError("purchase_approvals.decision_insert_failed", decisionError);
-      return apiError("NÃ£o foi possÃ­vel registrar a decisÃ£o de aprovaÃ§Ã£o.", 500);
-    }
-
-    const { error: updateError } = await supabase
-      .from("purchase_requests")
-      .update({
-        status: nextStatus,
-        approval_status: payload.decision,
-        approval_level: approvalLevel,
-        approval_decided_at: decidedAt,
-        approval_decided_by: context.session.user.id,
-        approval_decision_notes: decisionReason,
-        updated_by: context.session.user.id
-      })
-      .eq("id", purchaseRequest.id);
-
-    if (updateError) {
-      logBaseCadastroError("purchase_approvals.request_update_failed", updateError);
-      return apiError("A decisÃ£o foi registrada, mas nÃ£o foi possÃ­vel atualizar a solicitaÃ§Ã£o.", 500);
-    }
-
-    try {
-      await updatePendingPurchaseApprovalSnapshotDecision({
-        supabase,
-        purchaseRequestId: purchaseRequest.id,
-        decision: payload.decision,
-        decisionReason,
-        decidedBy: context.session.user.id,
-        decidedAt
-      });
-    } catch (snapshotError) {
-      if (snapshotError instanceof PurchaseApprovalSnapshotError) {
-        return apiError(snapshotError.message, snapshotError.status);
+    if (rpcError) {
+      if (rpcError.message.includes("PURCHASE_REQUEST_NOT_FOUND")) {
+        return apiError("Solicitação de compra não encontrada.", 404);
       }
 
-      logBaseCadastroError("purchase_approvals.snapshot_decision_update_failed", snapshotError instanceof Error ? snapshotError : { message: "unknown" });
-      return apiError("A decisao foi registrada, mas nao foi possivel atualizar o dossie formal da aprovacao.", 500);
-    }
+      if (rpcError.message.includes("PURCHASE_ALREADY_DECIDED") || rpcError.message.includes("PURCHASE_SNAPSHOT_NOT_PENDING")) {
+        return apiError("Esta compra já possui decisão registrada.", 409);
+      }
 
-    await insertPurchaseRequestEvent(supabase, {
-      organizationId: purchaseRequest.organization_id,
-      unitId: purchaseRequest.unit_id,
-      purchaseRequestId: purchaseRequest.id,
-      eventType: payload.decision === "approved" ? "purchase_approved" : payload.decision === "rejected" ? "purchase_rejected" : "purchase_returned_to_purchases",
-      fromStatus: purchaseRequest.status,
-      toStatus: nextStatus,
-      description: eventDescription,
-      createdBy: context.session.user.id
-    });
+      logBaseCadastroError("purchase_approvals.decision_rpc_failed", rpcError);
+      return apiError("Não foi possível registrar a decisão de aprovação.", 500);
+    }
 
     return NextResponse.json({
       ok: true,
