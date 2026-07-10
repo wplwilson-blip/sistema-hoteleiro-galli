@@ -11,7 +11,6 @@ import {
 } from "@/lib/purchases/quote-schemas";
 import {
   createPurchaseApprovalSnapshot,
-  deletePurchaseApprovalSnapshot,
   PurchaseApprovalSnapshotError
 } from "@/lib/purchases/approval-snapshots";
 
@@ -150,10 +149,9 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       hasAttachment: Boolean(attachmentRows?.length)
     });
     const approvalLevel = evidenceClassification.requiresDirectorApproval ? "general_directorate" : getPurchaseApprovalLevel(total);
-    let approvalSnapshot: { id: string; snapshot_number: number } | null = null;
 
     try {
-      approvalSnapshot = await createPurchaseApprovalSnapshot({
+      await createPurchaseApprovalSnapshot({
         supabase,
         purchaseRequestId: purchaseRequest.id,
         selectedQuoteId: selectedQuote.id,
@@ -161,7 +159,23 @@ export async function POST(_request: Request, { params }: { params: { requestId:
         approvalLevel,
         totalAmount: total,
         approvalStatusAtCreation: "pending",
-        isResubmission
+        isResubmission,
+        requestUpdate: {
+          nextStatus: "quotation",
+          fromStatus: purchaseRequest.status,
+          totalApprovedAmount: total,
+          quotationRequired: requestFlags.quotationRequired,
+          requiredQuoteCount: requestFlags.requiredQuoteCount,
+          approvalRequired: requestFlags.approvalRequired || evidenceClassification.requiresDirectorApproval,
+          directorApprovalRequired: requestFlags.directorApprovalRequired || evidenceClassification.requiresDirectorApproval
+        },
+        events: {
+          submitEventType: isResubmission ? "purchase_resubmitted_for_approval" : "purchase_submitted_for_approval",
+          submitEventDescription: isResubmission
+            ? `Compra ${purchaseRequest.request_number} reenviada para aprovaÃ§Ã£o apÃ³s revisÃ£o de Compras.`
+            : `Compra ${purchaseRequest.request_number} enviada para aprovaÃ§Ã£o.`,
+          snapshotEventType: "approval_snapshot_created"
+        }
       });
     } catch (snapshotError) {
       if (snapshotError instanceof PurchaseApprovalSnapshotError) {
@@ -172,63 +186,9 @@ export async function POST(_request: Request, { params }: { params: { requestId:
       return apiError("NÃ£o foi possÃ­vel gerar o dossiÃª formal da aprovaÃ§Ã£o.", 500);
     }
 
-    const { error: updateError } = await supabase
-      .from("purchase_requests")
-      .update({
-        status: "quotation",
-        total_approved_amount: total,
-        quotation_required: requestFlags.quotationRequired,
-        required_quote_count: requestFlags.requiredQuoteCount,
-        approval_required: requestFlags.approvalRequired || evidenceClassification.requiresDirectorApproval,
-        director_approval_required: requestFlags.directorApprovalRequired || evidenceClassification.requiresDirectorApproval,
-        approval_status: "pending",
-        approval_level: approvalLevel,
-        approval_decided_at: null,
-        approval_decided_by: null,
-        approval_decision_notes: null,
-        updated_by: context.session.user.id
-      })
-      .eq("id", purchaseRequest.id);
-
-    if (updateError) {
-      logBaseCadastroError("purchase_approvals.resubmit_update_failed", updateError);
-      if (approvalSnapshot) {
-        await deletePurchaseApprovalSnapshot(supabase, approvalSnapshot.id);
-      }
-      return apiError(isResubmission ? "NÃ£o foi possÃ­vel reenviar a compra para aprovaÃ§Ã£o." : "NÃ£o foi possÃ­vel enviar a compra para aprovaÃ§Ã£o.", 500);
-    }
-
-    const { error: eventError } = await supabase.from("purchase_request_events").insert([
-      {
-      organization_id: purchaseRequest.organization_id,
-      unit_id: purchaseRequest.unit_id,
-      purchase_request_id: purchaseRequest.id,
-      event_type: isResubmission ? "purchase_resubmitted_for_approval" : "purchase_submitted_for_approval",
-      from_status: purchaseRequest.status,
-      to_status: "quotation",
-      description: isResubmission
-        ? `Compra ${purchaseRequest.request_number} reenviada para aprovaÃ§Ã£o apÃ³s revisÃ£o de Compras.`
-        : `Compra ${purchaseRequest.request_number} enviada para aprovaÃ§Ã£o.`,
-      created_by: context.session.user.id
-      },
-      {
-        organization_id: purchaseRequest.organization_id,
-        unit_id: purchaseRequest.unit_id,
-        purchase_request_id: purchaseRequest.id,
-        event_type: "approval_snapshot_created",
-        from_status: purchaseRequest.status,
-        to_status: "quotation",
-        description: `Dossie formal de aprovacao #${approvalSnapshot?.snapshot_number ?? "-"} criado para a compra ${purchaseRequest.request_number}.`,
-        created_by: context.session.user.id
-      }
-    ]);
-
-    if (eventError) {
-      logBaseCadastroError("purchase_approvals.resubmit_event_create_failed", eventError);
-    }
-
     return NextResponse.json({ ok: true, message: isResubmission ? "Compra reenviada para aprovaÃ§Ã£o." : "Compra enviada para aprovaÃ§Ã£o." });
   } catch (error) {
-    return apiError(error instanceof Error ? error.message : "NÃ£o foi possÃ­vel enviar para aprovaÃ§Ã£o.", 500);
+    logBaseCadastroError("purchase_approvals.resubmit_unexpected", error instanceof Error ? error : { message: "unknown" });
+    return apiError("NÃ£o foi possÃ­vel enviar para aprovaÃ§Ã£o.", 500);
   }
 }
