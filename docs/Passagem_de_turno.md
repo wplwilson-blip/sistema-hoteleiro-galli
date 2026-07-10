@@ -140,3 +140,47 @@ Decisão consciente em algum momento: continuar blindando back-office vs. começ
 ## Pendências de higiene
 - docs/codex/34-investigacao-lider-ve-nr.md: ainda untracked — decidir commit ou remoção.
 - Senha temporária do macos.wilson (usada em teste): redefinir de volta.
+
+## RPC 081 — Envio/reenvio do dossiê transacional (main: 5c8b3df) — CONCLUÍDO
+- Migration 081: public.purchase_submit_approval_snapshot faz numa única transação
+  o que a rota resubmit fazia em 3 escritas soltas (snapshot + update purchase_requests
+  + 2 eventos). Estilo da 079: lock FOR UPDATE, gate de snapshot pendente,
+  snapshot_number calculado SOB o lock, casts ::purchase_request_status, grant só
+  service_role. Unique_violation (23505) → PURCHASE_SNAPSHOT_ALREADY_PENDING.
+- approval-snapshots.ts: createPurchaseApprovalSnapshot continua montando o
+  snapshot_payload igual, mas delega a gravação à RPC (chamada por NOME, não posição).
+  Retorno { id, snapshot_number } mantido. Removidos assertNoPendingSnapshot e
+  fetchNextSnapshotNumber (agora atômicos na RPC).
+- resubmit/route.ts: removidos o update, o insert de eventos e a compensação manual
+  deletePurchaseApprovalSnapshot. Catch final não vaza error.message. Alçada intacta
+  (rebaixamento Diretoria→Gerência segue na rota, não foi tocado).
+- Aplicada em staging e produção. Smoke staging OK: envio inicial (nº 1, 2 eventos,
+  submitted), reenvio (nº 2, resubmitted), gate de duplicidade (UI bloqueia +
+  snap_pending=1). Produção: função confirmada (pg_proc, pronargs=26).
+
+## Auditoria de Compras — 4 frentes fechadas nesta sessão
+1. RPC 079 — decisão de aprovação transacional (main 9364f6a).
+2. Trigger 080 — imutabilidade de cotação em dossiê ativo (main 71a978b).
+3. Escopo de unidade em Aprovações (main 31bf2de).
+4. RPC 081 — envio/reenvio transacional (main 5c8b3df).
+
+## DÍVIDA REGISTRADA (não urgente, não é bug de segurança)
+### 1. Classificação de evidência persistida nasce pessimista
+- buildQuoteEvidenceFields grava has_formal_evidence/evidence_confidence com
+  hasAttachment=false na criação (anexo ainda staged). A API de anexos NÃO recalcula
+  após vincular. Consumidores certos (snapshot/listagem/dashboard) reclassificam na
+  leitura com anexo real, então NÃO há risco de compliance (alçada usa anexo real).
+  Risco: qualquer relatório/badge novo que leia a coluna direto mostra dado errado.
+  Correção futura: recalcular+regravar a classificação quando o anexo é vinculado.
+
+### 2. Dado sujo em produção — compras pending sem snapshot
+- SC-2026-000001 está approval_status=pending desde 2026-05-02, com ZERO snapshots.
+  Estado inconsistente anterior à 081 (não causado por ela). Podem existir outras.
+  Varredura sugerida: purchase_requests approval_status=pending sem snapshot pending.
+
+## AINDA ABERTO na auditoria de Compras
+- purchase-quotes-client.tsx (3.241 linhas): refatoração de manutenção, não segurança.
+  Último item da auditoria; sem pressa.
+
+## Higiene
+- docs/codex/34-investigacao-lider-ve-nr.md: untracked desde início — decidir commit ou remoção.
