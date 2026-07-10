@@ -184,3 +184,36 @@ Decisão consciente em algum momento: continuar blindando back-office vs. começ
 
 ## Higiene
 - docs/codex/34-investigacao-lider-ve-nr.md: untracked desde início — decidir commit ou remoção.
+
+## MELHORIA DE UX FUTURA — formulário de nova cotação (registrado, não urgente)
+- Densidade alta: origem, tipo de evidência, referência externa, observações da origem,
+  justificativa, 3 checkboxes (verbal/emergencial/sensível), regularização, E DEPOIS
+  seção separada de evidências com descrição + upload. Muita decisão de uma vez para o
+  comprador no dia a dia.
+- Redundância aparente: "Referência externa", "Observações da origem" e "Descrição
+  opcional" do anexo — 3 campos de texto livre que confundem (parecem a mesma coisa).
+- Risco operacional: comprador com pressa preenche mal ou pula, empobrecendo a
+  classificação de evidência.
+- Ideia futura: agrupar em etapas / esconder avançado atrás de "mostrar mais" / juntar
+  os campos de texto. Tarefa de produto+UX, com plano próprio. NÃO mexer durante refatoração.
+
+  ## Refatoração purchase-quotes-client — CONCLUÍDA (3 fatias)
+- Fatia 1 (main bfc6235): tipos de domínio + ~20 funções puras → purchase-quotes-utils.ts.
+- Fatia 2 (main 6b93478): 6 builders/labels de formulário → purchase-quotes-utils.ts.
+- Fatia 3 (main cdf598b): SupplierCombobox → supplier-combobox.tsx próprio (+ "use client").
+- Client caiu de 3.241 → 2.568 linhas. Refatoração pura, byte-a-byte verificada, build/lint OK.
+- Componente monstro PurchaseQuotesClient (~2.350 linhas) NÃO foi quebrado de propósito
+  (20+ estados entrelaçados; risco não paga nesta passada).
+
+## AUDITORIA DE COMPRAS — ENCERRADA 100%
+Segurança: RPC 079 (decisão), Trigger 080 (imutabilidade), escopo de unidade em
+Aprovações, RPC 081 (envio/reenvio). Dívida de evidência: documentada (risco zero).
+Dado sujo produção: 2 compras fantasma limpas. Client: refatorado em 3 fatias.
+
+## MELHORIA DE UX FUTURA — formulário de nova cotação (registrado, não urgente)
+- Densidade alta: origem, tipo de evidência, referência externa, observações, justificativa,
+  3 checkboxes, regularização, E DEPOIS seção separada de evidências com descrição + upload.
+- Redundância: "Referência externa", "Observações da origem" e "Descrição opcional" do anexo
+  — 3 campos de texto livre que confundem.
+- Risco: comprador com pressa preenche mal, empobrece a classificação de evidência.
+- Ideia: agrupar em etapas / "mostrar mais" / juntar campos. Tarefa de produto+UX própria.
