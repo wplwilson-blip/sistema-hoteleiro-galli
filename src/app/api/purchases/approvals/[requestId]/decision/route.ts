@@ -155,11 +155,11 @@ export async function POST(request: Request, { params }: { params: { requestId: 
     });
 
     if (rpcError) {
-      if (rpcError.message === "PURCHASE_REQUEST_NOT_FOUND") {
+      if (rpcError.message.includes("PURCHASE_REQUEST_NOT_FOUND")) {
         return apiError("Solicitação de compra não encontrada.", 404);
       }
 
-      if (rpcError.message === "PURCHASE_ALREADY_DECIDED" || rpcError.message === "PURCHASE_SNAPSHOT_NOT_PENDING") {
+      if (rpcError.message.includes("PURCHASE_ALREADY_DECIDED") || rpcError.message.includes("PURCHASE_SNAPSHOT_NOT_PENDING")) {
         return apiError("Esta compra já possui decisão registrada.", 409);
       }
 
