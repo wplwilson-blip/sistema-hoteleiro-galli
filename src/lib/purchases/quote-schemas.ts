@@ -158,6 +158,23 @@ function hasText(value: string | null | undefined) {
   return Boolean(value?.trim());
 }
 
+/**
+ * FONTE DE VERDADE DA CLASSIFICAÇÃO DOCUMENTAL DA COTAÇÃO.
+ *
+ * O resultado depende de `input.hasAttachment` refletir ANEXO REAL vinculado
+ * (module=purchases, entity_type=purchase_quote). Na CRIAÇÃO da cotação o anexo
+ * ainda está staged e passa-se hasAttachment=false — então os campos derivados
+ * gravados em purchase_quotes (has_formal_evidence, requires_attachment,
+ * requires_justification, evidence_confidence) NASCEM PESSIMISTAS e NÃO são
+ * regravados quando o anexo chega depois (a API de anexos não recalcula).
+ *
+ * POR ISSO: essas colunas NÃO são fonte de verdade isolada. Todo consumidor
+ * (listagem, dashboard, snapshot, negociação) DEVE reclassificar na leitura
+ * chamando esta função com a contagem de anexos reais do banco — como já fazem
+ * hoje. Nunca filtre/ordene/decida alçada lendo a coluna crua.
+ *
+ * A verdade formal congelada é o snapshot (criado no envio/reenvio com anexo real).
+ */
 export function classifyPurchaseQuoteEvidence(input: PurchaseQuoteEvidenceClassificationInput): PurchaseQuoteEvidenceClassification {
   const quoteSourceType = input.quoteSourceType || undefined;
   const evidenceType = input.evidenceType || undefined;
