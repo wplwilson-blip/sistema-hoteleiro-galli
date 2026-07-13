@@ -79,6 +79,13 @@ const CASES: Case[] = [
     base: ["A"],
     overrides: [u("C", true)],
     expected: ["A"]
+  },
+  {
+    name: "allow e deny na mesma unidade -> deny vence",
+    linked: ["A", "B"],
+    base: ["A", "B"],
+    overrides: [u("A", true), u("A", false)],
+    expected: ["B"]
   }
 ];
 
