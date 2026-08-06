@@ -7,7 +7,12 @@ import {
   logHrApiError,
   requireHrPermission
 } from "@/lib/hr/api-auth";
-import { prepareHrDocumentRuleWrite } from "@/lib/hr/document-rule-actions";
+import {
+  assertHrDocumentRuleScope,
+  prepareHrDocumentRuleWrite,
+  resolveHrDocumentRuleActor
+} from "@/lib/hr/document-rule-actions";
+import type { HrDocumentRuleScopeActor } from "@/lib/hr/document-rule-scope";
 import {
   documentRuleListSelect,
   documentRuleSelect,
@@ -23,7 +28,11 @@ function pickPayload<T extends Record<string, unknown>, K extends keyof T, F>(pa
   return Object.prototype.hasOwnProperty.call(payload, key) ? payload[key] : fallback;
 }
 
-async function loadExistingRule(context: NonNullable<Awaited<ReturnType<typeof requireHrPermission>>["context"]>, id: string) {
+async function loadExistingRule(
+  context: NonNullable<Awaited<ReturnType<typeof requireHrPermission>>["context"]>,
+  actor: HrDocumentRuleScopeActor,
+  id: string
+) {
   const { data, error } = await context.supabase
     .from("hr_document_rules")
     .select(documentRuleSelect)
@@ -36,7 +45,16 @@ async function loadExistingRule(context: NonNullable<Awaited<ReturnType<typeof r
     throw new Error("Nao foi possivel localizar a regra documental.");
   }
 
-  return (data?.[0] as HrDocumentRuleRow | undefined) ?? null;
+  const rule = (data?.[0] as HrDocumentRuleRow | undefined) ?? null;
+
+  // Escopo do recurso EXISTENTE, antes de qualquer uso (espelha assertCanAccessHrEmployee em
+  // hr/api-auth.ts e os loaders irmaos de trainings/occupational-health/conduct). Sem isto o
+  // service_role escreve em regra de outra unidade via .eq("id", id).
+  if (rule) {
+    assertHrDocumentRuleScope(actor, rule.unit_id ?? null, rule.unit_id ?? null);
+  }
+
+  return rule;
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
@@ -49,7 +67,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   try {
     const { id } = hrIdParamSchema.parse(params);
     const payload = hrDocumentRuleUpdateSchema.parse(await request.json());
-    const existing = await loadExistingRule(context, id);
+    const actor = await resolveHrDocumentRuleActor(context);
+    const existing = await loadExistingRule(context, actor, id);
 
     if (!existing) {
       return hrApiError("Regra documental nao encontrada.", 404);
@@ -69,7 +88,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       notes: pickPayload(payload, "notes", existing.notes ?? undefined) as string | undefined,
       status: payload.status ?? existing.status
     };
-    const updatePayload = await prepareHrDocumentRuleWrite(context, mergedPayload);
+
+    // Transferencia de unidade: comparada contra a unidade do EXISTENTE, nunca contra a do
+    // corpo. Proibida para nao-super-admin (decisao de produto 2).
+    assertHrDocumentRuleScope(actor, existing.unit_id ?? null, mergedPayload.unitId ?? null);
+
+    const updatePayload = await prepareHrDocumentRuleWrite(context, mergedPayload, actor);
     const { data, error } = await context.supabase
       .from("hr_document_rules")
       .update({

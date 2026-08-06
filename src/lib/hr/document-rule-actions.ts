@@ -1,6 +1,11 @@
 import "server-only";
 
+import { NETWORK_MANAGER_PROFILE_CODE } from "@/lib/auth/session";
 import { HrAuthorizationError, logHrApiError, type HrRequestContext } from "@/lib/hr/api-auth";
+import {
+  decideHrDocumentRuleMutation,
+  type HrDocumentRuleScopeActor
+} from "@/lib/hr/document-rule-scope";
 import type { HrDocumentRuleOption } from "@/lib/hr/document-rules";
 
 type RuleWritePayload = {
@@ -45,11 +50,80 @@ function optionLabel(row: { code: string | null; name: string | null }) {
   return [row.code, row.name].filter(Boolean).join(" - ");
 }
 
-function assertUnitWriteScope(context: HrRequestContext, unitId: string | null | undefined) {
+function assertUnitWriteScope(context: HrRequestContext, unitId: string | null | undefined, actor?: HrDocumentRuleScopeActor) {
   if (context.isSuperAdmin) return;
-  if (!unitId || !context.accessibleUnitIds.includes(unitId)) {
+
+  // Regra de rede (unit_id null): permitida apenas quando o ator tem escopo de rede, e so
+  // no PATCH (que passa `actor`). Na criacao (sem `actor`) o comportamento permanece o de
+  // hoje: unidade obrigatoria.
+  if (!unitId) {
+    if (actor?.isNetworkManager) return;
     throw new HrAuthorizationError("Informe uma unidade permitida para criar ou alterar a regra documental.", 403);
   }
+
+  if (!context.accessibleUnitIds.includes(unitId)) {
+    throw new HrAuthorizationError("Informe uma unidade permitida para criar ou alterar a regra documental.", 403);
+  }
+}
+
+// Espelha userHasActiveSuperAdminProfile (src/lib/auth/permissions.ts:102-124) trocando o
+// code do perfil: mesma fonte (user_unit_links + access_profiles.code), mesmos filtros de
+// status/soft-delete. Existe aqui porque `hasNetworkScope` e' calculado dentro de
+// permissions.ts (:265-267) e NAO e' exposto no HrRequestContext — e permissions.ts e'
+// ancora sensivel, intocada nesta fatia.
+async function userHasActiveNetworkManagerProfile(context: HrRequestContext) {
+  const { data, error } = await context.supabase
+    .from("user_unit_links")
+    .select("id, access_profiles!inner(code)")
+    .eq("app_user_id", context.session.user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .eq("access_profiles.code", NETWORK_MANAGER_PROFILE_CODE)
+    .eq("access_profiles.status", "active")
+    .is("access_profiles.deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    logHrApiError("document_rules.network_manager_lookup_failed", error);
+    throw new HrAuthorizationError("Nao foi possivel validar as permissoes de RH.", 500);
+  }
+
+  return Boolean(data?.length);
+}
+
+export async function resolveHrDocumentRuleActor(context: HrRequestContext): Promise<HrDocumentRuleScopeActor> {
+  if (context.isSuperAdmin) {
+    return { isSuperAdmin: true, isNetworkManager: true, accessibleUnitIds: context.accessibleUnitIds };
+  }
+
+  return {
+    isSuperAdmin: false,
+    isNetworkManager: await userHasActiveNetworkManagerProfile(context),
+    accessibleUnitIds: context.accessibleUnitIds
+  };
+}
+
+// Traduz a recusa pura em erro HTTP. 404 para regra de outra unidade (o ator nunca a ve na
+// listagem — nao vazamos existencia, identico aos loaders irmaos); 403 para regra de rede e
+// para transferencia (a regra E' visivel ao ator; 404 seria mentira).
+export function assertHrDocumentRuleScope(
+  actor: HrDocumentRuleScopeActor,
+  existingUnitId: string | null,
+  nextUnitId: string | null
+) {
+  const decision = decideHrDocumentRuleMutation({ actor, existingUnitId, nextUnitId });
+
+  if (decision.allowed) return;
+
+  if (decision.refusal === "existing_unit_out_of_scope") {
+    throw new HrAuthorizationError("Recurso nao encontrado.", 404);
+  }
+
+  if (decision.refusal === "network_rule_requires_network_scope") {
+    throw new HrAuthorizationError("Regras documentais de rede so podem ser alteradas por administradores de rede.", 403);
+  }
+
+  throw new HrAuthorizationError("Nao e possivel transferir a regra documental para outra unidade.", 403);
 }
 
 async function loadOne<T>(
@@ -76,7 +150,11 @@ async function loadOne<T>(
   return (data?.[0] as T | undefined) ?? null;
 }
 
-export async function prepareHrDocumentRuleWrite(context: HrRequestContext, payload: RuleWritePayload) {
+export async function prepareHrDocumentRuleWrite(
+  context: HrRequestContext,
+  payload: RuleWritePayload,
+  actor?: HrDocumentRuleScopeActor
+) {
   const [unit, department, jobPosition, documentType] = await Promise.all([
     payload.unitId
       ? loadOne<UnitRow>(context, "units", "id, organization_id, code, name", payload.unitId, "document_rules.unit_lookup_failed", "Nao foi possivel validar a unidade da regra.")
@@ -121,7 +199,7 @@ export async function prepareHrDocumentRuleWrite(context: HrRequestContext, payl
   const departmentId = payload.departmentId ?? null;
   const jobPositionId = payload.jobPositionId ?? null;
 
-  assertUnitWriteScope(context, unitId);
+  assertUnitWriteScope(context, unitId, actor);
 
   if (unit && organizationId && unit.organization_id !== organizationId) {
     throw new HrAuthorizationError("A unidade nao pertence a organizacao informada.", 422);
