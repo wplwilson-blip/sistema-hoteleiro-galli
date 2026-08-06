@@ -50,44 +50,73 @@ Sem sessão de usuário por construção; protegidos por `CRON_SECRET` (`require
 | `src/lib/hr/apply-due-movements.ts` |
 | `src/lib/hr/apply-due-terminations.ts` |
 
-### 1.3 Rotas de negócio (**fora da allowlist — dívida a migrar**)
+### 1.3 Import **apenas como tipo** — não é dívida (correção)
 
-Estas 22 deveriam receber o cliente já escopado via `requirePermission(...).context.supabase`
-em vez de instanciá-lo. Muitas **já** usam `requirePermission`; a chamada direta é
-redundante ou legado.
+> **Correção de uma versão anterior deste documento.** A primeira versão listou 22 rotas
+> como "dívida a migrar", inferindo do resultado de `grep -l` que elas instanciavam o
+> cliente. **Errado.** Abrindo os arquivos: **21 dos 22 usam o símbolo só como tipo**
+> (`type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>`) e **nunca chamam
+> `createSupabaseAdminClient()`**. Elas já recebem o cliente escopado via
+> `requirePermission(...).context.supabase` — ou seja, **já estão no padrão-alvo**.
+>
+> Isso invalida também o alarme que a versão anterior levantou sobre
+> `src/lib/purchases/api.ts` ("candidato a um segundo #1"): o arquivo tem exatamente duas
+> linhas com o símbolo, ambas de tipo. Não instancia nada, não fura gate nenhum.
+> **Alarme descartado.** Compras terá fatia própria pelos achados #3 e #7, não por isto.
 
-| Módulo | Arquivos |
+Verificado por varredura de chamada real (`createSupabaseAdminClient()` com parênteses),
+não por presença do identificador:
+
+| Módulo | Arquivos (todos tipo-only) |
 |---|---|
 | Admin | `admin/permissions/overrides/route.ts` |
 | Anexos | `attachments/route.ts`, `attachments/[id]/route.ts` |
-| Base | `base/departments/route.ts` + `[id]`, `base/employees/route.ts` + `[id]`, `base/job-positions/route.ts` + `[id]`, `base/suppliers/route.ts` + `[id]`, `base/users/route.ts` + `[id]` |
+| Base | `base/departments/route.ts` + `[id]`, `base/employees/route.ts` + `[id]`, `base/job-positions/route.ts` + `[id]`, `base/suppliers/route.ts` + `[id]`, `base/users/[id]/route.ts` |
 | Compras | `purchases/approvals/route.ts`, `purchases/approvals/[requestId]/resubmit/route.ts`, `purchases/documentation-dashboard/route.ts`, `purchases/quotes/route.ts`, `purchases/requests/route.ts`, `purchases/requests/[id]/route.ts`, `purchases/requests/[id]/quotes/route.ts`, `purchases/requests/[id]/quotes/[quoteId]/route.ts`, `purchases/requests/[id]/quotes/[quoteId]/negotiations/route.ts` |
 | Lib Compras | `src/lib/purchases/api.ts` |
 
-**Observação:** `src/lib/purchases/api.ts` é lib, não rota. Se ele instancia o cliente por
-conta própria, todas as rotas de Compras herdam service_role independentemente do gate —
-vale investigar em fatia própria (é o mesmo padrão que produziu o #1).
+### 1.4 Dívida real (**fora da allowlist**)
 
-**Nenhum arquivo de RH** aparece em 1.3: o módulo HR já recebe o cliente pelo `context` do
-`requireHrPermission`. É a prova de que o padrão-alvo é viável — HR já está lá.
+| Arquivo | Evidência |
+|---|---|
+| `src/app/api/base/users/route.ts` | `:9` usa como tipo **e** `:312` chama `createSupabaseAdminClient()` |
+
+**Uma rota.** Toda a "dívida" de 22 arquivos era ruído de `grep -l`.
+
+**Nenhum arquivo de RH** aparece aqui: o módulo já recebe o cliente pelo `context` do
+`requireHrPermission`. Somando 1.3 + RH, o padrão-alvo é o padrão **majoritário** do repo —
+a regra formaliza o que já é prática, em vez de propor uma migração larga.
 
 ---
 
 ## 2. A regra proposta
 
-Sem plugin novo: `no-restricted-imports` do ESLint base, com `overrides` invertendo a
-proibição para a allowlist.
+`.eslintrc.json` hoje é só `{ "extends": ["next/core-web-vitals"] }`.
+
+O achado de §1.3 muda o desenho da regra: **21 arquivos importam o símbolo como valor
+(`import { createSupabaseAdminClient }`) mas o usam apenas em posição de tipo.** O
+`no-restricted-imports` base **não distingue** isso — ele veria 21 violações legítimas em
+código que já está correto.
+
+Duas saídas, e a primeira é melhor:
+
+**2.1 (recomendada) — converter os 21 para `import type` + regra com `allowTypeImports`.**
+
+A conversão é mecânica, sem efeito em runtime (o import de tipo é apagado na compilação) e
+deixa o código mais honesto: o arquivo declara que só quer o *tipo*, não a fábrica.
 
 ```jsonc
 // .eslintrc.json (PROPOSTA — não aplicada)
 {
+  "extends": ["next/core-web-vitals"],
   "rules": {
-    "no-restricted-imports": ["error", {
+    "@typescript-eslint/no-restricted-imports": ["error", {
       "paths": [{
         "name": "@/lib/supabase/admin",
         "importNames": ["createSupabaseAdminClient"],
+        "allowTypeImports": true,
         "message":
-          "Cliente service_role ignora RLS. Use o `context.supabase` devolvido por requirePermission/requireHrPermission. Uso direto e' restrito ao nucleo de auth/permissao e aos efetivadores de cron (ver docs/codex/57)."
+          "Cliente service_role ignora RLS. Use o `context.supabase` devolvido por requirePermission/requireHrPermission. Instanciacao direta e' restrita ao nucleo de auth/permissao e aos efetivadores de cron (ver docs/codex/57). Para o tipo, use `import type`."
       }]
     }]
   },
@@ -103,48 +132,65 @@ proibição para a allowlist.
       "src/app/api/cron/**",
       "src/app/api/hr/apply-due/route.ts",
       "src/app/api/hr/movements/apply-due/route.ts",
-      "src/lib/hr/apply-due-*.ts"
+      "src/lib/hr/apply-due-*.ts",
+      // DIVIDA (§1.4) — remover quando a rota passar a usar context.supabase:
+      "src/app/api/base/users/route.ts"
     ],
-    "rules": { "no-restricted-imports": "off" }
+    "rules": { "@typescript-eslint/no-restricted-imports": "off" }
   }]
 }
 ```
 
+**2.2 (alternativa) — `no-restricted-imports` base + os 21 na allowlist.**
+Não mexe em nenhum arquivo de código, mas infla a allowlist com 21 entradas que **não são
+dívida**, tornando-a mentirosa: ela passaria a dizer "estes furam o padrão" sobre arquivos
+que já o seguem. Descarto.
+
+**A verificar ao implementar:** `eslint-config-next` registra o plugin `@typescript-eslint`,
+então `@typescript-eslint/no-restricted-imports` deve estar disponível sem dependência
+nova — mas isso precisa ser confirmado rodando, não assumido. Se não estiver, a fatia
+adiciona `@typescript-eslint/eslint-plugin` como devDependency.
+
 ### Limitações honestas
 - `no-restricted-imports` **não** pega `await import("@/lib/supabase/admin")` dinâmico nem
   import por caminho relativo (`../../lib/supabase/admin`). Fechar isso exige
-  `eslint-plugin-import` (`import/no-restricted-paths`) ou uma regra custom. Para o uso
-  atual do repo (todos os imports são pelo alias `@/`), a regra base cobre o caso real.
-- Ela impede **importar**, não impede mau uso de um cliente já recebido. Não substitui os
-  asserts de escopo.
+  `eslint-plugin-import` (`import/no-restricted-paths`) ou regra custom. Para o uso atual
+  do repo (todos os imports pelo alias `@/`), a regra cobre o caso real.
+- Ela impede **importar**, não impede mau uso de um cliente já recebido. **Não substitui os
+  asserts de escopo** — o #1 aconteceu dentro de um arquivo que legitimamente tinha o
+  cliente.
 
 ---
 
-## 3. Estratégia de adoção (escolha sua)
+## 3. Estratégia de adoção — **Opção B aprovada**
 
-**Opção A — `"warn"` agora, `"error"` depois.**
-Ativa já, sem quebrar o lint; cada arquivo em 1.3 vira um aviso visível. Migra-se por
-módulo e promove-se a `error` quando a lista zerar.
-*Contra:* aviso que ninguém corrige vira ruído e some da percepção.
+`"error"` desde já, com a allowlist como dívida explícita.
 
-**Opção B — `"error"` já, com os 22 arquivos de 1.3 na allowlist como dívida explícita,
-listados um a um.**
-O lint continua verde. **Arquivo novo já nasce bloqueado** — que é exatamente o objetivo.
-Cada migração remove uma linha da allowlist, e a lista encolhendo é a métrica de progresso.
-*Contra:* a allowlist fica grande e feia — o que é uma virtude, porque a feiura é visível.
+O achado de §1.3/§1.4 torna a Opção B muito mais barata do que a versão anterior deste
+documento sugeria: a dívida não são 22 arquivos, é **um** (`base/users/route.ts`). A
+allowlist nasce curta e honesta, e some inteira quando essa rota migrar.
 
-**Recomendo a Opção B.** Ela entrega hoje o único benefício que importa (impedir o
-**próximo** caso) sem exigir a migração das 22 antes de qualquer proteção existir. A Opção A
-protege o novo apenas se alguém ler o aviso.
+**Escopo da fatia própria** (separada da #1, conforme decidido):
+1. converter os 21 imports de §1.3 para `import type` (mecânico, sem efeito em runtime);
+2. adicionar a regra em `.eslintrc.json` com `allowTypeImports: true`;
+3. `base/users/route.ts` na allowlist, com comentário de dívida;
+4. `npm run lint` / `build` / `test:unit` verdes.
+
+Sem teste unitário novo: a regra é verificada pelo próprio `npm run lint`.
+
+**Fatia seguinte, opcional:** migrar `base/users/route.ts:312` para `context.supabase` e
+esvaziar a allowlist de dívida. Requer conferir qual gate a rota usa — não está no escopo
+desta proposta.
 
 ---
 
-## 4. O que preciso de você
+## 4. Estado das decisões
 
-1. Opção A ou B?
-2. A allowlist do núcleo (§1.1) e de cron (§1.2) está correta, ou algum arquivo dela deveria
-   sair / entrar?
-3. Investigo `src/lib/purchases/api.ts` (§1.3) em fatia própria? É o candidato mais
-   provável a um segundo #1.
+| Item | Decisão |
+|---|---|
+| Opção A ou B | **B**, aprovada |
+| Fatia própria, separada da #1 | **sim**, aprovada |
+| Alarme sobre `src/lib/purchases/api.ts` | **descartado** — tipo-only, verificado (§1.3) |
+| Allowlist do núcleo (§1.1) e de cron (§1.2) | pendente de conferência sua |
 
-**Nada foi ativado.** `.eslintrc.json` não foi tocado nesta fatia.
+**Nada foi ativado.** `.eslintrc.json` não foi tocado.
