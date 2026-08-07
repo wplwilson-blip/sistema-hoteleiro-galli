@@ -256,7 +256,18 @@ export async function getAccessibleUnitIdsForPermission(
   } else {
     const permissionId = await getPermissionId(supabase, permissionCode, options);
     if (!permissionId) {
-      return { isSuperAdmin, accessibleUnitIds: [], hasPermission: false, hasPermissionInScope: false };
+      // MISCONFIGURACAO, nao negacao. Os codes chegam aqui como constantes do proprio
+      // codigo (HR_PERMISSIONS, BASE_PERMISSIONS, ...) ou literais em requirePermission:
+      // devem SEMPRE existir e estar ativos no catalogo. `undefined` = bug de seed,
+      // migration ou digitacao — nunca estado valido. Devolver 403 aqui esconderia esse
+      // bug atras de uma resposta que parece regra de negocio, e a equipe inteira ficaria
+      // sem acesso sem nenhum sinal. Falha alto e observavel.
+      logPermissionError(options, "permission_code_not_found", {
+        name: "PermissionMisconfiguration",
+        message: `Permission code ausente no catalogo: ${permissionCode}`,
+        code: permissionCode
+      });
+      throw new PermissionAuthorizationError(options?.validationErrorMessage ?? defaultValidationErrorMessage, 500);
     }
 
     const links = await getActiveUserUnitLinks(supabase, session.user.id, options);
@@ -333,7 +344,23 @@ export async function requirePermission<TPermissionCode extends string = string>
   }
 
   const supabase = createSupabaseAdminClient();
-  const access = await getAccessibleUnitIdsForPermission(supabase, session, permissionCode, options);
+
+  let access: PermissionAccessResult;
+
+  try {
+    access = await getAccessibleUnitIdsForPermission(supabase, session, permissionCode, options);
+  } catch (error) {
+    // Falha de infraestrutura ou misconfiguracao (status >= 500) vira RESPOSTA, no mesmo
+    // formato ja usado para 401/403 acima. Sem isto a excecao escapa do handler — o gate e'
+    // chamado FORA do try/catch das rotas — e o Next devolve 500 com corpo generico,
+    // quebrando o contrato { ok, message } que o cliente espera. A mensagem segue generica:
+    // o code so' aparece no log.
+    if (error instanceof PermissionAuthorizationError && error.status >= 500) {
+      return { context: null, response: apiError(error.message, error.status) };
+    }
+
+    throw error;
+  }
 
   if (!access.hasPermission) {
     return {
