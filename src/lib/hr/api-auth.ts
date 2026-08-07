@@ -169,6 +169,14 @@ export async function requireHrPermission(permissionCode: HrPermissionCode, opts
       scope: opts?.scope
     });
   } catch (error) {
+    // Espelha o gate do nucleo: misconfiguracao/infra (>= 500) vira RESPOSTA no formato do
+    // app, nunca excecao solta (o gate e' chamado fora do try/catch das rotas de RH).
+    // Rede de seguranca: hoje `requirePermission` ja converte esse caso: se algum dia
+    // voltar a lancar, o contrato { ok, message } continua preservado aqui.
+    if (error instanceof PermissionAuthorizationError && error.status >= 500) {
+      return { context: null, response: hrApiError(error.message, error.status) };
+    }
+
     rethrowAsHrAuthorizationError(error);
   }
 }
