@@ -8,6 +8,7 @@ import {
   PurchaseApprovalSnapshotError,
   assertPendingPurchaseApprovalSnapshot
 } from "@/lib/purchases/approval-snapshots";
+import { isPurchaseSelfApproval } from "@/lib/purchases/approval-segregation";
 
 type PurchaseRequestRow = {
   id: string;
@@ -19,6 +20,7 @@ type PurchaseRequestRow = {
   approval_required: boolean;
   approval_status: PurchaseApprovalStatus | null;
   approval_level: PurchaseApprovalLevel | null;
+  requested_by: string | null;
 };
 
 type PurchaseQuoteRow = {
@@ -56,7 +58,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     const { data: requestData, error: requestError } = await supabase
       .from("purchase_requests")
-      .select("id, organization_id, unit_id, status, request_number, total_approved_amount, approval_required, approval_status, approval_level")
+      .select("id, organization_id, unit_id, status, request_number, total_approved_amount, approval_required, approval_status, approval_level, requested_by")
       .eq("id", params.requestId)
       .is("deleted_at", null)
       .single();
@@ -134,6 +136,23 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
       logBaseCadastroError("purchase_approvals.authority_check_failed", authorizationError instanceof Error ? authorizationError : { message: "unknown" });
       return apiError("Nao foi possivel validar a autoridade para decidir este dossie.", 500);
+    }
+
+    // Segregacao de funcao: quem PEDE nao APROVA. So a aprovacao e' bloqueada — reprovar e
+    // devolver para Compras nao sao vetor de fraude e travar geraria atrito. Sem excecao
+    // para super admin: controle de auditoria, nao de privilegio. requested_by nulo nao
+    // bloqueia (ver approval-segregation.ts).
+    // A trava vive so' aqui porque a RPC tem chamador UNICO (esta rota) e a migration 079
+    // revoga execute de public/anon/authenticated, concedendo apenas a service_role. Se um
+    // dia surgir um segundo chamador (ex.: efetivador de cron), ele NAO estara coberto.
+    if (
+      isPurchaseSelfApproval({
+        requestedBy: purchaseRequest.requested_by,
+        actorId: context.session.user.id,
+        decision: payload.decision
+      })
+    ) {
+      return apiError("Você não pode aprovar uma solicitação que você mesmo criou.", 403);
     }
 
     const { error: rpcError } = await supabase.rpc("purchase_apply_approval_decision", {
