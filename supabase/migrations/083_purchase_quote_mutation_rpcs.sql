@@ -112,8 +112,12 @@ begin
     p_unit_id,
     p_request_id,
     e.event_type,
-    e.from_status,
-    e.to_status,
+    -- from_status/to_status sao do enum public.purchase_request_status. O JSON traz string,
+    -- e o Postgres NAO faz cast implicito text -> enum num INSERT ... SELECT (erro 42804).
+    -- O cast explicito e' obrigatorio; jsonb_to_recordset e' declarado com text porque a
+    -- extracao do JSON produz text.
+    e.from_status::public.purchase_request_status,
+    e.to_status::public.purchase_request_status,
     e.description,
     p_actor_id
   from jsonb_to_recordset(p_events) as e(
