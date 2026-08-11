@@ -4,12 +4,17 @@ import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
-  calculateWinningQuoteApprovalFlags,
-  getPurchaseApprovalLevel,
   getPurchaseQuotationMutationBlockMessage,
   roundMoney,
   sumPurchaseQuoteItems
 } from "@/lib/purchases/api";
+import {
+  buildClearedWinnerRequestPatch,
+  buildRequestEvents,
+  buildStartQuotationRequestPatch,
+  buildWinnerRequestPatch,
+  mergeRequestPatches
+} from "@/lib/purchases/quote-mutation-payloads";
 import {
   classifyPurchaseQuoteEvidence,
   getPurchaseQuoteEvidenceConfidenceFromClassification,
@@ -96,18 +101,6 @@ type PurchaseQuoteRow = {
   deleted_at: string | null;
 };
 
-type PurchaseQuoteItemRow = {
-  id: string;
-  purchase_quote_id: string;
-  purchase_request_item_id: string;
-  item_description: string;
-  quantity: string | number;
-  unit_price: string | number;
-  total_price: string | number;
-  delivery_notes: string | null;
-  created_at?: string;
-};
-
 type PurchaseQuotePayloadItem = {
   purchaseRequestItemId: string;
   itemDescription: string;
@@ -192,62 +185,6 @@ function mapQuoteEvidenceUpdate(payload: z.infer<typeof purchaseQuotePatchSchema
   };
 }
 
-function mapQuoteEvidenceRollback(quoteRow: PurchaseQuoteRow) {
-  return {
-    quote_source_type: quoteRow.quote_source_type,
-    evidence_type: quoteRow.evidence_type,
-    evidence_confidence: quoteRow.evidence_confidence,
-    source_contact_name: quoteRow.source_contact_name,
-    source_contact_channel: quoteRow.source_contact_channel,
-    source_reference: quoteRow.source_reference,
-    source_url: quoteRow.source_url,
-    source_notes: quoteRow.source_notes,
-    evidence_missing_reason: quoteRow.evidence_missing_reason,
-    requires_attachment: quoteRow.requires_attachment,
-    requires_justification: quoteRow.requires_justification,
-    has_formal_evidence: quoteRow.has_formal_evidence,
-    is_verbal_quote: quoteRow.is_verbal_quote,
-    is_emergency_quote: quoteRow.is_emergency_quote,
-    emergency_reason: quoteRow.emergency_reason,
-    regularization_required: quoteRow.regularization_required,
-    regularization_deadline: quoteRow.regularization_deadline
-  };
-}
-
-function isReturnedToPurchases(requestRow: PurchaseRequestRow) {
-  return requestRow.approval_status === "returned_to_purchases";
-}
-
-function getReviewApprovalStatusUpdate(requestRow: PurchaseRequestRow) {
-  return isReturnedToPurchases(requestRow) ? { approval_status: "returned_to_purchases" as const } : { approval_status: null };
-}
-
-function getReviewDecisionResetFields(requestRow: PurchaseRequestRow) {
-  return isReturnedToPurchases(requestRow)
-    ? {}
-    : {
-        approval_decided_at: null,
-        approval_decided_by: null,
-        approval_decision_notes: null
-      };
-}
-
-function mapQuoteItemInsertRow(item: PurchaseQuoteItemRow, quoteId: string, organizationId: string, unitId: string, createdBy: string) {
-  return {
-    organization_id: organizationId,
-    unit_id: unitId,
-    purchase_quote_id: quoteId,
-    purchase_request_item_id: item.purchase_request_item_id,
-    item_description: item.item_description,
-    quantity: toNumber(item.quantity),
-    unit_price: toNumber(item.unit_price),
-    total_price: roundMoney(toNumber(item.quantity) * toNumber(item.unit_price)),
-    delivery_notes: item.delivery_notes ?? null,
-    created_by: createdBy,
-    updated_by: createdBy
-  };
-}
-
 async function fetchRequestById(supabase: SupabaseAdmin, requestId: string) {
   const { data, error } = await supabase
     .from("purchase_requests")
@@ -305,22 +242,6 @@ async function fetchQuoteById(supabase: SupabaseAdmin, requestId: string, quoteI
   return data as PurchaseQuoteRow;
 }
 
-async function fetchQuoteItems(supabase: SupabaseAdmin, quoteId: string) {
-  const { data, error } = await supabase
-    .from("purchase_quote_items")
-    .select("id, purchase_quote_id, purchase_request_item_id, item_description, quantity, unit_price, total_price, delivery_notes, created_at")
-    .eq("purchase_quote_id", quoteId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    logBaseCadastroError("purchase_quotes.quote_items_lookup_failed", error);
-    throw new Error("Não foi possível carregar os itens da cotação.");
-  }
-
-  return (data ?? []) as PurchaseQuoteItemRow[];
-}
-
 async function quoteHasActiveEvidenceAttachment(supabase: SupabaseAdmin, quoteId: string) {
   const { data, error } = await supabase
     .from("attachments")
@@ -338,24 +259,6 @@ async function quoteHasActiveEvidenceAttachment(supabase: SupabaseAdmin, quoteId
   }
 
   return Boolean(data?.length);
-}
-
-async function fetchExistingQuotes(supabase: SupabaseAdmin, requestId: string) {
-  const { data, error } = await supabase
-    .from("purchase_quotes")
-    .select(
-      purchaseQuoteSelectColumns
-    )
-    .eq("purchase_request_id", requestId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    logBaseCadastroError("purchase_quotes.existing_quotes_lookup_failed", error);
-    throw new Error("Não foi possível carregar as cotações da solicitação.");
-  }
-
-  return (data ?? []) as PurchaseQuoteRow[];
 }
 
 function snapshotPayloadContainsQuote(snapshotPayload: unknown, quoteId: string) {
@@ -423,82 +326,24 @@ async function fetchSupplier(supabase: SupabaseAdmin, supplierId: string, organi
   return supplier;
 }
 
-async function insertPurchaseRequestEvent(
-  supabase: SupabaseAdmin,
-  input: {
-    organizationId: string;
-    unitId: string;
-    purchaseRequestId: string;
-    eventType: string;
-    fromStatus: string | null;
-    toStatus: string | null;
-    description: string;
-    createdBy: string;
+// Traduz as sentinelas das RPCs transacionais (migration 083) para as MESMAS mensagens e
+// status que a rota devolvia quando as escritas eram sequenciais.
+function mapQuoteRpcError(rpcError: { message?: string }, fallbackMessage: string) {
+  const message = rpcError.message ?? "";
+
+  if (message.includes("PURCHASE_QUOTE_LOCKED_IN_DOSSIER")) {
+    return apiError("Esta cotação já faz parte de um dossiê formal de aprovação. Para preservar a auditoria, registre uma nova proposta.", 409);
   }
-) {
-  const { error } = await supabase.from("purchase_request_events").insert({
-    organization_id: input.organizationId,
-    unit_id: input.unitId,
-    purchase_request_id: input.purchaseRequestId,
-    event_type: input.eventType,
-    from_status: input.fromStatus,
-    to_status: input.toStatus,
-    description: input.description,
-    created_by: input.createdBy
-  });
 
-  if (error) {
-    logBaseCadastroError("purchase_quotes.event_create_failed", error);
-    throw new Error("Não foi possível registrar o evento da cotação.");
+  if (message.includes("PURCHASE_QUOTE_NOT_FOUND") || message.includes("PURCHASE_QUOTE_ALREADY_CANCELLED")) {
+    return apiError("Cotação não encontrada ou já removida.", 404);
   }
-}
 
-function buildRestoredQuoteRows(quoteItems: PurchaseQuoteItemRow[], quoteId: string, createdBy: string) {
-  return quoteItems.map((item) => ({
-    purchase_quote_id: quoteId,
-    purchase_request_item_id: item.purchase_request_item_id,
-    item_description: item.item_description,
-    quantity: toNumber(item.quantity),
-    unit_price: toNumber(item.unit_price),
-    total_price: toNumber(item.total_price),
-    delivery_notes: item.delivery_notes ?? null,
-    created_by: createdBy,
-    updated_by: createdBy
-  }));
-}
-
-async function restoreQuoteSelectionState(
-  supabase: SupabaseAdmin,
-  requestRow: PurchaseRequestRow,
-  currentQuote: PurchaseQuoteRow,
-  existingQuotes: PurchaseQuoteRow[],
-  actorId: string
-) {
-  await supabase
-    .from("purchase_requests")
-    .update({
-      total_approved_amount: toNumber(requestRow.total_approved_amount),
-      quotation_required: requestRow.quotation_required,
-      required_quote_count: requestRow.required_quote_count,
-      approval_required: requestRow.approval_required,
-      director_approval_required: requestRow.director_approval_required,
-      ...getReviewApprovalStatusUpdate(requestRow),
-      approval_level: toNumber(requestRow.total_approved_amount) > 0 ? getPurchaseApprovalLevel(toNumber(requestRow.total_approved_amount)) : null,
-      ...getReviewDecisionResetFields(requestRow),
-      updated_by: actorId
-    })
-    .eq("id", requestRow.id);
-
-  for (const quote of existingQuotes) {
-    await supabase
-      .from("purchase_quotes")
-      .update({
-        is_selected: quote.id === currentQuote.id ? currentQuote.is_selected : quote.is_selected,
-        status: quote.id === currentQuote.id ? currentQuote.status : quote.status,
-        updated_by: actorId
-      })
-      .eq("id", quote.id);
+  if (message.includes("PURCHASE_REQUEST_NOT_FOUND")) {
+    return apiError("Não foi possível localizar a solicitação.", 404);
   }
+
+  return apiError(fallbackMessage, 500);
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string; quoteId: string } }) {
@@ -542,59 +387,26 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         return apiError("Esta cotação não está marcada como vencedora.", 409);
       }
 
-      const { error: quoteUpdateError } = await supabase
-        .from("purchase_quotes")
-        .update({ is_selected: false, status: "received", updated_by: context.session.user.id })
-        .eq("id", quoteRow.id)
-        .eq("purchase_request_id", requestRow.id)
-        .is("deleted_at", null);
+      // UMA transacao: cotacao + solicitacao + evento (migration 083).
+      const { error: rpcError } = await supabase.rpc("purchase_set_quote_selection", {
+        p_request_id: requestRow.id,
+        p_quote_id: quoteRow.id,
+        p_select: false,
+        p_request_update: buildClearedWinnerRequestPatch({ requestRow, actorId: context.session.user.id }),
+        p_events: buildRequestEvents([
+          {
+            eventType: "quote_unselected",
+            fromStatus: requestRow.status,
+            toStatus: requestRow.status,
+            description: "Cotação removida como vencedora."
+          }
+        ]),
+        p_actor_id: context.session.user.id
+      });
 
-      if (quoteUpdateError) {
-        logBaseCadastroError("purchase_quotes.unselect_update_failed", quoteUpdateError);
-        return apiError("Não foi possível remover a cotação vencedora.", 500);
-      }
-
-      const { error: requestUpdateError } = await supabase
-        .from("purchase_requests")
-        .update({
-          total_approved_amount: 0,
-          quotation_required: false,
-          required_quote_count: 0,
-          approval_required: false,
-          director_approval_required: false,
-          ...getReviewApprovalStatusUpdate(requestRow),
-          approval_level: null,
-          ...getReviewDecisionResetFields(requestRow),
-          updated_by: context.session.user.id
-        })
-        .eq("id", requestRow.id);
-
-      if (requestUpdateError) {
-        logBaseCadastroError("purchase_quotes.unselect_request_update_failed", requestUpdateError);
-        await supabase
-          .from("purchase_quotes")
-          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: context.session.user.id })
-          .eq("id", quoteRow.id);
-        return apiError("Não foi possível atualizar a solicitação ao remover a vencedora.", 500);
-      }
-
-      try {
-        await insertPurchaseRequestEvent(supabase, {
-          organizationId: requestRow.organization_id,
-          unitId: requestRow.unit_id,
-          purchaseRequestId: requestRow.id,
-          eventType: "quote_unselected",
-          fromStatus: requestRow.status,
-          toStatus: requestRow.status,
-          description: "Cotação removida como vencedora.",
-          createdBy: context.session.user.id
-        });
-      } catch (eventError) {
-        await supabase
-          .from("purchase_quotes")
-          .update({ is_selected: quoteRow.is_selected, status: quoteRow.status, updated_by: context.session.user.id })
-          .eq("id", quoteRow.id);
-        return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar a remoção da vencedora.", 500);
+      if (rpcError) {
+        logBaseCadastroError("purchase_quotes.unselect_rpc_failed", rpcError);
+        return mapQuoteRpcError(rpcError, "Não foi possível remover a cotação vencedora.");
       }
 
       return NextResponse.json({ ok: true, message: "Cotação removida como vencedora." });
@@ -611,72 +423,34 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         return apiError("A cotação selecionada deve estar recebida, rejeitada ou selecionada.", 409);
       }
 
-      const existingQuotes = await fetchExistingQuotes(supabase, requestRow.id);
       const selectedTotal = roundMoney(toNumber(quoteRow.total_amount));
-      const requestFlags = calculateWinningQuoteApprovalFlags(selectedTotal);
-      const keepApprovalRequirement = isReturnedToPurchases(requestRow);
 
-      const { error: unselectError } = await supabase
-        .from("purchase_quotes")
-        .update({ is_selected: false, status: "rejected", updated_by: context.session.user.id })
-        .eq("purchase_request_id", requestRow.id)
-        .neq("id", quoteRow.id)
-        .is("deleted_at", null);
+      // UMA transacao: desmarca as demais, marca a vencedora (gravando selected_by),
+      // atualiza total_approved_amount/approval_level e registra o evento. Fecha a janela
+      // em que a solicitacao ficava com vencedora NOVA e alcada ANTIGA.
+      const { error: rpcError } = await supabase.rpc("purchase_set_quote_selection", {
+        p_request_id: requestRow.id,
+        p_quote_id: quoteRow.id,
+        p_select: true,
+        p_request_update: buildWinnerRequestPatch({
+          requestRow,
+          totalAmount: selectedTotal,
+          actorId: context.session.user.id
+        }),
+        p_events: buildRequestEvents([
+          {
+            eventType: "quote_selected",
+            fromStatus: requestRow.status,
+            toStatus: requestRow.status,
+            description: "Cotacao selecionada."
+          }
+        ]),
+        p_actor_id: context.session.user.id
+      });
 
-      if (unselectError) {
-        logBaseCadastroError("purchase_quotes.select_clear_failed", unselectError);
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
-        return apiError("Não foi possível atualizar as cotações da solicitação.", 500);
-      }
-
-      const { error: selectError } = await supabase
-        .from("purchase_quotes")
-        .update({ is_selected: true, status: "selected", updated_by: context.session.user.id })
-        .eq("id", quoteRow.id)
-        .eq("purchase_request_id", requestRow.id)
-        .is("deleted_at", null);
-
-      if (selectError) {
-        logBaseCadastroError("purchase_quotes.select_update_failed", selectError);
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
-        return apiError("Não foi possível selecionar a cotação.", 500);
-      }
-
-      const { error: requestUpdateError } = await supabase
-        .from("purchase_requests")
-        .update({
-          total_approved_amount: selectedTotal,
-          quotation_required: requestFlags.quotationRequired,
-          required_quote_count: requestFlags.requiredQuoteCount,
-          approval_required: keepApprovalRequirement ? requestFlags.approvalRequired : false,
-          director_approval_required: keepApprovalRequirement ? requestFlags.directorApprovalRequired : false,
-          ...getReviewApprovalStatusUpdate(requestRow),
-          approval_level: getPurchaseApprovalLevel(selectedTotal),
-          ...getReviewDecisionResetFields(requestRow),
-          updated_by: context.session.user.id
-        })
-        .eq("id", requestRow.id);
-
-      if (requestUpdateError) {
-        logBaseCadastroError("purchase_quotes.select_request_update_failed", requestUpdateError);
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
-        return apiError("Não foi possível atualizar a solicitação com a cotação selecionada.", 500);
-      }
-
-      try {
-        await insertPurchaseRequestEvent(supabase, {
-          organizationId: requestRow.organization_id,
-          unitId: requestRow.unit_id,
-          purchaseRequestId: requestRow.id,
-          eventType: "quote_selected",
-          fromStatus: requestRow.status,
-          toStatus: requestRow.status,
-          description: "Cotacao selecionada.",
-          createdBy: context.session.user.id
-        });
-      } catch (eventError) {
-        await restoreQuoteSelectionState(supabase, requestRow, quoteRow, existingQuotes, context.session.user.id);
-        return apiError(eventError instanceof Error ? eventError.message : "Não foi possível registrar a selecao da cotação.", 500);
+      if (rpcError) {
+        logBaseCadastroError("purchase_quotes.select_rpc_failed", rpcError);
+        return mapQuoteRpcError(rpcError, "Não foi possível selecionar a cotação.");
       }
 
       return NextResponse.json({ ok: true });
@@ -690,32 +464,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     await assertQuoteIsNotInFormalDossier(supabase, requestRow.id, quoteRow.id);
 
     const requestItems = await fetchRequestItems(supabase, requestRow.id);
-    const quoteItemsBefore = await fetchQuoteItems(supabase, quoteRow.id);
     const requestItemMap = new Map(requestItems.map((item) => [item.id, item]));
     const seenRequestItemIds = new Set<string>();
 
-    if (requestRow.status === "submitted" || requestRow.status === "under_review") {
-      const { error: startError } = await supabase
-        .from("purchase_requests")
-        .update({ status: "quotation", updated_by: context.session.user.id })
-        .eq("id", requestRow.id);
+    // Auto-start (submitted/under_review -> quotation) deixa de ser escrita solta: entra no
+    // MESMO patch/transacao do salvamento, junto com o evento "quotation_started".
+    const startsQuotation = requestRow.status === "submitted" || requestRow.status === "under_review";
 
-      if (startError) {
-        logBaseCadastroError("purchase_quotes.auto_start_failed", startError);
-        return apiError("Não foi possível iniciar a cotação.", 500);
-      }
-
-      await insertPurchaseRequestEvent(supabase, {
-        organizationId: requestRow.organization_id,
-        unitId: requestRow.unit_id,
-        purchaseRequestId: requestRow.id,
-        eventType: "quotation_started",
-        fromStatus: requestRow.status,
-        toStatus: "quotation",
-        description: "Cotacao iniciada.",
-        createdBy: context.session.user.id
-      });
-    } else if (requestRow.status !== "quotation") {
+    if (!startsQuotation && requestRow.status !== "quotation") {
       return apiError("A cotação so pode ser editada em uma solicitação em análise ou em cotação.", 409);
     }
 
@@ -772,129 +528,51 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       updated_by: context.session.user.id
     };
 
-    const { error: updateError } = await supabase.from("purchase_quotes").update(quoteUpdateBody).eq("id", quoteRow.id).eq("purchase_request_id", requestRow.id);
+    // UMA transacao (migration 083): auto-start opcional + valores da cotacao + troca dos
+    // itens (delete + insert) + totais/alcada da solicitacao + eventos. Antes eram ate' seis
+    // escritas soltas com rollback manual que nao cobria queda de processo — e a janela
+    // entre a troca dos itens e o update da solicitacao deixava total_approved_amount
+    // defasado, ou seja, alcada de aprovacao errada.
+    const events = buildRequestEvents([
+      ...(startsQuotation
+        ? [
+            {
+              eventType: "quotation_started",
+              fromStatus: requestRow.status,
+              toStatus: "quotation" as const,
+              description: "Cotacao iniciada."
+            }
+          ]
+        : []),
+      {
+        eventType: "quote_updated",
+        fromStatus: startsQuotation ? "quotation" : requestRow.status,
+        toStatus: startsQuotation ? "quotation" : requestRow.status,
+        description: "Cotacao atualizada."
+      }
+    ]);
 
-    if (updateError) {
-      logBaseCadastroError("purchase_quotes.update_failed", updateError);
-      return apiError(updateError.message || "Não foi possível atualizar a cotação.", 500);
-    }
-
-    const { error: deleteItemsError } = await supabase.from("purchase_quote_items").delete().eq("purchase_quote_id", quoteRow.id);
-
-    if (deleteItemsError) {
-      logBaseCadastroError("purchase_quotes.items_delete_failed", deleteItemsError);
-      await supabase.from("purchase_quotes").update({
-        supplier_id: quoteRow.supplier_id,
-        quote_number: quoteRow.quote_number,
-        quote_date: quoteRow.quote_date,
-        valid_until: quoteRow.valid_until,
-        total_amount: quoteRow.total_amount,
-        delivery_days: quoteRow.delivery_days,
-        payment_terms: quoteRow.payment_terms,
-        is_selected: quoteRow.is_selected,
-        is_recurring_supplier_quote: quoteRow.is_recurring_supplier_quote,
-        quote_validity_exception: quoteRow.quote_validity_exception,
-        quote_validity_exception_reason: quoteRow.quote_validity_exception_reason,
-        ...mapQuoteEvidenceRollback(quoteRow),
-        notes: quoteRow.notes,
-        status: quoteRow.status,
-        updated_by: context.session.user.id
-      }).eq("id", quoteRow.id);
-      return apiError("Não foi possível atualizar os itens da cotação.", 500);
-    }
-
-    const { error: insertItemsError } = await supabase.from("purchase_quote_items").insert(
-      quoteItems.map((item) => ({
-        organization_id: requestRow.organization_id,
-        unit_id: requestRow.unit_id,
-        purchase_quote_id: quoteRow.id,
-        purchase_request_item_id: item.purchase_request_item_id,
-        item_description: item.item_description,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-        delivery_notes: item.delivery_notes,
-        created_by: context.session.user.id,
-        updated_by: context.session.user.id
-      }))
+    const requestPatch = mergeRequestPatches(
+      startsQuotation ? buildStartQuotationRequestPatch(context.session.user.id) : null,
+      quoteRow.is_selected
+        ? buildWinnerRequestPatch({ requestRow, totalAmount, actorId: context.session.user.id })
+        : null
     );
 
-    if (insertItemsError) {
-      logBaseCadastroError("purchase_quotes.items_insert_failed", insertItemsError);
-      await supabase.from("purchase_quotes").update({
-        supplier_id: quoteRow.supplier_id,
-        quote_number: quoteRow.quote_number,
-        quote_date: quoteRow.quote_date,
-        valid_until: quoteRow.valid_until,
-        total_amount: quoteRow.total_amount,
-        delivery_days: quoteRow.delivery_days,
-        payment_terms: quoteRow.payment_terms,
-        is_selected: quoteRow.is_selected,
-        is_recurring_supplier_quote: quoteRow.is_recurring_supplier_quote,
-        quote_validity_exception: quoteRow.quote_validity_exception,
-        quote_validity_exception_reason: quoteRow.quote_validity_exception_reason,
-        ...mapQuoteEvidenceRollback(quoteRow),
-        notes: quoteRow.notes,
-        status: quoteRow.status,
-        updated_by: context.session.user.id
-      }).eq("id", quoteRow.id);
-      await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, context.session.user.id));
-      return apiError("Não foi possível atualizar os itens da cotação.", 500);
-    }
-
-    const requestFlags = calculateWinningQuoteApprovalFlags(totalAmount);
-    const keepApprovalRequirement = isReturnedToPurchases(requestRow);
-    if (quoteRow.is_selected) {
-      const { error: requestUpdateError } = await supabase
-        .from("purchase_requests")
-        .update({
-          total_approved_amount: totalAmount,
-          quotation_required: requestFlags.quotationRequired,
-          required_quote_count: requestFlags.requiredQuoteCount,
-          approval_required: keepApprovalRequirement ? requestFlags.approvalRequired : false,
-          director_approval_required: keepApprovalRequirement ? requestFlags.directorApprovalRequired : false,
-          ...getReviewApprovalStatusUpdate(requestRow),
-          approval_level: getPurchaseApprovalLevel(totalAmount),
-          ...getReviewDecisionResetFields(requestRow),
-          updated_by: context.session.user.id
-        })
-        .eq("id", requestRow.id);
-
-      if (requestUpdateError) {
-        logBaseCadastroError("purchase_quotes.request_update_failed", requestUpdateError);
-        await supabase.from("purchase_quote_items").delete().eq("purchase_quote_id", quoteRow.id);
-        await supabase.from("purchase_quote_items").insert(buildRestoredQuoteRows(quoteItemsBefore, quoteRow.id, context.session.user.id));
-        await supabase.from("purchase_quotes").update({
-          supplier_id: quoteRow.supplier_id,
-          quote_number: quoteRow.quote_number,
-          quote_date: quoteRow.quote_date,
-          valid_until: quoteRow.valid_until,
-          total_amount: quoteRow.total_amount,
-          delivery_days: quoteRow.delivery_days,
-          payment_terms: quoteRow.payment_terms,
-          is_selected: quoteRow.is_selected,
-          is_recurring_supplier_quote: quoteRow.is_recurring_supplier_quote,
-          quote_validity_exception: quoteRow.quote_validity_exception,
-          quote_validity_exception_reason: quoteRow.quote_validity_exception_reason,
-          ...mapQuoteEvidenceRollback(quoteRow),
-          notes: quoteRow.notes,
-          status: quoteRow.status,
-          updated_by: context.session.user.id
-        }).eq("id", quoteRow.id);
-        return apiError("Não foi possível atualizar a solicitação com o total da cotação.", 500);
-      }
-    }
-
-    await insertPurchaseRequestEvent(supabase, {
-      organizationId: requestRow.organization_id,
-      unitId: requestRow.unit_id,
-      purchaseRequestId: requestRow.id,
-      eventType: "quote_updated",
-      fromStatus: requestRow.status,
-      toStatus: requestRow.status,
-      description: "Cotacao atualizada.",
-      createdBy: context.session.user.id
+    const { error: rpcError } = await supabase.rpc("purchase_save_quote_values", {
+      p_request_id: requestRow.id,
+      p_quote_id: quoteRow.id,
+      p_quote_update: quoteUpdateBody,
+      p_items: quoteItems,
+      p_request_update: requestPatch,
+      p_events: events,
+      p_actor_id: context.session.user.id
     });
+
+    if (rpcError) {
+      logBaseCadastroError("purchase_quotes.save_rpc_failed", rpcError);
+      return mapQuoteRpcError(rpcError, "Não foi possível atualizar a cotação.");
+    }
 
     return NextResponse.json({ ok: true, quoteId: quoteRow.id });
   } catch (error) {
@@ -948,80 +626,39 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       return apiError("Cotação não encontrada ou já removida.", 404);
     }
 
-    const quoteItems = await fetchQuoteItems(supabase, quoteRow.id);
     const wasSelected = quoteRow.is_selected;
-    const now = new Date().toISOString();
 
-    const { error: quoteUpdateError } = await supabase
-      .from("purchase_quotes")
-      .update({
-        status: "cancelled",
-        is_selected: false,
-        deleted_at: now,
-        deleted_by: context.session.user.id,
-        updated_by: context.session.user.id
-      })
-      .eq("id", quoteRow.id);
-
-    if (quoteUpdateError) {
-      logBaseCadastroError("purchase_quotes.delete_failed", quoteUpdateError);
-      return apiError("Não foi possível cancelar a cotação.", 500);
-    }
-
-    const { error: itemsUpdateError } = await supabase
-      .from("purchase_quote_items")
-      .update({
-        deleted_at: now,
-        deleted_by: context.session.user.id,
-        updated_by: context.session.user.id
-      })
-      .eq("purchase_quote_id", quoteRow.id);
-
-    if (itemsUpdateError) {
-      logBaseCadastroError("purchase_quotes.delete_items_failed", itemsUpdateError);
-      await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: context.session.user.id }).eq("id", quoteRow.id);
-      return apiError("Não foi possível cancelar os itens da cotação.", 500);
-    }
-
-    if (wasSelected) {
-      const { error: requestUpdateError } = await supabase
-        .from("purchase_requests")
-        .update({
-          total_approved_amount: 0,
-          quotation_required: false,
-          required_quote_count: 0,
-          approval_required: false,
-          director_approval_required: false,
-          ...getReviewApprovalStatusUpdate(requestRow),
-          approval_level: null,
-          ...getReviewDecisionResetFields(requestRow),
-          updated_by: context.session.user.id
-        })
-        .eq("id", requestRow.id);
-
-      if (requestUpdateError) {
-        logBaseCadastroError("purchase_quotes.delete_request_failed", requestUpdateError);
-        await supabase.from("purchase_quotes").update({ status: quoteRow.status, is_selected: quoteRow.is_selected, deleted_at: null, deleted_by: null, updated_by: context.session.user.id }).eq("id", quoteRow.id);
-        await supabase.from("purchase_quote_items").update({ deleted_at: null, deleted_by: null, updated_by: context.session.user.id }).eq("purchase_quote_id", quoteRow.id);
-        return apiError("Não foi possível atualizar a solicitação apos o cancelamento da cotação.", 500);
-      }
-    }
-
-    await insertPurchaseRequestEvent(supabase, {
-      organizationId: requestRow.organization_id,
-      unitId: requestRow.unit_id,
-      purchaseRequestId: requestRow.id,
-      eventType: "quote_cancelled",
-      fromStatus: requestRow.status,
-      toStatus: requestRow.status,
-      description: wasSelected ? "Cotação vencedora cancelada. A solicitação ficou sem cotação vencedora." : "Cotacao cancelada.",
-      createdBy: context.session.user.id
+    // UMA transacao (migration 083): soft-delete da cotacao + itens + reset da solicitacao
+    // (quando era a vencedora) + evento. `cancelledItems` passa a vir da propria RPC,
+    // contado sob o lock — antes era um SELECT separado, sujeito a corrida.
+    const { data: rpcData, error: rpcError } = await supabase.rpc("purchase_cancel_quote", {
+      p_request_id: requestRow.id,
+      p_quote_id: quoteRow.id,
+      p_request_update: wasSelected
+        ? buildClearedWinnerRequestPatch({ requestRow, actorId: context.session.user.id })
+        : null,
+      p_events: buildRequestEvents([
+        {
+          eventType: "quote_cancelled",
+          fromStatus: requestRow.status,
+          toStatus: requestRow.status,
+          description: wasSelected
+            ? "Cotação vencedora cancelada. A solicitação ficou sem cotação vencedora."
+            : "Cotacao cancelada."
+        }
+      ]),
+      p_actor_id: context.session.user.id
     });
+
+    if (rpcError) {
+      logBaseCadastroError("purchase_quotes.cancel_rpc_failed", rpcError);
+      return mapQuoteRpcError(rpcError, "Não foi possível cancelar a cotação.");
+    }
 
     return NextResponse.json({
       ok: true,
       quoteId: quoteRow.id,
-      cancelledItems: quoteItems.length
+      cancelledItems: (rpcData as { cancelledItems?: number } | null)?.cancelledItems ?? 0
     });
   } catch (error) {
     if (error instanceof PurchaseQuoteFormalDossierError) {
