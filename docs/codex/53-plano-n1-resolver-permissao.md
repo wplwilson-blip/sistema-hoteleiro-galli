@@ -48,19 +48,74 @@ de **batch**: resolver os 17 codes numa única passada (`getPermissionId` com `.
 ## 1. Recorte proposto: duas fatias, nesta ordem
 
 ### Fatia A — memoização por-request das 3 folhas invariantes
-Exatamente o Plano A do doc 37: envolver `userHasActiveSuperAdminProfile`,
-`getActiveUserUnitLinks` e `getAllActiveUnitIds` em `cache()` do React, com o desenho de
-**objeto-resultado discriminado** já especificado no doc 37 §1.1 (o fetcher memoizado não
-loga e não lança; quem tem `options` faz a política de erro). Esse desenho existe para
-preservar mensagem de erro e prefixo de log — mantenho-o integralmente.
 
-- Ganho: 90 → 57 queries no endpoint citado; proporcionalmente maior nos endpoints do doc 40
-  com super-admin (onde `getAllActiveUnitIds` domina).
-- Risco: baixo. `cache()` é escopado ao request do React/Next; nenhuma chave carrega
-  `supabase` ou `options`.
-- **Pré-requisito a confirmar na Fase B:** que estas rotas rodam no runtime onde `cache()`
-  do React tem escopo de request garantido (App Router, Node runtime). Se alguma rota for
-  edge ou fora do escopo de render, `cache()` degrada para no-op — correto, mas sem ganho.
+Memoizar `userHasActiveSuperAdminProfile`, `getActiveUserUnitLinks` e
+`getAllActiveUnitIds`, mantendo o desenho de **objeto-resultado discriminado** do doc 37
+§1.1 (o fetcher memoizado não loga e não lança; quem tem `options` aplica a política de
+erro). Isso preserva mensagem de erro e prefixo de log exatamente.
+
+**REVISÃO DO MECANISMO — `cache()` do React foi descartado.** O doc 37 e a versão anterior
+deste doc propunham `cache()` do React. Duas verificações mudam a decisão:
+
+1. `require("react").cache` é **`undefined`** no react 18.3.1 deste projeto na resolução
+   padrão — `cache` só existe no build sob a condição `react-server`. Depender dele em
+   Route Handlers é apostar em comportamento de framework que eu teria de confirmar
+   empiricamente e que pode mudar entre versões do Next.
+2. Existe alternativa cujo escopo é **estrutural**, não uma promessa do framework.
+
+**Mecanismo adotado: `WeakMap` com chave na identidade do objeto `SessionContext`.**
+
+```ts
+// modulo interno, nao exportado
+const requestScopedCache = new WeakMap<SessionContext, SessionLeafCache>();
+```
+
+Por que isto é **impossível** de vazar entre usuários ou requests:
+
+- **A chave não é o `userId` nem qualquer string.** É a *referência* do objeto
+  `SessionContext`. Para ler uma entrada é preciso já possuir exatamente aquele objeto —
+  não há como derivá-lo, adivinhá-lo ou construí-lo.
+- **Cada request cria um objeto novo.** `getCurrentSessionContext`
+  (`src/lib/auth/session.ts:223`) monta um `SessionContext` do zero a cada chamada, e não
+  há nenhuma memoização hoje na camada de auth (verificado: zero ocorrências de `cache(`
+  ou `unstable_cache` em `src/lib/auth/` e em `api-helpers.ts`). Dois requests do **mesmo**
+  usuário produzem dois objetos distintos → duas entradas distintas.
+- **Dentro do request, a identidade é compartilhada de propósito.** `requirePermission`
+  guarda o objeto em `context.session` (`permissions.ts:346`), e a rota passa
+  `context.session` às 17 chamadas. Uma sessão, 18 resoluções — que é exatamente o alvo.
+- **`WeakMap` não retém a chave.** Terminado o request, o `SessionContext` fica
+  inalcançável e a entrada é coletada. Sem TTL, sem política de expiração, sem rotina de
+  limpeza — portanto sem bug de expiração.
+- **Não há travessia possível.** Mesmo que uma entrada sobrevivesse na memória, só poderia
+  ser lida por código que segure aquele objeto — isto é, o próprio request que o criou.
+
+**Descartados explicitamente:**
+
+| Alternativa | Por que não |
+|---|---|
+| `unstable_cache` / `revalidate` | **persiste entre requests** — seria o vazamento |
+| `Map` global por `userId` | sobrevive ao request; permissão revogada continuaria valendo; chave adivinhável |
+| `cache()` do React | indisponível na resolução padrão (§1); escopo dependeria do framework |
+
+**Ganho esperado** (endpoint `GET /api/hr/employees/[id]`, 18 resoluções):
+
+| Caminho | Hoje | Depois |
+|---|---|---|
+| Não-super | 18 × 5 = **90** | 1 (super-check) + 1 (links) + 18 × 3 = **56** |
+| Super admin por perfil | 18 × 2 = **36** | 1 + 1 = **2** |
+| Super admin por código de sessão | 18 × 1 = **18** | **1** |
+
+(A versão anterior dizia 57 no caminho não-super: contava `getAllActiveUnitIds`, que nesse
+caminho nem é chamada. São 56.)
+
+As três folhas que **não** entram: `getPermissionId`, `getProfileAllowedIds` e
+`applyUserPermissionOverrides` variam com o *code*, e os 17 codes são distintos — memoizar
+não daria ganho aqui. É o que a Fatia B (batch) resolve.
+
+**Cachear só sucesso.** Um resultado de erro **não** é armazenado, para que uma falha
+transitória não contamine as 18 resoluções e para preservar a semântica atual de repetir a
+consulta. Como o cache guarda valores (nunca promessas rejeitadas), não há risco de
+*unhandled rejection*.
 
 ### Fatia B — resolver em lote para múltiplos codes
 Nova função `getAccessibleUnitIdsForPermissions(supabase, session, codes[], options)` que
