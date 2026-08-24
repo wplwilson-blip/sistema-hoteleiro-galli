@@ -99,11 +99,90 @@ function logPermissionError(
   logBaseCadastroError(`permissions.${stage}`, error);
 }
 
-async function userHasActiveSuperAdminProfile(
+// ===========================================================================================
+// Memoizacao por-request das folhas INVARIANTES do resolver (achado #9 / plano 53, Fatia A).
+//
+// Tres leituras nao dependem do CODE de permissao — so' do usuario, ou de nada:
+// super-admin-por-perfil, links ativos e lista de unidades ativas. Num GET de detalhe de
+// colaborador o resolver roda 18x com codes diferentes, repetindo essas leituras 18x.
+//
+// ESCOPO DO CACHE — a parte que importa para seguranca:
+// a chave e' a IDENTIDADE do objeto SessionContext, num WeakMap. Nao ha chave enumeravel
+// (nada de userId): para ler uma entrada e' preciso ja possuir aquele objeto exato.
+// getCurrentSessionContext monta um SessionContext NOVO a cada request, entao dois requests
+// — mesmo do mesmo usuario — tem objetos distintos e entradas distintas. Um request nunca
+// alcanca o cache de outro. Sendo WeakMap, a entrada e' coletada quando o request termina:
+// sem TTL, sem rotina de expiracao e, portanto, sem bug de expiracao.
+//
+// Descartados: `unstable_cache` (persiste entre requests — seria o vazamento), Map global
+// por userId (sobrevive ao request e mantem permissao ja revogada) e `cache()` do React
+// (nao exportado na resolucao padrao do react 18.3.1 deste projeto).
+//
+// As folhas que variam com o code (getPermissionId, getProfileAllowedIds,
+// applyUserPermissionOverrides) NAO entram aqui — e' a Fatia B (batch).
+// ===========================================================================================
+
+type PermissionLeafError = { name?: string; message?: string; code?: string };
+
+// Resultado discriminado: o fetcher memoizado NAO loga e NAO lanca. Quem tem `options`
+// aplica a politica de erro, preservando mensagem e prefixo de log de cada modulo (HR e BASE
+// podem coexistir no mesmo request com mensagens diferentes). Alem disso, o cache guarda
+// valores — nunca uma promise rejeitada.
+type PermissionLeafResult<T> = { ok: true; value: T } | { ok: false; error: PermissionLeafError };
+
+type UserUnitLinkRow = Awaited<ReturnType<typeof fetchActiveUserUnitLinks>> extends PermissionLeafResult<infer T>
+  ? T
+  : never;
+
+type SessionLeafCache = {
+  superAdminProfile?: Promise<PermissionLeafResult<boolean>>;
+  activeUnitLinks?: Promise<PermissionLeafResult<UserUnitLinkRow>>;
+  allActiveUnitIds?: Promise<PermissionLeafResult<string[]>>;
+};
+
+const sessionLeafCache = new WeakMap<SessionContext, SessionLeafCache>();
+
+function getSessionLeafCache(session: SessionContext): SessionLeafCache {
+  const existing = sessionLeafCache.get(session);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created: SessionLeafCache = {};
+  sessionLeafCache.set(session, created);
+  return created;
+}
+
+// So' SUCESSO fica cacheado: uma falha transitoria nao pode contaminar as 18 resolucoes do
+// request, e a proxima chamada volta a consultar — semantica identica a de hoje.
+async function memoizeSessionLeaf<K extends keyof SessionLeafCache>(
+  cache: SessionLeafCache,
+  key: K,
+  fetcher: () => NonNullable<SessionLeafCache[K]>
+): Promise<Awaited<NonNullable<SessionLeafCache[K]>>> {
+  const cached = cache[key];
+
+  if (cached) {
+    return (await cached) as Awaited<NonNullable<SessionLeafCache[K]>>;
+  }
+
+  const pending = fetcher();
+  cache[key] = pending;
+
+  const result = (await pending) as Awaited<NonNullable<SessionLeafCache[K]>>;
+
+  if (!result.ok) {
+    delete cache[key];
+  }
+
+  return result;
+}
+
+async function fetchActiveSuperAdminProfile(
   supabase: SupabaseAdmin,
-  userId: string,
-  options?: PermissionAuthorizationOptions
-) {
+  userId: string
+): Promise<PermissionLeafResult<boolean>> {
   const { data, error } = await supabase
     .from("user_unit_links")
     .select("id, access_profiles!inner(code)")
@@ -116,22 +195,54 @@ async function userHasActiveSuperAdminProfile(
     .limit(1);
 
   if (error) {
-    logPermissionError(options, "super_admin_profile_lookup_failed", error);
+    return { ok: false, error };
+  }
+
+  return { ok: true, value: Boolean(data?.length) };
+}
+
+async function userHasActiveSuperAdminProfile(
+  supabase: SupabaseAdmin,
+  session: SessionContext,
+  options?: PermissionAuthorizationOptions
+) {
+  const result = await memoizeSessionLeaf(getSessionLeafCache(session), "superAdminProfile", () =>
+    fetchActiveSuperAdminProfile(supabase, session.user.id)
+  );
+
+  if (!result.ok) {
+    logPermissionError(options, "super_admin_profile_lookup_failed", result.error);
     throw new PermissionAuthorizationError(options?.validationErrorMessage ?? defaultValidationErrorMessage, 500);
   }
 
-  return Boolean(data?.length);
+  return result.value;
 }
 
-async function getAllActiveUnitIds(supabase: SupabaseAdmin, options?: PermissionAuthorizationOptions) {
+async function fetchAllActiveUnitIds(supabase: SupabaseAdmin): Promise<PermissionLeafResult<string[]>> {
   const { data, error } = await supabase.from("units").select("id").eq("status", "active").is("deleted_at", null);
 
   if (error) {
-    logPermissionError(options, "units_list_failed", error);
+    return { ok: false, error };
+  }
+
+  return { ok: true, value: unique((data ?? []).map((unit) => unit.id)) };
+}
+
+async function getAllActiveUnitIds(
+  supabase: SupabaseAdmin,
+  session: SessionContext,
+  options?: PermissionAuthorizationOptions
+) {
+  const result = await memoizeSessionLeaf(getSessionLeafCache(session), "allActiveUnitIds", () =>
+    fetchAllActiveUnitIds(supabase)
+  );
+
+  if (!result.ok) {
+    logPermissionError(options, "units_list_failed", result.error);
     throw new PermissionAuthorizationError(options?.unitValidationErrorMessage ?? defaultUnitValidationErrorMessage, 500);
   }
 
-  return unique((data ?? []).map((unit) => unit.id));
+  return result.value;
 }
 
 async function getPermissionId(
@@ -155,11 +266,7 @@ async function getPermissionId(
   return data?.[0]?.id as string | undefined;
 }
 
-async function getActiveUserUnitLinks(
-  supabase: SupabaseAdmin,
-  userId: string,
-  options?: PermissionAuthorizationOptions
-) {
+async function fetchActiveUserUnitLinks(supabase: SupabaseAdmin, userId: string) {
   const { data, error } = await supabase
     .from("user_unit_links")
     .select("unit_id, access_profile_id, units!inner(id, status), access_profiles!inner(id, status, code)")
@@ -172,11 +279,27 @@ async function getActiveUserUnitLinks(
     .is("access_profiles.deleted_at", null);
 
   if (error) {
-    logPermissionError(options, "user_unit_links_lookup_failed", error);
+    return { ok: false as const, error };
+  }
+
+  return { ok: true as const, value: data ?? [] };
+}
+
+async function getActiveUserUnitLinks(
+  supabase: SupabaseAdmin,
+  session: SessionContext,
+  options?: PermissionAuthorizationOptions
+) {
+  const result = await memoizeSessionLeaf(getSessionLeafCache(session), "activeUnitLinks", () =>
+    fetchActiveUserUnitLinks(supabase, session.user.id)
+  );
+
+  if (!result.ok) {
+    logPermissionError(options, "user_unit_links_lookup_failed", result.error);
     throw new PermissionAuthorizationError(options?.unitValidationErrorMessage ?? defaultUnitValidationErrorMessage, 500);
   }
 
-  return data ?? [];
+  return result.value;
 }
 
 async function getProfileAllowedIds(
@@ -240,7 +363,7 @@ export async function getAccessibleUnitIdsForPermission(
 ): Promise<PermissionAccessResult> {
   const isSuperAdmin =
     session.profile.code === SUPER_ADMIN_PROFILE_CODE ||
-    (await userHasActiveSuperAdminProfile(supabase, session.user.id, options));
+    (await userHasActiveSuperAdminProfile(supabase, session, options));
 
   // 1) UNIAO das unidades acessiveis (exatamente como antes).
   let unionUnitIds: string[];
@@ -251,7 +374,7 @@ export async function getAccessibleUnitIdsForPermission(
   let hasNetworkScope = false;
 
   if (isSuperAdmin) {
-    unionUnitIds = await getAllActiveUnitIds(supabase, options);
+    unionUnitIds = await getAllActiveUnitIds(supabase, session, options);
     hasPermission = true;
   } else {
     const permissionId = await getPermissionId(supabase, permissionCode, options);
@@ -270,7 +393,7 @@ export async function getAccessibleUnitIdsForPermission(
       throw new PermissionAuthorizationError(options?.validationErrorMessage ?? defaultValidationErrorMessage, 500);
     }
 
-    const links = await getActiveUserUnitLinks(supabase, session.user.id, options);
+    const links = await getActiveUserUnitLinks(supabase, session, options);
     // Mesma fonte e padrao do SUPER_ADMIN (link.access_profiles.code): reusa os links
     // ja carregados, sem query nova.
     hasNetworkScope = links.some(
