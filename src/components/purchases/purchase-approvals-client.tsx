@@ -228,7 +228,7 @@ function getApprovalEvidenceRisk(approval: ApprovalRecord) {
     return {
       tone: "danger" as const,
       label: "Evidência crítica",
-      description: "Atenção: esta compra tem evidência documental frágil. Revise anexos e justificativa antes de decidir."
+      description: "Atenção: esta compra tem evidência documental crítica. Revise anexos e justificativa antes de decidir."
     };
   }
 

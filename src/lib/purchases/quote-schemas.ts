@@ -264,7 +264,7 @@ export function classifyPurchaseQuoteEvidence(input: PurchaseQuoteEvidenceClassi
   }
 
   if (status === "critical") {
-    alerts.push("Evidência frágil — exige justificativa.");
+    alerts.push("Evidência crítica — exige justificativa.");
   }
 
   return {
