@@ -156,8 +156,45 @@ const quoteDetailTabs: Array<{ value: QuoteDetailTab; label: string }> = [
   { value: "history", label: "Histórico" }
 ];
 
+/**
+ * Instrumentacao do P2 (plano 61), DESLIGADA por padrao.
+ *
+ * Para ligar em producao sem afetar ninguem, no console do browser:
+ *   localStorage.setItem("debug:purchases-quotes", "1")   // e recarregar
+ *   localStorage.removeItem("debug:purchases-quotes")     // para desligar
+ *
+ * O que ela responde: depois de um save/select, o corpo do GET do detalhe ja' traz a
+ * cotacao nova? Se SIM e a tela continuar vazia, o problema e' de render/estado no client.
+ * Se NAO, e' read-after-write no servidor — outra fatia, com outro dono.
+ */
+function isQuoteDebugEnabled() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem("debug:purchases-quotes") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function logQuoteDebug(event: string, data: Record<string, unknown>) {
+  if (!isQuoteDebugEnabled()) {
+    return;
+  }
+
+  // eslint-disable-next-line no-console
+  console.info(`[quotes:${event}]`, { at: new Date().toISOString(), ...data });
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
+    // `no-store`: cotacao e' dado que precisa estar fresco. Sem isto, o GET de releitura
+    // disparado logo apos um save/select pode ser servido do cache HTTP do browser com o
+    // corpo anterior — e o painel mostraria "Nenhuma cotacao cadastrada" com a cotacao ja'
+    // gravada. O react-query controla o cache DELE, nao o do browser.
+    cache: "no-store",
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) }
   });
@@ -262,7 +299,19 @@ export function PurchaseQuotesClient() {
 
   const detailQuery = useQuery({
     queryKey: ["purchases", "quotes", selectedRequestId],
-    queryFn: async () => requestJson<PurchaseQuoteDetailResponse>(`/api/purchases/quotes?requestId=${selectedRequestId}`),
+    queryFn: async () => {
+      const payload = await requestJson<PurchaseQuoteDetailResponse>(`/api/purchases/quotes?requestId=${selectedRequestId}`);
+
+      logQuoteDebug("detail-get", {
+        requestId: selectedRequestId,
+        responseRequestId: payload.request?.id ?? null,
+        quoteCount: payload.quotes?.length ?? 0,
+        quoteNumbers: (payload.quotes ?? []).map((quote) => quote.quoteNumber),
+        selectedQuoteId: (payload.quotes ?? []).find((quote) => quote.isSelected)?.id ?? null
+      });
+
+      return payload;
+    },
     enabled: Boolean(selectedRequestId)
   });
 
@@ -740,8 +789,7 @@ export function PurchaseQuotesClient() {
     setError("");
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["base", "suppliers"] }),
-      queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
-      selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
+      queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] })
     ]);
   }
 
@@ -793,10 +841,10 @@ export function PurchaseQuotesClient() {
       setAttachmentDescriptions({});
       quoteForm.reset(buildDefaultQuoteForm(selectedRequest));
       replace(buildDefaultQuoteForm(selectedRequest).items);
+      logQuoteDebug("save-ok", { requestId: selectedRequestId, quoteId: data.quoteId ?? editingQuoteId });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
-        queryClient.invalidateQueries({ queryKey: ["attachments"] }),
-        selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
+        queryClient.invalidateQueries({ queryKey: ["attachments"] })
       ]);
       setAttachmentMessage(uploadFailed ? "A cotação foi salva, mas a evidência não foi anexada. Anexe o arquivo antes de enviar para aprovação." : "Cotação salva com sucesso.");
     },
@@ -847,8 +895,7 @@ export function PurchaseQuotesClient() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] }),
-        queryClient.invalidateQueries({ queryKey: ["attachments"] }),
-        selectedRequestId ? queryClient.refetchQueries({ queryKey: ["purchases", "quotes", selectedRequestId], type: "active" }) : Promise.resolve()
+        queryClient.invalidateQueries({ queryKey: ["attachments"] })
       ]);
     },
     onError: (mutationError) => {
@@ -863,10 +910,7 @@ export function PurchaseQuotesClient() {
     onSuccess: async (_data, requestId) => {
       setError("");
       setSelectedRequestId(requestId);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
-        queryClient.refetchQueries({ queryKey: ["purchases", "quotes", requestId], type: "active" })
-      ]);
+      await queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] });
     },
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível iniciar a cotação.")
   });
@@ -876,10 +920,8 @@ export function PurchaseQuotesClient() {
       requestJson(`/api/purchases/requests/${requestId}/quotes/${quoteId}`, { method: "PATCH", body: JSON.stringify({ action: "select" }) }),
     onSuccess: async (_data, variables) => {
       setError("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
-        queryClient.refetchQueries({ queryKey: ["purchases", "quotes", variables.requestId], type: "active" })
-      ]);
+      logQuoteDebug("select-ok", { requestId: variables.requestId, quoteId: variables.quoteId });
+      await queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] });
     },
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível selecionar a cotação.")
   });
@@ -892,8 +934,7 @@ export function PurchaseQuotesClient() {
       setAttachmentMessage("Cotação removida como vencedora.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
-        queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] }),
-        queryClient.refetchQueries({ queryKey: ["purchases", "quotes", variables.requestId], type: "active" })
+        queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] })
       ]);
     },
     onError: (mutationError) => {
@@ -907,10 +948,7 @@ export function PurchaseQuotesClient() {
       requestJson(`/api/purchases/requests/${requestId}/quotes/${quoteId}`, { method: "DELETE" }),
     onSuccess: async (_data, variables) => {
       setError("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
-        queryClient.refetchQueries({ queryKey: ["purchases", "quotes", variables.requestId], type: "active" })
-      ]);
+      await queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] });
     },
     onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Não foi possível cancelar a cotação.")
   });
@@ -954,9 +992,6 @@ export function PurchaseQuotesClient() {
         queryClient.invalidateQueries({ queryKey: ["purchases", "quotes"] }),
         queryClient.invalidateQueries({ queryKey: ["purchases", "approvals"] })
       ]);
-      if (requestId) {
-        await queryClient.refetchQueries({ queryKey: ["purchases", "quotes", requestId], type: "active" });
-      }
       clearQuoteTemporaryState(null);
       setSelectedRequestId("");
     },
