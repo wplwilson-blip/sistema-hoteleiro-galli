@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Ban, Check, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2, Truck, Upload } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
@@ -15,6 +15,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { useAppStore } from "@/store/app-store";
 import { canDo } from "@/lib/auth/permissions-ui";
 import { QuickSupplierDialog, type QuickSupplierRecord } from "@/components/purchases/quick-supplier-dialog";
+import { QuoteEvidenceFields, type QuoteEvidenceErrors, type QuoteEvidenceValues } from "@/components/purchases/quote-evidence-fields";
 import { cn } from "@/lib/utils";
 import {
   getPurchasePriorityLabel,
@@ -29,10 +30,7 @@ import {
   getPurchaseQuoteSourceTypeLabel,
   getPurchaseQuoteStatusLabel,
   getPurchaseQuoteStatusTone,
-  purchaseQuoteEvidenceTypeLabelMap,
   purchaseQuoteFormSchema,
-  purchaseQuoteSourceContactChannelLabelMap,
-  purchaseQuoteSourceTypeLabelMap,
   type PurchaseQuoteEvidenceConfidence,
   type PurchaseQuoteEvidenceClassificationInput,
   type PurchaseQuoteEvidenceType,
@@ -50,7 +48,12 @@ import {
   canMutatePurchaseQuotation,
   compareRecommendedQuotes,
   formatDecimalInputValue,
-  getEvidenceUploadHint,
+  getFirstEvidenceFieldError,
+  hasOrphanPendingAttachment,
+  shouldShowAttachmentBlock,
+  shouldShowEvidenceClassification,
+  EVIDENCE_BLOCK_FIELDS,
+  type EvidenceBlockField,
   getMostCommonPaymentTerms,
   getPurchaseRequestQuotationFlowStatus,
   getQuoteHighlight,
@@ -127,9 +130,6 @@ type SaveNegotiationResponse = {
 };
 
 const purchaseQuoteFormSchemaClient = purchaseQuoteFormSchema;
-const quoteSourceTypeOptions = Object.entries(purchaseQuoteSourceTypeLabelMap) as Array<[PurchaseQuoteSourceType, string]>;
-const evidenceTypeOptions = Object.entries(purchaseQuoteEvidenceTypeLabelMap) as Array<[PurchaseQuoteEvidenceType, string]>;
-const sourceContactChannelOptions = Object.entries(purchaseQuoteSourceContactChannelLabelMap) as Array<[PurchaseQuoteSourceContactChannel, string]>;
 
 function FieldError({ message }: { message?: string }) {
   if (!message) {
@@ -222,6 +222,12 @@ export function PurchaseQuotesClient() {
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [quoteFormOpen, setQuoteFormOpen] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  // Bloco "Detalhes da origem e evidencia": comeca fechado (caminho de 90%) e abre por clique
+  // ou por auto-open quando o submit falha em algo la' dentro.
+  const [evidenceBlockOpen, setEvidenceBlockOpen] = useState(false);
+  const [pendingEvidenceFocus, setPendingEvidenceFocus] = useState<EvidenceBlockField | null>(null);
+  const [quoteSubmitFailed, setQuoteSubmitFailed] = useState(false);
+  const evidenceBlockRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState("");
   const [attachmentMessage, setAttachmentMessage] = useState("");
   const [attachmentFiles, setAttachmentFiles] = useState<Record<string, File | null>>({});
@@ -381,8 +387,133 @@ export function PurchaseQuotesClient() {
     ]
   );
 
+  const quoteLinkedAttachmentCount = editingQuoteId ? (attachmentsByQuoteId[editingQuoteId] ?? []).length : 0;
+
+  const quoteEvidenceValues: QuoteEvidenceValues = useMemo(
+    () => ({
+      quoteSourceType,
+      evidenceType,
+      sourceContactName: sourceContactName ?? "",
+      sourceContactChannel: sourceContactChannel ?? "",
+      sourceReference: sourceReference ?? "",
+      sourceUrl: sourceUrl ?? "",
+      sourceNotes: sourceNotes ?? "",
+      evidenceMissingReason: evidenceMissingReason ?? "",
+      emergencyReason: emergencyReason ?? "",
+      regularizationDeadline: regularizationDeadline ?? "",
+      isVerbalQuote: Boolean(isVerbalQuote),
+      isEmergencyQuote: Boolean(isEmergencyQuote),
+      regularizationRequired: Boolean(regularizationRequired)
+    }),
+    [
+      emergencyReason,
+      evidenceMissingReason,
+      evidenceType,
+      isEmergencyQuote,
+      isVerbalQuote,
+      quoteSourceType,
+      regularizationDeadline,
+      regularizationRequired,
+      sourceContactChannel,
+      sourceContactName,
+      sourceNotes,
+      sourceReference,
+      sourceUrl
+    ]
+  );
+
+  // Adaptador entre o componente controlado e o react-hook-form. `shouldValidate` so' depois do
+  // primeiro submit: antes disso o form segue o comportamento "onTouched" de sempre.
+  const updateQuoteEvidenceField = useCallback(
+    (field: keyof QuoteEvidenceValues, value: string | boolean) => {
+      quoteForm.setValue(field as never, value as never, {
+        shouldDirty: true,
+        shouldValidate: quoteForm.formState.isSubmitted
+      });
+    },
+    [quoteForm]
+  );
+
+  const quoteEvidenceErrors: QuoteEvidenceErrors = useMemo(() => {
+    const errors = quoteForm.formState.errors;
+    const mapped: QuoteEvidenceErrors = {};
+
+    for (const field of EVIDENCE_BLOCK_FIELDS) {
+      const message = errors[field]?.message;
+
+      if (typeof message === "string") {
+        mapped[field] = message;
+      }
+    }
+
+    return mapped;
+  }, [quoteForm.formState.errors]);
+
+  const evidenceErrorCount = Object.keys(quoteEvidenceErrors).length;
+
+  const hasDirtyEvidenceField = EVIDENCE_BLOCK_FIELDS.some((field) => Boolean(quoteForm.formState.dirtyFields[field]));
+
+  const showQuoteEvidenceClassification = shouldShowEvidenceClassification({
+    hasDirtyEvidenceField,
+    pendingFileCount: pendingQuoteAttachmentFiles.length,
+    linkedAttachmentCount: quoteLinkedAttachmentCount,
+    isEditing: Boolean(editingQuoteId),
+    submitFailed: quoteSubmitFailed
+  });
+
+  const showQuoteAttachmentBlock = shouldShowAttachmentBlock({
+    evidenceType,
+    pendingFileCount: pendingQuoteAttachmentFiles.length,
+    linkedAttachmentCount: quoteLinkedAttachmentCount
+  });
+
+  const quoteAttachmentOrphaned = hasOrphanPendingAttachment({
+    evidenceType,
+    pendingFileCount: pendingQuoteAttachmentFiles.length
+  });
+
+  // Auto-open: o handler de submit invalido abre o bloco e marca o campo alvo; o foco so' pode
+  // acontecer DEPOIS do render que tirou o `hidden` — elemento com display:none nao foca.
+  useEffect(() => {
+    if (!evidenceBlockOpen || !pendingEvidenceFocus) {
+      return;
+    }
+
+    const target = evidenceBlockRef.current?.querySelector<HTMLElement>(`[name="${pendingEvidenceFocus}"]`);
+
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+
+    setPendingEvidenceFocus(null);
+  }, [evidenceBlockOpen, pendingEvidenceFocus]);
+
+  const submitQuote = quoteForm.handleSubmit(
+    (values) => {
+      setQuoteSubmitFailed(false);
+      saveMutation.mutate(values);
+    },
+    (errors) => {
+      setQuoteSubmitFailed(true);
+      const firstInvalid = getFirstEvidenceFieldError(errors);
+
+      if (firstInvalid) {
+        setEvidenceBlockOpen(true);
+        setPendingEvidenceFocus(firstInvalid);
+      }
+    }
+  );
+
+  function resetEvidenceBlockState() {
+    setEvidenceBlockOpen(false);
+    setPendingEvidenceFocus(null);
+    setQuoteSubmitFailed(false);
+  }
+
   function clearQuoteTemporaryState(request: PurchaseRequestDetail | null = selectedRequest) {
     setQuoteFormOpen(false);
+    resetEvidenceBlockState();
     setEditingQuoteId(null);
     setError("");
     setAttachmentMessage("");
@@ -446,6 +577,7 @@ export function PurchaseQuotesClient() {
     const nextValues = buildDefaultQuoteForm(selectedRequest);
     setEditingQuoteId(null);
     setQuoteFormOpen(true);
+    resetEvidenceBlockState();
     setError("");
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
@@ -461,6 +593,7 @@ export function PurchaseQuotesClient() {
     const nextValues = buildEditQuoteForm(quote);
     setEditingQuoteId(quote.id);
     setQuoteFormOpen(true);
+    resetEvidenceBlockState();
     setError("");
     setPendingQuoteAttachmentFiles([]);
     setPendingQuoteAttachmentDescription("");
@@ -915,6 +1048,45 @@ export function PurchaseQuotesClient() {
   );
   const negotiationDiscountAmount = negotiationPreviousTotal - negotiationNewTotalPreview;
   const negotiationDiscountPercent = negotiationPreviousTotal > 0 ? (negotiationDiscountAmount / negotiationPreviousTotal) * 100 : 0;
+  const negotiationEvidenceValues: QuoteEvidenceValues = useMemo(
+    () => ({
+      quoteSourceType: negotiationForm.quoteSourceType,
+      evidenceType: negotiationForm.evidenceType,
+      sourceContactName: negotiationForm.sourceContactName,
+      sourceContactChannel: negotiationForm.sourceContactChannel,
+      sourceReference: negotiationForm.sourceReference,
+      sourceUrl: negotiationForm.sourceUrl,
+      sourceNotes: negotiationForm.sourceNotes,
+      evidenceMissingReason: negotiationForm.evidenceMissingReason,
+      emergencyReason: negotiationForm.emergencyReason,
+      regularizationDeadline: negotiationForm.regularizationDeadline,
+      isVerbalQuote: negotiationForm.isVerbalQuote,
+      isEmergencyQuote: negotiationForm.isEmergencyQuote,
+      regularizationRequired: negotiationForm.regularizationRequired
+    }),
+    [negotiationForm]
+  );
+
+  // A negociacao usa estado plano e NAO valida estes campos (schema so' checa validUntil).
+  // Por isso o componente recebe `errors` undefined: comportamento identico ao de antes.
+  const updateNegotiationEvidenceField = useCallback(
+    (field: keyof QuoteEvidenceValues, value: string | boolean) => {
+      updateNegotiationField(field as never, value as never);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const showNegotiationAttachmentBlock = shouldShowAttachmentBlock({
+    evidenceType: negotiationForm.evidenceType,
+    pendingFileCount: pendingNegotiationAttachmentFiles.length
+  });
+
+  const negotiationAttachmentOrphaned = hasOrphanPendingAttachment({
+    evidenceType: negotiationForm.evidenceType,
+    pendingFileCount: pendingNegotiationAttachmentFiles.length
+  });
+
   const negotiationEvidenceClassification = useMemo(
     () => classifyPurchaseQuoteEvidence(buildEvidenceClassificationInput(negotiationForm, pendingNegotiationAttachmentFiles.length > 0)),
     [negotiationForm, pendingNegotiationAttachmentFiles.length]
@@ -1823,169 +1995,82 @@ export function PurchaseQuotesClient() {
                           </section>
 
                           <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="space-y-1">
-                                <h4 className="text-sm font-semibold">Origem e Evidência da Cotação</h4>
-                                <p className="text-xs text-muted-foreground">Registre como a proposta foi recebida e anexe a evidência correspondente.</p>
-                              </div>
-                              <StatusBadge status={negotiationEvidenceClassification.severity} label={negotiationEvidenceClassification.label} />
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-semibold">Origem e Evidência da Cotação</h4>
+                              <p className="text-xs text-muted-foreground">Registre como a proposta foi recebida e anexe a evidência correspondente.</p>
                             </div>
-                            <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
-                              <p className="text-muted-foreground">
-                                <span className="font-medium text-foreground">Motivo:</span> {negotiationEvidenceClassification.reason}
-                              </p>
-                              {negotiationEvidenceClassification.alerts.length ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {negotiationEvidenceClassification.alerts.map((warning) => (
-                                    <StatusBadge key={warning} status={negotiationEvidenceClassification.severity === "danger" ? "danger" : "warning"} label={warning} />
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="grid min-w-0 gap-4 xl:grid-cols-3">
-                              <Field label="Origem da cotação">
-                                <select
-                                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                                  value={negotiationForm.quoteSourceType}
-                                  onChange={(event) => updateNegotiationField("quoteSourceType", event.target.value as PurchaseQuoteSourceType)}
-                                >
-                                  {quoteSourceTypeOptions.map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
-                                  ))}
-                                </select>
-                              </Field>
-                              <Field label="Tipo de evidência">
-                                <select
-                                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                                  value={negotiationForm.evidenceType}
-                                  onChange={(event) => updateNegotiationField("evidenceType", event.target.value as PurchaseQuoteEvidenceType)}
-                                >
-                                  {evidenceTypeOptions.map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
-                                  ))}
-                                </select>
-                              </Field>
-                              {negotiationForm.quoteSourceType !== "formal_proposal" && negotiationForm.quoteSourceType !== "website_catalog" ? (
-                                <Field label={negotiationForm.quoteSourceType === "in_person" ? "Contato/atendente" : "Nome do contato"}>
-                                  <TextInput value={negotiationForm.sourceContactName} onChange={(event) => updateNegotiationField("sourceContactName", event.target.value)} />
-                                </Field>
-                              ) : null}
-                              {(negotiationForm.quoteSourceType === "phone_call" || negotiationForm.quoteSourceType === "other") ? (
-                                <Field label="Canal de contato">
-                                  <select
-                                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                                    value={negotiationForm.sourceContactChannel}
-                                    onChange={(event) => updateNegotiationField("sourceContactChannel", event.target.value as PurchaseQuoteSourceContactChannel | "")}
-                                  >
-                                  <option value="">Não informado</option>
-                                  {sourceContactChannelOptions.map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
-                                  ))}
-                                  </select>
-                                </Field>
-                              ) : null}
-                              {negotiationForm.quoteSourceType !== "phone_call" && negotiationForm.quoteSourceType !== "in_person" ? (
-                                <Field label={negotiationForm.quoteSourceType === "whatsapp" ? "Telefone/WhatsApp ou referência" : "Referência externa"}>
-                                  <TextInput value={negotiationForm.sourceReference} onChange={(event) => updateNegotiationField("sourceReference", event.target.value)} placeholder="Ex.: e-mail, protocolo, mensagem" />
-                                </Field>
-                              ) : null}
-                              {negotiationForm.quoteSourceType === "website_catalog" ? (
-                                <Field label="URL da origem" className="xl:col-span-2">
-                                  <TextInput value={negotiationForm.sourceUrl} onChange={(event) => updateNegotiationField("sourceUrl", event.target.value)} placeholder="https://..." />
-                                </Field>
-                              ) : null}
-                              {negotiationForm.quoteSourceType === "emergency" || negotiationForm.regularizationRequired ? (
-                                <Field label="Prazo de regularização">
-                                  <TextInput type="date" value={negotiationForm.regularizationDeadline} onChange={(event) => updateNegotiationField("regularizationDeadline", event.target.value)} />
-                                </Field>
-                              ) : null}
-                              <Field label="Observações da origem" className="xl:col-span-3">
-                                <TextArea rows={3} value={negotiationForm.sourceNotes} onChange={(event) => updateNegotiationField("sourceNotes", event.target.value)} />
-                              </Field>
-                              {(negotiationForm.evidenceType === "none" || negotiationEvidenceClassification.requiresJustification) ? (
-                                <Field label="Motivo da ausência de evidência" className="xl:col-span-3">
-                                  <TextArea rows={3} value={negotiationForm.evidenceMissingReason} onChange={(event) => updateNegotiationField("evidenceMissingReason", event.target.value)} />
-                                </Field>
-                              ) : null}
-                              {(negotiationForm.isEmergencyQuote || negotiationForm.quoteSourceType === "emergency") ? (
-                                <Field label="Motivo da emergência" className="xl:col-span-3">
-                                  <TextArea rows={3} value={negotiationForm.emergencyReason} onChange={(event) => updateNegotiationField("emergencyReason", event.target.value)} />
-                                </Field>
-                              ) : null}
-                            </div>
-
-                            <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                              <Field label="Cotação verbal?" className="flex items-center gap-2">
-                                <input type="checkbox" className="h-4 w-4 rounded border-input" checked={negotiationForm.isVerbalQuote} onChange={(event) => updateNegotiationField("isVerbalQuote", event.target.checked)} />
-                                <span className="text-muted-foreground">Sem proposta formal escrita</span>
-                              </Field>
-                              <Field label="Cotação emergencial?" className="flex items-center gap-2">
-                                <input type="checkbox" className="h-4 w-4 rounded border-input" checked={negotiationForm.isEmergencyQuote} onChange={(event) => updateNegotiationField("isEmergencyQuote", event.target.checked)} />
-                                <span className="text-muted-foreground">Compra sensível ao tempo</span>
-                              </Field>
-                              <Field label="Exige regularização?" className="flex items-center gap-2">
-                                <input type="checkbox" className="h-4 w-4 rounded border-input" checked={negotiationForm.regularizationRequired} onChange={(event) => updateNegotiationField("regularizationRequired", event.target.checked)} />
-                                <span className="text-muted-foreground">Documentar depois</span>
-                              </Field>
-                            </div>
-                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-                              {getEvidenceUploadHint(negotiationForm.quoteSourceType)}
-                            </div>
-                            <div className="space-y-3 rounded-md border bg-background p-3">
-                              <div className="space-y-1">
-                                <h5 className="text-sm font-semibold">Evidências da cotação</h5>
-                                <p className="text-xs text-muted-foreground">Os arquivos serão enviados e vinculados à nova proposta após salvar.</p>
-                              </div>
-                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                                <Field label="Descrição opcional">
-                                  <TextInput
-                                    value={pendingNegotiationAttachmentDescription}
-                                    onChange={(event) => setPendingNegotiationAttachmentDescription(event.target.value)}
-                                    placeholder="Ex.: Print da conversa, proposta comercial"
-                                  />
-                                </Field>
-                                <Field label="Arquivos de evidência">
-                                  <Input
-                                    type="file"
-                                    multiple
-                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                                    onChange={(event) => {
-                                      setError("");
-                                      setAttachmentMessage("");
-                                      setPendingNegotiationAttachmentFiles(Array.from(event.target.files ?? []));
-                                    }}
-                                  />
-                                </Field>
-                              </div>
-                              {pendingNegotiationAttachmentFiles.length ? (
-                                <div className="rounded-md border bg-muted/20 p-3">
-                                  <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
-                                  <ul className="mt-2 space-y-1 text-sm">
-                                    {pendingNegotiationAttachmentFiles.map((file, index) => (
-                                      <li key={`${file.name}-${file.size}-${index}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                                        <Paperclip className="h-4 w-4" />
-                                        <span className="font-medium text-foreground">{file.name}</span>
-                                        <span>{formatFileSize(file.size)}</span>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => setPendingNegotiationAttachmentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
-                                        >
-                                          Remover
-                                        </Button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-                              {negotiationEvidenceClassification.requiresAttachment ? (
-                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                  Arquivo obrigatório para esta classificação. Se não houver documento, registre uma justificativa consistente.
-                                </div>
-                              ) : null}
-                            </div>
+                            <QuoteEvidenceFields
+                              values={negotiationEvidenceValues}
+                              onChange={updateNegotiationEvidenceField}
+                              classification={negotiationEvidenceClassification}
+                              showClassification
+                              testIdPrefix="negociacao"
+                              attachmentSlot={
+                                showNegotiationAttachmentBlock ? (
+                                  <div className="space-y-3">
+                                    {negotiationAttachmentOrphaned ? (
+                                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                        Este tipo de evidência não usa arquivo. Remova os arquivos selecionados ou volte para um tipo que aceite anexo.
+                                      </div>
+                                    ) : null}
+                      <div className="space-y-3 rounded-md border bg-background p-3">
+                                                    <div className="space-y-1">
+                                                      <h5 className="text-sm font-semibold">Evidências da cotação</h5>
+                                                      <p className="text-xs text-muted-foreground">Os arquivos serão enviados e vinculados à nova proposta após salvar.</p>
+                                                    </div>
+                                                    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                                      <Field label="Descrição opcional">
+                                                        <TextInput
+                                                          value={pendingNegotiationAttachmentDescription}
+                                                          onChange={(event) => setPendingNegotiationAttachmentDescription(event.target.value)}
+                                                          placeholder="Ex.: Print da conversa, proposta comercial"
+                                                        />
+                                                      </Field>
+                                                      <Field label="Arquivos de evidência">
+                                                        <Input
+                                                          type="file"
+                                                          multiple
+                                                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                                          onChange={(event) => {
+                                                            setError("");
+                                                            setAttachmentMessage("");
+                                                            setPendingNegotiationAttachmentFiles(Array.from(event.target.files ?? []));
+                                                          }}
+                                                        />
+                                                      </Field>
+                                                    </div>
+                                                    {pendingNegotiationAttachmentFiles.length ? (
+                                                      <div className="rounded-md border bg-muted/20 p-3">
+                                                        <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
+                                                        <ul className="mt-2 space-y-1 text-sm">
+                                                          {pendingNegotiationAttachmentFiles.map((file, index) => (
+                                                            <li key={`${file.name}-${file.size}-${index}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                                                              <Paperclip className="h-4 w-4" />
+                                                              <span className="font-medium text-foreground">{file.name}</span>
+                                                              <span>{formatFileSize(file.size)}</span>
+                                                              <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => setPendingNegotiationAttachmentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                                                              >
+                                                                Remover
+                                                              </Button>
+                                                            </li>
+                                                          ))}
+                                                        </ul>
+                                                      </div>
+                                                    ) : null}
+                                                    {negotiationEvidenceClassification.requiresAttachment ? (
+                                                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                                        Arquivo obrigatório para esta classificação. Se não houver documento, registre uma justificativa consistente.
+                                                      </div>
+                                                    ) : null}
+                                                  </div>
+                                  </div>
+                                ) : null
+                              }
+                            />
                           </section>
 
                           <ErrorMessage message={error} />
@@ -2035,7 +2120,7 @@ export function PurchaseQuotesClient() {
                       </div>
 
                       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-                        <form className="space-y-4" onSubmit={quoteForm.handleSubmit((values) => saveMutation.mutate(values))}>
+                        <form className="space-y-4" onSubmit={submitQuote}>
                           {!availableSuppliers.length ? (
                             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                               <p>Nenhum fornecedor ativo disponível. Cadastre um fornecedor antes de registrar cotações.</p>
@@ -2202,180 +2287,6 @@ export function PurchaseQuotesClient() {
                           <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div className="space-y-1">
-                                <h4 className="text-sm font-semibold">Origem e Evidência da Cotação</h4>
-                                <p className="text-xs text-muted-foreground">Informe os fatos da origem; a classificação documental é calculada pelo sistema.</p>
-                              </div>
-                              <StatusBadge status={quoteEvidenceClassification.severity} label={quoteEvidenceClassification.label} />
-                            </div>
-                            <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-                              <div>
-                                <span className="font-medium text-foreground">Classificação documental: {quoteEvidenceClassification.label}</span>
-                                <p className="mt-1 text-xs text-muted-foreground">Motivo: {quoteEvidenceClassification.reason}</p>
-                              </div>
-                              {quoteEvidenceClassification.alerts.length ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {quoteEvidenceClassification.alerts.map((alert) => (
-                                    <StatusBadge key={alert} status={quoteEvidenceClassification.severity === "danger" ? "danger" : "warning"} label={alert} />
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="grid min-w-0 gap-4 xl:grid-cols-3">
-                              <Field label="Origem da cotação">
-                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" data-testid="cotacao-origem" {...quoteForm.register("quoteSourceType")}>
-                                  {quoteSourceTypeOptions.map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
-                                  ))}
-                                </select>
-                                <FieldError message={quoteForm.formState.errors.quoteSourceType?.message} />
-                              </Field>
-                              <Field label="Tipo de evidência">
-                                <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" data-testid="cotacao-tipo-evidencia" {...quoteForm.register("evidenceType")}>
-                                  {evidenceTypeOptions.map(([value, label]) => (
-                                    <option key={value} value={value}>{label}</option>
-                                  ))}
-                                </select>
-                                <FieldError message={quoteForm.formState.errors.evidenceType?.message} />
-                              </Field>
-                              {quoteSourceType !== "formal_proposal" && quoteSourceType !== "website_catalog" ? (
-                                <Field label={quoteSourceType === "in_person" ? "Contato/atendente" : "Nome do contato"}>
-                                  <TextInput {...quoteForm.register("sourceContactName")} />
-                                  <FieldError message={quoteForm.formState.errors.sourceContactName?.message} />
-                                </Field>
-                              ) : null}
-                              {(quoteSourceType === "phone_call" || quoteSourceType === "other") ? (
-                                <Field label="Canal de contato">
-                                  <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...quoteForm.register("sourceContactChannel")}>
-                                    <option value="">Não informado</option>
-                                    {sourceContactChannelOptions.map(([value, label]) => (
-                                      <option key={value} value={value}>{label}</option>
-                                    ))}
-                                  </select>
-                                  <FieldError message={quoteForm.formState.errors.sourceContactChannel?.message} />
-                                </Field>
-                              ) : null}
-                              {quoteSourceType !== "phone_call" && quoteSourceType !== "in_person" ? (
-                                <Field label={quoteSourceType === "whatsapp" ? "Telefone/WhatsApp ou referência" : "Referência externa"}>
-                                  <TextInput placeholder="Ex.: e-mail, protocolo, mensagem" {...quoteForm.register("sourceReference")} />
-                                </Field>
-                              ) : null}
-                              {quoteSourceType === "website_catalog" ? (
-                                <Field label="URL da origem" className="xl:col-span-2">
-                                  <TextInput placeholder="https://..." {...quoteForm.register("sourceUrl")} />
-                                  <FieldError message={quoteForm.formState.errors.sourceUrl?.message} />
-                                </Field>
-                              ) : null}
-                              {(quoteSourceType === "emergency" || regularizationRequired) ? (
-                                <Field label="Prazo de regularização">
-                                  <TextInput type="date" {...quoteForm.register("regularizationDeadline")} />
-                                </Field>
-                              ) : null}
-                              <Field label="Observações da origem" className="xl:col-span-3">
-                                <TextArea rows={3} {...quoteForm.register("sourceNotes")} />
-                                <FieldError message={quoteForm.formState.errors.sourceNotes?.message} />
-                              </Field>
-                              {(evidenceType === "none" || quoteEvidenceClassification.requiresJustification) ? (
-                                <Field label="Justificativa da evidência frágil ou ausente" className="xl:col-span-3">
-                                  <TextArea rows={3} {...quoteForm.register("evidenceMissingReason")} />
-                                  <FieldError message={quoteForm.formState.errors.evidenceMissingReason?.message} />
-                                </Field>
-                              ) : null}
-                              {(isEmergencyQuote || quoteSourceType === "emergency") ? (
-                                <Field label="Motivo da emergência" className="xl:col-span-3">
-                                  <TextArea rows={3} {...quoteForm.register("emergencyReason")} />
-                                  <FieldError message={quoteForm.formState.errors.emergencyReason?.message} />
-                                </Field>
-                              ) : null}
-                            </div>
-
-                            <div className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                              <Field label="Cotação verbal?" className="flex items-center gap-2">
-                                <input type="checkbox" className="h-4 w-4 rounded border-input" {...quoteForm.register("isVerbalQuote")} />
-                                <span className="text-muted-foreground">Sem proposta formal escrita</span>
-                              </Field>
-                              <Field label="Cotação emergencial?" className="flex items-center gap-2">
-                                <input type="checkbox" className="h-4 w-4 rounded border-input" {...quoteForm.register("isEmergencyQuote")} />
-                                <span className="text-muted-foreground">Compra sensível ao tempo</span>
-                              </Field>
-                              <Field label="Exige regularização?" className="flex items-center gap-2">
-                                <input type="checkbox" className="h-4 w-4 rounded border-input" {...quoteForm.register("regularizationRequired")} />
-                                <span className="text-muted-foreground">Documentar depois</span>
-                              </Field>
-                            </div>
-                            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-                              {getEvidenceUploadHint(quoteSourceType)}
-                            </div>
-                            <div className="space-y-3 rounded-md border bg-background p-3">
-                              <div className="space-y-1">
-                                <h5 className="text-sm font-semibold">Evidências da cotação</h5>
-                                <p className="text-xs text-muted-foreground">
-                                  {editingQuoteId ? "Arquivos selecionados serão enviados ao salvar a edição." : "Os arquivos serão enviados após salvar a cotação."}
-                                </p>
-                              </div>
-
-                              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                                <Field label="Descrição opcional">
-                                  <TextInput
-                                    value={pendingQuoteAttachmentDescription}
-                                    onChange={(event) => setPendingQuoteAttachmentDescription(event.target.value)}
-                                    placeholder="Ex.: Proposta comercial, print da conversa"
-                                  />
-                                </Field>
-                                <Field label="Arquivos de evidência">
-                                  <Input
-                                    type="file"
-                                    multiple
-                                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                                    onChange={(event) => {
-                                      setError("");
-                                      setAttachmentMessage("");
-                                      setPendingQuoteAttachmentFiles(Array.from(event.target.files ?? []));
-                                    }}
-                                  />
-                                </Field>
-                              </div>
-
-                              {pendingQuoteAttachmentFiles.length ? (
-                                <div className="rounded-md border bg-muted/20 p-3">
-                                  <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
-                                  <ul className="mt-2 space-y-1 text-sm">
-                                    {pendingQuoteAttachmentFiles.map((file, index) => (
-                                      <li key={`${file.name}-${file.size}-${index}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                                        <Paperclip className="h-4 w-4" />
-                                        <span className="font-medium text-foreground">{file.name}</span>
-                                        <span>{formatFileSize(file.size)}</span>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => setPendingQuoteAttachmentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
-                                        >
-                                          Remover
-                                        </Button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              ) : null}
-
-                              {editingQuoteId && (attachmentsByQuoteId[editingQuoteId] ?? []).length ? (
-                                <p className="text-xs text-muted-foreground">
-                                  Anexos já vinculados: {(attachmentsByQuoteId[editingQuoteId] ?? []).length}
-                                </p>
-                              ) : null}
-
-                              {quoteEvidenceClassification.requiresAttachment ? (
-                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                  Arquivo obrigatório para este tipo de evidência. Se não houver documento, registre uma justificativa antes de enviar para aprovação.
-                                </div>
-                              ) : null}
-                            </div>
-                          </section>
-
-                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="space-y-1">
                                 <h4 className="text-sm font-semibold">Itens cotados</h4>
                                 <p className="text-xs text-muted-foreground">Cada item recebe o valor unitário proposto pelo fornecedor.</p>
                               </div>
@@ -2488,6 +2399,118 @@ export function PurchaseQuotesClient() {
                             </div>
                           </section>
 
+                          <section className="space-y-3 rounded-lg border bg-card p-3 shadow-sm">
+                            <button
+                              type="button"
+                              className="flex w-full flex-col gap-2 text-left sm:flex-row sm:items-start sm:justify-between"
+                              onClick={() => setEvidenceBlockOpen((current) => !current)}
+                              aria-expanded={evidenceBlockOpen}
+                              data-testid="cotacao-detalhes-evidencia-toggle"
+                            >
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-semibold">Detalhes da origem e evidência</h4>
+                                <p className="text-xs text-muted-foreground">Origem, evidência e exceções. Só é preciso abrir quando a cotação foge do padrão.</p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {evidenceErrorCount ? (
+                                  <StatusBadge status="danger" label={evidenceErrorCount === 1 ? "1 campo a revisar" : `${evidenceErrorCount} campos a revisar`} />
+                                ) : null}
+                                {showQuoteEvidenceClassification ? (
+                                  <StatusBadge status={quoteEvidenceClassification.severity} label={quoteEvidenceClassification.label} />
+                                ) : (
+                                  <StatusBadge status="info" label="A classificar" />
+                                )}
+                                <span className="text-xs font-medium text-primary">{evidenceBlockOpen ? "Ocultar" : "Detalhar"}</span>
+                              </div>
+                            </button>
+
+                            <div ref={evidenceBlockRef} className={evidenceBlockOpen ? "space-y-3" : "hidden"} data-testid="cotacao-detalhes-evidencia">
+                              <QuoteEvidenceFields
+                                values={quoteEvidenceValues}
+                                onChange={updateQuoteEvidenceField}
+                                errors={quoteEvidenceErrors}
+                                classification={quoteEvidenceClassification}
+                                showClassification={showQuoteEvidenceClassification}
+                                testIdPrefix="cotacao"
+                                attachmentSlot={
+                                  showQuoteAttachmentBlock ? (
+                                    <div className="space-y-3">
+                                      {quoteAttachmentOrphaned ? (
+                                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                          Este tipo de evidência não usa arquivo. Remova os arquivos selecionados ou volte para um tipo que aceite anexo — enquanto houver arquivo pendente, este bloco continua visível.
+                                        </div>
+                                      ) : null}
+                                                    <div className="space-y-1">
+                                                      <h5 className="text-sm font-semibold">Evidências da cotação</h5>
+                                                      <p className="text-xs text-muted-foreground">
+                                                        {editingQuoteId ? "Arquivos selecionados serão enviados ao salvar a edição." : "Os arquivos serão enviados após salvar a cotação."}
+                                                      </p>
+                                                    </div>
+
+                                                    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                                      <Field label="Descrição opcional">
+                                                        <TextInput
+                                                          value={pendingQuoteAttachmentDescription}
+                                                          onChange={(event) => setPendingQuoteAttachmentDescription(event.target.value)}
+                                                          placeholder="Ex.: Proposta comercial, print da conversa"
+                                                        />
+                                                      </Field>
+                                                      <Field label="Arquivos de evidência">
+                                                        <Input
+                                                          type="file"
+                                                          multiple
+                                                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                                          onChange={(event) => {
+                                                            setError("");
+                                                            setAttachmentMessage("");
+                                                            setPendingQuoteAttachmentFiles(Array.from(event.target.files ?? []));
+                                                          }}
+                                                        />
+                                                      </Field>
+                                                    </div>
+
+                                                    {pendingQuoteAttachmentFiles.length ? (
+                                                      <div className="rounded-md border bg-muted/20 p-3">
+                                                        <p className="text-xs font-semibold uppercase text-muted-foreground">Selecionados</p>
+                                                        <ul className="mt-2 space-y-1 text-sm">
+                                                          {pendingQuoteAttachmentFiles.map((file, index) => (
+                                                            <li key={`${file.name}-${file.size}-${index}`} className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                                                              <Paperclip className="h-4 w-4" />
+                                                              <span className="font-medium text-foreground">{file.name}</span>
+                                                              <span>{formatFileSize(file.size)}</span>
+                                                              <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => setPendingQuoteAttachmentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                                                              >
+                                                                Remover
+                                                              </Button>
+                                                            </li>
+                                                          ))}
+                                                        </ul>
+                                                      </div>
+                                                    ) : null}
+
+                                                    {editingQuoteId && (attachmentsByQuoteId[editingQuoteId] ?? []).length ? (
+                                                      <p className="text-xs text-muted-foreground">
+                                                        Anexos já vinculados: {(attachmentsByQuoteId[editingQuoteId] ?? []).length}
+                                                      </p>
+                                                    ) : null}
+
+                                                    {quoteEvidenceClassification.requiresAttachment ? (
+                                                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                                        Arquivo obrigatório para este tipo de evidência. Se não houver documento, registre uma justificativa antes de enviar para aprovação.
+                                                      </div>
+                                                    ) : null}
+                                    </div>
+                                  ) : null
+                                }
+                              />
+                            </div>
+                          </section>
+
+
                           <ErrorMessage message={error} />
                         </form>
                       </div>
@@ -2501,7 +2524,7 @@ export function PurchaseQuotesClient() {
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           {canManageQuotes ? (
-                            <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={quoteForm.handleSubmit((values) => saveMutation.mutate(values))} data-testid="cotacao-salvar">
+                            <Button type="button" disabled={saveMutation.isPending || !availableSuppliers.length} onClick={submitQuote} data-testid="cotacao-salvar">
                               <Pencil className="h-4 w-4" />
                               Salvar cotação
                             </Button>

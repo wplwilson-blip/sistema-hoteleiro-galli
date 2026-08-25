@@ -474,11 +474,14 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     });
   }
 
-  if (value.isVerbalQuote && !value.sourceNotes) {
+  // M2-b (docs/codex/60): nos ramos verbais a justificativa da evidência é o campo único
+  // obrigatório. `sourceNotes` continua sendo persistido, mas só é exigido quando não houver
+  // justificativa registrada — evita pedir o mesmo relato em dois campos adjacentes.
+  if (value.isVerbalQuote && !value.sourceNotes && !value.evidenceMissingReason) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceNotes"],
-      message: "Registre a observação da cotação verbal."
+      message: "Registre a observação da cotação verbal ou a justificativa da evidência."
     });
   }
 
@@ -499,11 +502,11 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
       });
     }
 
-    if (!value.sourceNotes) {
+    if (!value.sourceNotes && !value.evidenceMissingReason) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["sourceNotes"],
-        message: "Registre a observação da ligação."
+        message: "Registre a observação da ligação ou a justificativa da evidência."
       });
     }
 
@@ -516,11 +519,11 @@ function validatePurchaseQuoteForm(value: z.infer<typeof purchaseQuoteFormBaseSc
     }
   }
 
-  if (value.quoteSourceType === "in_person" && !value.sourceNotes && !value.sourceContactName) {
+  if (value.quoteSourceType === "in_person" && !value.sourceNotes && !value.sourceContactName && !value.evidenceMissingReason) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["sourceNotes"],
-      message: "Informe uma observação ou contato para cotação presencial."
+      message: "Informe uma observação, contato ou justificativa para cotação presencial."
     });
   }
 
