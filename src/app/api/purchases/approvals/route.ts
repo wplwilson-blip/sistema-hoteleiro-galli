@@ -4,7 +4,7 @@ import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, getPurchaseApprovalLevelLabel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import { getPurchasePriorityLabel, getPurchaseRequestStatusLabel, getPurchaseRequestTypeLabel, getPurchaseUnitOfMeasureLabel, type PurchaseUnitOfMeasure } from "@/lib/purchases/schemas";
-import { getPurchaseQuoteStatusLabel, getPurchaseQuoteStatusTone } from "@/lib/purchases/quote-schemas";
+import { getPurchaseQuoteStatusLabel, getPurchaseQuoteStatusTone, readHasCriticalEvidence } from "@/lib/purchases/quote-schemas";
 import { ATTACHMENTS_BUCKET, createSignedAttachmentUrl, mapAttachment, type AttachmentRow } from "@/lib/attachments/api";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -123,6 +123,8 @@ type SnapshotQuoteEvidence = {
   documentaryClassificationLabel?: string | null;
   documentaryClassificationSeverity?: string | null;
   documentaryClassificationReason?: string | null;
+  hasCriticalEvidence?: boolean | null;
+  /** @deprecated nome antigo, mantido só para ler snapshots anteriores a docs/codex/59. */
   requiresDirectorApproval?: boolean | null;
   auditAlerts?: string[];
 };
@@ -344,7 +346,9 @@ async function mapSnapshotQuote(supabase: SupabaseAdmin, quote: SnapshotQuote | 
     paymentTerms: quote.paymentTerms ?? "",
     isSelected: Boolean(quote.isSelected),
     statusLabel: quote.statusLabel ?? quote.status ?? "",
-    evidence: quote.evidence ?? null,
+    evidence: quote.evidence
+      ? { ...quote.evidence, hasCriticalEvidence: readHasCriticalEvidence(quote.evidence) }
+      : null,
     attachments
   };
 }

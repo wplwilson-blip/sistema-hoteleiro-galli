@@ -57,7 +57,7 @@ export type PurchaseQuoteEvidenceClassification = {
   requiresAttachment: boolean;
   requiresJustification: boolean;
   hasFormalEvidence: boolean;
-  requiresDirectorApproval: boolean;
+  hasCriticalEvidence: boolean;
   reason: string;
 };
 
@@ -264,7 +264,7 @@ export function classifyPurchaseQuoteEvidence(input: PurchaseQuoteEvidenceClassi
   }
 
   if (status === "critical") {
-    alerts.push("Evidência crítica: aprovação restrita à Diretoria.");
+    alerts.push("Evidência frágil — exige justificativa.");
   }
 
   return {
@@ -275,9 +275,34 @@ export function classifyPurchaseQuoteEvidence(input: PurchaseQuoteEvidenceClassi
     requiresAttachment: !hasAttachment && status !== "formal_sufficient",
     requiresJustification: status === "fragile" || status === "critical",
     hasFormalEvidence: status === "formal_sufficient",
-    requiresDirectorApproval: status === "critical",
+    hasCriticalEvidence: status === "critical",
     reason
   };
+}
+
+/**
+ * Lê o sinal de evidência crítica de um snapshot já gravado.
+ * Snapshots anteriores a docs/codex/59 usam os nomes antigos
+ * (`requiresDirectorApproval` na cotação, `requiresDirectorApprovalByEvidence` no bloco de aprovação).
+ * O conceito é o mesmo — muda só o nome, que antes sugeria roteamento de alçada.
+ */
+export function readHasCriticalEvidence(
+  source:
+    | {
+        hasCriticalEvidence?: boolean | null;
+        requiresDirectorApproval?: boolean | null;
+        requiresDirectorApprovalByEvidence?: boolean | null;
+      }
+    | null
+    | undefined
+) {
+  if (!source) {
+    return false;
+  }
+
+  return Boolean(
+    source.hasCriticalEvidence ?? source.requiresDirectorApproval ?? source.requiresDirectorApprovalByEvidence
+  );
 }
 
 export function getPurchaseQuoteEvidenceConfidenceFromClassification(status: PurchaseQuoteDocumentaryClassification): PurchaseQuoteEvidenceConfidence {

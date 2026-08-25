@@ -4,7 +4,6 @@ import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculateWinningQuoteApprovalFlags, getPurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import {
-  classifyPurchaseQuoteEvidence,
   type PurchaseQuoteEvidenceType,
   type PurchaseQuoteSourceContactChannel,
   type PurchaseQuoteSourceType
@@ -117,38 +116,9 @@ export async function POST(_request: Request, { params }: { params: { requestId:
 
     const total = toNumber(selectedQuote.total_amount);
     const requestFlags = calculateWinningQuoteApprovalFlags(total);
-    const { data: attachmentRows, error: attachmentError } = await supabase
-      .from("attachments")
-      .select("id")
-      .eq("module", "purchases")
-      .eq("entity_type", "purchase_quote")
-      .eq("entity_id", selectedQuote.id)
-      .eq("status", "active")
-      .is("deleted_at", null)
-      .limit(1);
-
-    if (attachmentError) {
-      logBaseCadastroError("purchase_approvals.resubmit_attachment_lookup_failed", attachmentError);
-      return apiError("NÃ£o foi possÃ­vel validar os anexos da cotaÃ§Ã£o vencedora.", 500);
-    }
-
-    const evidenceClassification = classifyPurchaseQuoteEvidence({
-      quoteSourceType: selectedQuote.quote_source_type,
-      evidenceType: selectedQuote.evidence_type,
-      sourceContactName: selectedQuote.source_contact_name,
-      sourceContactChannel: selectedQuote.source_contact_channel,
-      sourceReference: selectedQuote.source_reference,
-      sourceUrl: selectedQuote.source_url,
-      sourceNotes: selectedQuote.source_notes,
-      evidenceMissingReason: selectedQuote.evidence_missing_reason,
-      isVerbalQuote: selectedQuote.is_verbal_quote,
-      isEmergencyQuote: selectedQuote.is_emergency_quote,
-      emergencyReason: selectedQuote.emergency_reason,
-      regularizationRequired: selectedQuote.regularization_required,
-      regularizationDeadline: selectedQuote.regularization_deadline,
-      hasAttachment: Boolean(attachmentRows?.length)
-    });
-    const approvalLevel = evidenceClassification.requiresDirectorApproval ? "general_directorate" : getPurchaseApprovalLevel(total);
+    // Alçada por valor é a única fonte da verdade (docs/codex/59). A classificação
+    // documental segue registrada no snapshot como selo de risco, mas não escala alçada.
+    const approvalLevel = getPurchaseApprovalLevel(total);
 
     try {
       await createPurchaseApprovalSnapshot({
@@ -166,8 +136,8 @@ export async function POST(_request: Request, { params }: { params: { requestId:
           totalApprovedAmount: total,
           quotationRequired: requestFlags.quotationRequired,
           requiredQuoteCount: requestFlags.requiredQuoteCount,
-          approvalRequired: requestFlags.approvalRequired || evidenceClassification.requiresDirectorApproval,
-          directorApprovalRequired: requestFlags.directorApprovalRequired || evidenceClassification.requiresDirectorApproval
+          approvalRequired: requestFlags.approvalRequired,
+          directorApprovalRequired: requestFlags.directorApprovalRequired
         },
         events: {
           submitEventType: isResubmission ? "purchase_resubmitted_for_approval" : "purchase_submitted_for_approval",
