@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   isPurchaseSelfApproval,
+  isPurchaseSelfSelectionApproval,
   type PurchaseApprovalDecision
 } from "../../src/lib/purchases/approval-segregation";
 
@@ -117,4 +118,79 @@ test("invariante: rejected e returned_to_purchases nunca bloqueiam", () => {
       }
     }
   }
+});
+
+// ============================================================ selecionador != aprovador (62)
+// Segregacao irma: quem marcou a cotacao vencedora nao aprova a compra. Mesmas 4 decisoes da
+// #3. `selected_by` vem da migration 082, gravado no ato da selecao pela RPC da 083.
+
+const CARLA = "user-carla";
+
+test("selecao: quem selecionou a vencedora nao aprova", () => {
+  expect(isPurchaseSelfSelectionApproval({ selectedBy: ANA, actorId: ANA, decision: "approved" })).toBe(true);
+});
+
+test("selecao: outra pessoa aprova normalmente", () => {
+  expect(isPurchaseSelfSelectionApproval({ selectedBy: ANA, actorId: BRUNO, decision: "approved" })).toBe(false);
+});
+
+test("selecao: so' bloqueia approved — reprovar e devolver seguem liberados para o selecionador", () => {
+  for (const decision of ["rejected", "returned_to_purchases"] as PurchaseApprovalDecision[]) {
+    expect(
+      isPurchaseSelfSelectionApproval({ selectedBy: ANA, actorId: ANA, decision }),
+      decision
+    ).toBe(false);
+  }
+});
+
+test("selecao: selected_by nulo NAO bloqueia (legado sem backfill da 082)", () => {
+  for (const selectedBy of [null, undefined, ""]) {
+    for (const decision of DECISIONS) {
+      expect(
+        isPurchaseSelfSelectionApproval({ selectedBy, actorId: ANA, decision }),
+        `selectedBy=${String(selectedBy)} decision=${decision}`
+      ).toBe(false);
+    }
+  }
+});
+
+test("selecao: invariante — so' bloqueia em (selected_by === actor) && approved", () => {
+  for (const decision of DECISIONS) {
+    for (const selectedBy of [ANA, BRUNO, null]) {
+      for (const actorId of [ANA, BRUNO]) {
+        const blocked = isPurchaseSelfSelectionApproval({ selectedBy, actorId, decision });
+        const shouldBlock = decision === "approved" && selectedBy !== null && selectedBy === actorId;
+        expect(blocked, `decision=${decision} selectedBy=${selectedBy} actor=${actorId}`).toBe(shouldBlock);
+      }
+    }
+  }
+});
+
+// Os dois guards sao independentes: aprovar exige NAO ser o solicitante E NAO ser o
+// selecionador. Esta matriz prova que um nao mascara nem substitui o outro.
+test("os dois guards sao independentes: aprovar exige nao ser nenhum dos dois papeis", () => {
+  const combinations = [
+    { name: "nem solicitou nem selecionou", requestedBy: BRUNO, selectedBy: CARLA, blocked: false },
+    { name: "solicitou, nao selecionou", requestedBy: ANA, selectedBy: CARLA, blocked: true },
+    { name: "nao solicitou, selecionou", requestedBy: BRUNO, selectedBy: ANA, blocked: true },
+    { name: "solicitou e selecionou", requestedBy: ANA, selectedBy: ANA, blocked: true }
+  ];
+
+  for (const combination of combinations) {
+    for (const decision of DECISIONS) {
+      const blockedBySelf = isPurchaseSelfApproval({ requestedBy: combination.requestedBy, actorId: ANA, decision });
+      const blockedBySelection = isPurchaseSelfSelectionApproval({ selectedBy: combination.selectedBy, actorId: ANA, decision });
+      const blocked = blockedBySelf || blockedBySelection;
+      const expected = decision === "approved" && combination.blocked;
+
+      expect(blocked, `${combination.name} / ${decision}`).toBe(expected);
+    }
+  }
+});
+
+// Regressao explicita: o guard novo nao altera o comportamento do guard da #3.
+test("regressao #3: isPurchaseSelfApproval nao muda com a chegada do guard de selecao", () => {
+  expect(isPurchaseSelfApproval({ requestedBy: ANA, actorId: ANA, decision: "approved" })).toBe(true);
+  expect(isPurchaseSelfApproval({ requestedBy: ANA, actorId: BRUNO, decision: "approved" })).toBe(false);
+  expect(isPurchaseSelfApproval({ requestedBy: null, actorId: ANA, decision: "approved" })).toBe(false);
 });
