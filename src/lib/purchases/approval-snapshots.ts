@@ -423,7 +423,7 @@ function mapQuote(
       documentaryClassificationLabel: classification.label,
       documentaryClassificationSeverity: classification.severity,
       documentaryClassificationReason: classification.reason,
-      requiresDirectorApproval: classification.requiresDirectorApproval,
+      hasCriticalEvidence: classification.hasCriticalEvidence,
       auditAlerts: classification.alerts
     },
     notes: row.notes,
@@ -658,7 +658,7 @@ export async function createPurchaseApprovalSnapshot(input: CreatePurchaseApprov
       ruleDescription: "Até R$ 200,00: Gerência Administrativa. Acima de R$ 200,00: Diretoria Geral.",
       level: approvalLevel,
       levelLabel: getPurchaseApprovalLevelLabel(approvalLevel),
-      requiresDirectorApprovalByEvidence: Boolean(selectedQuoteEvidence?.requiresDirectorApproval),
+      hasCriticalEvidence: Boolean(selectedQuoteEvidence?.hasCriticalEvidence),
       documentaryClassification: selectedQuoteEvidence?.documentaryClassification ?? null,
       documentaryClassificationLabel: selectedQuoteEvidence?.documentaryClassificationLabel ?? null,
       documentaryClassificationReason: selectedQuoteEvidence?.documentaryClassificationReason ?? null,

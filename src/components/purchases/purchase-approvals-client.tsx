@@ -56,7 +56,7 @@ type ApprovalQuoteEvidence = {
   documentaryClassificationLabel?: string | null;
   documentaryClassificationSeverity?: "success" | "info" | "warning" | "danger" | null;
   documentaryClassificationReason?: string | null;
-  requiresDirectorApproval?: boolean | null;
+  hasCriticalEvidence?: boolean | null;
   auditAlerts?: string[];
 };
 
@@ -220,7 +220,7 @@ function getApprovalEvidenceRisk(approval: ApprovalRecord) {
   if (
     evidences.some(
       (evidence) =>
-        evidence.requiresDirectorApproval ||
+        evidence.hasCriticalEvidence ||
         evidence.documentaryClassification === "critical" ||
         evidence.documentaryClassificationSeverity === "danger"
     )
@@ -228,7 +228,7 @@ function getApprovalEvidenceRisk(approval: ApprovalRecord) {
     return {
       tone: "danger" as const,
       label: "Evidência crítica",
-      description: "Atenção: este dossiê possui evidência documental crítica. Revise anexos, justificativas e alçada antes da decisão."
+      description: "Atenção: esta compra tem evidência documental crítica. Revise anexos e justificativa antes de decidir."
     };
   }
 
@@ -322,9 +322,9 @@ function QuoteBox({ title, quote, tone = "default" }: { title: string; quote: Ap
               {evidence.documentaryClassificationReason ? (
                 <p className="break-words">Motivo da classificação: <span className="text-foreground">{evidence.documentaryClassificationReason}</span></p>
               ) : null}
-              {evidence.requiresDirectorApproval ? (
+              {evidence.hasCriticalEvidence ? (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-900">
-                  Evidência crítica: aprovação restrita à Diretoria.
+                  Evidência crítica — exige justificativa registrada. Revise anexos e justificativa antes de decidir.
                 </div>
               ) : null}
               {evidence.sourceUrl ? (
