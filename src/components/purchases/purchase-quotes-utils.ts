@@ -609,3 +609,135 @@ export function getQuoteHighlight(quote: PurchaseQuoteRecord, isRecommendedQuote
 
   return null;
 }
+
+// ---------------------------------------------------------------- bloco de origem e evidencia
+// Campos que moram dentro do bloco recolhivel "Detalhes da origem e evidencia", na ORDEM
+// VISUAL da tela. A ordem importa: o auto-open foca o primeiro erro desta lista, e "primeiro"
+// precisa significar o mais alto na tela, nao o primeiro que o zod emitiu.
+//
+// Todo `path` que validatePurchaseQuoteForm (quote-schemas.ts) pode emitir esta' aqui OU e'
+// de campo fora do bloco (supplierId, quoteDate, validUntil, quoteValidityExceptionReason,
+// items). O teste de cobertura em tests/unit/quote-evidence-visibility.spec.ts guarda isso.
+export const EVIDENCE_BLOCK_FIELDS = [
+  "quoteSourceType",
+  "evidenceType",
+  "sourceContactName",
+  "sourceContactChannel",
+  "sourceReference",
+  "sourceUrl",
+  "regularizationDeadline",
+  "evidenceMissingReason",
+  "sourceNotes",
+  "emergencyReason"
+] as const;
+
+export type EvidenceBlockField = (typeof EVIDENCE_BLOCK_FIELDS)[number];
+
+// Tipos de evidencia que pressupoem arquivo. O bloco de anexos so' aparece nestes; nos demais
+// (call_note, in_person_note, catalog_link, none) o arquivo nao faz parte do caminho.
+export const EVIDENCE_TYPES_WITH_FILE: PurchaseQuoteEvidenceType[] = [
+  "attached_file",
+  "email_copy",
+  "whatsapp_screenshot",
+  "other"
+];
+
+export function evidenceTypeExpectsFile(evidenceType: PurchaseQuoteEvidenceType | "" | null | undefined) {
+  return EVIDENCE_TYPES_WITH_FILE.includes(evidenceType as PurchaseQuoteEvidenceType);
+}
+
+/**
+ * Primeiro campo do bloco de evidencia com erro, na ordem visual. Devolve null quando o
+ * submit falhou so' fora do bloco — nesse caso o bloco NAO deve abrir sozinho.
+ */
+export function getFirstEvidenceFieldError(
+  errors: Partial<Record<string, unknown>> | null | undefined
+): EvidenceBlockField | null {
+  if (!errors) {
+    return null;
+  }
+
+  return EVIDENCE_BLOCK_FIELDS.find((field) => Boolean(errors[field])) ?? null;
+}
+
+/**
+ * O bloco de anexos aparece quando o tipo de evidencia pressupoe arquivo.
+ *
+ * As duas ultimas condicoes sao guarda contra orfanar arquivo: se o usuario ja' selecionou
+ * arquivos (ou a cotacao em edicao ja' tem anexo vinculado) e depois troca para um tipo sem
+ * arquivo, o bloco CONTINUA visivel — senao ele perderia a lista e o botao Remover, ficando
+ * com arquivo pendente que nao consegue mais ver.
+ */
+export function shouldShowAttachmentBlock(input: {
+  evidenceType: PurchaseQuoteEvidenceType | "" | null | undefined;
+  pendingFileCount: number;
+  linkedAttachmentCount?: number;
+}) {
+  return (
+    evidenceTypeExpectsFile(input.evidenceType) ||
+    input.pendingFileCount > 0 ||
+    (input.linkedAttachmentCount ?? 0) > 0
+  );
+}
+
+/** Arquivo pendente num tipo de evidencia que nao usa arquivo: mostra o aviso de orfao. */
+export function hasOrphanPendingAttachment(input: {
+  evidenceType: PurchaseQuoteEvidenceType | "" | null | undefined;
+  pendingFileCount: number;
+}) {
+  return input.pendingFileCount > 0 && !evidenceTypeExpectsFile(input.evidenceType);
+}
+
+/**
+ * Espelha a exigencia de sourceNotes do superRefine (quote-schemas.ts) para rotular o campo
+ * com honestidade. Depois do M2-b, nos ramos verbais a justificativa substitui a observacao.
+ */
+export function isSourceNotesRequired(values: {
+  quoteSourceType: PurchaseQuoteSourceType | "" | null | undefined;
+  isVerbalQuote?: boolean | null;
+  sourceContactName?: string | null;
+  evidenceMissingReason?: string | null;
+}) {
+  const hasJustification = Boolean(values.evidenceMissingReason?.trim());
+
+  if (values.quoteSourceType === "other") {
+    return true;
+  }
+
+  if (values.isVerbalQuote && !hasJustification) {
+    return true;
+  }
+
+  if (values.quoteSourceType === "phone_call" && !hasJustification) {
+    return true;
+  }
+
+  if (values.quoteSourceType === "in_person" && !values.sourceContactName?.trim() && !hasJustification) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * P3: a classificacao documental so' e' exibida depois que ha' o que classificar.
+ *
+ * Nao basta checar "origem e tipo preenchidos": buildDefaultQuoteForm ja' entrega
+ * formal_proposal + attached_file, e sem anexo isso cai no default `critical` — a tela abria
+ * acusando "Critica" uma cotacao que o usuario nao tinha comecado.
+ */
+export function shouldShowEvidenceClassification(input: {
+  hasDirtyEvidenceField: boolean;
+  pendingFileCount: number;
+  linkedAttachmentCount?: number;
+  isEditing: boolean;
+  submitFailed: boolean;
+}) {
+  return (
+    input.hasDirtyEvidenceField ||
+    input.pendingFileCount > 0 ||
+    (input.linkedAttachmentCount ?? 0) > 0 ||
+    input.isEditing ||
+    input.submitFailed
+  );
+}
