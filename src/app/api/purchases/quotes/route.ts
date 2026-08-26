@@ -449,6 +449,12 @@ async function loadRequestDetail(supabase: SupabaseAdmin, requestId: string, acc
   };
 }
 
+// Cotacao e' dado de leitura-apos-escrita: o painel refaz este GET logo depois de salvar ou
+// selecionar. Qualquer cache intermediario (browser, proxy, CDN da Vercel) servindo o corpo
+// anterior faz a tela mostrar "Nenhuma cotacao cadastrada" com o dado ja' gravado. O client
+// tambem manda `cache: "no-store"`; este header fecha o lado do servidor.
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0, must-revalidate" } as const;
+
 export async function GET(request: Request) {
   const requestId = new URL(request.url).searchParams.get("requestId")?.trim() ?? "";
   // Lista (sem requestId) estreita pela unidade ativa; detalhe (?requestId) fica aggregate
@@ -467,7 +473,7 @@ export async function GET(request: Request) {
     const accessibleUnitIds = context.accessibleUnitIds;
 
     if (!accessibleUnitIds.length) {
-      return NextResponse.json({ ok: true, requests: [], suppliers: [], quotes: [] });
+      return NextResponse.json({ ok: true, requests: [], suppliers: [], quotes: [] }, { headers: NO_STORE_HEADERS });
     }
 
     const organizationId = await getUnitOrganizationId(supabase, accessibleUnitIds[0]);
@@ -481,22 +487,28 @@ export async function GET(request: Request) {
 
       const suppliers = await loadSuppliers(supabase, organizationId, accessibleUnitIds);
 
-      return NextResponse.json({
-        ok: true,
-        request: detail.request,
-        quotes: detail.quotes,
-        suppliers
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          request: detail.request,
+          quotes: detail.quotes,
+          suppliers
+        },
+        { headers: NO_STORE_HEADERS }
+      );
     }
 
     const requests = await loadEligibleRequests(supabase, accessibleUnitIds);
     const suppliers = await loadSuppliers(supabase, organizationId, accessibleUnitIds);
 
-    return NextResponse.json({
-      ok: true,
-      requests,
-      suppliers
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        requests,
+        suppliers
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Não foi possível carregar as cotações.", 500);
   }
