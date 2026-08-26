@@ -33,6 +33,12 @@ type UserRecord = {
   unitNames: string[];
   status: AccessStatus;
   createdAt: string;
+  // C6 (plano 64): calculado no servidor (GET /api/base/users), espelhando as recusas do
+  // DELETE. A tela NAO reimplementa a regra — nao sabe quem e' super admin nem quantos ha'.
+  canDelete?: boolean;
+  cannotDeleteReason?: string;
+  canInactivate?: boolean;
+  cannotInactivateReason?: string;
 };
 
 type EmployeeOption = {
@@ -434,22 +440,43 @@ export function UsersClient() {
                       <RowActions
                         onEdit={() => openEdit(user)}
                         onInactivate={() => toggleStatus(user)}
-                        disableInactivate={!user.employeeId || !user.accessProfileId || !user.unitIds.length || saveMutation.isPending}
+                        // Duas coisas distintas somadas: completude do cadastro (o que ja'
+                        // existia) E o anti-lockout do servidor, este so' na direcao
+                        // "Inativar" — reativar nunca trava.
+                        disableInactivate={
+                          !user.employeeId ||
+                          !user.accessProfileId ||
+                          !user.unitIds.length ||
+                          saveMutation.isPending ||
+                          (user.status === "active" && user.canInactivate === false)
+                        }
                         inactivateLabel={user.status === "active" ? "Inativar" : "Ativar"}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => {
-                          setDeleteTarget(user);
-                          setDeleteError("");
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Excluir
-                      </Button>
+                      {user.status === "active" && user.canInactivate === false && user.cannotInactivateReason ? (
+                        <p className="w-full text-right text-xs text-muted-foreground">{user.cannotInactivateReason}</p>
+                      ) : null}
+                      <div className="flex flex-col items-end gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={user.canDelete === false}
+                          title={user.canDelete === false ? user.cannotDeleteReason : undefined}
+                          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => {
+                            setDeleteTarget(user);
+                            setDeleteError("");
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Excluir
+                        </Button>
+                        {user.canDelete === false && user.cannotDeleteReason ? (
+                          // Texto visivel, nao so' `title`: tooltip nao aparece em toque e
+                          // nao e' lido por leitor de tela.
+                          <p className="max-w-[16rem] text-right text-xs text-muted-foreground">{user.cannotDeleteReason}</p>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                 </tr>

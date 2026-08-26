@@ -4,7 +4,7 @@ import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserUpdatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
+import { getActiveSuperAdminUserIds, getUserInactivatePermission } from "@/lib/auth/super-admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -137,62 +137,6 @@ async function replaceUnitLinks(input: {
   }
 }
 
-// Conjunto de app_user_ids que sao super admins ATIVOS:
-// app_user ativo (status active, deleted_at null) COM vinculo user_unit_links ATIVO
-// (status active, deleted_at null) no perfil SUPER_ADMIN. Vinculo inativo nao conta.
-async function getActiveSuperAdminUserIds(supabase: SupabaseAdmin): Promise<string[]> {
-  const { data: profile, error: profileError } = await supabase
-    .from("access_profiles")
-    .select("id")
-    .eq("code", SUPER_ADMIN_PROFILE_CODE)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .limit(1);
-
-  if (profileError) {
-    logBaseCadastroError("users.super_admin_profile_lookup_failed", profileError);
-    throw new Error("Nao foi possivel validar os super admins ativos.");
-  }
-
-  const superAdminProfile = profile?.[0];
-
-  if (!superAdminProfile) {
-    return [];
-  }
-
-  const { data: links, error: linksError } = await supabase
-    .from("user_unit_links")
-    .select("app_user_id")
-    .eq("access_profile_id", superAdminProfile.id)
-    .eq("status", "active")
-    .is("deleted_at", null);
-
-  if (linksError) {
-    logBaseCadastroError("users.super_admin_link_lookup_failed", linksError);
-    throw new Error("Nao foi possivel validar os super admins ativos.");
-  }
-
-  const candidateIds = Array.from(new Set((links ?? []).map((link) => link.app_user_id).filter(Boolean)));
-
-  if (!candidateIds.length) {
-    return [];
-  }
-
-  const { data: activeUsers, error: activeUsersError } = await supabase
-    .from("app_users")
-    .select("id")
-    .in("id", candidateIds)
-    .eq("status", "active")
-    .is("deleted_at", null);
-
-  if (activeUsersError) {
-    logBaseCadastroError("users.super_admin_user_lookup_failed", activeUsersError);
-    throw new Error("Nao foi possivel validar os super admins ativos.");
-  }
-
-  return Array.from(new Set((activeUsers ?? []).map((user) => user.id)));
-}
-
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   const { context, response } = await requirePermission(BASE_PERMISSIONS.usersManage);
 
@@ -207,6 +151,25 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     const payload = internalUserUpdatePayloadSchema.parse(await request.json());
     const supabase = context.supabase;
+
+    // Anti-lockout na INATIVACAO (plano 64). O login exige status "active", entao sair de
+    // ativo tem o mesmo efeito pratico de excluir — e o DELETE ja' recusava estes dois
+    // casos. Guardar so' o DELETE deixava a janela aberta: dava para se inativar, ou
+    // inativar o ultimo super admin ativo, e trancar todos fora da gestao de usuarios.
+    // Reativar (status "active") nao guarda nada.
+    if (payload.status !== "active") {
+      const activeSuperAdminIds = await getActiveSuperAdminUserIds(supabase);
+      const inactivatePermission = getUserInactivatePermission({
+        userId: params.id,
+        actorId: context.session.user.id,
+        activeSuperAdminIds
+      });
+
+      if (!inactivatePermission.canInactivate) {
+        return apiError(inactivatePermission.cannotInactivateReason, 409);
+      }
+    }
+
     const employee = await getEmployeeForUser(supabase, payload.employeeId);
 
     if (await employeeHasOtherActiveUser(supabase, payload.employeeId, params.id)) {

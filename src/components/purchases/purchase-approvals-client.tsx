@@ -92,6 +92,11 @@ type ApprovalRecord = {
   purchaseRequestId: string;
   snapshotNumber: number;
   isLegacyWithoutSnapshot?: boolean;
+  // M3 (plano 64): calculado no servidor (GET /api/purchases/approvals) com os MESMOS
+  // predicados que a rota de decisao usa. A tela nao conhece requested_by nem selected_by;
+  // so' obedece ao booleano e mostra o motivo. Vale apenas para APROVAR.
+  selfApprovalBlocked?: boolean;
+  selfApprovalBlockedReason?: string;
   unitName: string;
   unitCode: string;
   departmentName: string;
@@ -677,7 +682,13 @@ export function PurchaseApprovalsClient() {
                       <div className="rounded-md border bg-muted/30 p-3">
                         <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Decisão administrativa</p>
                         <div className="flex flex-wrap gap-2">
-                        <Button type="button" onClick={() => openDecision(selectedApproval, "approved")} data-testid="aprovacao-aprovar">
+                        <Button
+                          type="button"
+                          onClick={() => openDecision(selectedApproval, "approved")}
+                          disabled={selectedApproval.selfApprovalBlocked === true}
+                          title={selectedApproval.selfApprovalBlocked === true ? selectedApproval.selfApprovalBlockedReason : undefined}
+                          data-testid="aprovacao-aprovar"
+                        >
                           <Check className="h-4 w-4" />
                           Aprovar
                         </Button>
@@ -690,6 +701,13 @@ export function PurchaseApprovalsClient() {
                           Reprovar
                         </Button>
                         </div>
+                        {selectedApproval.selfApprovalBlocked === true && selectedApproval.selfApprovalBlockedReason ? (
+                          // Texto visivel, nao so' `title`: tooltip nao aparece em toque e nao
+                          // e' lido por leitor de tela. Reprovar e devolver seguem liberados.
+                          <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            {selectedApproval.selfApprovalBlockedReason}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -867,7 +885,18 @@ export function PurchaseApprovalsClient() {
                   Cancelar
                 </Button>
                 {canDecide ? (
-                  <Button type="button" variant={decisionState.decision === "rejected" ? "danger" : "default"} onClick={submitDecision} disabled={decisionMutation.isPending} data-testid="aprovacao-confirmar">
+                  <Button
+                    type="button"
+                    variant={decisionState.decision === "rejected" ? "danger" : "default"}
+                    onClick={submitDecision}
+                    // Cinto e suspensorio: se o modal for aberto por outro caminho, ou se a
+                    // listagem estiver velha, a confirmacao de APROVACAO continua barrada.
+                    disabled={
+                      decisionMutation.isPending ||
+                      (decisionState.decision === "approved" && decisionState.approval?.selfApprovalBlocked === true)
+                    }
+                    data-testid="aprovacao-confirmar"
+                  >
                     {decisionState.decision === "approved" ? <Check className="h-4 w-4" /> : decisionState.decision === "rejected" ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
                     Confirmar {decisionState.decision === "approved" ? "aprovação" : decisionState.decision === "rejected" ? "reprovação" : "devolução"}
                   </Button>
