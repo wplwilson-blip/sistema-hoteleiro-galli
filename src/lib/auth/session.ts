@@ -242,7 +242,7 @@ export async function getSessionContextByAuthUserId(
 
   const { data: appUser, error: appUserError } = await supabase
     .from("app_users")
-    .select("id, username, display_name, status")
+    .select("id, username, display_name, status, must_change_password")
     .eq("auth_user_id", authUserId)
     .is("deleted_at", null)
     .single();
@@ -358,6 +358,9 @@ export async function getSessionContextByAuthUserId(
       name: appUser.display_name,
       username: appUser.username
     },
+    // #C7: true obriga a tela de troca antes de usar o sistema (gate de renderizacao no
+    // client -- ver a limitacao declarada em docs/codex/65, secao 4.3).
+    mustChangePassword: Boolean(appUser.must_change_password),
     profile: profileForUnit(activeUnit.id),
     units,
     activeUnit,

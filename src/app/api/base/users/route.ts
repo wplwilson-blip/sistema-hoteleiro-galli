@@ -287,6 +287,9 @@ export async function POST(request: Request) {
         display_name: employee.full_name,
         personal_email: employee.personal_email ?? employee.corporate_email ?? null,
         status: payload.status,
+        // #C7: a senha que o admin define no cadastro e' conhecida por outra pessoa --
+        // e' temporaria por definicao. O usuario e' obrigado a troca-la no 1o acesso.
+        must_change_password: true,
         created_by: context.session.user.id,
         updated_by: context.session.user.id
       })
