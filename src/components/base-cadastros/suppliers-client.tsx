@@ -18,6 +18,11 @@ import {
   TextArea,
   TextInput
 } from "@/components/base-cadastros/crud-components";
+import {
+  getSupplierDocumentTypeLabel,
+  supplierDocumentTypeLabelMap,
+  supplierPayloadSchema
+} from "@/lib/base-cadastros/schemas";
 
 type UnitRecord = {
   id: string;
@@ -78,7 +83,7 @@ const emptyForm: SupplierForm = {
   unitId: "",
   name: "",
   tradeName: "",
-  documentType: "OTHER",
+  documentType: "CNPJ",
   documentNumber: "",
   email: "",
   phone: "",
@@ -88,6 +93,14 @@ const emptyForm: SupplierForm = {
   notes: "",
   status: "active"
 };
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="text-xs text-destructive">{message}</p>;
+}
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
@@ -130,6 +143,7 @@ export function SuppliersClient() {
   const [form, setForm] = useState<SupplierForm>(emptyForm);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | RecordStatus>("all");
   // Unidade ativa na queryKey: trocar a unidade no header refaz fetch da lista escopada
@@ -159,6 +173,7 @@ export function SuppliersClient() {
     },
     onSuccess: async () => {
       setError("");
+      setFieldErrors({});
       setFormOpen(false);
       setEditing(null);
       setForm(emptyForm);
@@ -171,6 +186,7 @@ export function SuppliersClient() {
     setEditing(null);
     setForm(emptyForm);
     setError("");
+    setFieldErrors({});
     setFormOpen(true);
   }
 
@@ -178,6 +194,7 @@ export function SuppliersClient() {
     setEditing(supplier);
     setForm(supplierToForm(supplier));
     setError("");
+    setFieldErrors({});
     setFormOpen(true);
   }
 
@@ -263,6 +280,31 @@ export function SuppliersClient() {
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
+
+              // Valida com o MESMO schema que a rota usa: uma fonte de verdade so'. O
+              // servidor continua validando (isto e' conveniencia de UI, nao substituto);
+              // a diferenca e' que aqui da' para apontar o campo, e a rota devolve so' a
+              // primeira mensagem, sem o path.
+              const parsed = supplierPayloadSchema.safeParse(form);
+
+              if (!parsed.success) {
+                const nextErrors: Record<string, string> = {};
+
+                for (const issue of parsed.error.issues) {
+                  const field = String(issue.path[0] ?? "");
+
+                  if (field && !nextErrors[field]) {
+                    nextErrors[field] = issue.message;
+                  }
+                }
+
+                setFieldErrors(nextErrors);
+                setError("Revise os campos destacados.");
+                return;
+              }
+
+              setFieldErrors({});
+              setError("");
               saveMutation.mutate(undefined);
             }}
           >
@@ -284,30 +326,43 @@ export function SuppliersClient() {
                   <option value="archived">Arquivado</option>
                 </SelectField>
               </Field>
-              <Field label="Nome">
+              <Field label="Nome *">
                 <TextInput value={form.name} required onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                <FieldError message={fieldErrors.name} />
               </Field>
               <Field label="Nome fantasia">
                 <TextInput value={form.tradeName} onChange={(event) => setForm({ ...form, tradeName: event.target.value })} />
               </Field>
               <Field label="Tipo de documento">
                 <SelectField value={form.documentType} onChange={(event) => setForm({ ...form, documentType: event.target.value as SupplierForm["documentType"] })}>
-                  <option value="OTHER">Outro</option>
-                  <option value="CNPJ">CNPJ</option>
-                  <option value="CPF">CPF</option>
+                  <option value="CNPJ">{supplierDocumentTypeLabelMap.CNPJ}</option>
+                  <option value="CPF">{supplierDocumentTypeLabelMap.CPF}</option>
+                  <option value="OTHER">{supplierDocumentTypeLabelMap.OTHER}</option>
                 </SelectField>
               </Field>
+              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 md:col-span-2">
+                Informe o <strong>documento</strong> (CNPJ/CPF) <strong>ou</strong> pelo menos uma forma de contato (e-mail, telefone ou WhatsApp).
+                Um nome de contato sozinho não substitui: é preciso ter como falar com o fornecedor.
+              </div>
               <Field label="Documento/CNPJ">
-                <TextInput value={form.documentNumber} onChange={(event) => setForm({ ...form, documentNumber: event.target.value })} />
+                <TextInput
+                  value={form.documentNumber}
+                  placeholder={form.documentType === "CNPJ" ? "00.000.000/0000-00" : form.documentType === "CPF" ? "000.000.000-00" : "Inscrição, registro ou identificação"}
+                  onChange={(event) => setForm({ ...form, documentNumber: event.target.value })}
+                />
+                <FieldError message={fieldErrors.documentNumber} />
               </Field>
               <Field label="E-mail">
                 <TextInput type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                <FieldError message={fieldErrors.email} />
               </Field>
               <Field label="Telefone">
                 <TextInput value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                <FieldError message={fieldErrors.phone} />
               </Field>
               <Field label="WhatsApp">
                 <TextInput value={form.whatsapp} onChange={(event) => setForm({ ...form, whatsapp: event.target.value })} />
+                <FieldError message={fieldErrors.whatsapp} />
               </Field>
               <Field label="Contato principal">
                 <TextInput value={form.contactName} onChange={(event) => setForm({ ...form, contactName: event.target.value })} />
@@ -358,7 +413,7 @@ export function SuppliersClient() {
                     {supplier.category ? <p className="mt-1 text-xs text-muted-foreground">{supplier.category}</p> : null}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    <p>{supplier.documentType}</p>
+                    <p>{getSupplierDocumentTypeLabel(supplier.documentType)}</p>
                     <p className="mt-1">{supplier.documentNumber || "-"}</p>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
