@@ -15,16 +15,30 @@ import {
   shouldThrottle
 } from "@/lib/auth/login-rate-limit";
 
-// Piso de tempo das respostas de falha de CREDENCIAL (plano docs/codex/54, fatia 1).
+// E-mail SENTINELA do round-trip de equalizacao (plano docs/codex/54, fatia 1).
 //
-// Sem ele, "usuario nao existe" custa 1 query e "senha errada" custa 1 query + o
-// round-trip do Supabase Auth — diferenca de ordem de grandeza, mensuravel do cliente.
-// E' um oraculo de timing: da' para enumerar contas cronometrando as respostas.
+// `.invalid` e' um TLD reservado pela RFC 2606: nao existe, nao e' registravel e nao
+// resolve. Nenhuma conta do Supabase Auth pode ter este endereco, entao o
+// signInWithPassword com ele SEMPRE falha — nao ha' caminho em que este e-mail autentique.
+const SENTINEL_AUTH_EMAIL = "no-reply+nonexistent-login-probe@sistema-hoteleiro.invalid";
+
+// Piso de tempo das respostas de falha de CREDENCIAL — REDE DE SEGURANCA, nao o mecanismo.
 //
-// O `await` de timer no Node nao ocupa CPU nem thread; o custo e' manter a invocacao
-// aberta. Por isso o piso vale SO' para falha de credencial: o 429 do rate limit, o 422 de
-// payload invalido e o sucesso respondem na hora (nenhum deles revela existencia de conta).
-const CREDENTIAL_FAILURE_FLOOR_MS = 400;
+// O que fecha o oraculo de timing e' o round-trip sentinela (ver `probeSentinelAuth`): os
+// dois caminhos, conta existente e conta inexistente, passam pela MESMA chamada de rede ao
+// Supabase Auth. Os tempos ficam iguais POR CONSTRUCAO, e nao porque uma constante os
+// mascara. Isso importa porque um piso fixo abaixo do p95 real deixa o oraculo aberto, e
+// sob pico de latencia do Auth qualquer piso fixo reabre.
+//
+// O piso continua aqui para cobrir a variacao residual (o sentinela e a conta real nao
+// custam exatamente o mesmo).
+//
+// TODO(#4): o valor definitivo sai da MEDICAO do p95 do signInWithPassword em staging
+// (plano docs/codex/54, secoes 4 e 7 — passo 0 do roteiro na migration 084). Ate' que essa
+// medicao seja feita e este numero seja cravado ACIMA do p95 observado, o oraculo de timing
+// NAO deve ser considerado fechado. 1000 ms e' provisorio, escolhido pela ordem de grandeza
+// estimada no plano, nao por medicao.
+const LOGIN_MIN_RESPONSE_MS = 1000;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ ok: false, message }, { status });
@@ -50,7 +64,7 @@ async function countRecentFailures(input: { username: string; ip?: string }) {
     const { data: lastSuccess, error: lastSuccessError } = await admin
       .from("auth_login_attempts")
       .select("created_at")
-      .eq("username", input.username)
+      .eq("username_attempted", input.username)
       .eq("succeeded", true)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
@@ -65,7 +79,7 @@ async function countRecentFailures(input: { username: string; ip?: string }) {
     const { count: userCount, error: userError } = await admin
       .from("auth_login_attempts")
       .select("id", { count: "exact", head: true })
-      .eq("username", input.username)
+      .eq("username_attempted", input.username)
       .eq("succeeded", false)
       .gte("created_at", userSince);
 
@@ -112,7 +126,7 @@ async function recordLoginAttempt(input: { username: string; ip?: string; succee
 
   try {
     const { error } = await admin.from("auth_login_attempts").insert({
-      username: input.username,
+      username_attempted: input.username,
       ip: input.ip ?? null,
       succeeded: input.succeeded
     });
@@ -132,10 +146,41 @@ async function recordLoginAttempt(input: { username: string; ip?: string; succee
 
 async function padUntilFloor(startedAt: number) {
   const elapsed = Date.now() - startedAt;
-  const remaining = CREDENTIAL_FAILURE_FLOOR_MS - elapsed;
+  const remaining = LOGIN_MIN_RESPONSE_MS - elapsed;
 
   if (remaining > 0) {
     await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+}
+
+/**
+ * Round-trip de equalizacao para o caminho "usuario nao existe / esta inativo".
+ *
+ * Antes disto, esse caminho respondia 401 SEM NUNCA chamar o Supabase Auth: custava 1
+ * query, contra 1 query + uma chamada de rede no caminho do usuario existente. Diferenca
+ * de ordem de grandeza, cronometravel do cliente — um oraculo de enumeracao que nenhum
+ * piso de tempo fixo fecha de verdade (basta a latencia do Auth passar do piso num pico).
+ *
+ * Aqui o trabalho e' igualado por construcao: os dois caminhos fazem a MESMA chamada. O
+ * GoTrue ja' executa hash dummy para e-mail inexistente, entao o custo do lado dele e'
+ * equivalente ao de uma senha errada em conta real.
+ *
+ * O resultado e' DESCARTADO de proposito: esta chamada nao decide nada, so' gasta o mesmo
+ * tempo. Nunca pode autenticar — ver SENTINEL_AUTH_EMAIL.
+ *
+ * Usa um cliente PROPRIO, e nao o do fluxo real, para nao haver qualquer chance de mexer
+ * no estado de cookies/sessao da requisicao legitima.
+ */
+async function probeSentinelAuth() {
+  try {
+    const probeClient = createSupabaseServerClient();
+    await probeClient.auth.signInWithPassword({
+      email: SENTINEL_AUTH_EMAIL,
+      password: "senha-invalida-de-equalizacao"
+    });
+  } catch {
+    // Ignorado de proposito: o probe nunca deve alterar o resultado do login. Se a rede
+    // falhar aqui, o piso de tempo cobre o que der.
   }
 }
 
@@ -220,15 +265,23 @@ export async function POST(request: Request) {
       .is("deleted_at", null)
       .maybeSingle();
 
+    // Os tres caminhos abaixo nao chegam a verificar senha de conta real. Cada um paga o
+    // round-trip sentinela ANTES de responder, para custar o mesmo que o caminho que
+    // verifica. A linha em auth_login_attempts e' inserida igual (dentro de
+    // credentialFailure): o sentinela conta como tentativa como qualquer outra, senao o
+    // rate limit teria um buraco justamente nos usernames inexistentes.
     if (userError) {
+      await probeSentinelAuth();
       return credentialFailure("user_lookup_failed");
     }
 
     if (!appUser) {
+      await probeSentinelAuth();
       return credentialFailure("user_not_found");
     }
 
     if (appUser.status !== "active") {
+      await probeSentinelAuth();
       return credentialFailure("user_inactive", appUser.id);
     }
 
