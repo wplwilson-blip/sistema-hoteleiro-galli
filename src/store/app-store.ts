@@ -24,6 +24,9 @@ type AppState = {
   activeUnitError: string | null;
   // Fase 1: permissoes efetivas para filtrar a UI (menu). Super admin => ["*"]. Ver docs/codex/17.
   permissions: string[];
+  // #C7: senha temporaria (definida no cadastro ou num reset do admin) ainda nao trocada.
+  // Enquanto true, o PasswordChangeGate renderiza apenas a tela de troca.
+  mustChangePassword: boolean;
   setSessionContext: (context: SessionContext) => void;
   setActiveUnit: (unitId: string) => Promise<void>;
   clearActiveUnitError: () => void;
@@ -48,6 +51,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeUnit: emptyUnit,
   activeUnitError: null,
   permissions: [],
+  mustChangePassword: false,
   setSessionContext: (context) =>
     set({
       user: context.user,
@@ -55,6 +59,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       units: context.units,
       activeUnit: context.activeUnit,
       permissions: context.permissions ?? [],
+      mustChangePassword: Boolean(context.mustChangePassword),
       activeUnitError: null
     }),
   setActiveUnit: async (unitId) => {

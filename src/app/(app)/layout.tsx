@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppProviders } from "@/components/providers/app-providers";
+import { PasswordChangeGate } from "@/components/auth/password-change-gate";
 import { getCurrentSessionContext } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ export default async function AuthenticatedLayout({
 
   return (
     <AppProviders sessionContext={sessionContext}>
+      {/* #C7: enquanto a senha temporaria nao for trocada, nada do app e' montado.
+          Gate de RENDERIZACAO -- ver a limitacao declarada em password-change-gate.tsx. */}
+      <PasswordChangeGate>
       <div className="flex h-screen overflow-hidden bg-background">
         <AppSidebar />
         <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
@@ -26,6 +30,7 @@ export default async function AuthenticatedLayout({
           <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-5 lg:px-6 xl:px-8">{children}</main>
         </div>
       </div>
+      </PasswordChangeGate>
     </AppProviders>
   );
 }
