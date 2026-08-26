@@ -4,7 +4,7 @@ import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserUpdatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getActiveSuperAdminUserIds } from "@/lib/auth/super-admin";
+import { getActiveSuperAdminUserIds, getUserInactivatePermission } from "@/lib/auth/super-admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -151,6 +151,25 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     const payload = internalUserUpdatePayloadSchema.parse(await request.json());
     const supabase = context.supabase;
+
+    // Anti-lockout na INATIVACAO (plano 64). O login exige status "active", entao sair de
+    // ativo tem o mesmo efeito pratico de excluir — e o DELETE ja' recusava estes dois
+    // casos. Guardar so' o DELETE deixava a janela aberta: dava para se inativar, ou
+    // inativar o ultimo super admin ativo, e trancar todos fora da gestao de usuarios.
+    // Reativar (status "active") nao guarda nada.
+    if (payload.status !== "active") {
+      const activeSuperAdminIds = await getActiveSuperAdminUserIds(supabase);
+      const inactivatePermission = getUserInactivatePermission({
+        userId: params.id,
+        actorId: context.session.user.id,
+        activeSuperAdminIds
+      });
+
+      if (!inactivatePermission.canInactivate) {
+        return apiError(inactivatePermission.cannotInactivateReason, 409);
+      }
+    }
+
     const employee = await getEmployeeForUser(supabase, payload.employeeId);
 
     if (await employeeHasOtherActiveUser(supabase, payload.employeeId, params.id)) {

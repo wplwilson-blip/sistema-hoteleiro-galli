@@ -4,7 +4,7 @@ import { buildTechnicalAuthEmail } from "@/lib/auth/schemas";
 import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserCreatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { getActiveSuperAdminUserIds, getUserDeletePermission } from "@/lib/auth/super-admin";
+import { getActiveSuperAdminUserIds, getUserDeletePermission, getUserInactivatePermission } from "@/lib/auth/super-admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -182,11 +182,19 @@ export async function GET() {
           actorId: context.session.user.id,
           activeSuperAdminIds
         });
+        // So' a direcao "sair de ativo" e' guardada; reativar nunca trava.
+        const inactivatePermission = getUserInactivatePermission({
+          userId: user.id,
+          actorId: context.session.user.id,
+          activeSuperAdminIds
+        });
 
         return {
           id: user.id,
           canDelete: deletePermission.canDelete,
           cannotDeleteReason: deletePermission.cannotDeleteReason,
+          canInactivate: inactivatePermission.canInactivate,
+          cannotInactivateReason: inactivatePermission.cannotInactivateReason,
           username: user.username,
           displayName: user.display_name,
           employeeId: employee?.id ?? "",

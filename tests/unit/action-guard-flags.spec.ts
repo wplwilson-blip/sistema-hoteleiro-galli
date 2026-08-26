@@ -6,7 +6,7 @@ import {
   isPurchaseSelfSelectionApproval,
   type PurchaseApprovalDecision
 } from "../../src/lib/purchases/approval-segregation";
-import { getUserDeletePermission } from "../../src/lib/auth/super-admin";
+import { getUserDeletePermission, getUserInactivatePermission } from "../../src/lib/auth/super-admin";
 
 // Runner puro. Cobre a fatia M3 + C6 (plano docs/codex/64): a tela desabilita o que a API
 // ja' barra, sem reimplementar a regra — o servidor calcula um booleano e um motivo.
@@ -140,4 +140,57 @@ test("C6: proprio E ultimo super admin -> bloqueia, com o motivo do proprio (pre
 test("C6: sem super admin nenhum na lista, so' a regra do proprio vale", () => {
   expect(getUserDeletePermission({ userId: BRUNO, actorId: ANA, activeSuperAdminIds: [] }).canDelete).toBe(true);
   expect(getUserDeletePermission({ userId: ANA, actorId: ANA, activeSuperAdminIds: [] }).canDelete).toBe(false);
+});
+
+// ------------------------------------------------------------------ anti-lockout na inativacao
+// O login exige status "active", entao INATIVAR tem o mesmo efeito pratico de EXCLUIR: a
+// pessoa deixa de entrar. O DELETE ja' recusava os dois casos; o PATCH nao — dava para se
+// inativar, ou inativar o ultimo super admin ativo, e trancar todos fora da gestao de
+// usuarios, sem caminho de volta pela aplicacao.
+
+test("anti-lockout: nao da' para inativar o proprio usuario", () => {
+  const permission = getUserInactivatePermission({ userId: ANA, actorId: ANA, activeSuperAdminIds: [ANA, BRUNO] });
+
+  expect(permission.canInactivate).toBe(false);
+  expect(permission.cannotInactivateReason).toContain("proprio usuario");
+});
+
+test("anti-lockout: nao da' para inativar o ultimo super admin ativo", () => {
+  const permission = getUserInactivatePermission({ userId: BRUNO, actorId: ANA, activeSuperAdminIds: [BRUNO] });
+
+  expect(permission.canInactivate).toBe(false);
+  expect(permission.cannotInactivateReason).toContain("ultimo super admin");
+});
+
+test("anti-lockout: inativar um usuario comum (nao-admin, nao e' o proprio) PASSA", () => {
+  const permission = getUserInactivatePermission({ userId: CARLA, actorId: ANA, activeSuperAdminIds: [ANA, BRUNO] });
+
+  expect(permission.canInactivate).toBe(true);
+  expect(permission.cannotInactivateReason).toBe("");
+});
+
+test("anti-lockout: super admin com outro super admin ativo pode ser inativado", () => {
+  expect(
+    getUserInactivatePermission({ userId: BRUNO, actorId: ANA, activeSuperAdminIds: [BRUNO, CARLA] }).canInactivate
+  ).toBe(true);
+});
+
+test("anti-lockout: proprio E ultimo super admin -> bloqueia com o motivo do proprio", () => {
+  const permission = getUserInactivatePermission({ userId: ANA, actorId: ANA, activeSuperAdminIds: [ANA] });
+
+  expect(permission.canInactivate).toBe(false);
+  expect(permission.cannotInactivateReason).toContain("proprio usuario");
+});
+
+test("anti-lockout: a regra de inativacao e' a MESMA do delete (mesmas duas recusas)", () => {
+  // Se um dia divergirem, e' porque alguem mudou uma e esqueceu a outra — e a janela
+  // reabre. Este teste amarra as duas.
+  for (const userId of [ANA, BRUNO, CARLA]) {
+    for (const superAdmins of [[], [ANA], [BRUNO], [ANA, BRUNO], [BRUNO, CARLA]]) {
+      const canDelete = getUserDeletePermission({ userId, actorId: ANA, activeSuperAdminIds: superAdmins }).canDelete;
+      const canInactivate = getUserInactivatePermission({ userId, actorId: ANA, activeSuperAdminIds: superAdmins }).canInactivate;
+
+      expect(canInactivate, `userId=${userId} superAdmins=${JSON.stringify(superAdmins)}`).toBe(canDelete);
+    }
+  }
 });

@@ -88,3 +88,35 @@ export function getUserDeletePermission(input: {
 
   return { canDelete: true, cannotDeleteReason: "" };
 }
+
+/**
+ * Pode INATIVAR (ou arquivar) este usuario?
+ *
+ * Mesmas duas recusas do DELETE, e pelo mesmo motivo: o login exige status "active"
+ * (src/app/api/auth/login/route.ts), entao inativar produz o MESMO efeito pratico de
+ * excluir — a pessoa deixa de entrar. Sem esta trava, um super admin conseguia se inativar,
+ * ou inativar o ultimo super admin ativo, e trancar todo mundo para fora da gestao de
+ * usuarios, sem caminho de volta pela aplicacao. A porta da frente (DELETE) estava
+ * guardada e a janela (PATCH) estava aberta.
+ *
+ * Vale SO' na direcao "sair de ativo". Reativar (status "active") nao trava nada: nao ha'
+ * lockout possivel ao devolver acesso a alguem.
+ */
+export function getUserInactivatePermission(input: {
+  userId: string;
+  actorId: string;
+  activeSuperAdminIds: string[];
+}): { canInactivate: boolean; cannotInactivateReason: string } {
+  if (input.userId === input.actorId) {
+    return { canInactivate: false, cannotInactivateReason: "Voce nao pode inativar o proprio usuario." };
+  }
+
+  const isSuperAdmin = input.activeSuperAdminIds.includes(input.userId);
+  const remaining = input.activeSuperAdminIds.filter((id) => id !== input.userId);
+
+  if (isSuperAdmin && remaining.length === 0) {
+    return { canInactivate: false, cannotInactivateReason: "Nao e possivel inativar o ultimo super admin ativo." };
+  }
+
+  return { canInactivate: true, cannotInactivateReason: "" };
+}

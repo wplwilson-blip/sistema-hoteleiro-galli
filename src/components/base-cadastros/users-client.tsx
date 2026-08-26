@@ -37,6 +37,8 @@ type UserRecord = {
   // DELETE. A tela NAO reimplementa a regra — nao sabe quem e' super admin nem quantos ha'.
   canDelete?: boolean;
   cannotDeleteReason?: string;
+  canInactivate?: boolean;
+  cannotInactivateReason?: string;
 };
 
 type EmployeeOption = {
@@ -438,9 +440,21 @@ export function UsersClient() {
                       <RowActions
                         onEdit={() => openEdit(user)}
                         onInactivate={() => toggleStatus(user)}
-                        disableInactivate={!user.employeeId || !user.accessProfileId || !user.unitIds.length || saveMutation.isPending}
+                        // Duas coisas distintas somadas: completude do cadastro (o que ja'
+                        // existia) E o anti-lockout do servidor, este so' na direcao
+                        // "Inativar" — reativar nunca trava.
+                        disableInactivate={
+                          !user.employeeId ||
+                          !user.accessProfileId ||
+                          !user.unitIds.length ||
+                          saveMutation.isPending ||
+                          (user.status === "active" && user.canInactivate === false)
+                        }
                         inactivateLabel={user.status === "active" ? "Inativar" : "Ativar"}
                       />
+                      {user.status === "active" && user.canInactivate === false && user.cannotInactivateReason ? (
+                        <p className="w-full text-right text-xs text-muted-foreground">{user.cannotInactivateReason}</p>
+                      ) : null}
                       <div className="flex flex-col items-end gap-1">
                         <Button
                           type="button"
