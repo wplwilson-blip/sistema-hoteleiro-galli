@@ -141,3 +141,26 @@ test("resolveClientIp: ausente ou vazio -> undefined (so' o limite por username 
   expect(resolveClientIp("   ")).toBeUndefined();
   expect(resolveClientIp(",")).toBeUndefined();
 });
+
+test("resolveClientIp: valor que NAO e' IP -> undefined (fecha o bypass do rate limit)", () => {
+  // Sem esta validacao ha' BYPASS: a coluna ip e' `inet`, entao uma string que nao seja IP
+  // faz o insert e a consulta estourarem no Postgres, o limitador cai no fail-open e a
+  // tentativa nao e' contada. Bastaria mandar `x-forwarded-for: garbage` em toda
+  // requisicao para nunca ser freado -- inclusive pelo limite por username, porque a falha
+  // derruba a gravacao inteira.
+  expect(resolveClientIp("garbage")).toBeUndefined();
+  expect(resolveClientIp("999.999.999.999")).toBeUndefined();
+  expect(resolveClientIp("203.0.113.7; DROP")).toBeUndefined();
+  expect(resolveClientIp("203.0.113")).toBeUndefined();
+  expect(resolveClientIp("<script>alert(1)</script>")).toBeUndefined();
+
+  // Invalido na PRIMEIRA posicao nao "cai" para o proximo da lista: o primeiro valor e' o
+  // unico que interessa, e um invalido ali significa header nao confiavel.
+  expect(resolveClientIp("garbage, 203.0.113.7")).toBeUndefined();
+});
+
+test("resolveClientIp: IPv6 valido e' aceito", () => {
+  expect(resolveClientIp("2001:db8::1")).toBe("2001:db8::1");
+  expect(resolveClientIp("  2001:db8::1  , 70.41.3.18")).toBe("2001:db8::1");
+  expect(resolveClientIp("::1")).toBe("::1");
+});

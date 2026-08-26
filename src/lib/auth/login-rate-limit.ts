@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 // Rate limit do login (#4, plano docs/codex/54, fatia 2).
 //
 // PURO e sem `server-only`: a decisao vive aqui, isolada do I/O, para ser testada no
@@ -106,11 +108,26 @@ export function buildThrottleMessage(retryAfterSeconds: number): string {
 }
 
 /**
- * Primeiro valor de x-forwarded-for. Devolve undefined quando o header esta' ausente ou
- * vazio — e' o sinal para a rota aplicar somente o limite por username.
+ * Primeiro valor de x-forwarded-for, VALIDADO como IP real.
+ *
+ * A validacao nao e' higiene: sem ela ha' bypass do rate limit. `auth_login_attempts.ip` e'
+ * do tipo `inet`; uma string que nao seja IP faz o INSERT e a consulta de contagem
+ * estourarem no Postgres, o limitador cai no fail-open e a tentativa NAO E' CONTADA. Ou
+ * seja, bastaria mandar `x-forwarded-for: garbage` em toda requisicao para nunca ser
+ * freado — inclusive no limite por username, porque a falha derruba a gravacao inteira.
+ *
+ * `isIP` do node:net devolve 4, 6 ou 0. Qualquer coisa que nao seja IPv4/IPv6 valido cai
+ * no caminho "sem IP confiavel": grava `ip = null` e conta normalmente por username, que
+ * e' o degrade correto — o header e' arbitrario fora do proxy da Vercel de qualquer modo.
+ *
+ * Devolve undefined quando o header esta' ausente, vazio ou invalido.
  */
 export function resolveClientIp(forwardedFor: string | null | undefined): string | undefined {
   const first = forwardedFor?.split(",")[0]?.trim();
 
-  return first ? first : undefined;
+  if (!first || isIP(first) === 0) {
+    return undefined;
+  }
+
+  return first;
 }
