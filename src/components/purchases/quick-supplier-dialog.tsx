@@ -114,9 +114,16 @@ export function QuickSupplierDialog({ open, unitId, onClose, onCreated }: QuickS
   const [successMessage, setSuccessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Espelha a regua do supplierPayloadSchema (plano 63): documento OU um meio de contato.
+  // Antes exigia documento SEMPRE, o que bloqueava exatamente o caso que o cadastro rapido
+  // existe para atender — cotar com o fornecedor pequeno que nao tem CNPJ a mao. O servidor
+  // continua sendo quem valida; isto so' evita a ida ate' o 422.
   const canSubmit = useMemo(() => {
-    return form.name.trim().length >= 2 && form.documentType && form.documentNumber.trim().length > 0;
-  }, [form.documentNumber, form.documentType, form.name]);
+    const hasDocument = form.documentNumber.trim().length > 0;
+    const hasContact = Boolean(form.email.trim() || form.phone.trim() || form.whatsapp.trim());
+
+    return form.name.trim().length >= 2 && Boolean(form.documentType) && (hasDocument || hasContact);
+  }, [form.documentNumber, form.documentType, form.email, form.name, form.phone, form.whatsapp]);
 
   if (!open) {
     return null;
@@ -143,7 +150,7 @@ export function QuickSupplierDialog({ open, unitId, onClose, onCreated }: QuickS
     event.preventDefault();
 
     if (!canSubmit) {
-      setError("Informe nome, tipo de documento e documento do fornecedor.");
+      setError("Informe o nome e o documento (CNPJ/CPF) ou pelo menos um contato (e-mail, telefone ou WhatsApp).");
       return;
     }
 
