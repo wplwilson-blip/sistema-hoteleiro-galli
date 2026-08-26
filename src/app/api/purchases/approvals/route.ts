@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPurchaseApprovalLevel, getPurchaseApprovalLevelLabel, type PurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import { getPurchasePriorityLabel, getPurchaseRequestStatusLabel, getPurchaseRequestTypeLabel, getPurchaseUnitOfMeasureLabel, type PurchaseUnitOfMeasure } from "@/lib/purchases/schemas";
 import { getPurchaseQuoteStatusLabel, getPurchaseQuoteStatusTone, readHasCriticalEvidence } from "@/lib/purchases/quote-schemas";
+import { getApprovalActionGuard } from "@/lib/purchases/approval-segregation";
 import { ATTACHMENTS_BUCKET, createSignedAttachmentUrl, mapAttachment, type AttachmentRow } from "@/lib/attachments/api";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -458,6 +459,32 @@ export async function GET(request: Request) {
     const requestIds = Array.from(new Set([...Array.from(snapshotRequestIds), ...legacyRequestIds]));
     const decisionUserIds = new Set<string>();
 
+    // M3 (plano 64): quem selecionou a vencedora, para espelhar na tela a trava que a rota
+    // de decisao aplica. Lido do BANCO, nao do snapshot: o guard de decision/route.ts le'
+    // `selected_by` vivo, e o snapshot (que nem carrega a coluna) mentiria justamente quando
+    // a vencedora e' trocada depois do envio — o caso em que a trava mais importa.
+    // Uma consulta por pagina, sobre os ids ja' montados acima.
+    const { data: winningQuoteRows, error: winningQuoteError } = requestIds.length
+      ? await supabase
+          .from("purchase_quotes")
+          .select("purchase_request_id, selected_by")
+          .in("purchase_request_id", requestIds)
+          .eq("is_selected", true)
+          .is("deleted_at", null)
+      : { data: [], error: null };
+
+    if (winningQuoteError) {
+      logBaseCadastroError("purchase_approvals.winning_quote_selector_lookup_failed", winningQuoteError);
+      return apiError("Nao foi possivel validar quem selecionou a cotacao vencedora.", 500);
+    }
+
+    const selectedByRequestId = new Map<string, string | null>(
+      ((winningQuoteRows ?? []) as Array<{ purchase_request_id: string; selected_by: string | null }>).map((row) => [
+        row.purchase_request_id,
+        row.selected_by
+      ])
+    );
+
     const { data: decisions, error: decisionsError } = requestIds.length
       ? await supabase
           .from("purchase_approval_decisions")
@@ -615,6 +642,11 @@ export async function GET(request: Request) {
           departmentName: departmentPayload?.name ?? "",
           departmentCode: departmentPayload?.code ?? "",
           requestedByName: requestPayload.requestedBy?.displayName ?? "",
+          ...getApprovalActionGuard({
+            requestedBy: requestPayload.requestedBy?.id ?? null,
+            selectedBy: selectedByRequestId.get(snapshot.purchase_request_id) ?? null,
+            actorId: context.session.user.id
+          }),
           requestNumber: requestPayload.requestNumber ?? "",
           title: requestPayload.title ?? "",
           justification: requestPayload.justification ?? "",
@@ -682,6 +714,11 @@ export async function GET(request: Request) {
         departmentName: department?.name ?? "",
         departmentCode: department?.code ?? "",
         requestedByName: requester?.display_name ?? "",
+        ...getApprovalActionGuard({
+          requestedBy: approvalRequest.requested_by,
+          selectedBy: selectedByRequestId.get(approvalRequest.id) ?? null,
+          actorId: context.session.user.id
+        }),
         requestNumber: approvalRequest.request_number,
         title: approvalRequest.title,
         justification: approvalRequest.justification,

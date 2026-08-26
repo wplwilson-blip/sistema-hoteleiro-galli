@@ -61,3 +61,58 @@ export function isPurchaseSelfSelectionApproval(input: {
 
   return input.selectedBy === input.actorId;
 }
+
+/**
+ * Espelho de UI (plano 64): a mesma resposta que a rota de decisao daria para uma tentativa
+ * de APROVAR, calculada na listagem para a tela desabilitar o botao antes do clique.
+ *
+ * Reusa os dois predicados acima — nao reimplementa regra nenhuma. `decision: "approved"`
+ * e' fixo de proposito: e' a unica decisao que os guards bloqueiam, e deixar explicito aqui
+ * evita que alguem leia o flag como "bloqueado para tudo". Reprovar e devolver para Compras
+ * seguem liberados, inclusive para o solicitante e para o selecionador.
+ *
+ * Puro: recebe os ids ja' carregados, nao toca no banco, e por isso e' testavel no runner
+ * puro junto dos predicados que espelha.
+ */
+export function getApprovalActionGuard(input: {
+  requestedBy: string | null | undefined;
+  selectedBy: string | null | undefined;
+  actorId: string;
+}): { selfApprovalBlocked: boolean; selfApprovalBlockedReason: string } {
+  const blockedBySelfRequest = isPurchaseSelfApproval({
+    requestedBy: input.requestedBy,
+    actorId: input.actorId,
+    decision: "approved"
+  });
+  const blockedBySelfSelection = isPurchaseSelfSelectionApproval({
+    selectedBy: input.selectedBy,
+    actorId: input.actorId,
+    decision: "approved"
+  });
+
+  if (blockedBySelfRequest && blockedBySelfSelection) {
+    return {
+      selfApprovalBlocked: true,
+      selfApprovalBlockedReason:
+        "Voce criou esta solicitacao e selecionou a cotacao vencedora. Outra pessoa precisa aprovar; voce ainda pode reprovar ou devolver para Compras."
+    };
+  }
+
+  if (blockedBySelfRequest) {
+    return {
+      selfApprovalBlocked: true,
+      selfApprovalBlockedReason:
+        "Voce criou esta solicitacao. Outra pessoa precisa aprovar; voce ainda pode reprovar ou devolver para Compras."
+    };
+  }
+
+  if (blockedBySelfSelection) {
+    return {
+      selfApprovalBlocked: true,
+      selfApprovalBlockedReason:
+        "Voce selecionou a cotacao vencedora. Outra pessoa precisa aprovar; voce ainda pode reprovar ou devolver para Compras."
+    };
+  }
+
+  return { selfApprovalBlocked: false, selfApprovalBlockedReason: "" };
+}

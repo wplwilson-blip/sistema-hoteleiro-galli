@@ -33,6 +33,10 @@ type UserRecord = {
   unitNames: string[];
   status: AccessStatus;
   createdAt: string;
+  // C6 (plano 64): calculado no servidor (GET /api/base/users), espelhando as recusas do
+  // DELETE. A tela NAO reimplementa a regra — nao sabe quem e' super admin nem quantos ha'.
+  canDelete?: boolean;
+  cannotDeleteReason?: string;
 };
 
 type EmployeeOption = {
@@ -437,19 +441,28 @@ export function UsersClient() {
                         disableInactivate={!user.employeeId || !user.accessProfileId || !user.unitIds.length || saveMutation.isPending}
                         inactivateLabel={user.status === "active" ? "Inativar" : "Ativar"}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => {
-                          setDeleteTarget(user);
-                          setDeleteError("");
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Excluir
-                      </Button>
+                      <div className="flex flex-col items-end gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={user.canDelete === false}
+                          title={user.canDelete === false ? user.cannotDeleteReason : undefined}
+                          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => {
+                            setDeleteTarget(user);
+                            setDeleteError("");
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Excluir
+                        </Button>
+                        {user.canDelete === false && user.cannotDeleteReason ? (
+                          // Texto visivel, nao so' `title`: tooltip nao aparece em toque e
+                          // nao e' lido por leitor de tela.
+                          <p className="max-w-[16rem] text-right text-xs text-muted-foreground">{user.cannotDeleteReason}</p>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                 </tr>

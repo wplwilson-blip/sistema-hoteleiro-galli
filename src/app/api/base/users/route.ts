@@ -4,6 +4,7 @@ import { buildTechnicalAuthEmail } from "@/lib/auth/schemas";
 import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserCreatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
+import { getActiveSuperAdminUserIds, getUserDeletePermission } from "@/lib/auth/super-admin";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -154,6 +155,10 @@ export async function GET() {
       return apiError("Nao foi possivel carregar unidades.", 500);
     }
 
+    // C6 (plano 64): o servidor calcula quem NAO pode ser excluido; a tela so' obedece.
+    // Uma consulta agregada por request (nao por usuario) — a mesma que o DELETE ja' usa.
+    const activeSuperAdminIds = await getActiveSuperAdminUserIds(supabase);
+
     const employeesById = new Map((employees ?? []).map((employee) => [employee.id, employee]));
     const profilesById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
     const unitsById = new Map((units ?? []).map((unit) => [unit.id, unit]));
@@ -172,9 +177,16 @@ export async function GET() {
         const unitIds = Array.from(new Set(links.map((link) => link.unit_id)));
         const allowedUnits = unitIds.map((unitId) => unitsById.get(unitId)).filter(Boolean);
         const employee = employeeByUser.get(user.id);
+        const deletePermission = getUserDeletePermission({
+          userId: user.id,
+          actorId: context.session.user.id,
+          activeSuperAdminIds
+        });
 
         return {
           id: user.id,
+          canDelete: deletePermission.canDelete,
+          cannotDeleteReason: deletePermission.cannotDeleteReason,
           username: user.username,
           displayName: user.display_name,
           employeeId: employee?.id ?? "",
