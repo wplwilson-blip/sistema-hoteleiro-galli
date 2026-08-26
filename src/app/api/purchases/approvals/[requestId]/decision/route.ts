@@ -8,7 +8,7 @@ import {
   PurchaseApprovalSnapshotError,
   assertPendingPurchaseApprovalSnapshot
 } from "@/lib/purchases/approval-snapshots";
-import { isPurchaseSelfApproval } from "@/lib/purchases/approval-segregation";
+import { isPurchaseSelfApproval, isPurchaseSelfSelectionApproval } from "@/lib/purchases/approval-segregation";
 
 type PurchaseRequestRow = {
   id: string;
@@ -28,6 +28,7 @@ type PurchaseQuoteRow = {
   purchase_request_id: string;
   is_selected: boolean;
   total_amount: string | number;
+  selected_by: string | null;
 };
 
 const decisionSchema = z.object({
@@ -84,7 +85,7 @@ export async function POST(request: Request, { params }: { params: { requestId: 
 
     const { data: quoteData, error: quoteError } = await supabase
       .from("purchase_quotes")
-      .select("id, purchase_request_id, is_selected, total_amount")
+      .select("id, purchase_request_id, is_selected, total_amount, selected_by")
       .eq("purchase_request_id", purchaseRequest.id)
       .eq("is_selected", true)
       .is("deleted_at", null)
@@ -153,6 +154,21 @@ export async function POST(request: Request, { params }: { params: { requestId: 
       })
     ) {
       return apiError("Você não pode aprovar uma solicitação que você mesmo criou.", 403);
+    }
+
+    // Segregacao irmã (plano 62): quem SELECIONOU a cotacao vencedora nao APROVA a compra.
+    // Mesmas regras do guard acima (so' "approved", sem excecao de privilegio, nulo nao
+    // bloqueia) e mesma limitacao: vale so' nesta rota, unico chamador da RPC de decisao.
+    // `selected_by` e' gravado no ATO da selecao (RPC purchase_set_quote_selection,
+    // migration 083) e limpo ao desmarcar — reflete sempre a selecao VIGENTE.
+    if (
+      isPurchaseSelfSelectionApproval({
+        selectedBy: winningQuote.selected_by,
+        actorId: context.session.user.id,
+        decision: payload.decision
+      })
+    ) {
+      return apiError("Você não pode aprovar uma compra cuja cotação vencedora você mesmo selecionou.", 403);
     }
 
     const { error: rpcError } = await supabase.rpc("purchase_apply_approval_decision", {
