@@ -5,7 +5,7 @@ import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserCreatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { getActiveSuperAdminUserIds, getUserDeletePermission, getUserInactivatePermission } from "@/lib/auth/super-admin";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -332,7 +332,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const supabase = createSupabaseAdminClient();
+    // O `supabase` do try e' block-scoped e nao alcanca o catch, mas `context` alcanca (o
+    // guard `if (response || !context) return` esta' antes do try) -- e este bloco ja' usa
+    // context.session.user.id nas linhas abaixo. context.supabase e' a MESMA instancia de
+    // service_role que requirePermission cria (permissions.ts), entao o rollback e'
+    // identico por construcao: uma referencia a menos a' fabrica, zero mudanca de
+    // comportamento.
+    const supabase = context.supabase;
 
     if (appUserId) {
       await supabase
