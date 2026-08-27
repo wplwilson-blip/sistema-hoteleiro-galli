@@ -7,7 +7,7 @@ import {
   getUnitOrganizationId,
   logBaseCadastroError,
 } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ensureAutomaticEmployeeDocumentDossier } from "@/lib/hr/employee-document-dossier-auto";
 import { ensureAutomaticEmployeeOnboarding } from "@/lib/hr/employee-onboarding-auto";
 

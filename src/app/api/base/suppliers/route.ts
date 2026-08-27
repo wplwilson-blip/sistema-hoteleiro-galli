@@ -3,7 +3,7 @@ import { z } from "zod";
 import { assertUnitInPermissionScope, BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { supplierPayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, getInitialOrganizationId, getUnitOrganizationId, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type SupplierRow = {
   id: string;

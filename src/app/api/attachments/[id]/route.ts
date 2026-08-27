@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ATTACHMENTS_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { validatePurchaseQuoteAttachmentMutationAccess, type AttachmentRow } from "@/lib/attachments/api";
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {

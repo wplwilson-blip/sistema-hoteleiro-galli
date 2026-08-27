@@ -15,7 +15,7 @@ import {
   type PurchaseQuoteSourceType
 } from "@/lib/purchases/quote-schemas";
 import { getPurchaseRequestStatusLabel } from "@/lib/purchases/schemas";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const DASHBOARD_QUOTE_LIMIT = 500;
 const DUE_SOON_DAYS = 7;

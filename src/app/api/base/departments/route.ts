@@ -7,7 +7,7 @@ import {
   getUnitOrganizationId,
   logBaseCadastroError
 } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 async function hasDepartmentCodeInUnit(supabase: ReturnType<typeof createSupabaseAdminClient>, unitId: string, code: string) {
   const { data, error } = await supabase
