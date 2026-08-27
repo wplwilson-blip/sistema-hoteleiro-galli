@@ -46,6 +46,21 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return apiError("Nao foi possivel redefinir a senha do usuario.", 500);
     }
 
+    // #C7: reset feito por admin tambem gera senha temporaria -- o admin passa a conhece-la.
+    // O update vem DEPOIS do sucesso no Auth de proposito: se a troca la' falhasse, armar a
+    // flag obrigaria o usuario a trocar uma senha que nao mudou.
+    const { error: flagError } = await supabase
+      .from("app_users")
+      .update({ must_change_password: true, updated_by: context.session.user.id })
+      .eq("id", target.id);
+
+    if (flagError) {
+      // A senha JA' foi trocada no Auth. Falhar aqui com 500 faria o admin repetir o reset
+      // achando que nada aconteceu. Registra e segue: o pior caso e' o usuario nao ser
+      // forcado a trocar -- exatamente o comportamento de antes desta fatia.
+      logBaseCadastroError("users.password_reset_flag_failed", flagError);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -1,14 +1,17 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { KeyRound, LogOut } from "lucide-react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/common/notification-bell";
 import { ActiveUnitSwitcher } from "@/components/layout/active-unit-switcher";
+import { ChangePasswordForm } from "@/components/auth/change-password-form";
 import { useAppStore } from "@/store/app-store";
 
 export function AppHeader() {
   const user = useAppStore((state) => state.user);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const router = useRouter();
 
   async function handleLogout() {
@@ -29,11 +32,44 @@ export function AppHeader() {
           <p className="text-sm font-medium leading-5">{user.name}</p>
           <p className="text-xs text-muted-foreground">@{user.username}</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-border/90 bg-background hover:bg-muted"
+          onClick={() => setChangePasswordOpen(true)}
+          data-testid="trocar-senha"
+        >
+          <KeyRound className="h-4 w-4" />
+          <span className="hidden sm:inline">Trocar senha</span>
+        </Button>
         <Button variant="outline" size="sm" className="border-border/90 bg-background hover:bg-muted" onClick={handleLogout}>
           <LogOut className="h-4 w-4" />
           Sair
         </Button>
       </div>
+
+      {changePasswordOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={() => setChangePasswordOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-xl border bg-card p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ChangePasswordForm
+              onDone={() => {
+                setChangePasswordOpen(false);
+                router.refresh();
+              }}
+              onCancel={() => setChangePasswordOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
     </header>
   );
 }

@@ -23,4 +23,8 @@ export type SessionContext = {
   // unidades. Super admin => ["*"] (sentinela: tudo). Usado para filtrar UI (menu); a validacao real
   // continua server-side (requirePermission). Ver docs/codex/17.
   permissions: string[];
+  // #C7: senha definida por terceiro (cadastro ou reset do admin) e ainda nao trocada.
+  // Enquanto true, o app renderiza apenas a tela de troca. Gate de UX, NAO de seguranca:
+  // as rotas de API continuam atendendo este usuario ate' o middleware do #5.
+  mustChangePassword: boolean;
 };

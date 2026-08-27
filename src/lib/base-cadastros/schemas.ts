@@ -242,3 +242,28 @@ export const internalUserUpdatePayloadSchema = z.object({
 export const internalUserResetPasswordSchema = z.object({
   password: z.string().min(8, "A nova senha deve ter pelo menos 8 caracteres.")
 });
+
+/**
+ * Troca da PROPRIA senha (#C7, plano docs/codex/65).
+ *
+ * Nao ha' id de usuario aqui de proposito: o alvo vem SEMPRE da sessao na rota. Se este
+ * schema aceitasse um id, a rota viraria "trocar a senha de qualquer um" -- o campo e' a
+ * unica coisa que um atacante precisaria manipular.
+ *
+ * `currentPassword` e' exigido mesmo com sessao valida: sem ele, um cookie roubado (ou uma
+ * maquina destravada) permite TOMAR a conta, trocando a senha e expulsando o dono.
+ */
+export const changePasswordPayloadSchema = z
+  .object({
+    currentPassword: z.string().min(8, "Informe a senha atual."),
+    newPassword: z.string().min(8, "A nova senha deve ter pelo menos 8 caracteres.")
+  })
+  .superRefine((value, ctx) => {
+    if (value.currentPassword === value.newPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["newPassword"],
+        message: "A nova senha deve ser diferente da atual."
+      });
+    }
+  });
