@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentSessionContext, SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
+import { isPasswordChangeRequired, PASSWORD_CHANGE_REQUIRED_MESSAGE } from "@/lib/auth/password-guard";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
@@ -21,6 +22,21 @@ export async function requireAuthenticatedRequest() {
 
   if (!session) {
     return { session: null, response: apiError("Sessao expirada. Entre novamente.", 401) };
+  }
+
+  // #5: senha temporaria (definida por admin) ainda nao trocada -> nenhuma rota de negocio
+  // responde. Este e' o afunil por onde passam 128 das 136 rotas da API: requirePermission
+  // (direto), requireHrPermission (via requirePermission) e requireHrWorkflowPermission.
+  //
+  // A rota POST /api/auth/change-password NAO passa por aqui DE PROPOSITO -- ela usa
+  // getCurrentSessionContext direto. E' a saida: trava-la deixaria o usuario sem como
+  // destravar. O mesmo vale para logout, login e as rotas de cron (ver docs/codex/67, §4).
+  //
+  // `session: null` no retorno, mesmo shape do 401 acima: todos os chamadores tratam
+  // `response || !session` como "pare aqui". Devolver a sessao junto abriria a chance de
+  // alguem usar o contexto ignorando o response.
+  if (isPasswordChangeRequired(session)) {
+    return { session: null, response: apiError(PASSWORD_CHANGE_REQUIRED_MESSAGE, 403) };
   }
 
   // TODO Sprint 4C: aplicar matriz granular de permissoes por modulo, unidade e acao.

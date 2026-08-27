@@ -35,7 +35,15 @@ export function hrWorkflowApiError(code: string, message: string, status: number
 }
 
 export async function requireHrWorkflowPermission(permissionCode: HrPermissionCode, opts?: HrScopeOptions) {
-  const { session } = await requireAuthenticatedRequest();
+  const { session, response: authResponse } = await requireAuthenticatedRequest();
+
+  // O `response` do afunil precisa ser PROPAGADO, nao descartado: desde o #5 ele pode ser
+  // um 403 de senha temporaria, e nao apenas o 401 de sessao. Sem isto, as rotas de
+  // workflow responderiam "Sessao expirada" a quem esta' travado por senha -- a pessoa
+  // sairia, entraria de novo e cairia no mesmo erro, num laco sem explicacao.
+  if (authResponse) {
+    return { context: null, response: authResponse };
+  }
 
   if (!session) {
     return {
