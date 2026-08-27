@@ -62,15 +62,7 @@
         // Efetivadores de cron: nao ha' usuario nem sessao; autenticam por segredo.
         "src/app/api/cron/run-jobs/route.ts",
         "src/app/api/hr/apply-due/route.ts",
-        "src/app/api/hr/movements/apply-due/route.ts",
-
-        // DIVIDA CONHECIDA -- a unica da lista.
-        // Esta e' rota de NEGOCIO (gestao de usuarios internos) e ja' tem `context.supabase`
-        // disponivel pelo requirePermission. Deveria usa-lo. Nao foi migrada aqui de
-        // proposito: a troca exige conferir o gate e o escopo de unidade da rota, o que e'
-        // fatia propria com teste. Esta entrada existe para a regra poder ser ligada AGORA,
-        // e deve SAIR quando a migracao acontecer. Ver docs/codex/57.
-        "src/app/api/base/users/route.ts"
+        "src/app/api/hr/movements/apply-due/route.ts"
       ],
       "rules": {
         "@typescript-eslint/no-restricted-imports": "off"
