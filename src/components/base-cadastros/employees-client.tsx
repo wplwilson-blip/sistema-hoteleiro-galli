@@ -379,13 +379,19 @@ export function EmployeesClient() {
               <Field label="Data de admissao">
                 <TextInput type="date" value={form.hireDate} onChange={(event) => setForm({ ...form, hireDate: event.target.value })} />
               </Field>
-              <Field label="Data de desligamento">
-                <TextInput
-                  type="date"
-                  value={form.terminationDate}
-                  onChange={(event) => setForm({ ...form, terminationDate: event.target.value })}
-                />
-              </Field>
+              {/* #C5: desligamento nao pertence a' admissao -- e' outro fluxo. So' aparece
+                  na EDICAO. No cadastro novo o campo segue existindo no estado do form,
+                  partindo vazio, e terminationDate e' optional no schema: o create continua
+                  enviando o mesmo payload de antes. */}
+              {editing ? (
+                <Field label="Data de desligamento">
+                  <TextInput
+                    type="date"
+                    value={form.terminationDate}
+                    onChange={(event) => setForm({ ...form, terminationDate: event.target.value })}
+                  />
+                </Field>
+              ) : null}
             </div>
             <ErrorMessage message={error} />
             <FormActions isSaving={saveMutation.isPending} onCancel={() => setFormOpen(false)} />
