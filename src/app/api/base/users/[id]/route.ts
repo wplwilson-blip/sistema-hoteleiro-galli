@@ -3,7 +3,7 @@ import { z } from "zod";
 import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { internalUserUpdatePayloadSchema } from "@/lib/base-cadastros/schemas";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getActiveSuperAdminUserIds, getUserInactivatePermission } from "@/lib/auth/super-admin";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;

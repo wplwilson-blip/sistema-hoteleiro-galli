@@ -1,3 +1,80 @@
 {
-  "extends": ["next/core-web-vitals"]
+  "extends": ["next/core-web-vitals"],
+  "overrides": [
+    {
+      // A regra vive num override escopado a TypeScript, e nao no bloco raiz de "rules":
+      // o plugin @typescript-eslint precisa estar declarado onde a regra e' usada, e nao
+      // faz sentido avaliar arquivos .js/.mjs de config com ela.
+      //
+      // Vacina do achado #1 (docs/codex/57, Opcao B). O cliente service_role IGNORA RLS:
+      // instancia-lo numa rota de negocio derruba, sem alarde, o isolamento por unidade que
+      // o resto do sistema sustenta. A regra torna esse uso um erro de lint em vez de uma
+      // escolha silenciosa de quem escreve a proxima rota.
+      //
+      // `allowTypeImports: true`: `import type { createSupabaseAdminClient }` continua
+      // liberado em qualquer arquivo -- e' apagado na compilacao e serve so' para
+      // `ReturnType<typeof ...>`. Nao ha' cliente instanciado.
+      "files": ["**/*.ts", "**/*.tsx"],
+      "plugins": ["@typescript-eslint"],
+      "rules": {
+        "@typescript-eslint/no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/lib/supabase/admin",
+                "importNames": ["createSupabaseAdminClient"],
+                "allowTypeImports": true,
+                "message": "Cliente service_role ignora RLS. Use o `context.supabase` devolvido por requirePermission/requireHrPermission. Instanciacao direta e' restrita ao nucleo de auth/permissao e aos efetivadores de cron (ver docs/codex/57). Para o tipo, use `import type`."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // ALLOWLIST: os arquivos que legitimamente INSTANCIAM o cliente service_role.
+      //
+      // Lista por caminho EXATO, nao por glob (`src/app/api/auth/**` etc.). Assim um
+      // arquivo novo em qualquer uma dessas pastas ja' nasce barrado, forcando uma decisao
+      // consciente em vez de herdar a excecao por vizinhanca -- que e' justamente como
+      // esse uso se espalhou ate' aqui.
+      //
+      // Conferida contra os chamadores REAIS da arvore (11 arquivos), nao contra a lista do
+      // doc 57, que estava desatualizada: `src/lib/hr/apply-due-*.ts` so' citam a fabrica em
+      // COMENTARIO (nao importam), e `src/lib/supabase/admin.ts` e' quem a DEFINE -- nao
+      // importa de si mesmo, entao nao precisa de excecao.
+      "files": [
+        // Nucleo de auth/permissao: precisam ler vinculos e perfis ANTES de existir um
+        // contexto de permissao -- sao eles que o produzem.
+        "src/lib/auth/session.ts",
+        "src/lib/auth/permissions.ts",
+        "src/lib/hr/workflow-auth.ts",
+
+        // Rotas de auth: rodam antes ou fora do gate de permissao.
+        "src/app/api/auth/login/route.ts",
+        "src/app/api/auth/active-unit/route.ts",
+        "src/app/api/auth/change-password/route.ts",
+
+        // Bootstrap: roda antes de existir qualquer usuario.
+        "src/app/api/setup/initial-admin/route.ts",
+
+        // Efetivadores de cron: nao ha' usuario nem sessao; autenticam por segredo.
+        "src/app/api/cron/run-jobs/route.ts",
+        "src/app/api/hr/apply-due/route.ts",
+        "src/app/api/hr/movements/apply-due/route.ts",
+
+        // DIVIDA CONHECIDA -- a unica da lista.
+        // Esta e' rota de NEGOCIO (gestao de usuarios internos) e ja' tem `context.supabase`
+        // disponivel pelo requirePermission. Deveria usa-lo. Nao foi migrada aqui de
+        // proposito: a troca exige conferir o gate e o escopo de unidade da rota, o que e'
+        // fatia propria com teste. Esta entrada existe para a regra poder ser ligada AGORA,
+        // e deve SAIR quando a migracao acontecer. Ver docs/codex/57.
+        "src/app/api/base/users/route.ts"
+      ],
+      "rules": {
+        "@typescript-eslint/no-restricted-imports": "off"
+      }
+    }
+  ]
 }

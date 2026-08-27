@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { getUnitOrganizationId, logBaseCadastroError, apiError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildNextPurchaseRequestNumber,
   buildPurchaseRequestInitialFlags,

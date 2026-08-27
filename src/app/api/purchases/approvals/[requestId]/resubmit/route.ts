@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PURCHASES_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculateWinningQuoteApprovalFlags, getPurchaseApprovalLevel, type PurchaseApprovalStatus } from "@/lib/purchases/api";
 import {
   type PurchaseQuoteEvidenceType,

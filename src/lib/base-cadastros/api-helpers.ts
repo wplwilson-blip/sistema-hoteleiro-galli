@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentSessionContext, SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
 import { isPasswordChangeRequired, PASSWORD_CHANGE_REQUIRED_MESSAGE } from "@/lib/auth/password-guard";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;
 

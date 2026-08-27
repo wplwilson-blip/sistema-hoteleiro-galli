@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ATTACHMENTS_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   ATTACHMENTS_BUCKET,
   buildAttachmentStoragePath,

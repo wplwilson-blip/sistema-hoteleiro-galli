@@ -1,5 +1,5 @@
 import { logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdminClient>;

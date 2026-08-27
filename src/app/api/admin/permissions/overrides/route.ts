@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 import { appUserHasSuperAdminLink } from "@/lib/auth/session";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 // Fase 3-B: ESCRITA de autorizacao (excecoes por usuario). Gate: ADMIN:overrides.manage.
 // Escreve SOMENTE em user_permission_overrides. unit_id SEMPRE null (escopo = todas as unidades).
