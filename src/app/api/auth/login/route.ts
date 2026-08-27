@@ -22,23 +22,34 @@ import {
 // signInWithPassword com ele SEMPRE falha — nao ha' caminho em que este e-mail autentique.
 const SENTINEL_AUTH_EMAIL = "no-reply+nonexistent-login-probe@sistema-hoteleiro.invalid";
 
-// Piso de tempo das respostas de falha de CREDENCIAL — REDE DE SEGURANCA, nao o mecanismo.
+// Piso de tempo das respostas de falha de CREDENCIAL — BACKSTOP, nao o mecanismo.
 //
-// O que fecha o oraculo de timing e' o round-trip sentinela (ver `probeSentinelAuth`): os
+// Quem fecha o oraculo de timing e' o round-trip sentinela (ver `probeSentinelAuth`): os
 // dois caminhos, conta existente e conta inexistente, passam pela MESMA chamada de rede ao
-// Supabase Auth. Os tempos ficam iguais POR CONSTRUCAO, e nao porque uma constante os
-// mascara. Isso importa porque um piso fixo abaixo do p95 real deixa o oraculo aberto, e
-// sob pico de latencia do Auth qualquer piso fixo reabre.
+// Supabase Auth. Os tempos ficam iguais POR CONSTRUCAO, nao porque uma constante os
+// mascara. Essa distincao importa: um piso fixo abaixo do custo real deixaria o oraculo
+// aberto, e sob pico de latencia do Auth qualquer piso fixo reabriria.
 //
-// O piso continua aqui para cobrir a variacao residual (o sentinela e a conta real nao
-// custam exatamente o mesmo).
+// MEDIDO em staging (com a migration 084 aplicada e o piso rebaixado para nao mascarar o
+// resultado), comparando os dois caminhos que um enumerador consegue produzir — ambos 401:
+//   B = usuario inexistente   |   C = usuario real com senha errada
+//   n = 50 por serie, em duas rodadas com a ORDEM das series invertida entre elas.
 //
-// TODO(#4): o valor definitivo sai da MEDICAO do p95 do signInWithPassword em staging
-// (plano docs/codex/54, secoes 4 e 7 — passo 0 do roteiro na migration 084). Ate' que essa
-// medicao seja feita e este numero seja cravado ACIMA do p95 observado, o oraculo de timing
-// NAO deve ser considerado fechado. 1000 ms e' provisorio, escolhido pela ordem de grandeza
-// estimada no plano, nao por medicao.
-const LOGIN_MIN_RESPONSE_MS = 1000;
+//   mediana B-C ........ +39 ms sobre uma base de ~1,4 s  (2,8%)
+//   media   B-C ........ +40 ms, a 1,22 erro-padrao de zero  -> indistinguivel de zero
+//   p95     B-C ........ TROCOU DE SINAL entre as rodadas (+216 ms / -117 ms)
+//
+// Sinal que inverte quando so' a ordem muda e' ruido de rede, nao vies sistematico. Antes
+// desta fatia os dois caminhos custavam ordens de grandeza diferentes (um pulava o
+// round-trip ao Auth inteiro); agora custam o mesmo dentro do ruido.
+//
+// 300 ms e' BAIXO DE PROPOSITO. So' cobre jitter residual. Um piso alto nao compraria
+// seguranca nenhuma — o sentinela ja' igualou os caminhos — e puniria toda falha de
+// credencial LEGITIMA (o hospede da recepcao que errou a senha) mantendo a invocacao
+// aberta a' toa. Na Vercel, servidor e Supabase ficam proximos, entao o custo real e' bem
+// menor que os ~1,4 s medidos daqui, e o piso passa a agir com mais frequencia: mais um
+// motivo para ele ser leve.
+const LOGIN_MIN_RESPONSE_MS = 300;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ ok: false, message }, { status });
