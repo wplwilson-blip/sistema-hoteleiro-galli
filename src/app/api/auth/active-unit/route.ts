@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { appUserHasSuperAdminLink, getCurrentSessionContext } from "@/lib/auth/session";
 import { setActiveUnitCookie } from "@/lib/auth/active-unit";
+import { isPasswordChangeRequired, PASSWORD_CHANGE_REQUIRED_MESSAGE } from "@/lib/auth/password-guard";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const bodySchema = z.object({
@@ -18,6 +19,14 @@ export async function POST(request: Request) {
 
   if (!session) {
     return errorResponse("Sessao expirada. Entre novamente.", 401);
+  }
+
+  // Esta rota carrega getCurrentSessionContext direto, pulando o afunil. Sem esta checagem,
+  // um usuario travado ainda trocaria a unidade ativa -- mudanca de estado de sessao,
+  // pequena mas real, e sem motivo para ser permitida antes da troca. Vem DEPOIS do 401:
+  // sem sessao, quem responde e' o 401, nao esta trava.
+  if (isPasswordChangeRequired(session)) {
+    return errorResponse(PASSWORD_CHANGE_REQUIRED_MESSAGE, 403);
   }
 
   let unitId: string;
