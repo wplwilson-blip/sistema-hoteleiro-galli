@@ -107,7 +107,8 @@ const menuGroups: SidebarGroup[] = [
       { label: "Cargos", href: "/cadastros/cargos", icon: BriefcaseBusiness, requiredPermission: "BASE:job_positions.view" },
       { label: "Colaboradores", href: "/cadastros/colaboradores", icon: UserRound, requiredPermission: "BASE:employees.view" },
       { label: "Usuários internos", href: "/cadastros/usuarios", icon: Users, requiredPermission: "BASE:users.view" },
-      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: IdCard, requiredPermission: "BASE:suppliers.view" }
+      { label: "Fornecedores", href: "/cadastros/fornecedores", icon: IdCard, requiredPermission: "BASE:suppliers.view" },
+      { label: "Apartamentos", href: "/cadastros/apartamentos", icon: BedDouble, requiredPermission: "BASE:rooms.view" }
     ]
   },
   {
