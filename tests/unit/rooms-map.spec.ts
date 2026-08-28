@@ -21,6 +21,10 @@ function room(overrides: Partial<RoomRecord> & { id: string; roomNumber: string 
     unitId: "unit-1",
     displayName: "",
     roomStatus: "available",
+    // Tres dimensoes (plano 70). O fixture nasce vendavel -- vago, vistoriado, sem bloqueio.
+    occupancyStatus: "vacant",
+    housekeepingStatus: "inspected",
+    blockingStatus: "none",
     capacity: 2,
     isConnecting: false,
     connectingRoomId: "",

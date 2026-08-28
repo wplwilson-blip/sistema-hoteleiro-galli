@@ -10,12 +10,25 @@ import { ErrorMessage, Field, LoadingTable, SelectField, TextInput } from "@/com
 import { RoomsMap } from "@/components/base-cadastros/rooms-map";
 import {
   climateControlLabel,
+  describeRoomState,
   normalizeSearchValue,
   resolveRoomsView,
-  roomStatusLabel,
-  roomStatusTone,
-  type RoomRecord
+  type RoomRecord,
+  type RoomState
 } from "@/components/base-cadastros/rooms-utils";
+
+/**
+ * As tres dimensoes do apartamento (plano 70). A lista e o mapa leem pela MESMA funcao
+ * (`describeRoomState`): enquanto a lista lia `roomStatus` legado e o mapa lia as tres
+ * dimensoes, as duas telas passavam a discordar na PRIMEIRA transicao registrada.
+ */
+function roomState(room: RoomRecord): RoomState {
+  return {
+    occupancy: room.occupancyStatus,
+    housekeeping: room.housekeepingStatus,
+    blocking: room.blockingStatus
+  };
+}
 
 type RoomListResponse = {
   ok: true;
@@ -118,10 +131,12 @@ export function RoomsClient() {
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [rooms]);
 
+  // O filtro passa a operar sobre o rotulo COMBINADO -- o mesmo texto que a coluna Situacao
+  // mostra. Filtrar por um valor que a tela nao exibe seria pedir ao usuario que adivinhasse.
   const statusOptions = useMemo(() => {
-    const found = new Set(rooms.map((room) => room.roomStatus));
+    const found = new Set(rooms.map((room) => describeRoomState(roomState(room)).label));
 
-    return Array.from(found).sort((a, b) => roomStatusLabel(a).localeCompare(roomStatusLabel(b), "pt-BR"));
+    return Array.from(found).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [rooms]);
 
   const filteredRooms = useMemo(() => {
@@ -140,7 +155,7 @@ export function RoomsClient() {
         return false;
       }
 
-      if (statusFilter !== "all" && room.roomStatus !== statusFilter) {
+      if (statusFilter !== "all" && describeRoomState(roomState(room)).label !== statusFilter) {
         return false;
       }
 
@@ -194,7 +209,7 @@ export function RoomsClient() {
             <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="all">Todas as situações</option>
               {statusOptions.map((status) => (
-                <option key={status} value={status}>{roomStatusLabel(status)}</option>
+                <option key={status} value={status}>{status}</option>
               ))}
             </SelectField>
           </Field>
@@ -282,7 +297,10 @@ export function RoomsClient() {
                     {room.capacity === null ? "-" : `${room.capacity} PAX`}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={roomStatusTone(room.roomStatus)} label={roomStatusLabel(room.roomStatus)} />
+                    <StatusBadge
+                      status={describeRoomState(roomState(room)).tone}
+                      label={describeRoomState(roomState(room)).label}
+                    />
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{room.isConnecting ? "Sim" : "Não"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{climateControlLabel(room.climateControl)}</td>
