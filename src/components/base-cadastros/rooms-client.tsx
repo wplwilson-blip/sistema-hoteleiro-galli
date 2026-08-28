@@ -1,87 +1,26 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAppStore } from "@/store/app-store";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextInput } from "@/components/base-cadastros/crud-components";
-
-type RoomTypeRef = {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  capacity: number | null;
-  beds: number | null;
-};
-
-type BlockRef = { id: string; code: string; name: string };
-type FloorRef = { id: string; code: string; name: string; number: number | null };
-
-type RoomRecord = {
-  id: string;
-  unitId: string;
-  roomNumber: string;
-  displayName: string;
-  roomStatus: string;
-  capacity: number | null;
-  isConnecting: boolean;
-  connectingRoomId: string;
-  climateControl: string;
-  hasMinibar: boolean;
-  roomType: RoomTypeRef | null;
-  block: BlockRef | null;
-  floor: FloorRef | null;
-};
+import { RoomsMap } from "@/components/base-cadastros/rooms-map";
+import {
+  climateControlLabel,
+  normalizeSearchValue,
+  resolveRoomsView,
+  roomStatusLabel,
+  roomStatusTone,
+  type RoomRecord
+} from "@/components/base-cadastros/rooms-utils";
 
 type RoomListResponse = {
   ok: true;
   rooms: RoomRecord[];
 };
-
-// Traducao do enum public.room_status (migration 001). Mantido como mapa para o rotulo
-// nunca divergir entre a tabela e os filtros -- os dois leem daqui.
-const roomStatusLabelMap: Record<string, string> = {
-  available: "Livre",
-  occupied: "Ocupado",
-  dirty: "Sujo",
-  cleaning: "Em limpeza",
-  maintenance: "Manutenção",
-  blocked: "Bloqueado",
-  inactive: "Inativo"
-};
-
-const roomStatusToneMap: Record<string, "success" | "warning" | "danger" | "info" | "visual"> = {
-  available: "success",
-  occupied: "info",
-  dirty: "warning",
-  cleaning: "warning",
-  maintenance: "danger",
-  blocked: "danger",
-  inactive: "visual"
-};
-
-const climateControlLabelMap: Record<string, string> = {
-  ar_condicionado: "Ar-condicionado",
-  ventilador: "Ventilador"
-};
-
-function roomStatusLabel(value: string) {
-  return roomStatusLabelMap[value] ?? value;
-}
-
-function climateControlLabel(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  return climateControlLabelMap[value] ?? value;
-}
-
-function normalizeSearchValue(value: string) {
-  return value.trim().toLowerCase();
-}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -101,6 +40,32 @@ export function RoomsClient() {
   // Unidade ativa na queryKey: trocar a unidade no cabecalho refaz o fetch da lista, que e'
   // escopada por unidade no servidor (scope: "active-unit").
   const activeUnitId = useAppStore((state) => state.activeUnit.id);
+
+  // A aba vive na URL (?view=mapa), nao em useState: e' o que permite o card da porta
+  // operacional (Governanca/Manutencao) linkar direto no mapa.
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const view = resolveRoomsView(searchParams.get("view"));
+
+  const changeView = useCallback(
+    (nextView: "lista" | "mapa") => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      if (nextView === "mapa") {
+        params.set("view", "mapa");
+      } else {
+        params.delete("view");
+      }
+
+      const query = params.toString();
+
+      // `replace`, nao `push`: alternar aba nao deve empilhar historico -- o Voltar do
+      // navegador tem de sair da tela, nao desfazer cliques de aba.
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   const [search, setSearch] = useState("");
   const [blockFilter, setBlockFilter] = useState("all");
@@ -234,9 +199,33 @@ export function RoomsClient() {
             </SelectField>
           </Field>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {filteredRooms.length} de {rooms.length} apartamentos
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {filteredRooms.length} de {rooms.length} apartamentos
+          </p>
+          {/* Os filtros acima valem para as DUAS visoes (mesmo estado): alternar a aba
+              preserva o recorte -- e' a mesma tela vendo o mesmo conjunto de outro jeito. */}
+          <div className="flex gap-1 rounded-md border bg-background p-1">
+            <button
+              type="button"
+              className={`rounded px-3 py-1 text-sm font-medium transition-colors ${view === "lista" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => changeView("lista")}
+              aria-pressed={view === "lista"}
+              data-testid="apartamentos-aba-lista"
+            >
+              Lista
+            </button>
+            <button
+              type="button"
+              className={`rounded px-3 py-1 text-sm font-medium transition-colors ${view === "mapa" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => changeView("mapa")}
+              aria-pressed={view === "mapa"}
+              data-testid="apartamentos-aba-mapa"
+            >
+              Mapa
+            </button>
+          </div>
+        </div>
       </div>
 
       {roomsQuery.isLoading ? <LoadingTable label="Carregando apartamentos..." /> : null}
@@ -253,7 +242,8 @@ export function RoomsClient() {
           }
         />
       ) : null}
-      {filteredRooms.length ? (
+      {filteredRooms.length && view === "mapa" ? <RoomsMap rooms={filteredRooms} /> : null}
+      {filteredRooms.length && view === "lista" ? (
         <div className="max-w-full overflow-x-auto rounded-lg border bg-card shadow-sm shadow-primary/5">
           <table className="w-full min-w-[1040px] text-left text-sm">
             <thead className="border-b bg-muted/60 text-xs uppercase text-muted-foreground">
@@ -292,7 +282,7 @@ export function RoomsClient() {
                     {room.capacity === null ? "-" : `${room.capacity} PAX`}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={roomStatusToneMap[room.roomStatus] ?? "visual"} label={roomStatusLabel(room.roomStatus)} />
+                    <StatusBadge status={roomStatusTone(room.roomStatus)} label={roomStatusLabel(room.roomStatus)} />
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{room.isConnecting ? "Sim" : "Não"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{climateControlLabel(room.climateControl)}</td>
