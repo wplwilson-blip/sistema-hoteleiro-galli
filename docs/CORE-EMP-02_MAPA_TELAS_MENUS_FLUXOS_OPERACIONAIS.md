@@ -105,6 +105,7 @@ Esta é a estrutura conceitual do menu principal. O menu real deve respeitar per
 ### Manutenção
 
 - Painel Manutenção
+- Mapa de Apartamentos
 - Chamados
 - Meus chamados
 - Aguardando material
@@ -114,7 +115,7 @@ Esta é a estrutura conceitual do menu principal. O menu real deve respeitar per
 ### Governança
 
 - Painel Governança
-- Quartos/áreas
+- Mapa de Apartamentos
 - Tarefas
 - Ocorrências
 - Achados e perdidos
@@ -156,6 +157,7 @@ Esta é a estrutura conceitual do menu principal. O menu real deve respeitar per
 - Usuários
 - Perfis de acesso
 - Fornecedores
+- Apartamentos
 
 ### Relatórios
 
@@ -529,7 +531,8 @@ Regra operacional: a área de Contas a Pagar lança, confere e envia contas para
 | Página | Rota sugerida/existente | Objetivo | Quem usa | Dados exibidos | Principais ações | Demandas geradas | Demandas recebidas | Observações |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Painel Governança | `/governanca` | Entrada do módulo. | Governança/Gerência. | Resumos futuros. | Abrir tarefas/ocorrências. | Nenhuma direta. | Pendências. | Hoje é entrada de módulo. |
-| Quartos/áreas | `/governanca/quartos-areas` | Gestão administrativa de áreas. | Governança. | Áreas e status operacional. | Atualizar status. | Tarefas/chamados. | Pendências. | Não é PMS. |
+| Mapa de Apartamentos | `/cadastros/apartamentos?view=mapa` | Ver os apartamentos por andar e ala, com situação. | Governança/Manutenção. | Apartamento, situação, tipo, PAX, conjugada, climatização. | Consultar; bloquear/liberar em fase seguinte (`BASE:rooms.block`). | Chamados/tarefas (futuro). | Pendências operacionais. | Existente. NÃO tem rota própria: é a mesma tela de `/cadastros/apartamentos`, aberta na aba mapa — porta operacional, sem duplicar dado nem CRUD. |
+| Quartos/áreas | `/governanca/quartos-areas` | Gestão administrativa de áreas operacionais. | Governança. | Áreas e status operacional. | Atualizar status. | Tarefas/chamados. | Pendências. | Futuro. Escopo MAIOR que o mapa acima: cobrirá apartamentos (`rooms`) **e** áreas operacionais (`operational_areas`, migration 004), que ainda não têm tela. Não é PMS. |
 | Tarefas | `/governanca/tarefas` | Lista de limpeza/checklist. | Governança. | Tarefas e responsáveis. | Concluir/registrar ocorrência. | Validação/chamado. | Tarefas atribuídas. | Futuro. |
 | Ocorrências | `/governanca/ocorrencias` | Registrar fatos. | Governança. | Ocorrências e status. | Criar/encaminhar. | Manutenção/Compras. | Ocorrências. | Futuro. |
 | Achados e perdidos | `/governanca/achados-perdidos` | Controlar itens encontrados. | Governança/Recepção. | Itens, local, status. | Registrar/devolver/arquivar. | Acompanhamento. | Itens pendentes. | Futuro. |
@@ -581,6 +584,7 @@ Recepção neste sistema é comunicação e operação interna. Não é PMS e n�
 | Usuários | `/cadastros/usuarios` | Acessos internos. | Admin. | Usuários e vínculos. | Criar/editar. | Ativação/permissão. | Solicitações. | Existe/base. |
 | Perfis de acesso | `/cadastros/perfis` | Perfis/permissões. | Admin. | Perfis. | Configurar. | Auditoria. | Solicitações. | Base existe; UI pode variar. |
 | Fornecedores | `/cadastros/fornecedores` | Fornecedores. | Compras/Admin. | Fornecedores. | Criar/editar. | Cotações. | Solicitações de cadastro. | Existe/base. |
+| Apartamentos | `/cadastros/apartamentos` | Inventário de UHs: tipo, ala, andar, situação e comodidades. | Admin/Gerência (cadastro); Governança/Manutenção (consulta). | Apartamento, tipo, ala, andar, capacidade, situação, conjugada, climatização, frigobar. | Consultar, filtrar, alternar Lista ⇄ Mapa (`?view=mapa`). | Nenhuma direta (bloqueio entra em fase seguinte). | Nenhuma. | Existente. Tela ÚNICA com duas portas: esta (gerencial) e o card "Mapa de Apartamentos" nos painéis de Governança e Manutenção (operacional). Permissões `BASE:rooms.view` / `.block` / `.manage`. |
 
 ### Relatórios
 

@@ -1,7 +1,11 @@
-import { ClipboardCheck, ListChecks, MessageSquareWarning, UserRoundCheck } from "lucide-react";
-import { ModuleDashboard } from "@/components/common/module-dashboard";
+"use client";
 
-const cards = [
+import { BedDouble, ClipboardCheck, ListChecks, MessageSquareWarning, UserRoundCheck } from "lucide-react";
+import { ModuleDashboard } from "@/components/common/module-dashboard";
+import { useAppStore } from "@/store/app-store";
+import { canDo } from "@/lib/auth/permissions-ui";
+
+const baseCards = [
   {
     title: "Checklists",
     description: "Checklists operacionais da governança serão criados em próxima etapa.",
@@ -28,11 +32,27 @@ const cards = [
   }
 ];
 
+// Porta OPERACIONAL do mapa de apartamentos: mesma tela de Cadastros, aberta direto na aba
+// mapa. Nao ha' rota propria nem duplicacao de CRUD -- e' o mesmo componente e o mesmo GET.
+const roomsMapCard = {
+  title: "Mapa de Apartamentos",
+  description: "Veja os apartamentos por andar e ala, com situação, tipo e comodidades.",
+  icon: BedDouble,
+  href: "/cadastros/apartamentos?view=mapa",
+  status: "Disponível" as const
+};
+
 export default function GovernancaPage() {
+  // Filtro de UI apenas -- o servidor barra de qualquer forma. Mas mostrar uma porta que
+  // responde 403 ao ser aberta contraria o principio de navegacao do CORE-EMP-02 (§2): o
+  // sistema leva o trabalho ate' o usuario, nao oferece caminho que nao leva a lugar nenhum.
+  const permissions = useAppStore((state) => state.permissions);
+  const cards = canDo(permissions, "BASE:rooms.view") ? [roomsMapCard, ...baseCards] : baseCards;
+
   return (
     <ModuleDashboard
       title="Governança"
-      description="Entrada para checklists, inspeções, equipes e ocorrências da governança."
+      description="Entrada para o mapa de apartamentos, checklists, inspeções, equipes e ocorrências da governança."
       cards={cards}
     />
   );

@@ -1,17 +1,15 @@
+"use client";
+
 import { BedDouble, Building2, ClipboardList, CalendarCheck } from "lucide-react";
 import { ModuleDashboard } from "@/components/common/module-dashboard";
+import { useAppStore } from "@/store/app-store";
+import { canDo } from "@/lib/auth/permissions-ui";
 
-const cards = [
+const baseCards = [
   {
     title: "Chamados",
     description: "Abertura e acompanhamento de chamados de manutenção serão ativados em próxima etapa.",
     icon: ClipboardList,
-    status: "Em breve" as const
-  },
-  {
-    title: "Quartos em manutenção",
-    description: "Controle administrativo de UHs bloqueadas ou em manutenção será criado em próxima etapa.",
-    icon: BedDouble,
     status: "Em breve" as const
   },
   {
@@ -28,11 +26,27 @@ const cards = [
   }
 ];
 
+// Porta OPERACIONAL do mapa de apartamentos. Substitui o card placeholder "Quartos em
+// manutencao" (Em breve): era a mesma intencao, com o mesmo icone, e manter os dois deixaria
+// a tela com duas portas quase iguais -- uma funcionando e outra prometendo.
+const roomsMapCard = {
+  title: "Mapa de Apartamentos",
+  description: "Veja os apartamentos por andar e ala, com situação, tipo e comodidades.",
+  icon: BedDouble,
+  href: "/cadastros/apartamentos?view=mapa",
+  status: "Disponível" as const
+};
+
 export default function ManutencaoPage() {
+  // Filtro de UI apenas -- o servidor barra de qualquer forma. Ver comentario equivalente em
+  // governanca/page.tsx.
+  const permissions = useAppStore((state) => state.permissions);
+  const cards = canDo(permissions, "BASE:rooms.view") ? [roomsMapCard, ...baseCards] : baseCards;
+
   return (
     <ModuleDashboard
       title="Manutenção"
-      description="Entrada para chamados, quartos, áreas comuns e manutenção preventiva."
+      description="Entrada para o mapa de apartamentos, chamados, áreas comuns e manutenção preventiva."
       cards={cards}
     />
   );
