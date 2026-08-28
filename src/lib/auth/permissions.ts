@@ -27,7 +27,12 @@ export const BASE_PERMISSIONS = {
   suppliersView: "BASE:suppliers.view",
   suppliersManage: "BASE:suppliers.manage",
   usersView: "BASE:users.view",
-  usersManage: "BASE:users.manage"
+  usersManage: "BASE:users.manage",
+  // Apartamentos (UHs) — semeadas na migration 088. `roomsView` e' a unica consumida na
+  // Fase 1 (lista read-only); as outras duas ja' ficam definidas para as fases seguintes.
+  roomsView: "BASE:rooms.view",
+  roomsBlock: "BASE:rooms.block",
+  roomsManage: "BASE:rooms.manage"
 } as const;
 
 export const PURCHASES_PERMISSIONS = {
