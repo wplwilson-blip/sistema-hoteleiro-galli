@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Link2, Snowflake, Wind } from "lucide-react";
+import { DoorOpen, Fan, Refrigerator, Snowflake, Users, type LucideIcon } from "lucide-react";
 import { StatusBadge } from "@/components/common/status-badge";
 import {
   ROOM_STATUS_VALUES,
@@ -23,6 +23,36 @@ const toneCardClassMap: Record<RoomStatusTone, string> = {
   visual: "border-border bg-muted text-muted-foreground"
 };
 
+/**
+ * Icone com significado ACESSIVEL.
+ *
+ * Licao das fatias M3/C6: icone sozinho nao e' lido por leitor de tela e o `title` nao
+ * aparece em toque. Por isso cada icone carrega `aria-label` + `title` no wrapper e um
+ * `<span class="sr-only">` com o texto -- e, no card, o mesmo significado continua escrito
+ * por extenso no rodape e no tooltip do card inteiro.
+ */
+function MeaningfulIcon({ icon: Icon, label, className = "h-3 w-3" }: { icon: LucideIcon; label: string; className?: string }) {
+  return (
+    <span role="img" aria-label={label} title={label} className="inline-flex items-center">
+      <Icon className={className} aria-hidden="true" />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/** Climatizacao -> icone. `null` quando nao informada (nao inventa um icone padrao). */
+function climateIcon(value: string): { icon: LucideIcon; label: string } | null {
+  if (value === "ar_condicionado") {
+    return { icon: Snowflake, label: "Ar-condicionado" };
+  }
+
+  if (value === "ventilador") {
+    return { icon: Fan, label: "Ventilador" };
+  }
+
+  return null;
+}
+
 function buildRoomTitle(room: RoomRecord) {
   return [
     `Apartamento ${room.roomNumber}`,
@@ -37,6 +67,7 @@ function buildRoomTitle(room: RoomRecord) {
 
 function RoomDoor({ room }: { room: RoomRecord }) {
   const tone = roomStatusTone(room.roomStatus);
+  const climate = climateIcon(room.climateControl);
 
   return (
     <div
@@ -47,19 +78,37 @@ function RoomDoor({ room }: { room: RoomRecord }) {
       <span className="text-base font-semibold leading-none">{room.roomNumber}</span>
       <span className="text-[11px] font-medium leading-none opacity-80">{room.roomType?.code ?? "—"}</span>
 
-      {/* Rodape VISIVEL com o detalhe. O `title` acima nao aparece em toque e nao e' lido
-          por leitor de tela -- sozinho, deixaria a informacao inacessivel em celular. */}
+      {/* Linha compacta de icones: leitura de relance no mapa. O significado NAO vive so'
+          aqui -- continua por extenso no rodape abaixo e no tooltip do card. */}
+      <span className="flex flex-wrap items-center justify-center gap-1 opacity-80">
+        {climate ? <MeaningfulIcon icon={climate.icon} label={climate.label} /> : null}
+        {room.hasMinibar ? <MeaningfulIcon icon={Refrigerator} label="Frigobar" /> : null}
+        {room.isConnecting ? <MeaningfulIcon icon={DoorOpen} label="Conjugada" /> : null}
+        {room.capacity === null ? null : (
+          <span className="inline-flex items-center gap-0.5 text-[11px] leading-none">
+            <MeaningfulIcon icon={Users} label={`Capacidade: ${room.capacity} PAX`} />
+            <span aria-hidden="true">{room.capacity}</span>
+          </span>
+        )}
+      </span>
+
+      {/* Rodape VISIVEL com o detalhe textual. O `title` do card nao aparece em toque e nao
+          e' lido por leitor de tela -- sozinho, deixaria a informacao inacessivel no
+          celular, que e' onde a governanca de fato usa o mapa. */}
       <span className="text-[11px] leading-tight opacity-80">
         {room.capacity === null ? "-" : `${room.capacity} PAX`} · {roomStatusLabel(room.roomStatus)}
-      </span>
-      <span className="flex items-center justify-center gap-1 text-[11px] opacity-80">
-        {room.isConnecting ? <Link2 className="h-3 w-3" aria-label="Conjugada" /> : null}
-        {room.climateControl === "ar_condicionado" ? <Snowflake className="h-3 w-3" aria-label="Ar-condicionado" /> : null}
-        {room.climateControl === "ventilador" ? <Wind className="h-3 w-3" aria-label="Ventilador" /> : null}
       </span>
     </div>
   );
 }
+
+const amenityLegend: Array<{ icon: LucideIcon; label: string }> = [
+  { icon: Snowflake, label: "Ar-condicionado" },
+  { icon: Fan, label: "Ventilador" },
+  { icon: Refrigerator, label: "Frigobar" },
+  { icon: DoorOpen, label: "Conjugada" },
+  { icon: Users, label: "Capacidade (PAX)" }
+];
 
 export function RoomsMap({ rooms }: { rooms: RoomRecord[] }) {
   const groups = useMemo(() => groupRoomsByFloorAndBlock(rooms), [rooms]);
@@ -74,21 +123,26 @@ export function RoomsMap({ rooms }: { rooms: RoomRecord[] }) {
 
   return (
     <div className="space-y-4">
-      {/* Legenda FIXA acima da grade: grade colorida sem legenda obriga a decorar cor. */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs shadow-sm shadow-primary/5">
-        <span className="font-medium text-muted-foreground">Situação:</span>
-        {statusesInView.map((status) => (
-          <StatusBadge key={status} status={roomStatusTone(status)} label={roomStatusLabel(status)} />
-        ))}
-        <span className="ml-2 flex items-center gap-1 text-muted-foreground">
-          <Link2 className="h-3 w-3" /> conjugada
-        </span>
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <Snowflake className="h-3 w-3" /> ar-condicionado
-        </span>
-        <span className="flex items-center gap-1 text-muted-foreground">
-          <Wind className="h-3 w-3" /> ventilador
-        </span>
+      {/* Legenda FIXA acima da grade, em duas partes: cor = situacao, icone = comodidade.
+          Grade colorida com iconografia e sem legenda obriga a decorar os dois codigos. */}
+      <div className="space-y-2 rounded-lg border bg-card p-3 text-xs shadow-sm shadow-primary/5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-muted-foreground">Situação:</span>
+          {statusesInView.map((status) => (
+            <StatusBadge key={status} status={roomStatusTone(status)} label={roomStatusLabel(status)} />
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t pt-2">
+          <span className="font-medium text-muted-foreground">Comodidades:</span>
+          {amenityLegend.map((item) => (
+            <span key={item.label} className="flex items-center gap-1 text-muted-foreground">
+              <MeaningfulIcon icon={item.icon} label={item.label} />
+              {/* Rotulo VISIVEL ao lado do icone -- a legenda existe justamente para quem
+                  ainda nao sabe o que o icone quer dizer. */}
+              <span aria-hidden="true">{item.label}</span>
+            </span>
+          ))}
+        </div>
       </div>
 
       {groups.map((floor) => (
