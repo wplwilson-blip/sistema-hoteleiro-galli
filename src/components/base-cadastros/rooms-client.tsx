@@ -28,6 +28,7 @@ import {
  */
 function roomState(room: RoomRecord): RoomState {
   return {
+    record: room.recordStatus,
     occupancy: room.occupancyStatus,
     housekeeping: room.housekeepingStatus,
     blocking: room.blockingStatus

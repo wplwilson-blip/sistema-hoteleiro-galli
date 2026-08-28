@@ -6,9 +6,10 @@ import {
   type BlockingStatus,
   type HousekeepingStatus,
   type RoomPermissionCode,
+  type RoomRecordStatus,
   type RoomStateDimension
 } from "@/components/base-cadastros/rooms-utils";
-import { BASE_PERMISSIONS, requirePermission, userHasPermissionForUnit } from "@/lib/auth/permissions";
+import { requirePermission, userHasPermissionForUnit } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
 
 // Transicao de estado de apartamento (plano docs/codex/70, §6.2).
@@ -37,6 +38,7 @@ type TransitionRequestBody = {
 type RoomStateRow = {
   id: string;
   unit_id: string;
+  status: RoomRecordStatus;
   housekeeping_status: HousekeepingStatus;
   blocking_status: BlockingStatus;
 };
@@ -58,7 +60,7 @@ export async function POST(request: Request) {
   // O gate de entrada e' `rooms.view`: quem nao enxerga o inventario nao transita nada. A
   // permissao ESPECIFICA da transicao (housekeeping / inspect / block) e' resolvida depois,
   // por unidade, porque depende de qual transicao foi pedida.
-  const { context, response } = await requirePermission(BASE_PERMISSIONS.roomsView, { scope: "active-unit" });
+  const { context, response } = await requirePermission(ROOM_PERMISSIONS.view, { scope: "active-unit" });
 
   if (response || !context) {
     return response;
@@ -102,7 +104,7 @@ export async function POST(request: Request) {
 
     const { data: rows, error: roomsError } = await supabase
       .from("rooms")
-      .select("id, unit_id, housekeeping_status, blocking_status")
+      .select("id, unit_id, status, housekeeping_status, blocking_status")
       .in("id", uniqueRoomIds)
       .in("unit_id", context.accessibleUnitIds)
       .is("deleted_at", null);
@@ -119,6 +121,15 @@ export async function POST(request: Request) {
     // unidade que aquele apartamento existe.
     if (rooms.length !== uniqueRoomIds.length) {
       return apiError("Apartamento nao encontrado.", 404);
+    }
+
+    // Apartamento INATIVO no cadastro nao transita: ele nao esta no inventario em uso, e
+    // portanto nao entra em fila de arrumacao nem volta para a venda. Recusa o lote inteiro,
+    // como qualquer outra negacao -- transicionar "os ativos do lote" e ficar calado sobre o
+    // resto e' o meio-resultado que a transacao existe para impedir. Reativar e' assunto do
+    // cadastro (`rooms.manage`), nao da governanca. A RPC repete a checagem sob o lock.
+    if (rooms.some((room) => room.status !== "active")) {
+      return apiError("Apartamento inativo nao aceita transicao de estado.", 422);
     }
 
     // Lote que atravessa unidades e' recusado inteiro. A permissao e' resolvida POR unidade;

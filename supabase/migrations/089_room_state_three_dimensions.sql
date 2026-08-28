@@ -73,13 +73,17 @@ $$;
 alter table public.rooms
   add column if not exists occupancy_status public.occupancy_status not null default 'vacant',
   add column if not exists housekeeping_status public.housekeeping_status not null default 'dirty',
-  add column if not exists blocking_status public.blocking_status not null default 'none';
+  add column if not exists blocking_status public.blocking_status not null default 'none',
+  add column if not exists housekeeping_changed_at timestamptz not null default now();
 
 comment on column public.rooms.occupancy_status is
   'Ocupacao da UH. PROPRIEDADE DA FUTURA FATIA DE RESERVAS: sem escritor e sem UI nesta release (plano 70, D1). Existe agora para impedir que "esta ocupado" seja enfiado em housekeeping_status, refazendo a conflacao que a 089 removeu.';
 
 comment on column public.rooms.housekeeping_status is
   'Ciclo de limpeza operado pela Governanca: dirty -> cleaning -> clean -> inspected. Apenas `inspected` libera para venda, e so quem tem BASE:rooms.inspect chega nele.';
+
+comment on column public.rooms.housekeeping_changed_at is
+  'Quando housekeeping_status mudou pela ultima vez. Alimenta "Sujo ha 6 horas" -- a folha impressa do plano 72 cria intervalo entre o fato e o registro, e "Sujo" sozinho nao conta essa historia. Escrita pela RPC rooms_apply_transition; o default cobre o backfill.';
 
 comment on column public.rooms.blocking_status is
   'Bloqueio da UH. `maintenance` = chamado tecnico; `commercial` = diretoria. Bloqueado sai da venda, nao sai do inventario (MODELO_UH_DESBRAVADOR, regra 4).';
@@ -103,10 +107,17 @@ comment on column public.rooms.blocking_status is
 --   VOLTA A VENDA POR MIGRATION. Um apartamento que estava em manutencao precisa
 --   de arrumacao e vistoria de gente antes de receber hospede -- nao de um UPDATE.
 --
--- O `where` torna o passo idempotente e, mais importante, impede que uma reexecucao
--- ATROPELE trabalho ja feito na tela: so' toca linhas que ainda estao no default
--- intocado. Sem ele, reaplicar a migration devolveria ao estado do room_status
--- antigo apartamentos que a governanta ja' vistoriou.
+-- GUARDA: o backfill so' roda enquanto `room_status_history` estiver VAZIA -- isto e',
+-- enquanto ninguem tiver registrado transicao nenhuma pela tela.
+--
+-- A guarda anterior comparava as tres colunas contra o default (`vacant/dirty/none`) e
+-- estava ERRADA: essa tripla e' tambem um estado operacional legitimo -- vago, sujo e
+-- sem bloqueio e' o caso mais comum do hotel as 9h da manha. Reaplicar a migration
+-- teria reescrito, a partir do room_status antigo, exatamente os apartamentos que a
+-- governanta acabara de marcar como sujos.
+--
+-- A existencia de historico e' o sinal correto: havendo UMA linha, o sistema ja e' a
+-- fonte da verdade e o room_status antigo nao manda mais em nada.
 -- ============================================================================
 
 update public.rooms
@@ -126,9 +137,7 @@ set
     else 'none'::public.blocking_status
   end,
   updated_at = now()
-where occupancy_status = 'vacant'
-  and housekeeping_status = 'dirty'
-  and blocking_status = 'none';
+where not exists (select 1 from public.room_status_history);
 
 
 -- ============================================================================
@@ -155,10 +164,10 @@ create index if not exists rooms_unit_blocking_status_idx
 -- valores validos daquela dimensao -- senao teriamos trocado o enum por um campo
 -- de texto livre, que e' pior que o problema original.
 --
--- `alter type ... using` NAO e' necessario: a tabela tem zero linhas (premissa
--- datada no cabecalho). O cast de enum para text e' de qualquer forma trivial; o
--- `using` explicito fica registrado abaixo, comentado, para quem reaplicar num
--- banco com dados.
+-- O `using ...::text` do `alter table` abaixo NAO esta comentado e nao e' decorativo:
+-- e' ele que torna a conversao correta tambem num banco que ja tenha linhas. A premissa
+-- de zero linhas (cabecalho) diz que hoje ele nao converte nada -- nao que seja
+-- dispensavel.
 -- ============================================================================
 
 alter table public.room_status_history
@@ -389,6 +398,36 @@ on conflict (access_profile_id, permission_id) do nothing;
 
 
 -- ============================================================================
+-- 10.1) REVOGACAO de BASE:rooms.block de DEPARTMENT_MANAGER e SUPERVISOR
+--
+-- Mudanca de decisao em relacao a 088, e o motivo e' que a permissao mudou de peso.
+--
+-- Na 088, `rooms.block` era COSMETICO: trocava um valor de enum numa tela read-only.
+-- Agora desbloquear DERRUBA a UH para `dirty`, exige observacao e GRAVA HISTORICO --
+-- e passa a ser exatamente o tipo de acao operacional que a D5 tirou dos perfis
+-- genericos. `DEPARTMENT_MANAGER` e' o mesmo perfil do gerente de Compras;
+-- `SUPERVISOR` e' supervisao de qualquer setor. Nenhum dos dois deveria mexer na
+-- fila de arrumacao de um hotel.
+--
+-- `LIDER_GOVERNANCA` e `LIDER_MANUTENCAO` existem justamente para segurar isto.
+--
+-- DELETE, e nao `is_allowed = false`: a linha nao deve existir. Um deny explicito
+-- entraria na precedencia de overrides (P0) e passaria a VENCER uma concessao futura
+-- feita de proposito -- seria uma trava silenciosa em vez de uma ausencia.
+--
+-- Nao mexe em `rooms.view` nem em `rooms.manage`: ver o inventario e editar o
+-- cadastro continuam sendo atribuicao desses perfis.
+-- ============================================================================
+
+delete from public.profile_permissions pp
+using public.access_profiles ap, public.permissions p
+where pp.access_profile_id = ap.id
+  and pp.permission_id = p.id
+  and ap.code in ('DEPARTMENT_MANAGER', 'SUPERVISOR')
+  and p.code = 'BASE:rooms.block';
+
+
+-- ============================================================================
 -- 11) room_status: NAO alterado, NAO removido (D2)
 --
 -- Continua no banco por uma release, intacto, como rede de seguranca: se algo der
@@ -457,6 +496,8 @@ declare
   v_to text;
   v_effect text;
   v_current text;
+  v_current_housekeeping text;
+  v_record_status public.record_status;
   v_count integer := 0;
 begin
   if p_dimension is null or p_dimension not in ('occupancy', 'housekeeping', 'blocking') then
@@ -473,27 +514,46 @@ begin
     raise exception 'ROOMS_TRANSITION_EMPTY_BATCH' using errcode = '22023';
   end if;
 
-  for v_item in select * from jsonb_array_elements(p_transitions)
+  -- ORDEM ESTAVEL POR room_id antes de qualquer `for update`.
+  --
+  -- Dois lotes que se cruzam -- um andar e uma ala que compartilham apartamentos --
+  -- travariam em ordens opostas e o Postgres mataria um deles por deadlock. Com todos
+  -- os lotes pegando os locks na mesma ordem, o segundo apenas espera. Uma linha.
+  for v_item in
+    select element
+    from jsonb_array_elements(p_transitions) as t(element)
+    order by (t.element ->> 'room_id')::uuid
   loop
     v_room_id := (v_item ->> 'room_id')::uuid;
     v_from    := v_item ->> 'from';
     v_to      := v_item ->> 'to';
     v_effect  := v_item ->> 'housekeeping_effect';
 
-    -- Lock + releitura da origem. `deleted_at is null`: apartamento excluido nao
-    -- transita, e um lote que o inclua falha inteiro em vez de ignora-lo em silencio.
+    -- Lock + releitura da origem. Lemos TAMBEM o housekeeping atual (para o efeito
+    -- colateral e para o historico) e o record_status do cadastro.
+    -- `deleted_at is null`: apartamento excluido nao transita, e um lote que o inclua
+    -- falha inteiro em vez de ignora-lo em silencio.
     select
       case p_dimension
         when 'housekeeping' then housekeeping_status::text
         when 'blocking'     then blocking_status::text
-      end
-    into v_current
+      end,
+      housekeeping_status::text,
+      status
+    into v_current, v_current_housekeeping, v_record_status
     from public.rooms
     where id = v_room_id and deleted_at is null
     for update;
 
-    if v_current is null then
+    if not found then
       raise exception 'ROOMS_TRANSITION_ROOM_NOT_FOUND' using errcode = '22023';
+    end if;
+
+    -- Apartamento INATIVO no cadastro nao aceita transicao operacional. Ele nao esta no
+    -- inventario em uso: nao entra em fila de arrumacao, nao e' vistoriado e nao volta
+    -- para a venda. Reativar e' assunto do cadastro (`rooms.manage`), nao da governanca.
+    if v_record_status <> 'active' then
+      raise exception 'ROOMS_TRANSITION_ROOM_INACTIVE' using errcode = '22023';
     end if;
 
     if v_current is distinct from v_from then
@@ -503,16 +563,23 @@ begin
     if p_dimension = 'housekeeping' then
       update public.rooms
       set housekeeping_status = v_to::public.housekeeping_status,
+          housekeeping_changed_at = now(),
           updated_at = now(),
           updated_by = p_actor_id
       where id = v_room_id;
     else
       update public.rooms
       set blocking_status = v_to::public.blocking_status,
-          -- Efeito colateral da §4.2, quando houver: encerrar bloqueio -- de qualquer
+          -- Efeito colateral da §4.2, quando houver: sair de bloqueio -- de qualquer
           -- tipo -- derruba a UH para `dirty`. NUNCA para `inspected`: alguem entrou no
           -- apartamento, e a liberacao para venda continua exclusiva da governanca.
           housekeeping_status = coalesce(v_effect::public.housekeeping_status, housekeeping_status),
+          -- O relogio da limpeza so' reinicia se a limpeza REALMENTE mudou. Um bloqueio
+          -- que nao mexe no housekeeping nao pode zerar "Sujo ha 6 horas".
+          housekeeping_changed_at = case
+            when v_effect is not null and v_effect is distinct from v_current_housekeeping then now()
+            else housekeeping_changed_at
+          end,
           updated_at = now(),
           updated_by = p_actor_id
       where id = v_room_id;
@@ -527,10 +594,17 @@ begin
     from public.rooms
     where id = v_room_id;
 
-    if v_effect is not null and v_effect is distinct from v_current then
+    -- A comparacao e' contra o housekeeping ATUAL, nao contra `v_current` -- que, num
+    -- lote de bloqueio, carrega o valor da dimensao BLOCKING e nunca seria igual a um
+    -- valor de limpeza. Escrito daquele jeito, o guarda era morto: nao filtrava nada.
+    --
+    -- E `previous_status` recebe o housekeeping de verdade, nao null. Sem ele, o
+    -- historico nao responde "o 305 estava vistoriado quando entrou em obra?" -- que e'
+    -- justamente a pergunta que se faz depois de uma reclamacao de hospede.
+    if v_effect is not null and v_effect is distinct from v_current_housekeeping then
       insert into public.room_status_history
         (unit_id, room_id, dimension, previous_status, new_status, reason, changed_by, created_by, updated_by, source_module, is_automatic)
-      select unit_id, id, 'housekeeping', null, v_effect, p_reason, p_actor_id, p_actor_id, p_actor_id, 'BASE', true
+      select unit_id, id, 'housekeeping', v_current_housekeeping, v_effect, p_reason, p_actor_id, p_actor_id, p_actor_id, 'BASE', true
       from public.rooms
       where id = v_room_id;
     end if;
@@ -543,7 +617,28 @@ end;
 $$;
 
 comment on function public.rooms_apply_transition(jsonb, text, text, uuid) is
-  'Envelope TRANSACIONAL da transicao de estado de UH em lote (plano 70, §6.2). A regra vive em rooms-utils.ts (canTransition) e chega decidida; aqui garantem-se atomicidade, lock e releitura da origem sob lock.';
+  'Envelope TRANSACIONAL da transicao de estado de UH em lote (plano 70, §6.2). A regra vive em rooms-utils.ts (canTransition) e chega decidida; aqui garantem-se atomicidade, lock em ordem estavel de room_id, releitura da origem sob lock e recusa de UH inativa.';
+
+-- ============================================================================
+-- 12.1) Superficie de execucao da RPC
+--
+-- `security definer` roda com os privilegios do DONO da funcao -- ela ignora RLS. Se
+-- `authenticated` puder executa-la, qualquer usuario logado transiciona QUALQUER
+-- apartamento de QUALQUER unidade direto pelo PostgREST, sem passar pelo gate de
+-- permissao da rota. O gate esta na aplicacao; esta e' a tranca da porta dos fundos.
+--
+-- Por isso o `revoke` vem primeiro: o Postgres concede `execute` a `public` por PADRAO
+-- ao criar uma funcao, e `create or replace` nao reseta ACL. Sem o revoke explicito, a
+-- funcao nasce publica.
+--
+-- So' `service_role` executa -- que e' a chave do cliente admin usado pelas rotas.
+-- Mesmo padrao das RPCs de Compras (079/081/083).
+-- ============================================================================
+
+revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid) from public;
+revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid) from anon;
+revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid) from authenticated;
+grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid) to service_role;
 
 
 -- ============================================================================
@@ -613,6 +708,33 @@ comment on function public.rooms_apply_transition(jsonb, text, text, uuid) is
 --    -- Se SUPERVISOR ou DEPARTMENT_MANAGER aparecer em `inspect`, a decisao D5 foi
 --    -- desfeita -- e' o cenario que o teste §7.7 protege no codigo.
 --
+-- 4.1) A RPC NAO e' executavel por usuario logado (a tranca da porta dos fundos).
+--    `security definer` ignora RLS: se `authenticated` puder executar, qualquer
+--    usuario transiciona qualquer apartamento de qualquer unidade pelo PostgREST.
+--
+--    select p.proname, coalesce(array_to_string(p.proacl, E'
+'), '(sem ACL: PUBLICO)') as acl
+--    from pg_proc p
+--    join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'public' and p.proname = 'rooms_apply_transition';
+--
+--    -- esperado: UMA entrada de execute, e so' para service_role --
+--    --   service_role=X/postgres
+--    -- (o `postgres=X/postgres` do dono tambem aparece e e' normal.)
+--    -- FALHA se aparecer `=X/` sem papel antes do `=` (isso e' PUBLIC), ou
+--    -- `authenticated=X/` ou `anon=X/`. E "(sem ACL: PUBLICO)" e' o pior caso:
+--    -- proacl nulo significa o default do Postgres, que e' execute para PUBLIC.
+--
+-- 4.2) Revogacao do item 10.1 (deve voltar VAZIO):
+--
+--    select ap.code
+--    from public.profile_permissions pp
+--    join public.access_profiles ap on ap.id = pp.access_profile_id
+--    join public.permissions p      on p.id  = pp.permission_id
+--    where p.code = 'BASE:rooms.block'
+--      and ap.code in ('DEPARTMENT_MANAGER', 'SUPERVISOR')
+--      and pp.deleted_at is null;
+--
 -- 5) Nenhum perfil da matriz foi descartado por nao existir (deve voltar VAZIO --
 --    e' o teste de dead grant que a 088 ja usava):
 --
@@ -638,7 +760,7 @@ comment on function public.rooms_apply_transition(jsonb, text, text, uuid) is
 --    -- begin;
 --    --   insert into public.room_status_history (unit_id, room_id, dimension, previous_status, new_status)
 --    --   select unit_id, id, 'blocking', 'maintenance', 'none' from public.rooms limit 1;
---    -- rollback;   -- esperado: room_status_history_maintenance_exit_reason_check
+--    -- rollback;   -- esperado: room_status_history_unblock_reason_check
 --
 --
 -- ============================================================================
@@ -646,6 +768,13 @@ comment on function public.rooms_apply_transition(jsonb, text, text, uuid) is
 --
 -- O dado original esta intacto em `room_status` (D2) -- e' justamente para isto que
 -- ele fica. Desfazer NAO exige recuperar backup.
+--
+-- ORDEM OBRIGATORIA. REVERTA O APP ANTES DE DROPAR AS COLUNAS: o deploy anterior
+-- SELECIONA occupancy_status, housekeeping_status e blocking_status em toda listagem
+-- de apartamento. Dropar as colunas com o app novo no ar derruba a tela de
+-- apartamentos inteira -- erro de coluna inexistente em cada request, nao degradacao.
+-- Faca (a) e (b) com o app novo ainda no ar; so' entao reverta o deploy; so' entao
+-- (c), (d) e (e).
 --
 --   -- a) grants e permissoes novas
 --   delete from public.profile_permissions pp
@@ -658,19 +787,61 @@ comment on function public.rooms_apply_transition(jsonb, text, text, uuid) is
 --   set status = 'inactive', deleted_at = now(), updated_at = now()
 --   where module_code = 'BASE' and action_code in ('rooms.housekeeping', 'rooms.inspect');
 --
+--   -- a.1) devolver BASE:rooms.block a DEPARTMENT_MANAGER e SUPERVISOR (item 10.1).
+--   --      Sem isto, um rollback deixa os dois perfis SEM a permissao que a 088 dava.
+--   insert into public.profile_permissions (access_profile_id, permission_id, is_allowed, status)
+--   select ap.id, p.id, true, 'active'
+--   from public.access_profiles ap
+--   cross join public.permissions p
+--   where ap.code in ('DEPARTMENT_MANAGER', 'SUPERVISOR')
+--     and p.code = 'BASE:rooms.block'
+--   on conflict (access_profile_id, permission_id) do nothing;
+--
 --   -- b) perfis novos: DESATIVAR, nunca deletar (podem ja ter usuario vinculado,
 --   --    e access_profiles e' referenciada com on delete restrict).
 --   update public.access_profiles
 --   set status = 'inactive', deleted_at = now(), updated_at = now()
 --   where code in ('LIDER_GOVERNANCA', 'LIDER_MANUTENCAO');
 --
---   -- c) as colunas de rooms. So faca isto se NENHUMA transicao tiver sido gravada
---   --    pela tela desde a aplicacao -- confira antes:
+--   -- ================= a partir daqui, o app JA deve estar revertido =================
+--
+--   -- c) a funcao. Antes das colunas: o corpo dela as referencia.
+--   drop function if exists public.rooms_apply_transition(jsonb, text, text, uuid);
+--
+--   -- d) room_status_history de volta ao formato da 011. So faca isto se NENHUMA
+--   --    transicao tiver sido gravada -- confira antes:
 --   --      select count(*) from public.room_status_history;
---   --    Se voltar > 0, dropar as colunas DESCARTA trabalho real da governanca.
+--   --    Se voltar > 0, isto DESCARTA historico real da governanca.
+--   alter table public.room_status_history
+--     drop constraint if exists room_status_history_dimension_values_check,
+--     drop constraint if exists room_status_history_unblock_reason_check;
+--
+--   drop index if exists public.room_status_history_housekeeping_employee_id_idx;
+--
+--   alter table public.room_status_history
+--     drop column if exists dimension,
+--     drop column if exists housekeeping_employee_id;
+--
+--   -- O tipo volta a public.room_status. O `using` e' obrigatorio aqui (text -> enum
+--   -- nao tem cast implicito) e FALHA se houver qualquer valor das dimensoes novas
+--   -- gravado -- o que e' o comportamento correto: melhor abortar que truncar.
+--   alter table public.room_status_history
+--     alter column previous_status type public.room_status using previous_status::public.room_status,
+--     alter column new_status      type public.room_status using new_status::public.room_status;
+--
+--   -- e) as colunas e os indices de rooms.
+--   drop index if exists public.rooms_unit_housekeeping_status_idx;
+--   drop index if exists public.rooms_unit_blocking_status_idx;
+--
 --   alter table public.rooms
 --     drop column if exists occupancy_status,
 --     drop column if exists housekeeping_status,
---     drop column if exists blocking_status;
+--     drop column if exists blocking_status,
+--     drop column if exists housekeeping_changed_at;
+--
+--   -- f) os tres tipos, por ultimo: so' saem depois que nenhuma coluna os usa.
+--   drop type if exists public.occupancy_status;
+--   drop type if exists public.housekeeping_status;
+--   drop type if exists public.blocking_status;
 --
 -- ============================================================================

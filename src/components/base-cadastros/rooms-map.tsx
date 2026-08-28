@@ -57,6 +57,7 @@ function climateIcon(value: string): { icon: LucideIcon; label: string } | null 
 /** As tres dimensoes do apartamento, no formato que rooms-utils espera. */
 function roomState(room: RoomRecord): RoomState {
   return {
+    record: room.recordStatus,
     occupancy: room.occupancyStatus,
     housekeeping: room.housekeepingStatus,
     blocking: room.blockingStatus

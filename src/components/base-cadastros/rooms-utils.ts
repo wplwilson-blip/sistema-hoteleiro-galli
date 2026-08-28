@@ -27,6 +27,10 @@ export type RoomRecord = {
   // dimensoes. Continua no payload so' porque a coluna continua no banco por uma release;
   // sai junto com ela na migration seguinte.
   roomStatus: string;
+  // Situacao do CADASTRO (public.rooms.status / record_status). Nao e' uma das tres
+  // dimensoes operacionais: e' a pergunta anterior a elas -- este apartamento faz parte do
+  // inventario em uso? Um apartamento inativo nao entra em fila, nao transita e nao vende.
+  recordStatus: RoomRecordStatus;
   // As tres dimensoes reais do estado (plano 70, migration 089).
   occupancyStatus: OccupancyStatus;
   housekeepingStatus: HousekeepingStatus;
@@ -42,6 +46,16 @@ export type RoomRecord = {
 };
 
 export type RoomStatusTone = "success" | "warning" | "danger" | "info" | "visual";
+
+/** public.record_status (migration 001), aplicado ao cadastro do apartamento. */
+export const ROOM_RECORD_STATUS_VALUES = ["active", "inactive", "archived"] as const;
+export type RoomRecordStatus = (typeof ROOM_RECORD_STATUS_VALUES)[number];
+
+export const roomRecordStatusLabelMap: Record<RoomRecordStatus, string> = {
+  active: "Ativo",
+  inactive: "Inativo",
+  archived: "Arquivado"
+};
 
 /** Valores do enum public.room_status (migration 001), na ordem em que foram declarados. */
 export const ROOM_STATUS_VALUES = [
@@ -265,6 +279,8 @@ export const ROOM_STATE_DIMENSIONS = ["occupancy", "housekeeping", "blocking"] a
 export type RoomStateDimension = (typeof ROOM_STATE_DIMENSIONS)[number];
 
 export type RoomState = {
+  /** Situacao do CADASTRO. Vence as tres dimensoes operacionais -- ver describeRoomState. */
+  record: RoomRecordStatus;
   occupancy: OccupancyStatus;
   housekeeping: HousekeepingStatus;
   blocking: BlockingStatus;
@@ -295,11 +311,6 @@ export function isValueOfDimension(dimension: RoomStateDimension, value: string)
 }
 
 // ------------------------------------------------------------------ rotulos e tons
-
-export const occupancyStatusLabelMap: Record<OccupancyStatus, string> = {
-  vacant: "Vago",
-  occupied: "Ocupado"
-};
 
 /**
  * "Vistoriado", nao "Inspecionado" -- vocabulario do Wilson, e a regra 1 do
@@ -332,10 +343,6 @@ export const blockingStatusToneMap: Record<BlockingStatus, RoomStatusTone> = {
   commercial: "danger"
 };
 
-export function occupancyStatusLabel(value: OccupancyStatus) {
-  return occupancyStatusLabelMap[value];
-}
-
 export function housekeepingStatusLabel(value: HousekeepingStatus) {
   return housekeepingStatusLabelMap[value];
 }
@@ -354,7 +361,15 @@ export function blockingStatusLabel(value: BlockingStatus) {
  * do RH-35B, a razao de a Governanca existir como setor separado da camareira.
  */
 export function isRoomSellable(state: RoomState): boolean {
-  return state.occupancy === "vacant" && state.housekeeping === "inspected" && state.blocking === "none";
+  // `record === "active"` primeiro: um apartamento fora do inventario em uso nao e' vendavel
+  // por mais vistoriado que esteja. Sem esta condicao, desativar o cadastro de um apartamento
+  // que estava `inspected` o deixaria vendavel -- some da lista e continua a venda.
+  return (
+    state.record === "active" &&
+    state.occupancy === "vacant" &&
+    state.housekeeping === "inspected" &&
+    state.blocking === "none"
+  );
 }
 
 /**
@@ -368,6 +383,13 @@ export function isRoomSellable(state: RoomState): boolean {
  */
 export function describeRoomState(state: RoomState): { label: string; tone: RoomStatusTone; sellable: boolean } {
   const sellable = isRoomSellable(state);
+
+  // Cadastro ACIMA de bloqueio. Um apartamento inativo nao esta "em manutencao", nem "sujo":
+  // ele nao esta em operacao. Mostra-lo com a cor da fila de arrumacao poria na fila da
+  // governanta um apartamento que ninguem deve arrumar.
+  if (state.record !== "active") {
+    return { label: roomRecordStatusLabelMap[state.record], tone: "visual", sellable };
+  }
 
   if (state.blocking !== "none") {
     return { label: blockingStatusLabelMap[state.blocking], tone: blockingStatusToneMap[state.blocking], sellable };
@@ -405,7 +427,14 @@ export function describeRoomState(state: RoomState): { label: string; tone: Room
  * NUNCA em `inspected`. Ninguem volta a venda por migration: um apartamento que estava em
  * manutencao precisa de arrumacao e vistoria de gente, nao de um UPDATE.
  */
-export function backfillRoomState(legacyStatus: RoomStatus): RoomState {
+export type RoomOperationalState = Omit<RoomState, "record">;
+
+/**
+ * NAO devolve `record`: a situacao do cadastro vive em `public.rooms.status`, que a migration
+ * 089 nao toca. Derivar um `record` aqui seria inventar -- um apartamento com cadastro
+ * inativo continuaria inativo depois do backfill, e afirmar `active` mentiria sobre ele.
+ */
+export function backfillRoomState(legacyStatus: RoomStatus): RoomOperationalState {
   switch (legacyStatus) {
     case "available":
       return { occupancy: "vacant", housekeeping: "inspected", blocking: "none" };
@@ -476,14 +505,10 @@ export const ROOM_PERMISSION_PROFILE_GRANTS: Record<GrantedRoomPermissionCode, r
     "LIDER_GOVERNANCA",
     "LIDER_MANUTENCAO"
   ],
-  "BASE:rooms.block": [
-    "SUPER_ADMIN",
-    "UNIT_DIRECTOR",
-    "DEPARTMENT_MANAGER",
-    "SUPERVISOR",
-    "LIDER_GOVERNANCA",
-    "LIDER_MANUTENCAO"
-  ],
+  // DEPARTMENT_MANAGER e SUPERVISOR SAIRAM (089, item 10.1). Na 088 bloquear era cosmetico;
+  // agora desbloquear derruba a UH para `dirty`, exige observacao e grava historico -- acao
+  // operacional que a D5 tirou dos perfis genericos.
+  "BASE:rooms.block": ["SUPER_ADMIN", "UNIT_DIRECTOR", "LIDER_GOVERNANCA", "LIDER_MANUTENCAO"],
   "BASE:rooms.housekeeping": ["SUPER_ADMIN", "UNIT_DIRECTOR", "LIDER_GOVERNANCA"],
   "BASE:rooms.inspect": ["SUPER_ADMIN", "UNIT_DIRECTOR", "LIDER_GOVERNANCA"]
 };
@@ -527,7 +552,14 @@ const HOUSEKEEPING_RULES: readonly TransitionRule[] = [
   // pularia o primeiro -- e o estado viraria ritual vazio.
   { from: "cleaning", to: "inspected", permission: ROOM_PERMISSIONS.inspect },
   // Reprovar na vistoria. Volta para o inicio da fila, nao para "limpo".
-  { from: "inspected", to: "dirty", permission: ROOM_PERMISSIONS.inspect }
+  { from: "inspected", to: "dirty", permission: ROOM_PERMISSIONS.inspect },
+  // DESFAZER. Clique errado em 115 apartamentos por dia nao e' hipotese, e sem estas duas
+  // linhas o unico jeito de corrigir um "Limpo" lancado por engano era passar por
+  // `inspected` -- ou seja, liberar o apartamento para venda para poder consertar o erro.
+  // Voltam para `dirty`, nunca para `cleaning`: reabrir uma limpeza que nao aconteceu seria
+  // inventar um fato. Exigem `rooms.housekeeping`, a mesma permissao que registrou o estado.
+  { from: "cleaning", to: "dirty", permission: ROOM_PERMISSIONS.housekeeping },
+  { from: "clean", to: "dirty", permission: ROOM_PERMISSIONS.housekeeping }
 ];
 
 const BLOCKING_RULES: readonly TransitionRule[] = [

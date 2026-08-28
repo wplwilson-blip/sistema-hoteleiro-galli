@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { BASE_PERMISSIONS, requirePermission } from "@/lib/auth/permissions";
 import { apiError, logBaseCadastroError } from "@/lib/base-cadastros/api-helpers";
-import type { BlockingStatus, HousekeepingStatus, OccupancyStatus } from "@/components/base-cadastros/rooms-utils";
+import type {
+  BlockingStatus,
+  HousekeepingStatus,
+  OccupancyStatus,
+  RoomRecordStatus
+} from "@/components/base-cadastros/rooms-utils";
 
 // Linhas com os relacionamentos embutidos pelo PostgREST. Os joins vem como OBJETO quando
 // a FK e' um-para-um do lado do filho -- mas o tipo gerado pelo supabase-js as vezes os
@@ -34,6 +39,7 @@ type RoomRow = {
   room_number: string;
   display_name: string | null;
   room_status: string;
+  status: RoomRecordStatus;
   occupancy_status: OccupancyStatus;
   housekeeping_status: HousekeepingStatus;
   blocking_status: BlockingStatus;
@@ -72,6 +78,7 @@ function mapRoom(row: RoomRow) {
     // As tres dimensoes reais. Sao `not null` com default no banco (089), entao nao ha
     // fallback aqui de proposito: um nulo aqui seria bug de schema, e mascara-lo com
     // `?? "dirty"` esconderia justamente o apartamento cujo estado se perdeu.
+    recordStatus: row.status,
     occupancyStatus: row.occupancy_status,
     housekeepingStatus: row.housekeeping_status,
     blockingStatus: row.blocking_status,
@@ -108,7 +115,7 @@ export async function GET() {
     const { data: rooms, error: roomsError } = await supabase
       .from("rooms")
       .select(
-        "id, unit_id, room_number, display_name, room_status, occupancy_status, housekeeping_status, blocking_status, capacity, is_connecting, connecting_room_id, climate_control, has_minibar, room_types(id, code, name, category, capacity, beds), blocks(id, code, name), floors(id, code, name, number)"
+        "id, unit_id, room_number, display_name, room_status, status, occupancy_status, housekeeping_status, blocking_status, capacity, is_connecting, connecting_room_id, climate_control, has_minibar, room_types(id, code, name, category, capacity, beds), blocks(id, code, name), floors(id, code, name, number)"
       )
       .in("unit_id", accessibleUnitIds)
       .is("deleted_at", null)

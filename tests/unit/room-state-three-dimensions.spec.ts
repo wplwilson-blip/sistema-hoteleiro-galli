@@ -30,7 +30,7 @@ const MANUTENCAO = [ROOM_PERMISSIONS.block];
 const SEM_PERMISSAO: string[] = [];
 
 function state(overrides: Partial<RoomState> = {}): RoomState {
-  return { occupancy: "vacant", housekeeping: "dirty", blocking: "none", ...overrides };
+  return { record: "active", occupancy: "vacant", housekeeping: "dirty", blocking: "none", ...overrides };
 }
 
 // ---------------------------------------------------------------------------- §7.1
@@ -160,7 +160,7 @@ test("3 - encerrar bloqueio SEM observacao e' rejeitado (manutencao E comercial)
 // ---------------------------------------------------------------------------- §7.4
 
 test("4 - isRoomSellable so' e' verdadeiro em vacant + inspected + none", () => {
-  expect(isRoomSellable({ occupancy: "vacant", housekeeping: "inspected", blocking: "none" })).toBe(true);
+  expect(isRoomSellable({ record: "active", occupancy: "vacant", housekeeping: "inspected", blocking: "none" })).toBe(true);
 
   // Varredura exaustiva: qualquer outra combinacao das tres dimensoes e' falsa. Enumerar e'
   // barato (2 x 4 x 3 = 24) e fecha a regra por construcao, em vez de por amostragem.
@@ -169,7 +169,7 @@ test("4 - isRoomSellable so' e' verdadeiro em vacant + inspected + none", () => 
   for (const occupancy of ["vacant", "occupied"] as const) {
     for (const housekeeping of HOUSEKEEPING_STATUS_VALUES) {
       for (const blocking of BLOCKING_STATUS_VALUES) {
-        const sellable = isRoomSellable({ occupancy, housekeeping, blocking });
+        const sellable = isRoomSellable({ record: "active", occupancy, housekeeping, blocking });
 
         if (sellable) {
           vendaveis += 1;
@@ -193,6 +193,20 @@ test("4 - isRoomSellable so' e' verdadeiro em vacant + inspected + none", () => 
   const emObra = describeRoomState(state({ housekeeping: "inspected", blocking: "maintenance" }));
   expect(emObra.tone).toBe("danger");
   expect(emObra.sellable).toBe(false);
+
+  // CADASTRO INATIVO nao e' vendavel, por mais vistoriado que esteja. Sem esta condicao,
+  // desativar o cadastro de um apartamento `inspected` o deixaria vendavel: some da lista e
+  // continua a venda.
+  const inativo = state({ record: "inactive", housekeeping: "inspected" });
+  expect(isRoomSellable(inativo)).toBe(false);
+  expect(isRoomSellable(state({ record: "archived", housekeeping: "inspected" }))).toBe(false);
+
+  // E o cadastro vence ate' o bloqueio na precedencia: um apartamento inativo nao esta "em
+  // manutencao" nem "sujo" -- ele nao esta em operacao, e nao pode aparecer na fila da
+  // governanta com a cor de quem precisa de arrumacao.
+  expect(describeRoomState(inativo).label).toBe("Inativo");
+  expect(describeRoomState(state({ record: "inactive", blocking: "maintenance" })).label).toBe("Inativo");
+  expect(describeRoomState(state({ record: "inactive", housekeeping: "dirty" })).tone).toBe("visual");
 });
 
 // ---------------------------------------------------------------------------- §7.5
@@ -217,7 +231,12 @@ test("5 - backfill: os sete valores antigos produzem a tripla da §5.3", () => {
 
   // NINGUEM VOLTA A VENDA POR MIGRATION: `available` e' o UNICO valor antigo que produz um
   // apartamento vendavel. Tudo que estava bloqueado, em obra ou inativo cai em `dirty`.
-  const vendaveisAposBackfill = ROOM_STATUS_VALUES.filter((legacy) => isRoomSellable(backfillRoomState(legacy)));
+  // O backfill nao devolve `record` -- a situacao do cadastro nao vem do room_status antigo.
+  // Aqui compomos com cadastro ATIVO, que e' o cenario em que a pergunta "quem ficou vendavel
+  // depois da migration?" faz sentido.
+  const vendaveisAposBackfill = ROOM_STATUS_VALUES.filter((legacy) =>
+    isRoomSellable({ record: "active", ...backfillRoomState(legacy) })
+  );
   expect(vendaveisAposBackfill).toEqual(["available"]);
 });
 
@@ -237,8 +256,18 @@ test("6 - atalho cleaning -> inspected permitido; dirty -> inspected negado", ()
   // Nem com todas as permissoes do mundo.
   expect(canTransition([...GOVERNANTA, "BASE:rooms.manage"], "housekeeping", "dirty", "inspected").allowed).toBe(false);
 
-  // Transicoes que a matriz da D3 nao lista sao negadas -- allowlist, nao denylist.
+  // DESFAZER lancamento errado: `cleaning` e `clean` voltam para `dirty` com a MESMA
+  // permissao que os lancou. Sem isto, corrigir um "Limpo" clicado por engano exigiria
+  // passar por `inspected` -- liberar o apartamento para venda para poder consertar o erro.
+  expect(canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "cleaning", "dirty").allowed).toBe(true);
+  expect(canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "clean", "dirty").allowed).toBe(true);
+  expect(canTransition(SEM_PERMISSAO, "housekeeping", "clean", "dirty").allowed).toBe(false);
+
+  // Voltam para `dirty`, NUNCA para `cleaning`: reabrir uma limpeza que nao aconteceu seria
+  // inventar um fato.
   expect(canTransition(GOVERNANTA, "housekeeping", "clean", "cleaning").allowed).toBe(false);
+
+  // Transicoes que a matriz da D3 nao lista continuam negadas -- allowlist, nao denylist.
   expect(canTransition(GOVERNANTA, "housekeeping", "dirty", "clean").allowed).toBe(false);
   expect(canTransition(GOVERNANTA, "housekeeping", "inspected", "clean").allowed).toBe(false);
 
@@ -282,6 +311,16 @@ test("7 - allowlist FECHADA de rooms.inspect: so' os perfis da D5", () => {
   // `dirty`, e quem a devolve a venda e' a governanca.
   expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.block]).toContain("LIDER_MANUTENCAO");
   expect(permitidos).not.toContain("LIDER_MANUTENCAO");
+
+  // `rooms.block` SAIU de DEPARTMENT_MANAGER e SUPERVISOR (089, item 10.1). Na 088 bloquear
+  // era cosmetico; agora desbloquear derruba a UH para `dirty`, exige observacao e grava
+  // historico. A allowlist de block passa a ser fechada como a de inspect.
+  expect([...ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.block]].sort()).toEqual([
+    "LIDER_GOVERNANCA",
+    "LIDER_MANUTENCAO",
+    "SUPER_ADMIN",
+    "UNIT_DIRECTOR"
+  ]);
 
   // Nenhum dos perfis novos recebe `rooms.manage`: quem opera o mapa nao redefine o
   // inventario -- criterio que a 088 ja fixou ao negar `manage` ao SUPERVISOR.
