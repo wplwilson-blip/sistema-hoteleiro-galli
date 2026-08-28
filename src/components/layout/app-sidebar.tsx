@@ -22,11 +22,12 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Map,
   MessageSquareText,
-  ShieldCheck,
   Settings,
-  Shuffle,
+  ShieldCheck,
   ShoppingCart,
+  Shuffle,
   SlidersHorizontal,
   Tags,
   UserRound,
@@ -166,13 +167,21 @@ const menuGroups: SidebarGroup[] = [
     label: "Manutenção",
     href: "/manutencao",
     icon: Wrench,
-    items: [{ label: "Dashboard", href: "/manutencao", icon: LayoutDashboard }]
+    items: [
+      { label: "Dashboard", href: "/manutencao", icon: LayoutDashboard },
+      // Porta operacional do mapa: mesma tela de Cadastros, aberta na aba mapa. Nao ha'
+      // rota propria nem duplicacao -- so' um segundo caminho ate' a mesma URL.
+      { label: "Mapa de Apartamentos", href: "/cadastros/apartamentos?view=mapa", icon: Map, requiredPermission: "BASE:rooms.view" }
+    ]
   },
   {
     label: "Governança",
     href: "/governanca",
     icon: ShieldCheck,
-    items: [{ label: "Dashboard", href: "/governanca", icon: LayoutDashboard }]
+    items: [
+      { label: "Dashboard", href: "/governanca", icon: LayoutDashboard },
+      { label: "Mapa de Apartamentos", href: "/cadastros/apartamentos?view=mapa", icon: Map, requiredPermission: "BASE:rooms.view" }
+    ]
   },
   {
     label: "A&B",
