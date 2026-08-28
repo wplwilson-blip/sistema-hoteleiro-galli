@@ -41,7 +41,7 @@ export const BASE_PERMISSIONS = {
   // inimportavel pela tela e pelos testes.
   roomsView: ROOM_PERMISSIONS.view,
   roomsBlock: ROOM_PERMISSIONS.block,
-  roomsManage: "BASE:rooms.manage",
+  roomsManage: ROOM_PERMISSIONS.manage,
   roomsHousekeeping: ROOM_PERMISSIONS.housekeeping,
   roomsInspect: ROOM_PERMISSIONS.inspect
 } as const;

@@ -134,9 +134,22 @@ test("3 - encerrar bloqueio SEM observacao e' rejeitado (manutencao E comercial)
     expect(isRoomSellable(applyRoomTransition(state({ housekeeping: "inspected", blocking: "commercial" }), comercialComTexto.effects))).toBe(false);
   }
 
-  // Bloquear NAO exige observacao; so' desbloquear.
-  expect(canTransition(MANUTENCAO, "blocking", "none", "commercial").allowed).toBe(true);
+  // ENTRAR em bloqueio comercial TAMBEM exige observacao: tirar apartamento de venda por
+  // decisao propria e' perda de receita, e perda de receita sem motivo registrado nao tem a
+  // quem perguntar depois.
+  const entraComercial = canTransition(MANUTENCAO, "blocking", "none", "commercial");
+  expect(entraComercial.allowed).toBe(false);
+  expect(entraComercial.allowed === false && entraComercial.code).toBe("reason_required");
+  expect(canTransition(MANUTENCAO, "blocking", "none", "commercial", "Reforma da suite 305.").allowed).toBe(true);
+
+  // ENTRAR em manutencao NAO exige -- o motivo vem do chamado tecnico. E' a unica das quatro
+  // transicoes de bloqueio sem observacao obrigatoria, e a assimetria e' deliberada.
   expect(canTransition(MANUTENCAO, "blocking", "none", "maintenance").allowed).toBe(true);
+
+  // Entrar em bloqueio nao mexe na limpeza: o apartamento so' e' sujado na SAIDA, quando
+  // alguem ja esteve la dentro.
+  const entraManutencao = canTransition(MANUTENCAO, "blocking", "none", "maintenance");
+  expect(entraManutencao.allowed && entraManutencao.effects.housekeeping).toBeUndefined();
 
   // Quem nao tem permissao recebe `forbidden`, nao `reason_required`: a mensagem de erro nao
   // deve ensinar que faltava so' preencher um campo.

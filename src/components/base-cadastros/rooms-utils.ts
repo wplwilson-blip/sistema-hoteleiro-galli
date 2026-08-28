@@ -426,14 +426,32 @@ export function backfillRoomState(legacyStatus: RoomStatus): RoomState {
 
 // ------------------------------------------------------------------ permissoes
 
+/**
+ * TODOS os codigos de permissao do modulo Apartamentos -- 088 (view, block, manage) e 089
+ * (housekeeping, inspect). Fonte unica: `BASE_PERMISSIONS` em lib/auth/permissions.ts
+ * REFERENCIA este objeto em vez de repetir as strings.
+ *
+ * `manage` entra aqui mesmo sem participar de transicao alguma. Um mapa de CODIGOS que
+ * omitisse um codigo seria um subconjunto com nome de conjunto -- e a proxima pessoa que
+ * precisasse de `rooms.manage` redeclararia a string em outro arquivo, que e' exatamente a
+ * divergencia que centralizar aqui existe para impedir.
+ */
 export const ROOM_PERMISSIONS = {
   view: "BASE:rooms.view",
   block: "BASE:rooms.block",
+  manage: "BASE:rooms.manage",
   housekeeping: "BASE:rooms.housekeeping",
   inspect: "BASE:rooms.inspect"
 } as const;
 
 export type RoomPermissionCode = (typeof ROOM_PERMISSIONS)[keyof typeof ROOM_PERMISSIONS];
+
+/**
+ * Os codigos cuja CONCESSAO esta declarada aqui. `manage` fica de fora de proposito: nenhum
+ * perfil novo da 089 o recebe, e a matriz dele vive na 088. Codigo e concessao sao coisas
+ * diferentes -- este tipo e' o que impede a matriz de virar "quase todos os codigos".
+ */
+export type GrantedRoomPermissionCode = Exclude<RoomPermissionCode, typeof ROOM_PERMISSIONS.manage>;
 
 /**
  * A matriz da D5, transcrita da migration 089 -- mesma relacao que o backfill tem com o SQL.
@@ -447,7 +465,7 @@ export type RoomPermissionCode = (typeof ROOM_PERMISSIONS)[keyof typeof ROOM_PER
  * que le o banco. E' referencia versionada do que a migration concede, para o teste ter contra
  * o que comparar.
  */
-export const ROOM_PERMISSION_PROFILE_GRANTS: Record<RoomPermissionCode, readonly string[]> = {
+export const ROOM_PERMISSION_PROFILE_GRANTS: Record<GrantedRoomPermissionCode, readonly string[]> = {
   "BASE:rooms.view": [
     "SUPER_ADMIN",
     "NETWORK_MANAGER",
@@ -513,9 +531,14 @@ const HOUSEKEEPING_RULES: readonly TransitionRule[] = [
 ];
 
 const BLOCKING_RULES: readonly TransitionRule[] = [
+  // ENTRAR em manutencao nao exige observacao: o motivo vem do chamado tecnico, e pedir de
+  // novo aqui seria transcrever o que ja esta registrado em outro lugar.
   { from: "none", to: "maintenance", permission: ROOM_PERMISSIONS.block },
-  { from: "none", to: "commercial", permission: ROOM_PERMISSIONS.block },
-  // §4.2: encerrar bloqueio -- de QUALQUER tipo -- exige observacao e derruba a UH para
+  // ENTRAR em bloqueio comercial exige. Tirar um apartamento de venda por decisao propria e'
+  // perda de receita, e perda de receita sem motivo registrado nao tem a quem perguntar
+  // depois. Diferente da manutencao, aqui nao existe chamado por tras.
+  { from: "none", to: "commercial", permission: ROOM_PERMISSIONS.block, requiresReason: true },
+  // §4.2: SAIR de bloqueio -- de qualquer tipo -- exige observacao e derruba a UH para
   // `dirty`, nunca para `inspected`.
   //
   // O criterio nao e' "passou por obra", e' "alguem entrou no apartamento": manutencao entra
@@ -609,7 +632,7 @@ export function canTransition(
     return {
       allowed: false,
       code: "reason_required",
-      message: "Informe a observacao de encerramento do bloqueio."
+      message: "Informe a observacao do bloqueio."
     };
   }
 

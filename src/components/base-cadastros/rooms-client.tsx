@@ -9,8 +9,12 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextInput } from "@/components/base-cadastros/crud-components";
 import { RoomsMap } from "@/components/base-cadastros/rooms-map";
 import {
+  BLOCKING_STATUS_VALUES,
+  HOUSEKEEPING_STATUS_VALUES,
+  blockingStatusLabel,
   climateControlLabel,
   describeRoomState,
+  housekeepingStatusLabel,
   normalizeSearchValue,
   resolveRoomsView,
   type RoomRecord,
@@ -84,7 +88,16 @@ export function RoomsClient() {
   const [blockFilter, setBlockFilter] = useState("all");
   const [floorFilter, setFloorFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // Um filtro POR DIMENSAO, e nao um filtro pelo rotulo combinado.
+  //
+  // O rotulo combinado fragmentava a consulta que mais importa: "Sujo" virava "Ocupado ·
+  // Sujo" e "Vago · Sujo", e a fila de arrumacao -- que e' a razao de a governanta abrir esta
+  // tela -- passava a exigir duas selecoes para responder uma pergunta de uma dimensao so'.
+  //
+  // Ocupacao nao vira filtro: nao tem escritor nesta release (D1), e filtrar por um campo que
+  // ninguem alimenta so' produziria "115 vagos".
+  const [housekeepingFilter, setHousekeepingFilter] = useState("all");
+  const [blockingFilter, setBlockingFilter] = useState("all");
 
   const roomsQuery = useQuery({
     queryKey: ["base", "rooms", activeUnitId],
@@ -131,13 +144,7 @@ export function RoomsClient() {
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [rooms]);
 
-  // O filtro passa a operar sobre o rotulo COMBINADO -- o mesmo texto que a coluna Situacao
-  // mostra. Filtrar por um valor que a tela nao exibe seria pedir ao usuario que adivinhasse.
-  const statusOptions = useMemo(() => {
-    const found = new Set(rooms.map((room) => describeRoomState(roomState(room)).label));
 
-    return Array.from(found).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [rooms]);
 
   const filteredRooms = useMemo(() => {
     const term = normalizeSearchValue(search);
@@ -155,7 +162,11 @@ export function RoomsClient() {
         return false;
       }
 
-      if (statusFilter !== "all" && describeRoomState(roomState(room)).label !== statusFilter) {
+      if (housekeepingFilter !== "all" && room.housekeepingStatus !== housekeepingFilter) {
+        return false;
+      }
+
+      if (blockingFilter !== "all" && room.blockingStatus !== blockingFilter) {
         return false;
       }
 
@@ -167,7 +178,7 @@ export function RoomsClient() {
         .filter(Boolean)
         .some((value) => normalizeSearchValue(String(value)).includes(term));
     });
-  }, [blockFilter, floorFilter, rooms, search, statusFilter, typeFilter]);
+  }, [blockFilter, blockingFilter, floorFilter, housekeepingFilter, rooms, search, typeFilter]);
 
   return (
     <div className="space-y-4">
@@ -205,11 +216,22 @@ export function RoomsClient() {
               ))}
             </SelectField>
           </Field>
-          <Field label="Situação">
-            <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">Todas as situações</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>{status}</option>
+          {/* As opcoes sao os valores do enum, nao os presentes na tela: a fila de arrumacao
+              precisa poder responder "nenhum apartamento sujo" -- e uma opcao que some
+              quando zera nao responde, ela apenas desaparece. */}
+          <Field label="Limpeza">
+            <SelectField value={housekeepingFilter} onChange={(event) => setHousekeepingFilter(event.target.value)}>
+              <option value="all">Toda a limpeza</option>
+              {HOUSEKEEPING_STATUS_VALUES.map((status) => (
+                <option key={status} value={status}>{housekeepingStatusLabel(status)}</option>
+              ))}
+            </SelectField>
+          </Field>
+          <Field label="Bloqueio">
+            <SelectField value={blockingFilter} onChange={(event) => setBlockingFilter(event.target.value)}>
+              <option value="all">Todos os bloqueios</option>
+              {BLOCKING_STATUS_VALUES.map((status) => (
+                <option key={status} value={status}>{blockingStatusLabel(status)}</option>
               ))}
             </SelectField>
           </Field>

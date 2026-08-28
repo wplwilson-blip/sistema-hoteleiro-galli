@@ -218,10 +218,17 @@ comment on column public.room_status_history.dimension is
 -- usuario) e o banco garante (a rota nao e' o unico caminho ate a tabela). A coluna
 -- `reason` ja existe desde a 011 -- nao se cria coluna nova.
 --
--- Escopo do CHECK: exige texto na saida de QUALQUER bloqueio (`maintenance` ou
--- `commercial`) para `none`. O criterio nao e' "passou por obra", e' "alguem entrou
--- no apartamento" -- reforma, uso interno e cortesia tambem sao gente dentro do
--- quarto. BLOQUEAR nao exige observacao; so' desbloquear.
+-- Escopo do CHECK, em duas partes:
+--
+--   SAIR de qualquer bloqueio (`maintenance` ou `commercial` -> `none`) exige texto.
+--   O criterio nao e' "passou por obra", e' "alguem entrou no apartamento" --
+--   reforma, uso interno e cortesia tambem sao gente dentro do quarto.
+--
+--   ENTRAR em bloqueio COMERCIAL exige texto. Tirar um apartamento de venda por
+--   decisao propria e' perda de receita, e perda de receita sem motivo registrado
+--   nao tem a quem perguntar depois.
+--
+-- ENTRAR em manutencao NAO exige: o motivo vem do chamado tecnico.
 -- ============================================================================
 
 do $$
@@ -231,7 +238,15 @@ begin
   ) then
     alter table public.room_status_history
       add constraint room_status_history_unblock_reason_check check (
-        not (dimension = 'blocking' and previous_status in ('maintenance', 'commercial') and new_status = 'none')
+        not (
+          dimension = 'blocking'
+          and (
+            -- SAIR de qualquer bloqueio.
+            (previous_status in ('maintenance', 'commercial') and new_status = 'none')
+            -- ENTRAR em bloqueio comercial.
+            or new_status = 'commercial'
+          )
+        )
         or btrim(coalesce(reason, '')) <> ''
       );
   end if;
