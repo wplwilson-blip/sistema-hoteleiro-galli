@@ -12,11 +12,18 @@ import path from "node:path";
 // Variaveis de ambiente exigidas (ver .env.e2e.example):
 //   E2E_ADMIN_USERNAME / E2E_ADMIN_PASSWORD  -> super admin existente
 //   E2E_MULTI_USERNAME / E2E_MULTI_PASSWORD  -> nao-super com acesso as 2 unidades
+//   E2E_GOVERNANCA_USERNAME / _PASSWORD      -> perfil LIDER_GOVERNANCA (plano 70)
+//   E2E_MANUTENCAO_USERNAME / _PASSWORD      -> perfil LIDER_MANUTENCAO (plano 70)
 // Se faltar alguma, o helper FALHA com mensagem clara (nunca silencioso).
 
-export type E2EUserKey = "E2E_ADMIN" | "E2E_MULTI";
+export type E2EUserKey = "E2E_ADMIN" | "E2E_MULTI" | "E2E_GOVERNANCA" | "E2E_MANUTENCAO";
 
-export const E2E_USERS: readonly E2EUserKey[] = ["E2E_ADMIN", "E2E_MULTI"];
+export const E2E_USERS: readonly E2EUserKey[] = [
+  "E2E_ADMIN",
+  "E2E_MULTI",
+  "E2E_GOVERNANCA",
+  "E2E_MANUTENCAO"
+];
 
 const AUTH_DIR = path.join("playwright", ".auth");
 

@@ -27,6 +27,12 @@ function loadDotEnv(file: string): void {
 }
 
 loadDotEnv(".env.e2e.local");
+// `.env.local` DEPOIS: loadDotEnv nao sobrescreve o que ja existe, entao `.env.e2e.local`
+// continua vencendo. Entra para a suite enxergar NEXT_PUBLIC_SUPABASE_URL / ANON_KEY /
+// SUPABASE_SERVICE_ROLE_KEY (tests/e2e/helpers/db.ts) sem COPIAR segredo para um segundo
+// arquivo -- duplicar a service key em dois .env e' mais arriscado que le-la de onde ela ja
+// mora. O guard de staging do helper roda sobre o valor lido, venha ele de onde vier.
+loadDotEnv(".env.local");
 
 export default defineConfig({
   testDir: "./tests/e2e",

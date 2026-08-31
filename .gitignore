@@ -5,6 +5,9 @@ dist
 .env
 .env.local
 .env*.local
+# Segredos da suite E2E. `.env.e2e.example` (o MODELO, sem valores) continua versionado --
+# por isso a regra e' exata e nao `.env.e2e*`.
+.env.e2e
 *.local
 .vercel
 supabase/.temp/
