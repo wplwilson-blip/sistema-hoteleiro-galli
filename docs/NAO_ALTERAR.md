@@ -21,6 +21,10 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - APIs sensíveis.
 - RLS/policies.
 - Triggers de auditoria/soft delete.
+- Arquivo de ambiente novo: conferir o `.gitignore` ANTES de escrever a primeira linha nele.
+  O repositorio e' publico, e a regra `.env*.local` nao cobre nomes como `.env.e2e`. A
+  diferenca entre uma regra faltando e um vazamento de service key e' so' alguem ter criado o
+  arquivo antes de a regra existir.
 
 ## Conceitos do Produto
 

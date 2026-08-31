@@ -617,8 +617,19 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     // Trava que reprovou a primeira revisao e que um `create or replace` distraido desfaz
     // sem quebrar mais nada visivelmente. Ver o comentario de probeTransitionRpcAsAnon:
     // a prova e' comportamental porque pg_proc nao e' exposto pelo PostgREST.
-    const { blocked, detail } = await probeTransitionRpcAsAnon();
+    const { outcome, detail } = await probeTransitionRpcAsAnon();
 
-    expect(blocked, `a RPC ficou executavel fora de service_role -> ${detail}`).toBe(true);
+    // A assercao e' sobre QUAL erro volta, nao sobre "voltou erro".
+    //
+    // `executed` e' o caso que importa: se `anon` receber ROOMS_TRANSITION_EMPTY_BATCH, a
+    // chamada ATRAVESSOU o `execute` e chegou ao corpo da funcao -- a trava caiu, e o teste
+    // tem que reprovar. Um teste que aceitasse esse erro como sucesso nao cobriria nada.
+    //
+    // `not_exposed` tambem nao passa: fechar por schema cache nao afirma nada sobre a ACL,
+    // que e' o que o `revoke`/`grant` da 089 garante.
+    expect(
+      outcome,
+      `esperado erro de PERMISSAO (42501) antes de qualquer validacao de argumento; veio: ${detail}`
+    ).toBe("permission_denied");
   });
 });

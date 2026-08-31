@@ -243,6 +243,24 @@ export async function callTransitionRpc(params: {
 }
 
 /**
+ * Resultado do probe do caso 20. NAO e' booleano de proposito: "nao deu certo" e "deu o erro
+ * ERRADO" sao coisas diferentes, e achatar as duas num `blocked: boolean` deixaria passar
+ * exatamente o cenario que o caso existe para pegar.
+ *
+ *   permission_denied -> CORRETO. O Postgres recusou no `execute`, ANTES de o corpo rodar.
+ *   executed          -> A TRAVA ESTA ABERTA. A chamada atravessou o execute e chegou na
+ *                        validacao de argumentos da funcao. Reprova.
+ *   not_exposed       -> A funcao nao esta no schema cache do PostgREST para este papel.
+ *                        Tambem e' "fechada", mas por outro mecanismo -- nao afirma nada
+ *                        sobre a ACL, entao NAO conta como aprovacao.
+ *   unexpected        -> Qualquer outra coisa. Reprova, com o erro cru no detalhe.
+ */
+export type RpcAnonProbe = {
+  outcome: "permission_denied" | "executed" | "not_exposed" | "unexpected";
+  detail: string;
+};
+
+/**
  * Caso 20 -- a RPC continua FECHADA para quem nao e' service_role.
  *
  * DESVIO DECLARADO da especificacao: o pedido era ler `pg_proc.proacl`. Nao da': `pg_proc`
@@ -251,14 +269,15 @@ export async function callTransitionRpc(params: {
  *
  * A prova aqui e' COMPORTAMENTAL, e cobre exatamente as tres regressoes pedidas. `anon` e'
  * um ROLE do Postgres: se a funcao voltar a ter `execute` para PUBLIC, para `anon` ou para
- * `authenticated`, esta chamada passa da barreira de permissao -- e o teste falha. Se a ACL
- * estiver correta, o Postgres recusa antes de executar qualquer linha do corpo.
+ * `authenticated`, esta chamada passa da barreira de permissao -- e o teste falha.
  *
- * O payload e' um lote VAZIO de proposito: se a permissao estiver indevidamente aberta, a
- * RPC levanta ROOMS_TRANSITION_EMPTY_BATCH e NAO escreve nada. O teste detecta a brecha sem
- * nunca mutar o banco por essa via.
+ * O payload e' um lote VAZIO de proposito, e e' o que torna o probe DIAGNOSTICO em vez de
+ * so' negativo: se a permissao estiver indevidamente aberta, a execucao chega ao corpo e
+ * levanta ROOMS_TRANSITION_EMPTY_BATCH -- sem escrever nada. Receber esse erro NAO e'
+ * sucesso: e' a prova de que a trava caiu. O esperado e' erro de PERMISSAO, antes de
+ * qualquer validacao de argumento.
  */
-export async function probeTransitionRpcAsAnon(): Promise<{ blocked: boolean; detail: string }> {
+export async function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   assertStagingUrl(url);
 
@@ -274,16 +293,27 @@ export async function probeTransitionRpcAsAnon(): Promise<{ blocked: boolean; de
   });
 
   if (!error) {
-    return { blocked: false, detail: "a RPC respondeu SEM erro para o papel anon" };
+    return { outcome: "executed", detail: "a RPC respondeu SEM erro para o papel anon" };
   }
 
   const message = error.message ?? "";
   const code = (error as { code?: string }).code ?? "";
+  const detail = `${code} ${message}`.trim();
 
-  // ROOMS_TRANSITION_EMPTY_BATCH significa que o corpo EXECUTOU -- a permissao passou.
+  // O corpo da funcao rodou -> o `execute` foi concedido a alguem que nao devia te-lo.
   if (message.includes("ROOMS_TRANSITION_")) {
-    return { blocked: false, detail: `a RPC EXECUTOU para anon (erro de aplicacao: ${message})` };
+    return { outcome: "executed", detail };
   }
 
-  return { blocked: true, detail: `${code} ${message}`.trim() };
+  // 42501 = insufficient_privilege. E' o resultado correto.
+  if (code === "42501" || /permission denied/i.test(message)) {
+    return { outcome: "permission_denied", detail };
+  }
+
+  // PGRST202: a funcao nao foi encontrada no schema cache para este papel.
+  if (code === "PGRST202" || /could not find the function/i.test(message)) {
+    return { outcome: "not_exposed", detail };
+  }
+
+  return { outcome: "unexpected", detail };
 }
