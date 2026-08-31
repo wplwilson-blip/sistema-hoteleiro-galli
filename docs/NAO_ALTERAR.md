@@ -21,6 +21,11 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - APIs sensíveis.
 - RLS/policies.
 - Triggers de auditoria/soft delete.
+- Se a rota de transições de apartamento passar a casar o erro por `rpcError.code` em vez de
+  por mensagem, o `errcode` da RPC `rooms_apply_transition` vira **contrato** — e qualquer
+  mudança nele exige revisão conjunta dos dois lados. Hoje o acoplamento é por texto
+  (`includes("ROOMS_TRANSITION_STALE")`), e funciona por acidente. É o tipo de acoplamento
+  implícito que só machuca quando alguém "melhora" um dos lados sozinho.
 - Arquivo de ambiente novo: conferir o `.gitignore` ANTES de escrever a primeira linha nele.
   O repositorio e' publico, e a regra `.env*.local` nao cobre nomes como `.env.e2e`. A
   diferenca entre uma regra faltando e um vazamento de service key e' so' alguem ter criado o
