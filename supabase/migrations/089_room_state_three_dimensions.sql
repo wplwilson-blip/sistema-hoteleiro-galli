@@ -177,8 +177,9 @@ alter table public.room_status_history
 alter table public.room_status_history
   add column if not exists dimension text;
 
--- Backfill de `dimension` para linhas preexistentes. Zero linhas hoje; existe para
--- a migration ser correta tambem num banco onde a premissa nao valha mais.
+-- Backfill de `dimension` para linhas preexistentes. Zero linhas hoje; existe para o
+-- `set not null` abaixo nao falhar. Num banco com historico real, o CHECK adiante
+-- ABORTA -- e' o comportamento correto: ver a premissa datada no cabecalho.
 update public.room_status_history
 set dimension = 'housekeeping'
 where dimension is null;
@@ -398,36 +399,6 @@ on conflict (access_profile_id, permission_id) do nothing;
 
 
 -- ============================================================================
--- 10.1) REVOGACAO de BASE:rooms.block de DEPARTMENT_MANAGER e SUPERVISOR
---
--- Mudanca de decisao em relacao a 088, e o motivo e' que a permissao mudou de peso.
---
--- Na 088, `rooms.block` era COSMETICO: trocava um valor de enum numa tela read-only.
--- Agora desbloquear DERRUBA a UH para `dirty`, exige observacao e GRAVA HISTORICO --
--- e passa a ser exatamente o tipo de acao operacional que a D5 tirou dos perfis
--- genericos. `DEPARTMENT_MANAGER` e' o mesmo perfil do gerente de Compras;
--- `SUPERVISOR` e' supervisao de qualquer setor. Nenhum dos dois deveria mexer na
--- fila de arrumacao de um hotel.
---
--- `LIDER_GOVERNANCA` e `LIDER_MANUTENCAO` existem justamente para segurar isto.
---
--- DELETE, e nao `is_allowed = false`: a linha nao deve existir. Um deny explicito
--- entraria na precedencia de overrides (P0) e passaria a VENCER uma concessao futura
--- feita de proposito -- seria uma trava silenciosa em vez de uma ausencia.
---
--- Nao mexe em `rooms.view` nem em `rooms.manage`: ver o inventario e editar o
--- cadastro continuam sendo atribuicao desses perfis.
--- ============================================================================
-
-delete from public.profile_permissions pp
-using public.access_profiles ap, public.permissions p
-where pp.access_profile_id = ap.id
-  and pp.permission_id = p.id
-  and ap.code in ('DEPARTMENT_MANAGER', 'SUPERVISOR')
-  and p.code = 'BASE:rooms.block';
-
-
--- ============================================================================
 -- 11) room_status: NAO alterado, NAO removido (D2)
 --
 -- Continua no banco por uma release, intacto, como rede de seguranca: se algo der
@@ -588,11 +559,16 @@ begin
     -- Uma linha por transicao de dimensao. A linha do efeito colateral e' gravada
     -- SEPARADAMENTE abaixo: sao dois fatos distintos, e achatar os dois numa linha
     -- so' e' a mesma conflacao que esta migration existe para desfazer.
+    -- organization_id vem de units: `rooms` nao a carrega, so `unit_id`.
+    -- room_status_history.organization_id e' NOT NULL desde a 011.
     insert into public.room_status_history
-      (unit_id, room_id, dimension, previous_status, new_status, reason, changed_by, created_by, updated_by, source_module)
-    select unit_id, id, p_dimension, v_from, v_to, p_reason, p_actor_id, p_actor_id, p_actor_id, 'BASE'
-    from public.rooms
-    where id = v_room_id;
+      (organization_id, unit_id, room_id, dimension, previous_status, new_status, reason,
+       changed_by, created_by, updated_by, source_module)
+    select u.organization_id, r.unit_id, r.id, p_dimension, v_from, v_to, p_reason,
+           p_actor_id, p_actor_id, p_actor_id, 'BASE'
+    from public.rooms r
+    join public.units u on u.id = r.unit_id
+    where r.id = v_room_id;
 
     -- A comparacao e' contra o housekeeping ATUAL, nao contra `v_current` -- que, num
     -- lote de bloqueio, carrega o valor da dimensao BLOCKING e nunca seria igual a um
@@ -603,10 +579,13 @@ begin
     -- justamente a pergunta que se faz depois de uma reclamacao de hospede.
     if v_effect is not null and v_effect is distinct from v_current_housekeeping then
       insert into public.room_status_history
-        (unit_id, room_id, dimension, previous_status, new_status, reason, changed_by, created_by, updated_by, source_module, is_automatic)
-      select unit_id, id, 'housekeeping', v_current_housekeeping, v_effect, p_reason, p_actor_id, p_actor_id, p_actor_id, 'BASE', true
-      from public.rooms
-      where id = v_room_id;
+        (organization_id, unit_id, room_id, dimension, previous_status, new_status, reason,
+         changed_by, created_by, updated_by, source_module, is_automatic)
+      select u.organization_id, r.unit_id, r.id, 'housekeeping', v_current_housekeeping, v_effect, p_reason,
+             p_actor_id, p_actor_id, p_actor_id, 'BASE', true
+      from public.rooms r
+      join public.units u on u.id = r.unit_id
+      where r.id = v_room_id;
     end if;
 
     v_count := v_count + 1;
@@ -673,19 +652,18 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --    group by room_status
 --    order by room_status;
 --
--- 2) Nenhum apartamento voltou a venda por migration. Deve bater EXATAMENTE com a
---    contagem de room_status = 'available':
+-- 2) Nenhum apartamento voltou a venda por migration. As duas contagens devem bater.
+--    `status = 'active'` nos DOIS lados: a definicao de vendavel em SQL tem que ser a
+--    mesma de isRoomSellable, que exige cadastro ativo.
 --
---    select count(*) as vendaveis
+--    select
+--      count(*) filter (
+--        where occupancy_status = 'vacant' and housekeeping_status = 'inspected'
+--          and blocking_status = 'none' and status = 'active'
+--      ) as vendaveis,
+--      count(*) filter (where room_status = 'available' and status = 'active') as available_antigo
 --    from public.rooms
---    where deleted_at is null
---      and occupancy_status = 'vacant'
---      and housekeeping_status = 'inspected'
---      and blocking_status = 'none';
---
---    select count(*) as available_antigo
---    from public.rooms
---    where deleted_at is null and room_status = 'available';
+--    where deleted_at is null;
 --
 -- 3) Os dois perfis existem e estao ativos (deve voltar 2 linhas):
 --
@@ -712,8 +690,7 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --    `security definer` ignora RLS: se `authenticated` puder executar, qualquer
 --    usuario transiciona qualquer apartamento de qualquer unidade pelo PostgREST.
 --
---    select p.proname, coalesce(array_to_string(p.proacl, E'
-'), '(sem ACL: PUBLICO)') as acl
+--    select p.proname, coalesce(array_to_string(p.proacl, ' | '), '(sem ACL: PUBLICO)') as acl
 --    from pg_proc p
 --    join pg_namespace n on n.oid = p.pronamespace
 --    where n.nspname = 'public' and p.proname = 'rooms_apply_transition';
@@ -724,16 +701,6 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --    -- FALHA se aparecer `=X/` sem papel antes do `=` (isso e' PUBLIC), ou
 --    -- `authenticated=X/` ou `anon=X/`. E "(sem ACL: PUBLICO)" e' o pior caso:
 --    -- proacl nulo significa o default do Postgres, que e' execute para PUBLIC.
---
--- 4.2) Revogacao do item 10.1 (deve voltar VAZIO):
---
---    select ap.code
---    from public.profile_permissions pp
---    join public.access_profiles ap on ap.id = pp.access_profile_id
---    join public.permissions p      on p.id  = pp.permission_id
---    where p.code = 'BASE:rooms.block'
---      and ap.code in ('DEPARTMENT_MANAGER', 'SUPERVISOR')
---      and pp.deleted_at is null;
 --
 -- 5) Nenhum perfil da matriz foi descartado por nao existir (deve voltar VAZIO --
 --    e' o teste de dead grant que a 088 ja usava):
@@ -786,16 +753,6 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --   update public.permissions
 --   set status = 'inactive', deleted_at = now(), updated_at = now()
 --   where module_code = 'BASE' and action_code in ('rooms.housekeeping', 'rooms.inspect');
---
---   -- a.1) devolver BASE:rooms.block a DEPARTMENT_MANAGER e SUPERVISOR (item 10.1).
---   --      Sem isto, um rollback deixa os dois perfis SEM a permissao que a 088 dava.
---   insert into public.profile_permissions (access_profile_id, permission_id, is_allowed, status)
---   select ap.id, p.id, true, 'active'
---   from public.access_profiles ap
---   cross join public.permissions p
---   where ap.code in ('DEPARTMENT_MANAGER', 'SUPERVISOR')
---     and p.code = 'BASE:rooms.block'
---   on conflict (access_profile_id, permission_id) do nothing;
 --
 --   -- b) perfis novos: DESATIVAR, nunca deletar (podem ja ter usuario vinculado,
 --   --    e access_profiles e' referenciada com on delete restrict).

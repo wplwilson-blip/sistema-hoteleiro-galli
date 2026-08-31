@@ -148,7 +148,14 @@ Matriz completa dos códigos novos:
 | --- | --- |
 | `BASE:rooms.housekeeping` | `SUPER_ADMIN`, `UNIT_DIRECTOR`, `LIDER_GOVERNANCA` |
 | `BASE:rooms.inspect` | `SUPER_ADMIN`, `UNIT_DIRECTOR`, `LIDER_GOVERNANCA` |
-| `BASE:rooms.block` (existente) | + `LIDER_GOVERNANCA`, `LIDER_MANUTENCAO` |
+| `BASE:rooms.block` (existente) | os perfis da 088 (`SUPER_ADMIN`, `UNIT_DIRECTOR`, `DEPARTMENT_MANAGER`, `SUPERVISOR`) **+** `LIDER_GOVERNANCA`, `LIDER_MANUTENCAO` |
+
+Sobre o `rooms.block`: revogá-lo de `DEPARTMENT_MANAGER` e `SUPERVISOR` **foi considerado e
+rejeitado**. O argumento a favor era que a permissão mudou de peso — na 088 bloquear era
+cosmético, e agora desbloquear derruba a UH para `dirty`, exige observação e grava histórico.
+**Decisão do Wilson: os dois perfis mantêm `rooms.block`.** A fronteira que esta fatia existe
+para proteger é a da *vistoria*, não a do bloqueio: bloquear não libera apartamento para
+venda. A allowlist de `block` é mais larga que a de `inspect` de propósito.
 
 `OPERACIONAL_GOVERNANCA` **não é criado** — camareira não tem login; seria dead grant.
 
@@ -378,6 +385,33 @@ Registradas porque mudaram o plano, e porque o mecanismo funcionou:
 4. **Barreira RLS em `room_status_history`.** Sinalizado em vez de assumido. **Verificado:**
    as policies filtram só por `unit_id`; sem impacto. E a afirmação "a tabela está vazia" era
    minha, sem verificação — conferida depois, zero nos dois ambientes.
+
+Os itens 5 a 9 mudaram **depois** do contrato fechado, na execução e na revisão. Ficam
+registrados aqui porque nenhum deles estava no plano original:
+
+5. **Transições de desfazer `cleaning → dirty` e `clean → dirty`**, com `rooms.housekeeping`.
+   Clique errado em 115 apartamentos por dia não é hipótese, e sem elas corrigir um "Limpo"
+   lançado por engano exigia passar por `inspected` — ou seja, liberar o apartamento para
+   venda para poder consertar o erro. Voltam para `dirty`, nunca para `cleaning`: reabrir uma
+   limpeza que não aconteceu inventaria um fato.
+6. **Coluna `rooms.housekeeping_changed_at`**, escrita pela RPC e só quando a limpeza de fato
+   muda. Alimenta o "Sujo há 6 horas" já previsto nas notas da D4, sem exigir consulta ao
+   histórico apartamento a apartamento. Duas linhas agora em vez de uma consulta cara depois.
+7. **`record_status` (`public.rooms.status`) entra no modelo de estado** — acima de bloqueio
+   na precedência de `describeRoomState` e como condição de `isRoomSellable`. Apartamento
+   inativo não entra em fila de arrumação, não aceita transição e não conta como vendável;
+   sem isso, desativar o cadastro de um apartamento `inspected` o deixava vendável — sumia da
+   lista e seguia à venda. `backfillRoomState` **deliberadamente não devolve `record`**: a 089
+   não toca `rooms.status`, e afirmar `active` mentiria sobre apartamento com cadastro inativo.
+8. **`revoke execute` de `public`/`anon`/`authenticated` e `grant` a `service_role`** na
+   `rooms_apply_transition`. `security definer` ignora RLS, e o Postgres concede `execute` a
+   PUBLIC por padrão ao criar função — sem o revoke ela nasce pública, e qualquer usuário
+   logado transicionaria qualquer apartamento de qualquer unidade pelo PostgREST, contornando
+   o gate da rota. Mesmo padrão das RPCs 079/081/083.
+9. **`organization_id` nos `insert` de `room_status_history`, vindo de `units`.** Coluna
+   `not null` desde a 011 que a primeira versão da RPC omitia: **toda** transição teria
+   falhado com 23502. `public.rooms` não carrega `organization_id` — só `unit_id` —, então a
+   origem correta é o join com `public.units`. Encontrado por Wilson na aplicação.
 
 A recomendação dela para a D5 (reaproveitar perfis) foi **rejeitada** por um fato que ela não
 tinha: o problema não é o vazamento lateral, é a governanta *receber* alçada de compras ou

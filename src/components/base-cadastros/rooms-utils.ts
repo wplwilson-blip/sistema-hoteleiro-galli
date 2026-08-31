@@ -505,10 +505,14 @@ export const ROOM_PERMISSION_PROFILE_GRANTS: Record<GrantedRoomPermissionCode, r
     "LIDER_GOVERNANCA",
     "LIDER_MANUTENCAO"
   ],
-  // DEPARTMENT_MANAGER e SUPERVISOR SAIRAM (089, item 10.1). Na 088 bloquear era cosmetico;
-  // agora desbloquear derruba a UH para `dirty`, exige observacao e grava historico -- acao
-  // operacional que a D5 tirou dos perfis genericos.
-  "BASE:rooms.block": ["SUPER_ADMIN", "UNIT_DIRECTOR", "LIDER_GOVERNANCA", "LIDER_MANUTENCAO"],
+  "BASE:rooms.block": [
+    "SUPER_ADMIN",
+    "UNIT_DIRECTOR",
+    "DEPARTMENT_MANAGER",
+    "SUPERVISOR",
+    "LIDER_GOVERNANCA",
+    "LIDER_MANUTENCAO"
+  ],
   "BASE:rooms.housekeeping": ["SUPER_ADMIN", "UNIT_DIRECTOR", "LIDER_GOVERNANCA"],
   "BASE:rooms.inspect": ["SUPER_ADMIN", "UNIT_DIRECTOR", "LIDER_GOVERNANCA"]
 };

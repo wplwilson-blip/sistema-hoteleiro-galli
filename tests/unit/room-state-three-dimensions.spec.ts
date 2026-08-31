@@ -159,7 +159,7 @@ test("3 - encerrar bloqueio SEM observacao e' rejeitado (manutencao E comercial)
 
 // ---------------------------------------------------------------------------- §7.4
 
-test("4 - isRoomSellable so' e' verdadeiro em vacant + inspected + none", () => {
+test("4 - isRoomSellable exige cadastro ativo, vago, vistoriado e sem bloqueio", () => {
   expect(isRoomSellable({ record: "active", occupancy: "vacant", housekeeping: "inspected", blocking: "none" })).toBe(true);
 
   // Varredura exaustiva: qualquer outra combinacao das tres dimensoes e' falsa. Enumerar e'
@@ -312,12 +312,17 @@ test("7 - allowlist FECHADA de rooms.inspect: so' os perfis da D5", () => {
   expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.block]).toContain("LIDER_MANUTENCAO");
   expect(permitidos).not.toContain("LIDER_MANUTENCAO");
 
-  // `rooms.block` SAIU de DEPARTMENT_MANAGER e SUPERVISOR (089, item 10.1). Na 088 bloquear
-  // era cosmetico; agora desbloquear derruba a UH para `dirty`, exige observacao e grava
-  // historico. A allowlist de block passa a ser fechada como a de inspect.
+  // `rooms.block` mantem os perfis da 088 e ganha os dois novos. Revogar de
+  // DEPARTMENT_MANAGER e SUPERVISOR foi considerado e REJEITADO pelo Wilson -- e' o que esta
+  // nos dois bancos. A allowlist de block e' mais larga que a de inspect de proposito:
+  // bloquear nao libera UH para venda, e a fronteira que esta fatia protege e' a da vistoria.
   expect([...ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.block]].sort()).toEqual([
+    "DEPARTMENT_MANAGER",
     "LIDER_GOVERNANCA",
     "LIDER_MANUTENCAO",
+    // `SUPERVISOR` antes de `SUPER_ADMIN`: .sort() e' lexicografico por codigo, e "V" (0x56)
+    // vem antes de "_" (0x5F).
+    "SUPERVISOR",
     "SUPER_ADMIN",
     "UNIT_DIRECTOR"
   ]);
