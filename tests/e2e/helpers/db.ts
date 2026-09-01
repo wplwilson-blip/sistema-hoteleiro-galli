@@ -152,13 +152,23 @@ export type HistoryRow = {
   changed_at: string;
 };
 
-/** Linhas de historico de um apartamento gravadas DEPOIS de um instante, mais antigas primeiro. */
-export async function readHistorySince(roomId: string, sinceIso: string): Promise<HistoryRow[]> {
+/**
+ * TODAS as linhas de historico de um apartamento, mais antigas primeiro.
+ *
+ * NAO ha corte por tempo, e e' deliberado. A versao anterior recebia um `sinceIso` vindo de
+ * `new Date()` na maquina do teste e comparava com `changed_at`, que e' `now()` no BANCO --
+ * dois relogios diferentes. Linhas gravadas ANTES do corte apareciam depois dele, e o caso 18
+ * reprovou por contar 3 linhas onde esperava 2 (a terceira era o proprio setup do teste).
+ *
+ * Relogio de cliente como fronteira nunca funciona. Quem chama tira um retrato ANTES
+ * (`snapshotHistoryIds`) e usa `newHistoryRows` para pegar so' o que apareceu depois --
+ * comparacao por IDENTIDADE, que nao depende de relogio nenhum.
+ */
+export async function readHistory(roomId: string): Promise<HistoryRow[]> {
   const { data, error } = await e2eDb()
     .from("room_status_history")
     .select("id, organization_id, unit_id, room_id, dimension, previous_status, new_status, reason, is_automatic, changed_at")
     .eq("room_id", roomId)
-    .gte("changed_at", sinceIso)
     .order("changed_at", { ascending: true });
 
   if (error) {
@@ -166,6 +176,16 @@ export async function readHistorySince(roomId: string, sinceIso: string): Promis
   }
 
   return (data ?? []) as HistoryRow[];
+}
+
+/** Retrato dos ids de historico ja existentes, para servir de linha de base. */
+export async function snapshotHistoryIds(roomId: string): Promise<Set<string>> {
+  return new Set((await readHistory(roomId)).map((row) => row.id));
+}
+
+/** As linhas que apareceram depois do retrato, na ordem em que foram gravadas. */
+export async function newHistoryRows(roomId: string, baseline: Set<string>): Promise<HistoryRow[]> {
+  return (await readHistory(roomId)).filter((row) => !baseline.has(row.id));
 }
 
 /** Total de linhas de historico de um apartamento. Usado para provar que NADA foi gravado. */

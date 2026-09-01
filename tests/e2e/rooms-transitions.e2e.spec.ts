@@ -5,9 +5,10 @@ import {
   countHistory,
   findUnitIdByCode,
   listActiveRooms,
+  newHistoryRows,
   probeTransitionRpcAsAnon,
-  readHistorySince,
   readRoom,
+  snapshotHistoryIds,
   setRoomRecordStatus,
   type RoomStateRow
 } from "./helpers/db";
@@ -179,7 +180,7 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     try {
       await driveHousekeepingTo(gov, room.id, "inspected");
 
-      const since = new Date().toISOString();
+      const baseline = await snapshotHistoryIds(room.id);
       const { status, payload } = await postTransition(gov, {
         roomIds: [room.id],
         dimension: "housekeeping",
@@ -192,7 +193,7 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       expect((await readRoom(room.id)).housekeeping_status).toBe("dirty");
 
       // A prova que o unitario nao da': a linha de historico existe e esta COMPLETA.
-      const history = await readHistorySince(room.id, since);
+      const history = await newHistoryRows(room.id, baseline);
       expect(history).toHaveLength(1);
       expect(history[0].organization_id).not.toBeNull();
       expect(history[0].dimension).toBe("housekeeping");
@@ -520,11 +521,11 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     try {
       await driveHousekeepingTo(gov, room.id, "dirty");
 
-      const since = new Date().toISOString();
+      const baseline = await snapshotHistoryIds(room.id);
       await postTransition(gov, { roomIds: [room.id], dimension: "housekeeping", toStatus: "cleaning" });
       await postTransition(gov, { roomIds: [room.id], dimension: "housekeeping", toStatus: "clean" });
 
-      const history = await readHistorySince(room.id, since);
+      const history = await newHistoryRows(room.id, baseline);
       expect(history).toHaveLength(2);
 
       expect(history[0].organization_id).not.toBeNull();
@@ -555,7 +556,11 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       await driveHousekeepingTo(gov, room.id, "inspected");
       await postTransition(gov, { roomIds: [room.id], dimension: "blocking", toStatus: "maintenance" });
 
-      const since = new Date().toISOString();
+      // Retrato DEPOIS do setup (entrar em manutencao) e ANTES da transicao sob teste. E' o
+      // corte que a versao anterior errou: com `new Date()` do cliente contra `now()` do
+      // banco, a linha `none -> maintenance` do proprio setup caiu dentro da janela e o teste
+      // contou 3 onde esperava 2.
+      const baseline = await snapshotHistoryIds(room.id);
       const { status } = await postTransition(gov, {
         roomIds: [room.id],
         dimension: "blocking",
@@ -564,7 +569,7 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       });
       expect(status).toBe(200);
 
-      const history = await readHistorySince(room.id, since);
+      const history = await newHistoryRows(room.id, baseline);
       expect(history).toHaveLength(2);
 
       const blocking = history.find((row) => row.dimension === "blocking");

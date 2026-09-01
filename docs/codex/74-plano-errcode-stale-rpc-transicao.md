@@ -135,11 +135,22 @@ estrita entre banco e deploy (reverter o app antes de dropar as colunas).
 
 1. **A ACL continua fechada** — a consulta de `proacl` da 089, esperando `service_role=X` e
    nada de `anon=X`, `authenticated=X`, ou `=X/` sem papel antes do igual.
-2. **O STALE agora responde**, em tempo comparável aos outros três caminhos: chamar a RPC com
-   um `from` divergente e conferir que volta `22023 ROOMS_TRANSITION_STALE` na casa das
-   centenas de milissegundos — e não que pendura.
+2. **O STALE agora responde.** Chamar a RPC com um `from` divergente e conferir que volta
+   `22023 ROOMS_TRANSITION_STALE`.
+   **Critério de aprovação: abaixo de 2 segundos passa. Acima disso, ou sem resposta,
+   REPROVA.** O limite é folgado de propósito — o que se mede aqui é "responde" contra
+   "pendura", não latência fina. Quem estiver aplicando às pressas não deve precisar julgar se
+   800 ms é aceitável.
 3. **Nada foi gravado** por essa chamada recusada: contagem de `room_status_history` do
    apartamento igual antes e depois.
+4. **CONTROLE NEGATIVO — as outras exceções continuam respondendo.** Chamar a RPC com lote
+   vazio e conferir que volta `22023 ROOMS_TRANSITION_EMPTY_BATCH`, no mesmo tempo de antes
+   (referência da §2.1: 313 ms).
+
+   É o item que fecha o ciclo. `create or replace` reescreve o **corpo inteiro** da função, e
+   um erro de transcrição em qualquer outro caminho não seria visto pelos itens 1 a 3 — só
+   apareceria em produção, na primeira vez que alguém encostasse naquele caminho. Este item
+   prova que a 090 corrigiu o STALE **sem quebrar o resto ao substituir a função toda**.
 
 ---
 
