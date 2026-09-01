@@ -60,8 +60,8 @@ importante: **nada disso em `public.room_status_history`.**
   transição — o estado dele não mudou, é justamente o ponto. Enfiar lá obrigaria a inventar uma
   linha de histórico para um fato que não moveu nada.
 
-Os dois são **fatos do dia**, e vivem numa entidade nova: a **tarefa do dia**, com chave
-`(room_id, service_date)`.
+Os dois são **fatos do dia**, e vivem numa entidade nova: a **tarefa do dia**, chaveada por
+`(dia, apartamento)` — com FK para o registro do dia, nunca por data solta (§5.3).
 
 ---
 
@@ -90,24 +90,97 @@ mentir por omissão.
 
 **O custo de (b), declarado:** um ato a mais por dia, e uma tabela a mais. Aceito.
 
-### D2 — O tipo de arrumação tem PADRÃO DERIVADO da ocupação, e é editável
+### D2 — O tipo de arrumação é decidido no FECHO da limpeza, não na abertura do dia
 
-Você me deu **50 saídas em 115** e concluiu, com razão, que nenhum padrão fixo ajuda: marcar 50
-saídas custa o mesmo que marcar 65 permanências.
+**A versão anterior deste plano estava errada, e o defeito era de lógica.** Ela dizia que o
+tipo seria derivado do `occupancy_status` "quando a tarefa entra na fila" — e a tarefa entra na
+fila quando o dia é aberto, às 8h. Ou seja: derivava no exato instante em que a **D1 acabou de
+argumentar que a ocupação não sabe de nada**. Às 8h os 50 que vão sair ainda estão `occupied`,
+então os 50 nasceriam como permanência, e a governanta corrigiria exatamente 50 — a alternativa
+que a própria D2 dizia estar descartando, com uma tabela a mais.
 
-Mas a chegada do escritor de ocupação muda a conta. Quando a tarefa entra na fila, o tipo é
-**derivado do `occupancy_status` naquele instante** — `vacant` → saída, `occupied` →
-permanência — e **continua editável**. A governanta não marca 50 nem 65: ela corrige o que
-estiver errado.
+E a consequência era pior que o clique. **Permanência para em `clean`, sem vistoria.** Um
+apartamento de saída tipado como permanência não entra na fila de vistoria: fica limpo, não
+vistoriado, e **ninguém percebe que falta, porque o sistema acha que aquilo acabou**.
+Apartamento que não chega em `inspected` não vende.
 
-Não é lote nem padrão fixo. É o mesmo princípio do plano 70, §4.3, aplicado a outro eixo: **o
-normal não se digita, só a exceção** — com a diferença de que aqui "o normal" é calculado a
-partir de um fato que outro setor já registrou.
+#### O que a governanta precisa às 8h — e por que não é o tipo
 
-**Alternativa descartada: tipo obrigatório, sem padrão.** Honesta, e imune a erro da Recepção.
-Custa 115 decisões por dia numa operação que tem três minutos para isso. Descartada pelo mesmo
-motivo que a §4.1 do plano 70 tornou `clean` opcional: **o que custa caro demais não é
-preenchido, e vira campo órfão.**
+Às 8h ela precisa da **lista** e da **distribuição**: quem arruma qual corredor. Para isso o
+tipo é irrelevante.
+
+O tipo só importa **num único momento**: quando a limpeza termina e é preciso decidir se o
+apartamento **para em `clean`** ou **segue para `inspected`**. Isso acontece no fim do serviço,
+não no começo do dia.
+
+Saber às 8h **quem vai sair hoje** seria genuinamente útil para planejar — mas isso **não é
+ocupação**: é previsão de saída, informação que a Recepção tem e que **não existe em lugar
+nenhum deste sistema**. Ver a alternativa (e) e a §14.
+
+#### Alternativas
+
+**(a) Derivar na criação da tarefa, às 8h.** Era a proposta anterior. **Errada**, pelo motivo
+acima: deriva quando a fonte não sabe, e erra nos 50 casos que mais importam.
+
+**(b) Não armazenar o tipo; derivar na leitura, sempre.** A fila calcula o tipo ao vivo a partir
+da ocupação atual. Custo: **o tipo nunca é estável**. Uma permanência arrumada às 9h vira saída
+às 11h quando o hóspede sai, e o registro de ontem muda conforme o hotel de hoje. Mata o valor
+de auditoria: não dá para responder "o que fizemos ontem". Descartada.
+
+**(c) Armazenar, e re-derivar por evento quando a ocupação mudar.** A tarefa nasce permanência;
+quando a Recepção marca `vacant`, a tarefa **pendente** daquele quarto vira saída sozinha.
+Custo real, e é grande: um quarto já arrumado como permanência às 9h que faz check-out às 11h
+precisa de uma **segunda tarefa no mesmo dia** — o que quebra a unicidade `(dia, apartamento)` e
+transforma a tarefa do dia numa lista de serviços por quarto. Custo 2: a fila muda debaixo dela
+enquanto distribui o trabalho. Descartada nesta fatia — é a evolução natural quando houver
+previsão de saída, não a partida.
+
+**(d) Campo obrigatório na abertura, sem padrão nenhum.** Honesta e imune a erro da Recepção.
+Custa **115 decisões por dia** — pior que os 50 que se queria evitar, e todas tomadas no pior
+momento, antes de qualquer informação. Descartada.
+
+**(e) Derivar da previsão de saída informada pela Recepção.** É a resposta **certa** para a
+necessidade das 8h: a Recepção sabe quem sai hoje e informa. O tipo nasceria correto, e a
+governanta planejaria a manhã de verdade. **Custo: depende de um conceito que não existe e de
+uma fatia que ainda não foi escrita** — ver §14, porque isso é decisão de ordem, não de
+modelagem.
+
+**(f) Decidir no FECHO da limpeza, com padrão derivado NAQUELE instante.** ← **decidido**
+
+#### Como (f) funciona
+
+A tarefa **nasce sem tipo**. O tipo passa a ser **exigido na transição para `clean`** — e só
+nela. Naquele momento:
+
+- a ocupação **já é informativa**: é meio da manhã, o hóspede que ia sair já saiu, e a Recepção
+  já marcou `vacant`;
+- e, mais importante, **quem está registrando acabou de ver o quarto**. Roupa no armário ou
+  quarto vazio é a informação mais confiável que existe, e ela está disponível exatamente ali.
+
+O padrão vem da ocupação **no instante do fecho** (`vacant` → saída, `occupied` → permanência) e
+**continua editável**. Um clique, no momento em que a decisão é natural, e não 50 correções
+cegas às 8h.
+
+**Isso não acrescenta passo ao fluxo.** Marcar `clean` já é uma ação que ela faz; o tipo entra
+como parte dessa ação, não como uma segunda.
+
+#### O que (f) NÃO resolve, dito claramente
+
+**A necessidade de planejamento das 8h continua descoberta.** Nesta fatia, a governanta
+distribui o trabalho como distribui hoje — pelo papel e pelo que a Recepção lhe conta. **O
+sistema 75 registra o que aconteceu; ele não planeja a manhã.** Planejar vira possível com (e),
+na fatia da Recepção.
+
+Dizer isso é melhor que forçar um derivado que erra em 50 casos.
+
+#### A rede de segurança que (f) permite
+
+Como a Recepção escreve ocupação, um apartamento **`vacant` cuja tarefa foi encerrada como
+permanência** é uma inconsistência **detectável**: alguém saiu e o quarto não foi vistoriado.
+
+Isso vira uma lista de conferência **da própria governanta**, na tela dela — não é alarme entre
+setores (§8 recusa isso, e continua recusando). É ela conferindo o próprio trabalho, com um
+dado que o sistema já tem.
 
 ### D3 — A dispensa ENCERRA a tarefa, não a deixa pendente
 
@@ -194,15 +267,23 @@ Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes
 2. **`public.housekeeping_days`** — o registro do dia (D1). `(unit_id, service_date)` único,
    `opened_at`, `opened_by`, `closed_at`, `closed_by`. **É o que distingue silêncio de zero.**
 
-3. **`public.housekeeping_tasks`** — a tarefa do dia. `(room_id, service_date)` único.
-   `service_type` (D2), `outcome` (D3), `decline_origin` + `decline_note` (nulos fora de
-   `declined`), `housekeeping_employee_id` **nullable** — fica nulo até o plano 76.
-   `organization_id` **not null**, vindo de `units` — a mesma coluna cuja ausência derrubaria
-   toda transição na 089, e que só apareceu na aplicação.
+3. **`public.housekeeping_tasks`** — a tarefa do dia.
+   **`housekeeping_day_id` NOT NULL, com FK para `housekeeping_days`**, e único
+   `(housekeeping_day_id, room_id)`. A versão anterior chaveava por `(room_id, service_date)`,
+   com o vínculo ao dia apenas implícito via `room → unit` — o que permitia **tarefa existir sem
+   dia**, exatamente o estado que a D1 diz ser impossível. A FK fecha isso no banco, e não na
+   boa vontade da aplicação.
+   `service_type` **NULLABLE** (D2: preenchido no fecho, não na abertura), `outcome` (D3),
+   `decline_origin` + `decline_note` (nulos fora de `declined`), `housekeeping_employee_id`
+   **nullable** — fica nulo até o plano 76. `organization_id` **not null**, vindo de `units` — a
+   mesma coluna cuja ausência derrubaria toda transição na 089, e que só apareceu na aplicação.
 
 4. **`CHECK`s que amarram o desfecho:**
    - `declined` exige `decline_origin` preenchida; qualquer outro desfecho exige nula.
    - `decline_note` não-vazia quando houver — sem string em branco fingindo justificativa.
+   - **`done` exige `service_type` preenchido** (D2): uma tarefa não termina sem que alguém
+     tenha dito que trabalho era aquele. `pending` e `declined` aceitam nulo — dispensada nunca
+     chegou a ter tipo, e é correto que não tenha.
 
 5. **Índices:** `(unit_id, service_date)` e `(unit_id, service_date, outcome)` — as duas filas
    da tela são exatamente essas consultas.
@@ -211,9 +292,30 @@ Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes
    apartamentos elegíveis (ativos, não excluídos, `blocking_status = 'none'`) numa transação
    só. Reabrir um dia já aberto é no-op idempotente, nunca duplicação.
 
+   **6.1 — Apartamento que SAI de bloqueio depois do dia aberto ganha tarefa.** A abertura
+   filtra `blocking_status = 'none'`, mas encerrar manutenção derruba o apartamento para
+   `dirty` (plano 70, §4.2): ele passa a precisar de arrumação e não teria tarefa naquele dia —
+   **sumiria da fila justamente quando voltou a precisar de trabalho**. A
+   `rooms_apply_transition` passa a criar a tarefa pendente quando `dimension = 'blocking'`,
+   `to = 'none'` e existe dia aberto sem tarefa para aquele apartamento. Mesma transação do
+   desbloqueio, como o efeito colateral de limpeza que já vive lá.
+
+   **6.2 — O caso simétrico: apartamento BLOQUEADO com tarefa pendente.** Ele ficaria em "falta
+   arrumar" para sempre, porque ninguém vai arrumar um quarto em obra. Proposta: `outcome`
+   ganha o valor **`cancelled`**, aplicado automaticamente ao bloquear, distinto de `declined`
+   — dispensa é decisão do hóspede, cancelamento é o apartamento ter saído de operação. **Se
+   preferir deixar isso de fora desta fatia, digo como fica: a tarefa permanece pendente e a
+   tela precisa filtrar bloqueados na fila.** É decisão sua.
+
 7. **Hora real (D5)** na `rooms_apply_transition`: parâmetro `p_occurred_at` opcional, default
    `now()`. As duas travas validadas **dentro do lock**, contra a última linha de histórico do
    apartamento. `create or replace` — mesma função, mesmo padrão da 090.
+
+   **`p_occurred_at` alimenta OS DOIS campos:** `room_status_history.changed_at` **e**
+   `rooms.housekeeping_changed_at`. A versão anterior falava só do histórico — e se o histórico
+   fosse retroativo enquanto o `housekeeping_changed_at` continuasse em `now()`, o **"Sujo há 6
+   horas" mentiria**, que é precisamente a razão de aquela coluna existir. O relógio da limpeza
+   só reinicia quando a limpeza muda (regra já na 089), agora com a hora do **fato**.
 
 8. **Trava de lote (D4)** na mesma RPC: `to = 'inspected'` com mais de um apartamento no lote
    **aborta** com `ROOMS_TRANSITION_INSPECT_NOT_BATCHABLE`. `errcode = '22023'`, nunca `40001`
@@ -259,12 +361,18 @@ desde a 089.
 3. **Lote continua permitido** em `dirty`, `cleaning`, `clean` e nas transições de bloqueio.
 4. **Hora retroativa:** futura recusada; anterior à transição anterior do mesmo apartamento no
    mesmo dia recusada; ausente vira agora.
-5. **Tipo derivado:** `vacant` → saída, `occupied` → permanência, e a edição manual vence o
-   derivado.
+5. **Tipo no fecho (D2):** tarefa nasce **sem tipo**; `done` sem `service_type` é rejeitado;
+   o padrão sugerido no fecho vem da ocupação **daquele instante** (`vacant` → saída,
+   `occupied` → permanência) e a edição manual vence o derivado. **A abertura do dia não define
+   tipo nenhum** — é o teste que trava a volta do defeito da D2 anterior.
 6. **Dispensa encerra:** tarefa `declined` **não** conta como pendente; exige origem; origem
    fora de `declined` é rejeitada.
 7. **Dia sem registro ≠ dia sem trabalho:** dia não aberto é distinguível de dia aberto com
    zero tarefas.
+8. **Tarefa não existe sem dia:** a FK recusa órfã (§5.3), e desbloquear com dia aberto cria a
+   tarefa que faltava (§5.6.1).
+9. **Hora retroativa alimenta os dois campos** (§5.7): histórico e `housekeeping_changed_at`
+   recebem o mesmo instante informado.
 
 ---
 
@@ -357,7 +465,32 @@ operação — não dava para deduzir do modelo.
 
 ---
 
-## 14. Branch
+## 14. Uma consequência de ordem — decisão do Wilson
+
+A alternativa **(e)** da D2 (previsão de saída informada pela Recepção) é a única que resolve a
+necessidade das 8h: saber quem sai hoje **antes** de distribuir o trabalho. Ela é melhor que a
+solução adotada, e não foi escolhida por um motivo só — **depende de um conceito que a fatia da
+Recepção ainda não tem**.
+
+Isso abre uma decisão que não é minha:
+
+**(i) Seguir com 75 como está.** A governanta registra o que aconteceu e continua planejando a
+manhã pelo papel, como faz hoje. A previsão de saída entra depois, na fatia da Recepção, e o
+tipo passa a nascer certo — evolução aditiva, sem retrabalho do modelo.
+
+**(ii) Trazer a fatia da Recepção para antes do 75.** O tipo nasce correto desde o primeiro dia
+e a governanta ganha planejamento junto com registro. Custo: a Governança fica **mais tempo sem
+tela nenhuma**, e a Recepção passa a ser a primeira a receber uma tela de escrita — invertendo
+a prioridade que motivou toda esta linha de trabalho.
+
+**Recomendo (i)**, pelo mesmo argumento que definiu a ordem `75 → 71 → 76`: o risco maior não é
+retrabalho, é seguir escrevendo planos sem nunca ter visto a governanta usar nada. E a evolução
+para (e) é aditiva — a tarefa já tem `service_type` nullable, e passar a preenchê-lo na abertura
+a partir de uma previsão não muda nada do que este plano decide.
+
+---
+
+## 15. Branch
 
 Fatia nova, branch novo — a `feat/estado-apartamento-tres-dimensoes` foi mergeada e apagada.
 Sugestão: `feat/dia-da-governanca`.
