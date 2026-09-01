@@ -4,12 +4,13 @@ import { useMemo } from "react";
 import { DoorOpen, Fan, Refrigerator, Snowflake, Users, type LucideIcon } from "lucide-react";
 import { StatusBadge } from "@/components/common/status-badge";
 import {
-  ROOM_STATUS_VALUES,
+  blockingStatusLabel,
   climateControlLabel,
+  describeRoomState,
+  housekeepingStatusLabel,
   groupRoomsByFloorAndBlock,
-  roomStatusLabel,
-  roomStatusTone,
   type RoomRecord,
+  type RoomState,
   type RoomStatusTone
 } from "@/components/base-cadastros/rooms-utils";
 
@@ -53,12 +54,29 @@ function climateIcon(value: string): { icon: LucideIcon; label: string } | null 
   return null;
 }
 
+/** As tres dimensoes do apartamento, no formato que rooms-utils espera. */
+function roomState(room: RoomRecord): RoomState {
+  return {
+    record: room.recordStatus,
+    occupancy: room.occupancyStatus,
+    housekeeping: room.housekeepingStatus,
+    blocking: room.blockingStatus
+  };
+}
+
 function buildRoomTitle(room: RoomRecord) {
+  const state = describeRoomState(roomState(room));
+
   return [
     `Apartamento ${room.roomNumber}`,
     room.roomType ? `Tipo: ${room.roomType.name} (${room.roomType.code})` : "Tipo: não classificado",
     room.capacity === null ? "Capacidade: não informada" : `Capacidade: ${room.capacity} PAX`,
-    `Situação: ${roomStatusLabel(room.roomStatus)}`,
+    // As tres dimensoes por extenso: a porta mostra so' a que manda (bloqueio > ocupacao >
+    // limpeza), e o detalhe completo nao pode ficar so' na cor.
+    `Situação: ${state.label}`,
+    `Limpeza: ${housekeepingStatusLabel(room.housekeepingStatus)}`,
+    `Bloqueio: ${blockingStatusLabel(room.blockingStatus)}`,
+    `Vendável: ${state.sellable ? "Sim" : "Não"}`,
     `Conjugada: ${room.isConnecting ? "Sim" : "Não"}`,
     `Climatização: ${climateControlLabel(room.climateControl)}`,
     `Frigobar: ${room.hasMinibar ? "Sim" : "Não"}`
@@ -66,12 +84,14 @@ function buildRoomTitle(room: RoomRecord) {
 }
 
 function RoomDoor({ room }: { room: RoomRecord }) {
-  const tone = roomStatusTone(room.roomStatus);
+  // Cor pela COMBINACAO das tres dimensoes, nunca por um campo unico: um apartamento em
+  // manutencao que por acaso esta `inspected` nao pode aparecer verde.
+  const state = describeRoomState(roomState(room));
   const climate = climateIcon(room.climateControl);
 
   return (
     <div
-      className={`flex w-full flex-col gap-1 rounded-lg border px-2 py-2 text-center shadow-sm ${toneCardClassMap[tone]}`}
+      className={`flex w-full flex-col gap-1 rounded-lg border px-2 py-2 text-center shadow-sm ${toneCardClassMap[state.tone]}`}
       title={buildRoomTitle(room)}
       data-testid={`apartamento-porta-${room.roomNumber}`}
     >
@@ -96,7 +116,7 @@ function RoomDoor({ room }: { room: RoomRecord }) {
           e' lido por leitor de tela -- sozinho, deixaria a informacao inacessivel no
           celular, que e' onde a governanca de fato usa o mapa. */}
       <span className="text-[11px] leading-tight opacity-80">
-        {room.capacity === null ? "-" : `${room.capacity} PAX`} · {roomStatusLabel(room.roomStatus)}
+        {room.capacity === null ? "-" : `${room.capacity} PAX`} · {state.label}
       </span>
     </div>
   );
@@ -115,10 +135,24 @@ export function RoomsMap({ rooms }: { rooms: RoomRecord[] }) {
 
   // So' entram na legenda as situacoes presentes na tela: legenda com item que nao aparece
   // na grade ensina errado.
+  //
+  // A legenda e' derivada de describeRoomState -- a MESMA funcao que pinta a porta. Montar
+  // uma lista fixa aqui traria de volta a divergencia entre o que a grade mostra e o que a
+  // legenda diz, que e' justamente o que rooms-utils.ts existe para impedir.
   const statusesInView = useMemo(() => {
-    const found = new Set(rooms.map((room) => room.roomStatus));
+    const found = new Map<string, RoomStatusTone>();
 
-    return ROOM_STATUS_VALUES.filter((status) => found.has(status));
+    for (const room of rooms) {
+      const state = describeRoomState(roomState(room));
+
+      if (!found.has(state.label)) {
+        found.set(state.label, state.tone);
+      }
+    }
+
+    return Array.from(found.entries())
+      .map(([label, tone]) => ({ label, tone }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
   }, [rooms]);
 
   return (
@@ -129,7 +163,7 @@ export function RoomsMap({ rooms }: { rooms: RoomRecord[] }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-muted-foreground">Situação:</span>
           {statusesInView.map((status) => (
-            <StatusBadge key={status} status={roomStatusTone(status)} label={roomStatusLabel(status)} />
+            <StatusBadge key={status.label} status={status.tone} label={status.label} />
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t pt-2">

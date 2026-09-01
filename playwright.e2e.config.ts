@@ -27,6 +27,12 @@ function loadDotEnv(file: string): void {
 }
 
 loadDotEnv(".env.e2e.local");
+// `.env.local` DEPOIS: loadDotEnv nao sobrescreve o que ja existe, entao `.env.e2e.local`
+// continua vencendo. Entra para a suite enxergar NEXT_PUBLIC_SUPABASE_URL / ANON_KEY /
+// SUPABASE_SERVICE_ROLE_KEY (tests/e2e/helpers/db.ts) sem COPIAR segredo para um segundo
+// arquivo -- duplicar a service key em dois .env e' mais arriscado que le-la de onde ela ja
+// mora. O guard de staging do helper roda sobre o valor lido, venha ele de onde vier.
+loadDotEnv(".env.local");
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -39,11 +45,16 @@ export default defineConfig({
   // `next start` (build ja feito antes, no script) e derruba ao final. `reuseExistingServer` permite
   // reaproveitar um servidor ja no ar (ex.: um next start manual). Sem a flag, este bloco fica
   // undefined => o fluxo `test:e2e` (dev, servidor manual) permanece 100% intacto.
+  // A URL do webServer deriva de PLAYWRIGHT_BASE_URL, e nao e' mais fixa em :3000. Estava
+  // fixa, e isso quebrava a suite quando a porta ja estava ocupada por OUTRO projeto local
+  // (aconteceu: o site-hotel-galli respondendo 404 em /login fez o Playwright concluir "nao
+  // esta pronto", tentar subir o proprio servidor e morrer com EADDRINUSE). Com a URL
+  // derivada, basta `PORT=3001 PLAYWRIGHT_BASE_URL=http://localhost:3001` para rodar ao lado.
   webServer:
     process.env.E2E_WEBSERVER === "1"
       ? {
           command: "npm run start",
-          url: "http://localhost:3000/login",
+          url: `${process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"}/login`,
           reuseExistingServer: true,
           timeout: 180_000
         }

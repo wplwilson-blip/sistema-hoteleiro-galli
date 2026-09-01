@@ -9,13 +9,31 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { ErrorMessage, Field, LoadingTable, SelectField, TextInput } from "@/components/base-cadastros/crud-components";
 import { RoomsMap } from "@/components/base-cadastros/rooms-map";
 import {
+  BLOCKING_STATUS_VALUES,
+  HOUSEKEEPING_STATUS_VALUES,
+  blockingStatusLabel,
   climateControlLabel,
+  describeRoomState,
+  housekeepingStatusLabel,
   normalizeSearchValue,
   resolveRoomsView,
-  roomStatusLabel,
-  roomStatusTone,
-  type RoomRecord
+  type RoomRecord,
+  type RoomState
 } from "@/components/base-cadastros/rooms-utils";
+
+/**
+ * As tres dimensoes do apartamento (plano 70). A lista e o mapa leem pela MESMA funcao
+ * (`describeRoomState`): enquanto a lista lia `roomStatus` legado e o mapa lia as tres
+ * dimensoes, as duas telas passavam a discordar na PRIMEIRA transicao registrada.
+ */
+function roomState(room: RoomRecord): RoomState {
+  return {
+    record: room.recordStatus,
+    occupancy: room.occupancyStatus,
+    housekeeping: room.housekeepingStatus,
+    blocking: room.blockingStatus
+  };
+}
 
 type RoomListResponse = {
   ok: true;
@@ -71,7 +89,16 @@ export function RoomsClient() {
   const [blockFilter, setBlockFilter] = useState("all");
   const [floorFilter, setFloorFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // Um filtro POR DIMENSAO, e nao um filtro pelo rotulo combinado.
+  //
+  // O rotulo combinado fragmentava a consulta que mais importa: "Sujo" virava "Ocupado ·
+  // Sujo" e "Vago · Sujo", e a fila de arrumacao -- que e' a razao de a governanta abrir esta
+  // tela -- passava a exigir duas selecoes para responder uma pergunta de uma dimensao so'.
+  //
+  // Ocupacao nao vira filtro: nao tem escritor nesta release (D1), e filtrar por um campo que
+  // ninguem alimenta so' produziria "115 vagos".
+  const [housekeepingFilter, setHousekeepingFilter] = useState("all");
+  const [blockingFilter, setBlockingFilter] = useState("all");
 
   const roomsQuery = useQuery({
     queryKey: ["base", "rooms", activeUnitId],
@@ -118,11 +145,7 @@ export function RoomsClient() {
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [rooms]);
 
-  const statusOptions = useMemo(() => {
-    const found = new Set(rooms.map((room) => room.roomStatus));
 
-    return Array.from(found).sort((a, b) => roomStatusLabel(a).localeCompare(roomStatusLabel(b), "pt-BR"));
-  }, [rooms]);
 
   const filteredRooms = useMemo(() => {
     const term = normalizeSearchValue(search);
@@ -140,7 +163,11 @@ export function RoomsClient() {
         return false;
       }
 
-      if (statusFilter !== "all" && room.roomStatus !== statusFilter) {
+      if (housekeepingFilter !== "all" && room.housekeepingStatus !== housekeepingFilter) {
+        return false;
+      }
+
+      if (blockingFilter !== "all" && room.blockingStatus !== blockingFilter) {
         return false;
       }
 
@@ -152,7 +179,7 @@ export function RoomsClient() {
         .filter(Boolean)
         .some((value) => normalizeSearchValue(String(value)).includes(term));
     });
-  }, [blockFilter, floorFilter, rooms, search, statusFilter, typeFilter]);
+  }, [blockFilter, blockingFilter, floorFilter, housekeepingFilter, rooms, search, typeFilter]);
 
   return (
     <div className="space-y-4">
@@ -190,11 +217,22 @@ export function RoomsClient() {
               ))}
             </SelectField>
           </Field>
-          <Field label="Situação">
-            <SelectField value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">Todas as situações</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>{roomStatusLabel(status)}</option>
+          {/* As opcoes sao os valores do enum, nao os presentes na tela: a fila de arrumacao
+              precisa poder responder "nenhum apartamento sujo" -- e uma opcao que some
+              quando zera nao responde, ela apenas desaparece. */}
+          <Field label="Limpeza">
+            <SelectField value={housekeepingFilter} onChange={(event) => setHousekeepingFilter(event.target.value)}>
+              <option value="all">Toda a limpeza</option>
+              {HOUSEKEEPING_STATUS_VALUES.map((status) => (
+                <option key={status} value={status}>{housekeepingStatusLabel(status)}</option>
+              ))}
+            </SelectField>
+          </Field>
+          <Field label="Bloqueio">
+            <SelectField value={blockingFilter} onChange={(event) => setBlockingFilter(event.target.value)}>
+              <option value="all">Todos os bloqueios</option>
+              {BLOCKING_STATUS_VALUES.map((status) => (
+                <option key={status} value={status}>{blockingStatusLabel(status)}</option>
               ))}
             </SelectField>
           </Field>
@@ -282,7 +320,10 @@ export function RoomsClient() {
                     {room.capacity === null ? "-" : `${room.capacity} PAX`}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={roomStatusTone(room.roomStatus)} label={roomStatusLabel(room.roomStatus)} />
+                    <StatusBadge
+                      status={describeRoomState(roomState(room)).tone}
+                      label={describeRoomState(roomState(room)).label}
+                    />
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{room.isConnecting ? "Sim" : "Não"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{climateControlLabel(room.climateControl)}</td>

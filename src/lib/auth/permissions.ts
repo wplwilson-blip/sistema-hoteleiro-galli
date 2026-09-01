@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ROOM_PERMISSIONS } from "@/components/base-cadastros/rooms-utils";
 import type { SessionContext } from "@/lib/auth/types";
 import { resolveOverrideAccess } from "@/lib/auth/override-precedence";
 import { NETWORK_MANAGER_PROFILE_CODE, SUPER_ADMIN_PROFILE_CODE } from "@/lib/auth/session";
@@ -28,11 +29,21 @@ export const BASE_PERMISSIONS = {
   suppliersManage: "BASE:suppliers.manage",
   usersView: "BASE:users.view",
   usersManage: "BASE:users.manage",
-  // Apartamentos (UHs) — semeadas na migration 088. `roomsView` e' a unica consumida na
-  // Fase 1 (lista read-only); as outras duas ja' ficam definidas para as fases seguintes.
-  roomsView: "BASE:rooms.view",
-  roomsBlock: "BASE:rooms.block",
-  roomsManage: "BASE:rooms.manage"
+  // Apartamentos (UHs) — 088 (view/block/manage) e 089 (housekeeping/inspect).
+  //
+  // Os codigos REFERENCIAM ROOM_PERMISSIONS em rooms-utils.ts em vez de repetir as strings:
+  // duas fontes com o mesmo valor divergem, e um code divergente aqui nao quebra o build --
+  // vira 403 silencioso em producao, que e' o incidente `DEPARTMENT_MANAGER`/`approvals.decide`
+  // de novo.
+  //
+  // A direcao do import e' esta de proposito: `rooms-utils.ts` e' PURO e roda no cliente e no
+  // runner de teste; `permissions.ts` e' `server-only`. O contrario tornaria o modulo puro
+  // inimportavel pela tela e pelos testes.
+  roomsView: ROOM_PERMISSIONS.view,
+  roomsBlock: ROOM_PERMISSIONS.block,
+  roomsManage: ROOM_PERMISSIONS.manage,
+  roomsHousekeeping: ROOM_PERMISSIONS.housekeeping,
+  roomsInspect: ROOM_PERMISSIONS.inspect
 } as const;
 
 export const PURCHASES_PERMISSIONS = {
