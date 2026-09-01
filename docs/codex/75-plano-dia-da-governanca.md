@@ -182,6 +182,68 @@ Isso vira uma lista de conferência **da própria governanta**, na tela dela —
 setores (§8 recusa isso, e continua recusando). É ela conferindo o próprio trabalho, com um
 dado que o sistema já tem.
 
+#### D2.1 — Quando uma tarefa termina SEM tipo, e por quê
+
+A regra "o tipo é exigido no fecho" fechava **uma** aresta e deixava a irmã aberta. O atalho
+`cleaning → inspected` (§4.1 do plano 70) **não passa por `clean`** — do jeito que estava, ele
+encerraria a tarefa com `service_type` nulo, e "quantas saídas fizemos ontem" ficaria com buraco
+justo nos apartamentos que a governanta despachou mais rápido.
+
+**A regra completa, e ela é um bicondicional:**
+
+> **`service_type` é preenchido se e somente se `outcome = 'done'`.**
+> Trabalho feito sempre tem tipo. Trabalho não feito nunca tem.
+
+| Desfecho | `service_type` | Por quê |
+| --- | --- | --- |
+| `done` | **obrigatório** | Alguém arrumou o quarto. O tipo descreve **o serviço executado**. |
+| `pending` | **nulo** | Ainda não foi feito. Tipar agora seria adivinhar. |
+| `declined` | **nulo** | Dispensa: **nada foi feito**. Ver abaixo. |
+| `cancelled` | **nulo** | O apartamento saiu de operação. Nada foi feito. |
+
+**Um `CHECK` amarra o bicondicional**, nos dois sentidos — `done` sem tipo é rejeitado, e tipo
+com qualquer outro desfecho também. Não é convenção da aplicação: é o banco.
+
+##### O atalho: chegar em `inspected` É saída, por definição
+
+Permanência **para em `clean`** (§2). Logo, **um apartamento que chega em `inspected` é
+necessariamente uma saída** — não há outro caminho.
+
+Então a transição para `inspected` **define `service_type = 'checkout'`**, sempre:
+
+- vindo do atalho `cleaning → inspected`, onde o tipo ainda era nulo, ele passa a `checkout`;
+- vindo de `clean → inspected`, onde o tipo já era `checkout`, nada muda;
+- e vindo de `clean → inspected` num tarefa que estava tipada `stayover`, **corrige para
+  `checkout`**.
+
+Esse terceiro caso merece ser dito em voz alta, porque é uma sobrescrita de fato registrado.
+Ele acontece quando o hóspede saiu **depois** de a arrumação de permanência ter sido feita —
+situação real e frequente. A vistoria é o ato **posterior e mais informado**: ela é feita com a
+governanta dentro do quarto, sabendo que ele está vazio. **O ato mais bem informado vence**, e a
+correção não é silenciosa: a transição fica em `room_status_history` com hora e autor.
+
+##### Dispensa não tem tipo — e isso é decisão, não omissão
+
+Seria tentador gravar `stayover` numa dispensa, já que dispensa só acontece com hóspede dentro.
+**Não gravamos**, e o motivo é o mesmo da separação `declined` / `cancelled`: `service_type`
+descreve **serviço executado**, e numa dispensa não houve serviço.
+
+Gravar `stayover` faria o relatório do mês contar como permanência realizada um quarto que
+**ninguém entrou**. A contagem certa continua disponível sem isso: saídas são
+`done + checkout`, permanências são `done + stayover`, dispensas são `declined`. Nada se perde,
+e nada é inflado.
+
+##### Limitação declarada: segundo serviço no mesmo dia
+
+Um quarto arrumado como permanência às 9h cujo hóspede sai às 11h recebe uma segunda arrumação
+— mas a tarefa é **uma por dia**. O modelo absorve isso pelo caminho descrito acima (a vistoria
+retipa para `checkout`), e o `room_status_history` guarda **todas** as transições dos dois
+serviços.
+
+**O que se perde:** a contagem do mês vê aquele quarto uma vez, não duas. É o custo da
+alternativa (c) ter sido descartada, e ele fica registrado aqui em vez de aparecer como surpresa
+num relatório. Resolvido quando houver previsão de saída (§14).
+
 ### D3 — A dispensa ENCERRA a tarefa, não a deixa pendente
 
 Boa parte das permanências o hóspede não quer que arrumem. Chega por dois caminhos: a Recepção
@@ -281,9 +343,10 @@ Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes
 4. **`CHECK`s que amarram o desfecho:**
    - `declined` exige `decline_origin` preenchida; qualquer outro desfecho exige nula.
    - `decline_note` não-vazia quando houver — sem string em branco fingindo justificativa.
-   - **`done` exige `service_type` preenchido** (D2): uma tarefa não termina sem que alguém
-     tenha dito que trabalho era aquele. `pending` e `declined` aceitam nulo — dispensada nunca
-     chegou a ter tipo, e é correto que não tenha.
+   - **O bicondicional da D2.1**: `service_type` preenchido **se e somente se**
+     `outcome = 'done'`. Os dois sentidos no mesmo `CHECK` — `done` sem tipo é rejeitado, e
+     tipo em `pending`, `declined` ou `cancelled` também. Trabalho feito sempre tem tipo;
+     trabalho não feito nunca tem.
 
 5. **Índices:** `(unit_id, service_date)` e `(unit_id, service_date, outcome)` — as duas filas
    da tela são exatamente essas consultas.
@@ -301,11 +364,13 @@ Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes
    desbloqueio, como o efeito colateral de limpeza que já vive lá.
 
    **6.2 — O caso simétrico: apartamento BLOQUEADO com tarefa pendente.** Ele ficaria em "falta
-   arrumar" para sempre, porque ninguém vai arrumar um quarto em obra. Proposta: `outcome`
-   ganha o valor **`cancelled`**, aplicado automaticamente ao bloquear, distinto de `declined`
-   — dispensa é decisão do hóspede, cancelamento é o apartamento ter saído de operação. **Se
-   preferir deixar isso de fora desta fatia, digo como fica: a tarefa permanece pendente e a
-   tela precisa filtrar bloqueados na fila.** É decisão sua.
+   arrumar" para sempre, porque ninguém vai arrumar um quarto em obra. `outcome` ganha o valor
+   **`cancelled`**, aplicado ao bloquear, **distinto de `declined`** — dispensa é decisão do
+   hóspede, cancelamento é o apartamento ter saído de operação. Achatar os dois faria o
+   relatório do mês dizer que o hóspede dispensou arrumação num quarto que estava em obra.
+   *(Decidido pelo Wilson; a alternativa de deixar pendente e filtrar na tela foi recusada
+   porque joga para a tela a responsabilidade de esconder um dado que o modelo sabe estar
+   errado — e a primeira consulta fora da tela volta a mostrar.)*
 
 7. **Hora real (D5)** na `rooms_apply_transition`: parâmetro `p_occurred_at` opcional, default
    `now()`. As duas travas validadas **dentro do lock**, contra a última linha de histórico do
@@ -320,6 +385,10 @@ Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes
 8. **Trava de lote (D4)** na mesma RPC: `to = 'inspected'` com mais de um apartamento no lote
    **aborta** com `ROOMS_TRANSITION_INSPECT_NOT_BATCHABLE`. `errcode = '22023'`, nunca `40001`
    — a lição da 090.
+
+9. **Chegar em `inspected` define `service_type = 'checkout'`** na tarefa do dia (D2.1), na
+   mesma transação da transição. É o que fecha o atalho `cleaning → inspected` sem exigir um
+   passo a mais da governanta.
 
 **`revoke`/`grant` repetidos** ao fim, como a 090: `create or replace` não reseta ACL, mas a
 migration fica auto-curativa.
@@ -361,10 +430,15 @@ desde a 089.
 3. **Lote continua permitido** em `dirty`, `cleaning`, `clean` e nas transições de bloqueio.
 4. **Hora retroativa:** futura recusada; anterior à transição anterior do mesmo apartamento no
    mesmo dia recusada; ausente vira agora.
-5. **Tipo no fecho (D2):** tarefa nasce **sem tipo**; `done` sem `service_type` é rejeitado;
-   o padrão sugerido no fecho vem da ocupação **daquele instante** (`vacant` → saída,
-   `occupied` → permanência) e a edição manual vence o derivado. **A abertura do dia não define
-   tipo nenhum** — é o teste que trava a volta do defeito da D2 anterior.
+5. **Tipo no fecho (D2):** tarefa nasce **sem tipo**; o padrão sugerido no fecho vem da
+   ocupação **daquele instante** (`vacant` → saída, `occupied` → permanência) e a edição manual
+   vence o derivado. **A abertura do dia não define tipo nenhum** — é o teste que trava a volta
+   do defeito da D2 anterior.
+5b. **O bicondicional (D2.1):** `done` exige tipo; `pending`, `declined` e `cancelled` exigem
+   tipo **nulo**. Os dois sentidos.
+5c. **O atalho tipa sozinho (D2.1):** `cleaning → inspected` deixa a tarefa `done` +
+   `checkout` sem passo extra; `clean → inspected` numa tarefa `stayover` **corrige** para
+   `checkout`.
 6. **Dispensa encerra:** tarefa `declined` **não** conta como pendente; exige origem; origem
    fora de `declined` é rejeitada.
 7. **Dia sem registro ≠ dia sem trabalho:** dia não aberto é distinguível de dia aberto com

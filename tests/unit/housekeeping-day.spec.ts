@@ -1,0 +1,189 @@
+import { expect, test } from "@playwright/test";
+
+import {
+  HOUSEKEEPING_SERVICE_TYPE_VALUES,
+  HOUSEKEEPING_STATUS_VALUES,
+  HOUSEKEEPING_TASK_OUTCOME_VALUES,
+  isBatchAllowed,
+  isDeclineShapeValid,
+  isServiceComplete,
+  isTaskShapeValid,
+  maxRoomsPerTransition,
+  serviceTypeImpliedBy,
+  suggestedServiceType,
+  terminalStatusFor,
+  validateOccurredAt,
+  type HousekeepingDeclineOrigin,
+  type HousekeepingServiceType
+} from "../../src/components/base-cadastros/rooms-utils";
+
+// Runner PURO. Cobre a §7 do plano docs/codex/75 -- o dia da governanca.
+//
+// O que estes testes protegem, em uma frase: que a permanencia PARE em `clean` e que a saida
+// NAO consiga ser liberada em lote -- as duas regras que separam "registrar limpeza" de
+// "liberar para venda", que e' a fronteira que toda esta linha de trabalho existe para
+// proteger.
+
+// ---------------------------------------------------------------------------- §7.1
+
+test("1 - estado terminal por tipo: saida termina em inspected, permanencia em clean", () => {
+  expect(terminalStatusFor("checkout")).toBe("inspected");
+  expect(terminalStatusFor("stayover")).toBe("clean");
+
+  // Permanencia NAO exige vistoria. Nao ha o que liberar para venda: o quarto ja esta ocupado.
+  expect(isServiceComplete("stayover", "clean")).toBe(true);
+  expect(isServiceComplete("stayover", "inspected")).toBe(false);
+
+  // Saida so' termina em `inspected`. `clean` nao basta.
+  expect(isServiceComplete("checkout", "clean")).toBe(false);
+  expect(isServiceComplete("checkout", "inspected")).toBe(true);
+
+  // Nenhum tipo termina no meio do caminho.
+  for (const type of HOUSEKEEPING_SERVICE_TYPE_VALUES) {
+    expect(isServiceComplete(type, "dirty")).toBe(false);
+    expect(isServiceComplete(type, "cleaning")).toBe(false);
+  }
+});
+
+// ---------------------------------------------------------------------------- §7.2 e §7.3
+
+test("2 - chegar em inspected NAO aceita lote, nas DUAS arestas", () => {
+  // A trava e' sobre CHEGAR em `inspected`, nao sobre uma aresta. Fechar so' `clean ->
+  // inspected` faria do atalho `cleaning -> inspected` a porta dos fundos da vistoria.
+  expect(maxRoomsPerTransition("housekeeping", "inspected")).toBe(1);
+
+  expect(isBatchAllowed("housekeeping", "inspected", 1)).toBe(true);
+  expect(isBatchAllowed("housekeeping", "inspected", 2)).toBe(false);
+  expect(isBatchAllowed("housekeeping", "inspected", 30)).toBe(false);
+});
+
+test("3 - lote continua permitido em tudo que e' fato coletivo", () => {
+  // Marcar uma ala inteira como suja, comecar um corredor, bloquear um andar: sao fatos sobre
+  // muitos quartos ao mesmo tempo. Vistoria nao e'.
+  for (const to of ["dirty", "cleaning", "clean"]) {
+    expect(isBatchAllowed("housekeeping", to, 30)).toBe(true);
+    expect(maxRoomsPerTransition("housekeeping", to)).toBeNull();
+  }
+
+  for (const to of ["none", "maintenance", "commercial"]) {
+    expect(isBatchAllowed("blocking", to, 30)).toBe(true);
+  }
+
+  // `inspected` na dimensao de bloqueio nem existe -- a trava nao pode vazar para la.
+  expect(isBatchAllowed("blocking", "inspected", 30)).toBe(true);
+});
+
+// ---------------------------------------------------------------------------- §7.4
+
+test("4 - hora do fato: futura recusada, anterior ao ultimo lancamento recusada", () => {
+  const agora = new Date("2026-09-01T14:00:00Z");
+
+  // Retroativa legitima: a camareira terminou as 10h20, a governanta lanca as 14h.
+  expect(validateOccurredAt(new Date("2026-09-01T10:20:00Z"), agora, null).valid).toBe(true);
+
+  // Futura, nem por um minuto. Relogio adiantado nao e' motivo para aceitar um fato que ainda
+  // nao aconteceu.
+  const futura = validateOccurredAt(new Date("2026-09-01T14:01:00Z"), agora, null);
+  expect(futura.valid).toBe(false);
+  expect(futura.valid === false && futura.code).toBe("future");
+
+  // Anterior ao ultimo lancamento do mesmo apartamento no mesmo dia: seria "arrumado as 10h20,
+  // sujo as 14h" numa ordem que nao aconteceu, e a linha do tempo vira ficcao.
+  const foraDeOrdem = validateOccurredAt(
+    new Date("2026-09-01T09:00:00Z"),
+    agora,
+    new Date("2026-09-01T10:20:00Z")
+  );
+  expect(foraDeOrdem.valid).toBe(false);
+  expect(foraDeOrdem.valid === false && foraDeOrdem.code).toBe("before_last");
+
+  // Igual ao ultimo lancamento passa: duas transicoes no mesmo instante e' o que a propria RPC
+  // grava quando ha efeito colateral (encerrar bloqueio derruba a limpeza).
+  expect(
+    validateOccurredAt(new Date("2026-09-01T10:20:00Z"), agora, new Date("2026-09-01T10:20:00Z")).valid
+  ).toBe(true);
+});
+
+// ---------------------------------------------------------------------------- §7.5
+
+test("5 - tipo no fecho: sugerido pela ocupacao daquele instante, nunca na abertura", () => {
+  expect(suggestedServiceType("vacant")).toBe("checkout");
+  expect(suggestedServiceType("occupied")).toBe("stayover");
+
+  // A funcao e' SUGESTAO no fecho. O teste que trava a volta do defeito da D2 anterior e' o
+  // 5b abaixo: uma tarefa pendente NAO pode ter tipo -- ou seja, a abertura do dia nao tipa
+  // nada, e nenhum caminho consegue faze-lo.
+});
+
+test("5b - o bicondicional: tipo se e somente se concluida", () => {
+  // Trabalho feito SEMPRE tem tipo.
+  expect(isTaskShapeValid("done", "checkout")).toBe(true);
+  expect(isTaskShapeValid("done", "stayover")).toBe(true);
+  expect(isTaskShapeValid("done", null)).toBe(false);
+
+  // Trabalho NAO feito nunca tem. Gravar `stayover` numa dispensa faria o relatorio do mes
+  // contar como permanencia realizada um quarto onde ninguem entrou.
+  for (const outcome of ["pending", "declined", "cancelled"] as const) {
+    expect(isTaskShapeValid(outcome, null)).toBe(true);
+    expect(isTaskShapeValid(outcome, "stayover")).toBe(false);
+    expect(isTaskShapeValid(outcome, "checkout")).toBe(false);
+  }
+
+  // Varredura completa: nenhuma combinacao fora do bicondicional passa.
+  let validas = 0;
+
+  for (const outcome of HOUSEKEEPING_TASK_OUTCOME_VALUES) {
+    for (const type of [null, ...HOUSEKEEPING_SERVICE_TYPE_VALUES] as Array<HousekeepingServiceType | null>) {
+      if (isTaskShapeValid(outcome, type)) {
+        validas += 1;
+        expect(outcome === "done" ? type !== null : type === null).toBe(true);
+      }
+    }
+  }
+
+  // done x 2 tipos + 3 desfechos x null = 5.
+  expect(validas).toBe(5);
+});
+
+test("5c - o atalho tipa sozinho: chegar em inspected e' saida por definicao", () => {
+  // Permanencia para em `clean`, logo nao ha outro caminho ate `inspected`. E' isto que fecha
+  // o atalho `cleaning -> inspected` sem exigir um passo a mais da governanta.
+  expect(serviceTypeImpliedBy("inspected")).toBe("checkout");
+
+  // Nenhum outro destino implica tipo -- o tipo dos demais vem do fecho, com a sugestao da
+  // ocupacao e a edicao dela.
+  for (const to of HOUSEKEEPING_STATUS_VALUES.filter((s) => s !== "inspected")) {
+    expect(serviceTypeImpliedBy(to)).toBeNull();
+  }
+});
+
+// ---------------------------------------------------------------------------- §7.6
+
+test("6 - dispensa encerra e exige origem", () => {
+  const origens: HousekeepingDeclineOrigin[] = ["front_desk", "housekeeper"];
+
+  for (const origem of origens) {
+    expect(isDeclineShapeValid("declined", origem)).toBe(true);
+  }
+
+  // Dispensa sem origem nao grava: saber POR QUAL caminho ela chegou e' o que permite avaliar
+  // depois se o aviso da recepcao esta funcionando.
+  expect(isDeclineShapeValid("declined", null)).toBe(false);
+
+  // E origem em qualquer outro desfecho e' rejeitada -- `cancelled` nao e' dispensa.
+  for (const outcome of ["pending", "done", "cancelled"] as const) {
+    expect(isDeclineShapeValid(outcome, null)).toBe(true);
+    expect(isDeclineShapeValid(outcome, "front_desk")).toBe(false);
+  }
+
+  // `declined` e `cancelled` sao desfechos DISTINTOS: dispensa e' decisao do hospede,
+  // cancelamento e' o apartamento ter saido de operacao. Achatar os dois faria o relatorio do
+  // mes dizer que o hospede dispensou arrumacao num quarto que estava em obra.
+  expect(HOUSEKEEPING_TASK_OUTCOME_VALUES).toContain("declined");
+  expect(HOUSEKEEPING_TASK_OUTCOME_VALUES).toContain("cancelled");
+
+  // Nenhum dos dois conta como pendencia: o numero que a governanta olha no fim do dia e' "o
+  // que ficou por fazer", e nem dispensa nem cancelamento sao isso.
+  const pendentes = HOUSEKEEPING_TASK_OUTCOME_VALUES.filter((o) => o === "pending");
+  expect(pendentes).toEqual(["pending"]);
+});

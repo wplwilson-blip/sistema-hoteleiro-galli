@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import {
   ROOM_PERMISSIONS,
   canTransition,
+  isBatchAllowed,
   isRoomStateDimension,
+  validateOccurredAt,
   type BlockingStatus,
   type HousekeepingStatus,
   type RoomPermissionCode,
@@ -33,6 +35,8 @@ type TransitionRequestBody = {
   dimension?: unknown;
   toStatus?: unknown;
   reason?: unknown;
+  /** Hora do FATO, ISO. Ausente = agora (plano 75, D5). */
+  occurredAt?: unknown;
 };
 
 type RoomStateRow = {
@@ -81,6 +85,7 @@ export async function POST(request: Request) {
     const dimension = typeof body.dimension === "string" ? body.dimension : "";
     const toStatus = typeof body.toStatus === "string" ? body.toStatus : "";
     const reason = typeof body.reason === "string" ? body.reason : null;
+    const occurredAtRaw = typeof body.occurredAt === "string" ? body.occurredAt : null;
 
     if (!roomIds.length) {
       return apiError("Selecione ao menos um apartamento.", 400);
@@ -96,6 +101,36 @@ export async function POST(request: Request) {
 
     if (!isRoomStateDimension(dimension)) {
       return apiError("Dimensao invalida.", 422);
+    }
+
+    // TRAVA DE LOTE (plano 75, D4). Recusada ANTES de qualquer leitura: chegar em `inspected`
+    // com um lote e' pedido malformado, nao um estado que precise ser conferido no banco. A
+    // RPC repete a trava sob o lock -- aqui e' pela mensagem util.
+    if (!isBatchAllowed(dimension, toStatus, uniqueRoomIds.length)) {
+      return apiError(
+        "A vistoria e' feita um apartamento por vez: e' o registro de que voce olhou aquele quarto.",
+        422
+      );
+    }
+
+    // Hora do fato. A trava de ordem (nao anterior ao ultimo lancamento) depende do estado do
+    // banco e vive na RPC, sob o lock; aqui validamos o que da para validar sem I/O.
+    let occurredAt: Date | null = null;
+
+    if (occurredAtRaw !== null) {
+      const parsed = new Date(occurredAtRaw);
+
+      if (Number.isNaN(parsed.getTime())) {
+        return apiError("Hora informada invalida.", 422);
+      }
+
+      const check = validateOccurredAt(parsed, new Date(), null);
+
+      if (!check.valid) {
+        return apiError(check.message, 422);
+      }
+
+      occurredAt = parsed;
     }
 
     if (!context.accessibleUnitIds.length) {
@@ -185,7 +220,8 @@ export async function POST(request: Request) {
       p_transitions: transitions,
       p_dimension: dimension,
       p_reason: reason,
-      p_actor_id: context.session.user.id
+      p_actor_id: context.session.user.id,
+      p_occurred_at: occurredAt ? occurredAt.toISOString() : null
     });
 
     if (rpcError) {
@@ -194,6 +230,26 @@ export async function POST(request: Request) {
       // tela deve recarregar e mostrar o estado real em vez de repetir cegamente.
       if (typeof rpcError.message === "string" && rpcError.message.includes("ROOMS_TRANSITION_STALE")) {
         return apiError("O estado de um dos apartamentos mudou. Recarregue e tente novamente.", 409);
+      }
+
+      // As recusas de REGRA da RPC viram 422, nao 500: sao pedido invalido, nao falha de
+      // infraestrutura. Casamos por MENSAGEM porque e' o acoplamento existente entre rota e
+      // RPC -- registrado como divida em docs/NAO_ALTERAR.md.
+      const message = typeof rpcError.message === "string" ? rpcError.message : "";
+
+      if (message.includes("ROOMS_TRANSITION_INSPECT_NOT_BATCHABLE")) {
+        return apiError(
+          "A vistoria e' feita um apartamento por vez: e' o registro de que voce olhou aquele quarto.",
+          422
+        );
+      }
+
+      if (message.includes("ROOMS_TRANSITION_OCCURRED_AT_FUTURE")) {
+        return apiError("A hora informada nao pode estar no futuro.", 422);
+      }
+
+      if (message.includes("ROOMS_TRANSITION_OCCURRED_AT_BEFORE_LAST")) {
+        return apiError("A hora informada e' anterior ao ultimo lancamento deste apartamento hoje.", 422);
       }
 
       logBaseCadastroError("rooms.transition_failed", rpcError);
