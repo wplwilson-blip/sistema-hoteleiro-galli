@@ -133,24 +133,53 @@ estrita entre banco e deploy (reverter o app antes de dropar as colunas).
 
 ## 6. Seção VALIDACAO (dentro do arquivo, para rodar após aplicar)
 
-1. **A ACL continua fechada** — a consulta de `proacl` da 089, esperando `service_role=X` e
-   nada de `anon=X`, `authenticated=X`, ou `=X/` sem papel antes do igual.
-2. **O STALE agora responde.** Chamar a RPC com um `from` divergente e conferir que volta
-   `22023 ROOMS_TRANSITION_STALE`.
-   **Critério de aprovação: abaixo de 2 segundos passa. Acima disso, ou sem resposta,
-   REPROVA.** O limite é folgado de propósito — o que se mede aqui é "responde" contra
-   "pendura", não latência fina. Quem estiver aplicando às pressas não deve precisar julgar se
-   800 ms é aceitável.
-3. **Nada foi gravado** por essa chamada recusada: contagem de `room_status_history` do
-   apartamento igual antes e depois.
-4. **CONTROLE NEGATIVO — as outras exceções continuam respondendo.** Chamar a RPC com lote
-   vazio e conferir que volta `22023 ROOMS_TRANSITION_EMPTY_BATCH`, no mesmo tempo de antes
-   (referência da §2.1: 313 ms).
+1. **A ACL continua fechada** — a consulta de `proacl`, esperando `service_role=X` e nada de
+   `anon=X`, `authenticated=X`, ou `=X/` sem papel antes do igual. A 090 é um
+   `create or replace`, exatamente o gesto contra o qual essa consulta protege.
 
-   É o item que fecha o ciclo. `create or replace` reescreve o **corpo inteiro** da função, e
-   um erro de transcrição em qualquer outro caminho não seria visto pelos itens 1 a 3 — só
-   apareceria em produção, na primeira vez que alguém encostasse naquele caminho. Este item
-   prova que a 090 corrigiu o STALE **sem quebrar o resto ao substituir a função toda**.
+2. **O SQLSTATE mudou.** Chamar a função com um `from` divergente e conferir que o erro
+   `ROOMS_TRANSITION_STALE` volta com **SQLSTATE 22023**. Aprova se for `22023`; **reprova
+   qualquer outro**, `40001` inclusive.
+
+   > **Esta chamada roda por conexão direta, não pelo PostgREST. Ela NÃO prova que a
+   > requisição deixou de pendurar** — o travamento era do PostgREST repetindo a requisição, e
+   > por conexão direta o erro sempre voltou rápido, **inclusive com o defeito presente**. A
+   > prova comportamental é o item 6.
+
+   O que este item prova é a **condição necessária**: o código mudou no banco. Não é a
+   condição suficiente.
+
+3. **Nada foi gravado** pela chamada recusada do item 2: contagem de `room_status_history` do
+   apartamento igual antes e depois.
+
+4. **CONTROLE NEGATIVO — as outras exceções continuam respondendo.** Lote vazio deve voltar
+   `22023 ROOMS_TRANSITION_EMPTY_BATCH`. `create or replace` reescreve o corpo **inteiro**, e
+   um erro de transcrição em outro caminho não seria visto pelos itens 1 a 3 — só apareceria
+   em produção. Testa transcrição do corpo, não comportamento do PostgREST.
+
+5. **Caso 20 da suíte E2E** — a RPC continua fechada para quem não é `service_role`.
+   Reexecutado depois de cada aplicação.
+
+6. **A PROVA COMPORTAMENTAL — o caso 16a da suíte E2E.** É o **único** caminho que passa pelo
+   PostgREST, que é onde o defeito vive. Antes da 090 ele estoura o timeout de 60 s; depois
+   dela tem que passar. **Obrigatório antes de produção.**
+
+   Sem ele, os itens 1 a 5 provam que a função está sintaticamente certa e fechada — mas não
+   que a governanta deixou de ver a tela travada.
+
+### 6.1 Sequência de aplicação
+
+A ordem importa, e o caso 16a é **condição para produção**, não conferência posterior:
+
+1. Revisão do diff. *(feito)*
+2. Wilson aplica a 090 em **staging** e roda os itens 1 a 5.
+3. **Codex roda a suíte E2E inteira em staging.** Esperado **17 de 17**, com o **16a passando**
+   — é a prova de que o defeito morreu.
+4. Só então Wilson aplica em **produção**, rodando os itens 1 a 5 lá.
+5. Caso 20 reexecutado depois da aplicação em produção.
+
+Se depois da 090 o 16a ou o 17 continuarem falhando, é **achado novo**: trazer a falha, não o
+ajuste.
 
 ---
 
@@ -176,12 +205,13 @@ arquivo inteiro falhou com 42601).
 
 ## 9. Depois de aplicada
 
-- **O caso 20 da suíte E2E roda de novo, obrigatoriamente.** É exatamente o cenário que ele
-  protege: um `create or replace` distraído reabrindo a função. Esta migration é um
-  `create or replace`.
-- **Casos 16a e 17 passam a rodar de verdade.** O 16a hoje estoura o timeout; o 17 falha por
-  dano colateral (a requisição de restauração do 16a, morto pelo timeout, chega no meio dele).
-  Nenhum dos dois precisa de mudança no teste.
+- **O caso 16a é a prova de que o defeito morreu**, e roda em staging **antes** de produção
+  (§6.1). É o único caminho que atravessa o PostgREST.
+- **O caso 20 roda de novo, obrigatoriamente**, depois de cada aplicação. É exatamente o
+  cenário que ele protege: um `create or replace` distraído reabrindo a função. Esta migration
+  é um `create or replace`.
+- **O caso 17 passa a rodar de verdade.** Ele falhava por dano colateral — a requisição de
+  restauração do 16a, morto pelo timeout, chegava no meio dele. Não precisa de mudança.
 
 ---
 
@@ -209,8 +239,10 @@ casar por código, o `errcode` da RPC vira **contrato** entre os dois lados.
 
 - Migration 090 escrita, com VALIDACAO e ROLLBACK, e **não aplicada pelo Codex**.
 - Conferência de sintaxe da §8 feita e reportada.
-- Aplicada pelo Wilson em staging e produção, com a §6 rodada nos dois.
-- Suíte E2E do plano 70 **17 de 17**, incluindo o caso 20 reexecutado depois da aplicação.
+- Aplicada pelo Wilson em staging, com os itens 1 a 5 rodados lá.
+- **Suíte E2E do plano 70 em staging: 17 de 17, com o 16a passando.** É o portão para
+  produção, não conferência posterior (§6.1).
+- Só então aplicada em produção, com os itens 1 a 5 rodados lá, e o caso 20 reexecutado.
 - `npx tsc --noEmit` limpo e `npm run test:unit` verde (187) — nenhum dos dois é afetado, e é
   isso que se espera confirmar.
 - Nenhum resíduo em staging.

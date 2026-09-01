@@ -242,7 +242,7 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --    -- REPROVA se aparecer `=X/` sem papel antes do igual (isso e' PUBLIC),
 --    -- `authenticated=X/`, `anon=X/`, ou "(sem ACL: PUBLICO)".
 --
--- 2) O STALE AGORA RESPONDE. Este e' o item que prova a correcao.
+-- 2) O SQLSTATE MUDOU -- condicao NECESSARIA, nao suficiente.
 --
 --    Escolha um apartamento e leia o estado real de limpeza:
 --
@@ -261,12 +261,21 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --      'housekeeping', null, null
 --    );
 --
---    -- esperado: ERRO `ROOMS_TRANSITION_STALE`, SQLSTATE 22023.
---    --
---    -- CRITERIO DE APROVACAO: abaixo de 2 SEGUNDOS passa. Acima disso, ou sem
---    -- resposta, REPROVA. O limite e' folgado de proposito -- o que se mede aqui
---    -- e' "responde" contra "pendura", nao latencia fina. Nao julgue se 800 ms
---    -- e' aceitavel: qualquer coisa abaixo de 2 s passa.
+--    -- APROVA se o erro ROOMS_TRANSITION_STALE voltar com SQLSTATE 22023.
+--    -- REPROVA qualquer outro SQLSTATE, 40001 inclusive.
+--
+--    ####################################################################
+--    # ATENCAO -- O QUE ESTE ITEM NAO PROVA
+--    #
+--    # Esta chamada roda por CONEXAO DIRETA (SQL Editor), nao pelo
+--    # PostgREST. Ela NAO prova que a requisicao deixou de pendurar: o
+--    # travamento era do PostgREST REPETINDO a requisicao, e por conexao
+--    # direta o erro sempre voltou rapido -- INCLUSIVE COM O DEFEITO
+--    # PRESENTE. Um criterio de tempo aqui aprovaria uma migration que
+--    # nao corrigisse nada.
+--    #
+--    # A prova comportamental e' o item 6.
+--    ####################################################################
 --
 -- 3) NADA foi gravado pela chamada recusada do item 2. Rode ANTES e DEPOIS dele,
 --    com o mesmo <ROOM_ID>, e compare -- os dois numeros devem ser IGUAIS:
@@ -281,14 +290,39 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --
 --    select public.rooms_apply_transition('[]'::jsonb, 'housekeeping', null, null);
 --
---    -- esperado: ERRO `ROOMS_TRANSITION_EMPTY_BATCH`, SQLSTATE 22023, no mesmo
---    -- tempo de antes (referencia medida no plano 74: 313 ms).
---    -- REPROVA se travar, se o SQLSTATE nao for 22023, ou se a mensagem mudar.
+--    -- esperado: ERRO ROOMS_TRANSITION_EMPTY_BATCH, SQLSTATE 22023.
+--    -- REPROVA se o SQLSTATE nao for 22023 ou se a mensagem mudar.
+--    -- Testa TRANSCRICAO do corpo, nao comportamento do PostgREST.
 --
--- 5) Depois de aplicar nos dois bancos: rodar o caso 20 da suite E2E
---    (tests/e2e/rooms-transitions.e2e.spec.ts). E' o cenario que ele protege --
---    um `create or replace` distraido reabrindo a funcao -- e a 090 e' um
---    `create or replace`.
+-- 5) Caso 20 da suite E2E (tests/e2e/rooms-transitions.e2e.spec.ts): a RPC
+--    continua fechada para quem nao e' service_role. Reexecutado depois de CADA
+--    aplicacao -- a 090 e' um `create or replace`, o gesto contra o qual aquele
+--    caso protege.
+--
+-- 6) A PROVA COMPORTAMENTAL -- o caso 16a da suite E2E.
+--
+--    E' o UNICO caminho que passa pelo PostgREST, que e' onde o defeito vive.
+--    Antes da 090 ele estoura o timeout de 60 s; depois dela tem que PASSAR.
+--
+--    OBRIGATORIO EM STAGING ANTES DE APLICAR EM PRODUCAO.
+--
+--    Sem ele, os itens 1 a 5 provam que a funcao esta sintaticamente certa e
+--    fechada -- mas NAO que a governanta deixou de ver a tela travada.
+--
+--
+-- ============================================================================
+-- SEQUENCIA DE APLICACAO (a ordem importa)
+--
+--   1. Revisao do diff.
+--   2. Aplicar em STAGING; rodar os itens 1 a 5.
+--   3. Rodar a suite E2E INTEIRA em staging: esperado 17/17, com o 16a PASSANDO.
+--      E' o portao para producao, nao conferencia posterior.
+--   4. So' entao aplicar em PRODUCAO; rodar os itens 1 a 5 la.
+--   5. Caso 20 reexecutado depois da aplicacao em producao.
+--
+-- Se depois da 090 o 16a ou o 17 continuarem falhando, e' ACHADO NOVO: trazer a
+-- falha, nao o ajuste.
+-- ============================================================================
 --
 --
 -- ============================================================================
