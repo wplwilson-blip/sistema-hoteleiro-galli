@@ -15,10 +15,16 @@
 -- voltava. O defeito nao e' de quem repete: e' nosso, por usar um codigo
 -- reservado para outra coisa.
 --
--- Sintoma medido (plano 74, §2.1): os outros tres caminhos de excecao da funcao
--- respondem em 159, 210 e 313 ms; o STALE nao respondia em 25 s. pg_stat_activity
--- durante o travamento mostrava `idle in transaction (aborted)` com
--- wait_event_type NULO -- nao havia espera por lock.
+-- Sintoma medido (plano 74, §2.1) -- MEDICAO HISTORICA, NAO CRITERIO DE APROVACAO:
+-- com o defeito presente, os outros tres caminhos de excecao respondiam em 159,
+-- 210 e 313 ms e o STALE nao respondia em 25 s. pg_stat_activity durante o
+-- travamento mostrava `idle in transaction (aborted)` com wait_event_type NULO --
+-- nao havia espera por lock.
+--
+-- NAO use esses tempos para aprovar a migration. O criterio da VALIDACAO e'
+-- SQLSTATE (item 2) e a prova comportamental e' o caso 16a da suite E2E (item 6).
+-- Medir tempo por CONEXAO DIRETA aprovaria uma migration que nao corrigisse nada:
+-- o travamento era do PostgREST, e o SQL Editor nao passa por ele.
 --
 -- PREMISSA: a 089 JA ESTA APLICADA em staging (jascnmgagejlvjlenduv) e em
 -- producao (chnamldrlwohaudmjrez). Esta migration ASSUME isso. Ela nao cria nem

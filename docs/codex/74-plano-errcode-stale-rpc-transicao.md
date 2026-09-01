@@ -38,6 +38,12 @@ urgência é a tela travada na mão da governanta, não o banco ficando sem cone
 
 ### 2.1 Os quatro controles
 
+> **MEDIÇÃO HISTÓRICA — não é critério de aprovação.** Os tempos abaixo são o registro do
+> diagnóstico feito em 31/08/2026, com o defeito presente. **Não os use como limite para
+> aprovar nada**: o critério de aprovação da 090 é **SQLSTATE**, e a prova comportamental é o
+> caso 16a da suíte E2E (§6, itens 2 e 6). Medir tempo por conexão direta aprovaria uma
+> migration que não corrigisse coisa alguma — foi o defeito da primeira versão da §6.
+
 Os quatro caminhos de exceção da `rooms_apply_transition`, chamados direto por service role.
 Três respondem; um trava. A **única** variável que os distingue é o `errcode`:
 
