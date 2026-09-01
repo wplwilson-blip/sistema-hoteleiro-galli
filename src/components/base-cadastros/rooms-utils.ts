@@ -555,7 +555,13 @@ const HOUSEKEEPING_RULES: readonly TransitionRule[] = [
   // marcar "Limpo" em quarenta apartamentos e depois "Vistoriado" nos mesmos quarenta, ela
   // pularia o primeiro -- e o estado viraria ritual vazio.
   { from: "cleaning", to: "inspected", permission: ROOM_PERMISSIONS.inspect },
-  // Reprovar na vistoria. Volta para o inicio da fila, nao para "limpo".
+  // Reprovar na vistoria, em DOIS destinos -- e a escolha e' de quem vistoria.
+  //
+  // `cleaning` e' o caso comum: faltou trocar a toalha, cinco minutos, a camareira volta e
+  // termina. `dirty` e' refazer do zero. Ter so' o segundo (como era ate' aqui) obrigava a
+  // tratar toda reprovacao como servico inteiro -- e o custo de reprovar ficava tao alto que
+  // a saida barata era nao reprovar.
+  { from: "inspected", to: "cleaning", permission: ROOM_PERMISSIONS.inspect },
   { from: "inspected", to: "dirty", permission: ROOM_PERMISSIONS.inspect },
   // DESFAZER. Clique errado em 115 apartamentos por dia nao e' hipotese, e sem estas duas
   // linhas o unico jeito de corrigir um "Limpo" lancado por engano era passar por

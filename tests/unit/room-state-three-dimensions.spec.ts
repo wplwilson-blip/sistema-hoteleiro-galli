@@ -42,6 +42,12 @@ test("1 - matriz de transicao por permissao: quem registra limpeza nao vistoria"
   expect(canTransition(GOVERNANTA, "housekeeping", "clean", "inspected").allowed).toBe(true);
   expect(canTransition(GOVERNANTA, "housekeeping", "inspected", "dirty").allowed).toBe(true);
 
+  // Reprovar na vistoria tem DOIS destinos: `cleaning` (faltou a toalha, cinco minutos) e
+  // `dirty` (refazer do zero). Os dois exigem `rooms.inspect` -- reprovar e' ato de quem
+  // vistoria, nao de quem arruma.
+  expect(canTransition(GOVERNANTA, "housekeeping", "inspected", "cleaning").allowed).toBe(true);
+  expect(canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "inspected", "cleaning").allowed).toBe(false);
+
   // A FRONTEIRA da matriz do RH-35B: so' `housekeeping` registra a limpeza, e ela sozinha
   // NAO valida a conclusao. E' a razao de esta fatia existir.
   const soLimpeza = [ROOM_PERMISSIONS.housekeeping];
