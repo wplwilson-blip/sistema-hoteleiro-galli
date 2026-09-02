@@ -903,3 +903,26 @@ export function taskOutcomeAfterUnblock(current: HousekeepingTaskOutcome): House
 export function closesTaskAtClean(serviceType: HousekeepingServiceType): boolean {
   return serviceType === "stayover";
 }
+
+/**
+ * Data operacional de um instante, no fuso da UNIDADE (plano 75, D7).
+ *
+ * Espelho de `public.housekeeping_service_date` da 091 -- mesma relacao que `backfillRoomState`
+ * tem com o backfill da 089. A autoridade e' o SQL; isto existe para o runner puro.
+ *
+ * POR QUE NAO SERVE `new Date().toISOString().slice(0,10)`: isso da a data em UTC. O servidor
+ * roda em UTC e Sao Paulo e' UTC-3, entao as 21h no hotel o dia ja teria virado -- e toda
+ * transicao depois das 21h procuraria o dia de amanha, nao acharia, e os efeitos na tarefa
+ * seriam pulados EM SILENCIO.
+ *
+ * `units.timezone` existe desde a migration 002 e ate' aqui nao tinha nenhum leitor.
+ */
+export function housekeepingServiceDate(at: Date, timeZone: string): string {
+  // `en-CA` produz YYYY-MM-DD, que e' o formato de `date` no Postgres.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(at);
+}

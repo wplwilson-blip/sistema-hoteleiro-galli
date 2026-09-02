@@ -317,6 +317,63 @@ aí sim aparece um ator diferente e o código próprio se justifica. **Não é a
 
 ---
 
+### D7 — A data operacional é calculada no fuso da UNIDADE, nunca no do servidor
+
+**Defeito encontrado na revisão da 091, antes de aplicar.** O servidor do Supabase roda em
+**UTC** (`show timezone` confirmou). Três pontos da migration convertiam instante em data com o
+fuso do servidor: o `current_date` da abertura do dia, a comparação `changed_at::date =
+v_at::date` da trava de ordem, e a busca do `housekeeping_days` pela data da transição.
+
+São Paulo é UTC−3. **Às 21h00 no hotel já são 00h00 UTC**, e a data vira amanhã.
+
+**O que isso quebraria, e não é borda.** A governanta encerra uma manutenção às 21h30, ou
+vistoria um quarto que atrasou. A RPC procura o `housekeeping_days` de **amanhã**, não acha,
+`v_day_id` fica nulo e **o bloco inteiro dos efeitos na tarefa é pulado em silêncio**: o quarto
+sai de bloqueio e a tarefa não ressuscita, o `inspected` não tipa como saída, o `clean` não
+fecha a permanência. Nenhum erro — só o dado que não chega, **todo dia depois das 21h**. É
+exatamente o modo de falha que a §5.7 descreve para a sobrecarga antiga, e governança de hotel
+trabalha depois das 21h: turndown, atraso, manutenção noturna.
+
+A trava de ordem tem o problema irmão: 20h50 e 21h10 caem em "dias" diferentes (23h50 e 00h10
+UTC), então a segunda transição não é conferida contra a primeira — a trava se desliga
+justamente no fim do dia, que é quando o lançamento retroativo é mais provável.
+
+**A informação certa já existia e ninguém lia.** `units.timezone` existe desde a migration
+**002**, `not null default 'America/Sao_Paulo'`, e nunca foi lida por função nenhuma — só
+escrita, com valor fixo, em duas rotas. **É o mesmo padrão do `organization_id` da 089: a coluna
+estava lá, e o código não olhou.** Vale registrar como padrão, não como coincidência: as duas
+vezes, o dado necessário já existia no schema e a função nova o ignorou.
+
+**Fica por unidade, e não numa constante**, porque é o que o SaaS vai precisar no primeiro hotel
+fora do fuso de Brasília.
+
+**Uma função só — `housekeeping_service_date(instante, unidade)`** — e não `at time zone`
+repetido nos três lugares. Três cópias divergem na primeira manutenção; e a função única é o que
+torna barata a dívida abaixo.
+
+#### D7.1 — Corte do dia às 6h: dívida registrada, não construída
+
+O dia do hotel não termina necessariamente à meia-noite: em muitas operações a governança conta
+das 6h às 6h.
+
+**Avaliei e recomendo NÃO construir agora**, por um motivo concreto: o corte só muda alguma
+coisa para trabalho lançado **depois da meia-noite local**. O turndown do Galli termina por
+volta das 22h, e entre 21h e 23h59 a data local já é a correta com a D7. **O corte resolveria
+um problema que esta operação não tem** — e um enum de conveniência para um caso hipotético é
+exatamente o tipo de campo que o plano 70 aprendeu a recusar.
+
+**Custo de acrescentar depois: baixo, e ficou baixo de propósito.** Uma coluna em `units`
+(`housekeeping_day_cutoff`, default `00:00`) e **uma linha** dentro de
+`housekeeping_service_date` — porque o cálculo está centralizado. Nenhum dos três chamadores
+muda.
+
+**O que ficaria mais caro depois, e é o alerta honesto:** `service_date` deixaria de ser data de
+calendário e passaria a ser data *operacional*. Relatórios já escritos contra a tabela
+mudariam de significado sem mudar de forma. Se isso for entrar algum dia, é melhor que seja
+**antes** de existir relatório — e não depois.
+
+---
+
 ## 5. Migration 091
 
 Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes ou permissões.
@@ -447,6 +504,9 @@ desde a 089.
    tarefa que faltava (§5.6.1).
 9. **Hora retroativa alimenta os dois campos** (§5.7): histórico e `housekeeping_changed_at`
    recebem o mesmo instante informado.
+10. **Data operacional no fuso da unidade (D7):** um instante às 23h00 de São Paulo pertence ao
+    dia de **hoje**, não ao de amanhã; e 20h50 e 21h10 são o **mesmo** dia operacional — é o que
+    faz a trava de ordem continuar conferindo depois das 21h.
 
 ---
 

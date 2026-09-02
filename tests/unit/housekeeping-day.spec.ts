@@ -9,6 +9,7 @@ import {
   isServiceComplete,
   isTaskShapeValid,
   closesTaskAtClean,
+  housekeepingServiceDate,
   maxRoomsPerTransition,
   serviceTypeImpliedBy,
   taskOutcomeAfterBlock,
@@ -236,4 +237,38 @@ test("8 - so' permanencia fecha a tarefa em clean; saida segue pendente ate a vi
   // Um quarto que fica em `clean` como saida ate o fim do dia termina pendente e sem tipo --
   // certo: a vistoria nao aconteceu, o trabalho nao acabou.
   expect(isTaskShapeValid("pending", "checkout")).toBe(false);
+});
+
+// ---------------------------------------------------------------------------- §7.10
+
+test("10 - data operacional e' a do fuso da unidade, nao a do servidor", () => {
+  const SP = "America/Sao_Paulo";
+
+  // 23h00 em Sao Paulo = 02h00 UTC do dia seguinte. A data operacional e' HOJE.
+  const noite = new Date("2026-09-02T23:00:00-03:00");
+
+  expect(housekeepingServiceDate(noite, SP)).toBe("2026-09-02");
+
+  // E' exatamente onde o defeito estava: em UTC o mesmo instante ja e' o dia seguinte, e a RPC
+  // procuraria o housekeeping_days de amanha, nao acharia, e pularia os efeitos na tarefa em
+  // silencio -- todo dia depois das 21h.
+  expect(noite.toISOString().slice(0, 10)).toBe("2026-09-03");
+  expect(housekeepingServiceDate(noite, SP)).not.toBe(noite.toISOString().slice(0, 10));
+
+  // 20h50 e 21h10 sao o MESMO dia operacional. Sem isso a trava de ordem para de conferir
+  // justamente no fim do dia, que e' quando o lancamento retroativo e' mais provavel.
+  const antes = new Date("2026-09-02T20:50:00-03:00");
+  const depois = new Date("2026-09-02T21:10:00-03:00");
+
+  expect(housekeepingServiceDate(antes, SP)).toBe(housekeepingServiceDate(depois, SP));
+  // Em UTC elas cairiam em dias diferentes -- 23h50 e 00h10.
+  expect(antes.toISOString().slice(0, 10)).not.toBe(depois.toISOString().slice(0, 10));
+
+  // A virada REAL do dia, no fuso da unidade, continua funcionando.
+  expect(housekeepingServiceDate(new Date("2026-09-02T23:59:59-03:00"), SP)).toBe("2026-09-02");
+  expect(housekeepingServiceDate(new Date("2026-09-03T00:00:01-03:00"), SP)).toBe("2026-09-03");
+
+  // E o fuso e' por UNIDADE: o mesmo instante em outro fuso da outra data. E' o que o SaaS vai
+  // precisar no primeiro hotel fora do horario de Brasilia.
+  expect(housekeepingServiceDate(noite, "UTC")).toBe("2026-09-03");
 });

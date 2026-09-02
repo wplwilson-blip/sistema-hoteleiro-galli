@@ -39,6 +39,50 @@
 
 
 -- ============================================================================
+-- 0) A DATA OPERACIONAL -- calculada no fuso da UNIDADE, nunca no do servidor
+--
+-- O servidor do Supabase roda em UTC. Sao Paulo e' UTC-3, entao as 21h00 no
+-- hotel ja sao 00h00 UTC -- e `agora::date` no servidor devolve AMANHA.
+--
+-- O QUE ISSO QUEBRARIA, e nao e' borda: governanca de hotel trabalha depois das
+-- 21h (turndown, atraso, manutencao noturna). Uma transicao as 21h30 procuraria
+-- o `housekeeping_days` de AMANHA, nao acharia, e o bloco inteiro dos efeitos na
+-- tarefa seria pulado EM SILENCIO: o quarto sairia de bloqueio e a tarefa nao
+-- ressuscitaria, o `inspected` nao tiparia como saida, o `clean` nao fecharia a
+-- permanencia. Nenhum erro -- so' o dado que nao chega, todo dia depois das 21h.
+--
+-- `units.timezone` existe desde a migration 002 (`not null default
+-- 'America/Sao_Paulo'`) e NUNCA foi lida por funcao nenhuma -- so' escrita, com
+-- valor fixo, em duas rotas. E' o mesmo padrao do `organization_id` da 089: a
+-- coluna estava la, e o codigo nao olhou.
+--
+-- Fica por UNIDADE, e nao numa constante, porque e' o que o SaaS vai precisar no
+-- primeiro hotel fora do fuso de Brasilia.
+--
+-- UMA FUNCAO SO', e nao `at time zone` repetido nos tres lugares: e' o que torna
+-- barato um eventual "corte do dia" configuravel (dia da governanca das 6h as
+-- 6h) -- mudaria aqui, e em nenhum outro lugar. Ver o plano 75, D7.
+-- ============================================================================
+
+create or replace function public.housekeeping_service_date(
+  p_at timestamptz,
+  p_unit_id uuid
+) returns date
+language sql
+stable
+security definer
+set search_path = public
+as $SERVICEDATE$
+  select (p_at at time zone coalesce(nullif(btrim(u.timezone), ''), 'America/Sao_Paulo'))::date
+  from public.units u
+  where u.id = p_unit_id;
+$SERVICEDATE$;
+
+comment on function public.housekeeping_service_date(timestamptz, uuid) is
+  'Data operacional de um instante, no fuso da UNIDADE (units.timezone, existente desde a 002 e ate aqui sem nenhum leitor). O servidor roda em UTC: sem isto, as 21h de Sao Paulo o dia ja teria virado e os efeitos na tarefa seriam pulados em silencio.';
+
+
+-- ============================================================================
 -- 1) Os tres enums do dia
 -- ============================================================================
 
@@ -228,17 +272,22 @@ as $OPENDAY$
 declare
   v_date date;
   v_org uuid;
+  v_tz text;
   v_day_id uuid;
 begin
-  v_date := coalesce(p_service_date, current_date);
-
-  select organization_id into v_org
+  select organization_id, coalesce(nullif(btrim(timezone), ''), 'America/Sao_Paulo')
+  into v_org, v_tz
   from public.units
   where id = p_unit_id and deleted_at is null;
 
   if v_org is null then
     raise exception 'HOUSEKEEPING_UNIT_NOT_FOUND' using errcode = '22023';
   end if;
+
+  -- `current_date` seria a data do SERVIDOR, que roda em UTC. A governanta que
+  -- abrisse o dia as 22h de domingo criaria a SEGUNDA-FEIRA -- e a fila do
+  -- domingo dela ficaria vazia para sempre.
+  v_date := coalesce(p_service_date, (now() at time zone v_tz)::date);
 
   -- Lock por unidade+data: duas aberturas simultaneas do mesmo dia serializam
   -- em vez de correrem. `on conflict do nothing` sozinho nao bastaria, porque o
@@ -417,10 +466,15 @@ begin
     -- exatamente o dado de onde sai o "Sujo ha 6 horas".
     --
     -- Sob o lock, de proposito: a leitura precisa ser a mesma que o insert vai enxergar.
+    -- No fuso da UNIDADE. Com `::date` cru, uma transicao as 20h50 e outra as 21h10
+    -- (Sao Paulo) cairiam em "dias" diferentes na comparacao -- 23h50 e 00h10 UTC --,
+    -- e a segunda nao seria conferida contra a primeira. A trava existe para impedir
+    -- ordem impossivel; comparar em fuso errado a desliga justamente no fim do dia.
     select max(changed_at) into v_last_at
     from public.room_status_history
     where room_id = v_room_id
-      and changed_at::date = v_at::date;
+      and public.housekeeping_service_date(changed_at, v_unit_id)
+          = public.housekeeping_service_date(v_at, v_unit_id);
 
     if v_last_at is not null and v_at < v_last_at then
       raise exception 'ROOMS_TRANSITION_OCCURRED_AT_BEFORE_LAST' using errcode = '22023';
@@ -499,9 +553,14 @@ begin
     --
     -- A tarefa e' o registro do TRABALHO do dia; o historico acima e' o registro do ESTADO.
     -- Sao coisas diferentes, e por isso vivem em tabelas diferentes (plano 75, §3).
+    -- Data operacional no fuso da unidade. Com `v_at::date` cru, toda transicao
+    -- depois das 21h procuraria o dia de AMANHA, nao acharia, e o bloco inteiro
+    -- abaixo seria pulado em silencio.
     select id into v_day_id
     from public.housekeeping_days
-    where unit_id = v_unit_id and service_date = v_at::date and closed_at is null;
+    where unit_id = v_unit_id
+      and service_date = public.housekeeping_service_date(v_at, v_unit_id)
+      and closed_at is null;
 
     if v_day_id is not null then
       -- (a) CHEGAR EM `inspected` E' SAIDA POR DEFINICAO (D2.1). Permanencia para em `clean`,
@@ -674,6 +733,11 @@ revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid
 revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) from authenticated;
 grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) to service_role;
 
+revoke execute on function public.housekeeping_service_date(timestamptz, uuid) from public;
+revoke execute on function public.housekeeping_service_date(timestamptz, uuid) from anon;
+revoke execute on function public.housekeeping_service_date(timestamptz, uuid) from authenticated;
+grant execute on function public.housekeeping_service_date(timestamptz, uuid) to service_role;
+
 revoke execute on function public.housekeeping_open_day(uuid, date, uuid) from public;
 revoke execute on function public.housekeeping_open_day(uuid, date, uuid) from anon;
 revoke execute on function public.housekeeping_open_day(uuid, date, uuid) from authenticated;
@@ -762,6 +826,52 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 -- 8) A PROVA COMPORTAMENTAL, em staging, ANTES de producao: a suite E2E do
 --    plano 70 estendida. E' o unico caminho que passa pelo PostgREST.
 --
+-- 8.1) A DATA OPERACIONAL E' A LOCAL, NAO A DO SERVIDOR.
+--
+--    O servidor roda em UTC (confirme com `show timezone;`). Este item nao da
+--    para rodar "de dia e esperar dar certo": as 14h local e 17h UTC a data e' a
+--    mesma nos dois fusos, e o teste passaria mesmo com o defeito. E' preciso
+--    SIMULAR um instante depois das 21h local.
+--
+--    a) A funcao devolve a data LOCAL, nao a UTC:
+--
+--       select
+--         public.housekeeping_service_date(
+--           timestamptz '2026-09-02 23:30:00-03', u.id) as data_local,
+--         (timestamptz '2026-09-02 23:30:00-03')::date  as data_do_servidor,
+--         u.timezone
+--       from public.units u where u.code = 'GALLI';
+--
+--       -- esperado: data_local = 2026-09-02  |  data_do_servidor = 2026-09-03
+--       -- REPROVA se as duas forem iguais: ou o fuso da unidade esta errado, ou
+--       -- a funcao nao esta convertendo.
+--
+--    b) Duas transicoes as 20h50 e as 21h10 locais sao do MESMO dia operacional
+--       (e' o que faz a trava 2 conferir a segunda contra a primeira):
+--
+--       select
+--         public.housekeeping_service_date(timestamptz '2026-09-02 20:50:00-03', u.id)
+--         = public.housekeeping_service_date(timestamptz '2026-09-02 21:10:00-03', u.id)
+--           as mesmo_dia
+--       from public.units u where u.code = 'GALLI';
+--
+--       -- esperado: true. REPROVA se false.
+--
+--    c) A abertura do dia usa a data local. Simule sem esperar a noite trocando
+--       o fuso da SESSAO -- isto NAO altera dado, so' a sessao corrente:
+--
+--       begin;
+--         set local timezone = 'Pacific/Kiritimati';  -- UTC+14: ja e' "amanha"
+--         select public.housekeeping_open_day(
+--           (select id from public.units where code = 'GALLI'), null, null);
+--         select service_date from public.housekeeping_days
+--         order by created_at desc limit 1;
+--       rollback;
+--
+--       -- esperado: service_date = a data de HOJE em America/Sao_Paulo, e NAO a
+--       -- data da sessao. REPROVA se vier a data de Kiritimati -- significa que
+--       -- `current_date` (ou o fuso da sessao) voltou a mandar no dia do hotel.
+--
 -- 9) DEPOIS DO PASSO 7 (o drop da sobrecarga), nos dois bancos: existe UMA e
 --    somente uma rooms_apply_transition.
 --
@@ -810,6 +920,7 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 --   --      select count(*) from public.housekeeping_tasks;
 --   --    Se voltar > 0, sao dias de trabalho real.
 --   drop function if exists public.housekeeping_open_day(uuid, date, uuid);
+--   drop function if exists public.housekeeping_service_date(timestamptz, uuid);
 --   drop function if exists public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz);
 --   drop table if exists public.housekeeping_tasks;
 --   drop table if exists public.housekeeping_days;
