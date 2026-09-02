@@ -313,6 +313,8 @@ declare
   v_at timestamptz;
   v_last_at timestamptz;
   v_day_id uuid;
+  v_service_type text;
+  v_task_outcome public.housekeeping_task_outcome;
   v_count integer := 0;
 begin
   -- Hora do fato: informada ou agora. Resolvida UMA vez para todo o lote, para que um lote
@@ -424,6 +426,15 @@ begin
       raise exception 'ROOMS_TRANSITION_OCCURRED_AT_BEFORE_LAST' using errcode = '22023';
     end if;
 
+    -- TIPO DE ARRUMACAO NO FECHO (plano 75, D2). Chega no proprio item do lote, porque um
+    -- corredor tem saidas E permanencias misturadas: um tipo unico por chamada seria errado
+    -- na metade dos quartos.
+    v_service_type := v_item ->> 'service_type';
+
+    if v_service_type is not null and v_service_type not in ('checkout', 'stayover') then
+      raise exception 'ROOMS_TRANSITION_INVALID_SERVICE_TYPE' using errcode = '22023';
+    end if;
+
     if p_dimension = 'housekeeping' then
       update public.rooms
       set housekeeping_status = v_to::public.housekeeping_status,
@@ -498,6 +509,20 @@ begin
       -- `cleaning -> inspected` sem exigir um passo a mais da governanta -- e corrige uma
       -- tarefa que estivesse tipada `stayover` porque o hospede saiu DEPOIS da arrumacao de
       -- permanencia. A vistoria e' o ato posterior e mais informado; ela vence.
+      --
+      -- SEM GUARDA DE DESFECHO, e isto e' DECISAO, nao esquecimento -- diferente do bloco (b),
+      -- que filtra `pending` de proposito.
+      --
+      -- Uma tarefa `declined` ou `cancelled` que chegue aqui vira `done`, e esta certo: NAO SE
+      -- ALCANCA `inspected` SEM TER PASSADO PELO CICLO DE LIMPEZA. A propria matriz de
+      -- transicao so' aceita `clean -> inspected` e `cleaning -> inspected`, e dispensa nao
+      -- mexe no estado de limpeza. Logo, se a tarefa foi dispensada de manha e o quarto chegou
+      -- a `inspected` a tarde, o trabalho ACONTECEU depois da dispensa -- o hospede saiu, o
+      -- quarto foi arrumado e vistoriado. Registrar isso como `done` e' o unico desfecho
+      -- verdadeiro; manter `declined` diria que ninguem entrou num quarto que foi vistoriado.
+      --
+      -- A maquina de estados e' que garante isso. Se um dia alguem acrescentar uma aresta que
+      -- chegue a `inspected` sem passar por limpeza, esta guarda precisa voltar.
       if p_dimension = 'housekeeping' and v_to = 'inspected' then
         update public.housekeeping_tasks
         set service_type = 'checkout'::public.housekeeping_service_type,
@@ -506,6 +531,46 @@ begin
             updated_at = now(),
             updated_by = p_actor_id
         where housekeeping_day_id = v_day_id and room_id = v_room_id;
+      end if;
+
+      -- (d) O FECHO DA LIMPEZA (D2). Chegar em `clean` e' o momento -- e o unico -- em que o
+      -- tipo de arrumacao importa: e' ali que se decide se o apartamento PARA ou se ainda
+      -- precisa de vistoria.
+      --
+      -- Por que o tipo e' EXIGIDO aqui: sem ele a RPC nao tem como saber se a tarefa terminou.
+      -- Deixar passar produziria exatamente o buraco que a D2 descreve -- quarto limpo, tarefa
+      -- pendente para sempre, e ninguem procurando porque nada aparece como faltando.
+      --
+      -- E POR QUE SO' `stayover` FECHA A TAREFA, e este e' o ponto sutil:
+      --   - `stayover` termina em `clean` (nao ha vistoria num quarto ocupado) -> `done`, e o
+      --     tipo e' gravado. Bicondicional satisfeito.
+      --   - `checkout` NAO terminou: ainda falta a vistoria. A tarefa continua `pending` e SEM
+      --     tipo -- e isso e' verdade, nao perda. O tipo dela sera gravado no bloco (a), quando
+      --     chegar em `inspected`, que e' quando o trabalho de fato acabou.
+      --
+      -- Um quarto que fica em `clean` como saida ate' o fim do dia termina `pending` sem tipo,
+      -- e esta CERTO: a vistoria nao aconteceu, o trabalho nao acabou. O bicondicional da D2.1
+      -- nao e' uma restricao que atrapalha aqui -- ele e' o que mantem a fila honesta.
+      if p_dimension = 'housekeeping' and v_to = 'clean' then
+        select outcome into v_task_outcome
+        from public.housekeeping_tasks
+        where housekeeping_day_id = v_day_id and room_id = v_room_id;
+
+        if v_task_outcome = 'pending'::public.housekeeping_task_outcome then
+          if v_service_type is null then
+            raise exception 'ROOMS_TRANSITION_SERVICE_TYPE_REQUIRED' using errcode = '22023';
+          end if;
+
+          if v_service_type = 'stayover' then
+            update public.housekeeping_tasks
+            set service_type = 'stayover'::public.housekeeping_service_type,
+                outcome = 'done'::public.housekeeping_task_outcome,
+                completed_at = v_at,
+                updated_at = now(),
+                updated_by = p_actor_id
+            where housekeeping_day_id = v_day_id and room_id = v_room_id;
+          end if;
+        end if;
       end if;
 
       -- (b) BLOQUEAR CANCELA a tarefa pendente (§5.6.2). O apartamento saiu de operacao;
@@ -522,9 +587,20 @@ begin
           and outcome = 'pending'::public.housekeeping_task_outcome;
       end if;
 
-      -- (c) DESBLOQUEAR cria a tarefa que faltava (§5.6.1). A abertura do dia filtra
+      -- (c) DESBLOQUEAR cria -- ou RESSUSCITA -- a tarefa (§5.6.1). A abertura do dia filtra
       -- `blocking_status = 'none'`, e encerrar manutencao derruba o apartamento para `dirty`:
       -- sem isto ele sumiria da fila justamente quando voltou a precisar de trabalho.
+      --
+      -- O `do nothing` daqui estava ERRADO e reintroduzia o proprio defeito que este bloco
+      -- existe para evitar. Bloquear e desbloquear NO MESMO DIA nao e' hipotese -- e' a
+      -- manutencao que resolve em duas horas, que e' a maioria. Nesse caso a linha JA EXISTE,
+      -- deixada como `cancelled` pelo bloco (b), e o `do nothing` a deixava cancelada: o
+      -- apartamento voltava a precisar de arrumacao e continuava fora da fila.
+      --
+      -- `do update` devolve a `pending` -- mas SOMENTE quando o desfecho for `cancelled`.
+      -- Nunca ressuscita `done` (o trabalho aconteceu) nem `declined` (o hospede decidiu):
+      -- desbloquear um quarto nao desfaz nenhum dos dois. `service_type` volta a nulo pelo
+      -- bicondicional da D2.1 -- tarefa pendente nao tem tipo.
       if p_dimension = 'blocking' and v_to = 'none' then
         insert into public.housekeeping_tasks
           (organization_id, unit_id, housekeeping_day_id, room_id, outcome, created_by, updated_by)
@@ -532,7 +608,13 @@ begin
                'pending'::public.housekeeping_task_outcome, p_actor_id, p_actor_id
         from public.units u
         where u.id = v_unit_id
-        on conflict (housekeeping_day_id, room_id) do nothing;
+        on conflict (housekeeping_day_id, room_id) do update
+        set outcome = 'pending'::public.housekeeping_task_outcome,
+            service_type = null,
+            completed_at = null,
+            updated_at = now(),
+            updated_by = p_actor_id
+        where public.housekeeping_tasks.outcome = 'cancelled'::public.housekeeping_task_outcome;
       end if;
     end if;
 
@@ -563,9 +645,12 @@ comment on function public.rooms_apply_transition(jsonb, text, text, uuid, times
 --     NAO pode ser executado antes do deploy.
 --
 -- SE VOCE ESTIVER APLICANDO ANTES DO DEPLOY: pule este passo, aplique o resto,
--- faca o deploy, e volte para rodar so este bloco. As duas assinaturas convivem
--- sem risco -- a antiga simplesmente nao grava hora retroativa nem mexe na
--- tarefa do dia.
+-- faca o deploy, e volte para rodar so este bloco -- NO MESMO DIA. As duas
+-- assinaturas convivem sem risco tecnico, mas conviver e' estado de TRANSICAO:
+-- a antiga nao grava hora retroativa nem mexe na tarefa do dia, e quem a chamar
+-- por engano nao recebe erro nenhum -- so' o dado que nao aparece.
+--
+-- A ordem completa esta na SEQUENCIA DE APLICACAO, no fim deste arquivo.
 -- ============================================================================
 
 -- drop function if exists public.rooms_apply_transition(jsonb, text, text, uuid);
@@ -676,6 +761,39 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 --
 -- 8) A PROVA COMPORTAMENTAL, em staging, ANTES de producao: a suite E2E do
 --    plano 70 estendida. E' o unico caminho que passa pelo PostgREST.
+--
+-- 9) DEPOIS DO PASSO 7 (o drop da sobrecarga), nos dois bancos: existe UMA e
+--    somente uma rooms_apply_transition.
+--
+--    select pg_get_function_identity_arguments(p.oid) as args
+--    from pg_proc p
+--    join pg_namespace n on n.oid = p.pronamespace
+--    where n.nspname = 'public' and p.proname = 'rooms_apply_transition';
+--
+--    -- esperado: UMA linha, com `jsonb, text, text, uuid, timestamptz`.
+--    -- REPROVA se voltarem duas: a de 4 argumentos sobreviveu, e quem chamar
+--    -- por ela perde a hora retroativa e os efeitos na tarefa do dia EM
+--    -- SILENCIO -- sem erro, sem log, so' o dado que nao aparece.
+--
+--
+-- ============================================================================
+-- SEQUENCIA DE APLICACAO (a ordem importa, e o passo 7 tem data)
+--
+--   1. Aplicar esta migration nos DOIS bancos, com o passo 7 COMENTADO.
+--      Pode ser com o app no ar: o parametro novo tem default, e o app antigo
+--      continua chamando a assinatura de 4 argumentos pela sobrecarga.
+--   2. Rodar os itens 1 a 7 da VALIDACAO em staging.
+--   3. Suite E2E em staging (item 8). Portao para producao.
+--   4. Deploy do app.
+--   5. Rodar o PASSO 7 nos DOIS bancos, NO MESMO DIA do deploy.
+--   6. Rodar o item 9 da VALIDACAO nos dois bancos.
+--
+-- POR QUE O PASSO 7 TEM DATA e nao fica adiado: duas assinaturas convivendo e'
+-- estado de TRANSICAO, e estado de transicao sem data de fim vira permanente.
+-- Daqui a tres meses alguem chama a de 4 argumentos sem saber que existe uma
+-- melhor, e a hora retroativa e a tarefa do dia silenciosamente nao acontecem.
+-- Nao ha erro para investigar: so' o dado que nunca chega.
+-- ============================================================================
 --
 --
 -- ============================================================================

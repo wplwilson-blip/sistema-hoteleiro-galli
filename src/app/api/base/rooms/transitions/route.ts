@@ -3,6 +3,7 @@ import {
   ROOM_PERMISSIONS,
   canTransition,
   isBatchAllowed,
+  isHousekeepingServiceType,
   isRoomStateDimension,
   validateOccurredAt,
   type BlockingStatus,
@@ -37,6 +38,13 @@ type TransitionRequestBody = {
   reason?: unknown;
   /** Hora do FATO, ISO. Ausente = agora (plano 75, D5). */
   occurredAt?: unknown;
+  /**
+   * Tipo de arrumacao POR APARTAMENTO, exigido ao chegar em `clean` (plano 75, D2).
+   *
+   * Por apartamento, e nao um por chamada: um corredor tem saidas E permanencias misturadas,
+   * entao um tipo unico para o lote estaria errado na metade dos quartos.
+   */
+  serviceTypes?: unknown;
 };
 
 type RoomStateRow = {
@@ -86,6 +94,10 @@ export async function POST(request: Request) {
     const toStatus = typeof body.toStatus === "string" ? body.toStatus : "";
     const reason = typeof body.reason === "string" ? body.reason : null;
     const occurredAtRaw = typeof body.occurredAt === "string" ? body.occurredAt : null;
+    const serviceTypes =
+      body.serviceTypes && typeof body.serviceTypes === "object" && !Array.isArray(body.serviceTypes)
+        ? (body.serviceTypes as Record<string, unknown>)
+        : {};
 
     if (!roomIds.length) {
       return apiError("Selecione ao menos um apartamento.", 400);
@@ -198,7 +210,13 @@ export async function POST(request: Request) {
     // Decide TODOS antes de escrever QUALQUER um. A primeira negacao aborta o lote inteiro:
     // um lote meio aplicado deixa a governanta sem saber o que gravou, que e' o motivo pelo
     // qual ela volta para o papel.
-    const transitions: Array<{ room_id: string; from: string; to: string; housekeeping_effect: string | null }> = [];
+    const transitions: Array<{
+      room_id: string;
+      from: string;
+      to: string;
+      housekeeping_effect: string | null;
+      service_type: string | null;
+    }> = [];
 
     for (const room of rooms) {
       const from = currentValue(room, dimension);
@@ -208,11 +226,18 @@ export async function POST(request: Request) {
         return apiError(decision.message, denialStatusMap[decision.code]);
       }
 
+      const declaredType = serviceTypes[room.id];
+
+      if (declaredType !== undefined && !isHousekeepingServiceType(declaredType)) {
+        return apiError("Tipo de arrumacao invalido.", 422);
+      }
+
       transitions.push({
         room_id: room.id,
         from,
         to: toStatus,
-        housekeeping_effect: dimension === "blocking" ? decision.effects.housekeeping ?? null : null
+        housekeeping_effect: dimension === "blocking" ? decision.effects.housekeeping ?? null : null,
+        service_type: declaredType ?? null
       });
     }
 
@@ -242,6 +267,14 @@ export async function POST(request: Request) {
           "A vistoria e' feita um apartamento por vez: e' o registro de que voce olhou aquele quarto.",
           422
         );
+      }
+
+      if (message.includes("ROOMS_TRANSITION_SERVICE_TYPE_REQUIRED")) {
+        return apiError("Informe se a arrumacao foi de saida ou de permanencia.", 422);
+      }
+
+      if (message.includes("ROOMS_TRANSITION_INVALID_SERVICE_TYPE")) {
+        return apiError("Tipo de arrumacao invalido.", 422);
       }
 
       if (message.includes("ROOMS_TRANSITION_OCCURRED_AT_FUTURE")) {

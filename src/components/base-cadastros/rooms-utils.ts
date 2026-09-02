@@ -704,6 +704,10 @@ export type HousekeepingTaskOutcome = (typeof HOUSEKEEPING_TASK_OUTCOME_VALUES)[
 export const HOUSEKEEPING_DECLINE_ORIGIN_VALUES = ["front_desk", "housekeeper"] as const;
 export type HousekeepingDeclineOrigin = (typeof HOUSEKEEPING_DECLINE_ORIGIN_VALUES)[number];
 
+export function isHousekeepingServiceType(value: unknown): value is HousekeepingServiceType {
+  return typeof value === "string" && (HOUSEKEEPING_SERVICE_TYPE_VALUES as readonly string[]).includes(value);
+}
+
 export const housekeepingServiceTypeLabelMap: Record<HousekeepingServiceType, string> = {
   checkout: "Saída",
   stayover: "Permanência"
@@ -855,4 +859,47 @@ export function validateOccurredAt(
   }
 
   return { valid: true };
+}
+
+// ------------------------------------------------------------------ efeitos na tarefa do dia
+//
+// Espelho das regras que a migration 091 aplica dentro da transacao -- mesma relacao que
+// `backfillRoomState` tem com o backfill da 089. Existem aqui para serem testadas no runner
+// puro; a autoridade continua sendo o SQL, e as duas tabelas precisam continuar identicas.
+
+/**
+ * Bloquear CANCELA a tarefa pendente. Ninguem arruma quarto em obra, e deixa-la pendente para
+ * sempre poria a tela para esconder um dado que o modelo sabe estar errado.
+ *
+ * So' mexe em `pending`: bloquear nao desfaz trabalho ja feito nem dispensa ja decidida.
+ */
+export function taskOutcomeAfterBlock(current: HousekeepingTaskOutcome): HousekeepingTaskOutcome {
+  return current === "pending" ? "cancelled" : current;
+}
+
+/**
+ * Desbloquear RESSUSCITA a tarefa cancelada -- e so' a cancelada.
+ *
+ * Bloquear e desbloquear no MESMO DIA e' a manutencao que resolve em duas horas, que e' a
+ * maioria. Sem esta regra o apartamento sai da obra, cai para `dirty`, volta a precisar de
+ * arrumacao e continua fora da fila -- exatamente o defeito que o efeito de desbloqueio existe
+ * para evitar.
+ *
+ * NUNCA ressuscita `done` (o trabalho aconteceu) nem `declined` (o hospede decidiu):
+ * desbloquear um quarto nao desfaz nenhum dos dois.
+ */
+export function taskOutcomeAfterUnblock(current: HousekeepingTaskOutcome): HousekeepingTaskOutcome {
+  return current === "cancelled" ? "pending" : current;
+}
+
+/**
+ * Chegar em `clean` FECHA a tarefa apenas quando o servico e' permanencia.
+ *
+ * Permanencia termina em `clean` -- nao ha vistoria num quarto ocupado. Saida NAO terminou:
+ * ainda falta a vistoria, entao a tarefa segue `pending` e SEM tipo. Isso nao e' perda: e'
+ * verdade. O tipo dela e' gravado quando chegar em `inspected`, que e' quando o trabalho de
+ * fato acabou -- e e' o que mantem o bicondicional da D2.1 honesto.
+ */
+export function closesTaskAtClean(serviceType: HousekeepingServiceType): boolean {
+  return serviceType === "stayover";
 }

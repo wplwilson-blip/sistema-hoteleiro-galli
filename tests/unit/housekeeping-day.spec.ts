@@ -8,8 +8,11 @@ import {
   isDeclineShapeValid,
   isServiceComplete,
   isTaskShapeValid,
+  closesTaskAtClean,
   maxRoomsPerTransition,
   serviceTypeImpliedBy,
+  taskOutcomeAfterBlock,
+  taskOutcomeAfterUnblock,
   suggestedServiceType,
   terminalStatusFor,
   validateOccurredAt,
@@ -186,4 +189,51 @@ test("6 - dispensa encerra e exige origem", () => {
   // que ficou por fazer", e nem dispensa nem cancelamento sao isso.
   const pendentes = HOUSEKEEPING_TASK_OUTCOME_VALUES.filter((o) => o === "pending");
   expect(pendentes).toEqual(["pending"]);
+});
+
+// ---------------------------------------------------------------------------- §7.7
+
+test("7 - bloquear e desbloquear NO MESMO DIA devolve a tarefa para a fila", () => {
+  // A manutencao que resolve em duas horas e' a maioria. Bloquear cancela a tarefa pendente;
+  // desbloquear tem que RESSUSCITA-LA -- senao o apartamento sai da obra, cai para `dirty`,
+  // volta a precisar de arrumacao e continua fora da fila. E' o proprio defeito que o efeito
+  // de desbloqueio existe para evitar, e a primeira versao da 091 o reintroduzia com um
+  // `on conflict do nothing`.
+  const cancelada = taskOutcomeAfterBlock("pending");
+  expect(cancelada).toBe("cancelled");
+  expect(taskOutcomeAfterUnblock(cancelada)).toBe("pending");
+
+  // Bloquear nao desfaz trabalho ja feito nem dispensa ja decidida.
+  expect(taskOutcomeAfterBlock("done")).toBe("done");
+  expect(taskOutcomeAfterBlock("declined")).toBe("declined");
+
+  // E desbloquear NUNCA ressuscita esses dois: desbloquear um quarto nao desfaz o trabalho que
+  // aconteceu nem a decisao do hospede.
+  expect(taskOutcomeAfterUnblock("done")).toBe("done");
+  expect(taskOutcomeAfterUnblock("declined")).toBe("declined");
+  expect(taskOutcomeAfterUnblock("pending")).toBe("pending");
+
+  // Ciclo completo, na ordem em que acontece no corredor.
+  let outcome = taskOutcomeAfterBlock("pending");   // 9h: manutencao bloqueia
+  outcome = taskOutcomeAfterUnblock(outcome);        // 11h: manutencao encerra
+  expect(outcome).toBe("pending");                   // o quarto volta para a fila do dia
+});
+
+// ---------------------------------------------------------------------------- §7.8
+
+test("8 - so' permanencia fecha a tarefa em clean; saida segue pendente ate a vistoria", () => {
+  // Permanencia termina em `clean` -- nao ha vistoria num quarto ocupado.
+  expect(closesTaskAtClean("stayover")).toBe(true);
+
+  // Saida NAO terminou: falta a vistoria. A tarefa segue `pending` e SEM tipo, e isso e'
+  // verdade, nao perda -- o tipo dela e' gravado ao chegar em `inspected`.
+  expect(closesTaskAtClean("checkout")).toBe(false);
+
+  // E o bicondicional continua valendo nos dois desfechos.
+  expect(isTaskShapeValid("done", "stayover")).toBe(true);
+  expect(isTaskShapeValid("pending", null)).toBe(true);
+
+  // Um quarto que fica em `clean` como saida ate o fim do dia termina pendente e sem tipo --
+  // certo: a vistoria nao aconteceu, o trabalho nao acabou.
+  expect(isTaskShapeValid("pending", "checkout")).toBe(false);
 });
