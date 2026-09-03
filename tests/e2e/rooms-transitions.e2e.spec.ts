@@ -4,7 +4,8 @@ import {
   callTransitionRpc,
   countHistory,
   findUnitIdByCode,
-  findOpenDay,
+  findOpenDayForToday,
+  lastTransitionAt,
   listActiveRooms,
   newHistoryRows,
   probeRpcAsAnon,
@@ -68,6 +69,7 @@ type TransitionBody = {
   toStatus: string;
   reason?: string;
   occurredAt?: string;
+  occurredAts?: Record<string, string>;
   serviceTypes?: Record<string, string>;
 };
 
@@ -173,19 +175,37 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       throw new Error(`[e2e] A unidade ${UNIT_CODE} precisa de ao menos 5 apartamentos ativos.`);
     }
 
-    // Usa o dia JA ABERTO -- nao abre outro (unico por unidade+data) e nao o fecha.
-    const dia = await findOpenDay(unitId);
+    gov = await contextFor("E2E_GOVERNANCA", baseURL);
+    manut = await contextFor("E2E_MANUTENCAO", baseURL);
+
+    // O dia da DATA OPERACIONAL DE HOJE -- nao o dia aberto mais recente de qualquer data.
+    // A RPC procura exatamente este; ler outro faria o teste conferir tarefas de um dia
+    // enquanto a RPC opera sobre outro (foi o que aconteceu com o dia de 02/09).
+    let dia = await findOpenDayForToday(unitId);
 
     if (!dia) {
-      throw new Error(
-        "[e2e] Nenhum dia de governanca aberto na GALLI. Abra com housekeeping_open_day antes de rodar."
-      );
+      // Abre PELA ROTA, nunca pelo banco: e' a unica forma de exercitar a permissao e o escopo
+      // de unidade dela, que nenhum outro teste toca. E' tambem o que a governanta faz toda
+      // manha -- uma suite que so' passa no dia em que alguem abriu o dia a mao nao e' suite.
+      const abertura = await gov.post("/api/base/rooms/days", {
+        data: { unitId },
+        headers: { "content-type": "application/json" }
+      });
+
+      const corpo = (await abertura.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+
+      if (!abertura.ok()) {
+        throw new Error(`[e2e] Falha ao abrir o dia (HTTP ${abertura.status()}): ${corpo.message ?? ""}`);
+      }
+
+      dia = await findOpenDayForToday(unitId);
+    }
+
+    if (!dia) {
+      throw new Error("[e2e] Dia de governanca ausente mesmo apos a abertura.");
     }
 
     dayId = dia.id;
-
-    gov = await contextFor("E2E_GOVERNANCA", baseURL);
-    manut = await contextFor("E2E_MANUTENCAO", baseURL);
   });
 
   test.afterAll(async () => {
@@ -685,11 +705,15 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
 
       const baseline = await snapshotHistoryIds(room.id);
 
-      // A hora informada precisa ser POSTERIOR ao ultimo lancamento deste apartamento hoje --
-      // e o proprio `driveHousekeepingTo` acima acabou de lancar. Uma hora ATRAS seria
-      // recusada pela trava 2, corretamente: foi assim que a trava pegou a primeira versao
-      // deste teste. Usamos 2 segundos atras: retroativo de verdade, e depois do anterior.
-      const ocorridoEm = new Date(Date.now() - 2000);
+      // ANCORADO NO DADO, nao num numero de segundos. A hora informada precisa ser posterior
+      // ao ultimo lancamento deste apartamento hoje -- e o `driveHousekeepingTo` acima acabou
+      // de lancar. Subtrair "alguns segundos de agora" e' negociar com a corrida: um dia a
+      // maquina esta lenta, o numero volta a ser insuficiente, e alguem aumenta de novo.
+      //
+      // `ultimo + 1s` acaba com a classe do problema: e' sempre >= o ultimo (trava 2 passa) e
+      // sempre < agora (retroativo de verdade, que e' o que o caso prova).
+      const ultima = await lastTransitionAt(room.id);
+      const ocorridoEm = new Date((ultima?.getTime() ?? Date.now() - 5000) + 1000);
       ocorridoEm.setMilliseconds(0);
 
       const { status, payload } = await postTransition(gov, {
@@ -710,6 +734,58 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       expect(new Date(depois.housekeeping_changed_at).getTime()).toBe(ocorridoEm.getTime());
     } finally {
       await restoreRoom(gov, before);
+    }
+  });
+
+  test("21b - horas DIFERENTES no mesmo lote: cada linha com a sua", async () => {
+    // O caso que a D8 existe para permitir. A folha tem uma hora por apartamento -- "112 as
+    // 10h20, 113 as 10h45" -- e a governanta passa o corredor lancando dez de uma vez. Com uma
+    // hora por chamada, ela teria que lancar um por vez para preservar a hora real, anulando o
+    // lote exatamente onde ele mais serve.
+    const lote = rooms.slice(0, 2);
+    const before = await Promise.all(lote.map((r) => readRoom(r.id)));
+
+    try {
+      for (const room of lote) {
+        await driveHousekeepingTo(gov, room.id, "dirty");
+      }
+
+      const baselines = await Promise.all(lote.map((r) => snapshotHistoryIds(r.id)));
+      const ancoras = await Promise.all(lote.map((r) => lastTransitionAt(r.id)));
+
+      // Horas distintas, cada uma ancorada na ultima transicao do SEU apartamento.
+      const horas = ancoras.map((a, i) => {
+        const t = new Date((a?.getTime() ?? Date.now() - 5000) + 1000 + i * 1000);
+        t.setMilliseconds(0);
+        return t;
+      });
+
+      const { status, payload } = await postTransition(gov, {
+        roomIds: lote.map((r) => r.id),
+        dimension: "housekeeping",
+        toStatus: "cleaning",
+        occurredAts: Object.fromEntries(lote.map((r, i) => [r.id, horas[i].toISOString()]))
+      });
+
+      expect(status, `resposta: ${payload.message ?? ""}`).toBe(200);
+      expect(payload.updated).toBe(2);
+
+      // Cada apartamento com a SUA hora, no historico e no relogio da limpeza.
+      for (let i = 0; i < lote.length; i++) {
+        const historia = await newHistoryRows(lote[i].id, baselines[i]);
+        expect(historia).toHaveLength(1);
+        expect(new Date(historia[0].changed_at).getTime()).toBe(horas[i].getTime());
+
+        const quarto = await readRoom(lote[i].id);
+        expect(new Date(quarto.housekeeping_changed_at).getTime()).toBe(horas[i].getTime());
+      }
+
+      // E as duas horas sao mesmo diferentes -- senao o teste passaria por acidente.
+      expect(horas[0].getTime()).not.toBe(horas[1].getTime());
+    } finally {
+      for (const snapshot of before) {
+        await restoreRoom(gov, snapshot);
+      }
     }
   });
 

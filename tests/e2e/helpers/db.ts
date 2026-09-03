@@ -274,21 +274,57 @@ export type HousekeepingTaskRow = {
   completed_at: string | null;
 };
 
-/** O dia ABERTO da unidade, se houver. Nulo quando ninguem abriu -- silencio, nao zero. */
-export async function findOpenDay(unitId: string): Promise<{ id: string; service_date: string } | null> {
+/**
+ * A data operacional de agora, no fuso da unidade -- pela MESMA funcao que a RPC usa.
+ *
+ * Nao calculada em JS de proposito: se o teste computasse a data por conta propria e a RPC
+ * pela funcao do banco, os dois poderiam divergir e o teste passaria a mentir.
+ */
+export async function currentServiceDate(unitId: string): Promise<string> {
+  const { data, error } = await e2eDb().rpc("housekeeping_service_date", {
+    p_at: new Date().toISOString(),
+    p_unit_id: unitId
+  });
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao resolver a data operacional da unidade ${unitId}: ${error.message}`);
+  }
+
+  return data as string;
+}
+
+/**
+ * O dia aberto DA DATA OPERACIONAL DE HOJE. Nulo quando ninguem abriu -- silencio, nao zero.
+ *
+ * A versao anterior pegava o dia aberto mais recente de QUALQUER data, e foi isso que fez os
+ * testes lerem tarefas de 02/09 enquanto a RPC operava sobre 03/09: ela procura o dia da data
+ * operacional de hoje, nao achava, e pulava os efeitos na tarefa em silencio.
+ */
+export async function findOpenDayForToday(
+  unitId: string
+): Promise<{ id: string; service_date: string } | null> {
+  const hoje = await currentServiceDate(unitId);
+
   const { data, error } = await e2eDb()
     .from("housekeeping_days")
     .select("id, service_date")
     .eq("unit_id", unitId)
+    .eq("service_date", hoje)
     .is("closed_at", null)
-    .order("service_date", { ascending: false })
     .limit(1);
 
   if (error) {
-    throw new Error(`[e2e][db] Falha ao localizar o dia aberto da unidade ${unitId}: ${error.message}`);
+    throw new Error(`[e2e][db] Falha ao localizar o dia de hoje da unidade ${unitId}: ${error.message}`);
   }
 
   return (data?.[0] as { id: string; service_date: string } | undefined) ?? null;
+}
+
+/** `changed_at` da ultima transicao do apartamento, para ancorar hora retroativa sem corrida. */
+export async function lastTransitionAt(roomId: string): Promise<Date | null> {
+  const rows = await readHistory(roomId);
+  const ultima = rows[rows.length - 1];
+  return ultima ? new Date(ultima.changed_at) : null;
 }
 
 export async function readTask(dayId: string, roomId: string): Promise<HousekeepingTaskRow> {

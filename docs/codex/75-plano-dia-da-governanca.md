@@ -417,6 +417,21 @@ migration ("o app antigo continua funcionando pela sobrecarga") e é verdadeira 
 Postgres*. Ler SQL não revela o comportamento do PostgREST. **Só a chamada real pega** — é a
 mesma lição do `organization_id` da 089 e do `errcode` da 090, agora pela terceira vez.
 
+
+#### D8.1 — O contrato da rota: `occurredAt` (lote) e `occurredAts` (por item) coexistem
+
+A rota aceita os dois, e **o específico vence o geral**: a hora daquele apartamento, se houver;
+senão a do lote; senão agora.
+
+O mapa **não é conveniência de teste**. Sem ele a rota anula a correção que a D8 fez: a
+governanta que lançar dez apartamentos de uma vez carimba os dez com a mesma hora — exatamente
+o comportamento que rejeitamos ao mover `occurred_at` para dentro do item. A capacidade existia
+no banco e não chegava ao usuário.
+
+**Se alguém "simplificar" removendo o mapa, a capacidade some sem erro nenhum** — nenhuma
+requisição falha, nenhum teste de tipo reclama. Só a hora vira mentira, e o "Sujo há 6 horas"
+passa a contar do momento da digitação. Por isso está escrito aqui e não só no código.
+
 ---
 
 ## 5. Migration 091
@@ -578,6 +593,22 @@ errado.
 **O que NÃO fazemos:** alarme, bloqueio ou fluxo de aprovação entre setores. Seria construir
 processo para um erro que a operação já corrige sozinha, e o custo apareceria todo dia enquanto
 o benefício apareceria raramente.
+
+---
+
+### 8.1 Dívida declarada — retenção dos dias em staging
+
+A suíte E2E **abre o dia de hoje** quando não há um (pela rota, como a governanta faz de
+manhã). Consequência assumida: **staging acumula um `housekeeping_days` por dia de execução**,
+com ~105 tarefas cada.
+
+Não é lixo — é o registro correto de que a governança abriu o dia, a mesma linha que a operação
+real teria. Mas em três meses são 90 dias e cerca de 9.500 tarefas, quase todas `pending` em
+dias que ninguém fechou.
+
+**Aceitável agora; vale uma rotina de retenção quando o plano 76 chegar** — senão a fila de
+pendentes de staging vira dezenas de milhares de tarefas e deixa de servir para conferir
+qualquer coisa. Fica como dívida registrada, não como problema a resolver nesta fatia.
 
 ---
 

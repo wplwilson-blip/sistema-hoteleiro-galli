@@ -36,8 +36,17 @@ type TransitionRequestBody = {
   dimension?: unknown;
   toStatus?: unknown;
   reason?: unknown;
-  /** Hora do FATO, ISO. Ausente = agora (plano 75, D5). */
+  /** Hora do FATO para o LOTE INTEIRO, ISO. Ausente = agora (plano 75, D5). */
   occurredAt?: unknown;
+  /**
+   * Hora do FATO POR APARTAMENTO, `roomId -> ISO`. O ESPECIFICO VENCE O GERAL.
+   *
+   * Espelha `serviceTypes`, e existe pelo mesmo motivo: a folha tem uma hora por
+   * apartamento -- "112 as 10h20, 113 as 10h45". Sem este mapa, a governanta que lanca dez de
+   * uma vez carimba os dez com a mesma hora, que e' exatamente o comportamento que a D8
+   * rejeitou ao mover `occurred_at` para dentro do item.
+   */
+  occurredAts?: unknown;
   /**
    * Tipo de arrumacao POR APARTAMENTO, exigido ao chegar em `clean` (plano 75, D2).
    *
@@ -98,6 +107,10 @@ export async function POST(request: Request) {
       body.serviceTypes && typeof body.serviceTypes === "object" && !Array.isArray(body.serviceTypes)
         ? (body.serviceTypes as Record<string, unknown>)
         : {};
+    const occurredAts =
+      body.occurredAts && typeof body.occurredAts === "object" && !Array.isArray(body.occurredAts)
+        ? (body.occurredAts as Record<string, unknown>)
+        : {};
 
     if (!roomIds.length) {
       return apiError("Selecione ao menos um apartamento.", 400);
@@ -127,22 +140,26 @@ export async function POST(request: Request) {
 
     // Hora do fato. A trava de ordem (nao anterior ao ultimo lancamento) depende do estado do
     // banco e vive na RPC, sob o lock; aqui validamos o que da para validar sem I/O.
-    let occurredAt: Date | null = null;
+    //
+    // `resolveOccurredAt` aplica a precedencia: o mapa por apartamento vence o valor do lote.
+    const parseOccurredAt = (raw: unknown): Date | null | "invalid" => {
+      if (typeof raw !== "string" || !raw) {
+        return null;
+      }
 
-    if (occurredAtRaw !== null) {
-      const parsed = new Date(occurredAtRaw);
+      const parsed = new Date(raw);
 
       if (Number.isNaN(parsed.getTime())) {
-        return apiError("Hora informada invalida.", 422);
+        return "invalid";
       }
 
-      const check = validateOccurredAt(parsed, new Date(), null);
+      return validateOccurredAt(parsed, new Date(), null).valid ? parsed : "invalid";
+    };
 
-      if (!check.valid) {
-        return apiError(check.message, 422);
-      }
+    const loteOccurredAt = parseOccurredAt(occurredAtRaw);
 
-      occurredAt = parsed;
+    if (loteOccurredAt === "invalid") {
+      return apiError("Hora informada invalida ou no futuro.", 422);
     }
 
     if (!context.accessibleUnitIds.length) {
@@ -233,6 +250,12 @@ export async function POST(request: Request) {
         return apiError("Tipo de arrumacao invalido.", 422);
       }
 
+      const roomOccurredAt = parseOccurredAt(occurredAts[room.id]);
+
+      if (roomOccurredAt === "invalid") {
+        return apiError("Hora informada invalida ou no futuro.", 422);
+      }
+
       transitions.push({
         room_id: room.id,
         from,
@@ -241,9 +264,11 @@ export async function POST(request: Request) {
         service_type: declaredType ?? null,
         // A hora do fato viaja NO ITEM, e nao como parametro da funcao (plano 75, D8):
         // acrescentar argumento a uma RPC exposta cria SOBRECARGA, e o PostgREST recusa toda
-        // chamada com PGRST203 quando o argumento opcional e' omitido. Aqui e' tambem a
-        // modelagem certa -- a folha tem uma hora por apartamento.
-        occurred_at: occurredAt ? occurredAt.toISOString() : null
+        // chamada com PGRST203 quando o argumento opcional e' omitido.
+        //
+        // O ESPECIFICO VENCE O GERAL: a hora daquele apartamento, se houver, e senao a do
+        // lote. E' o que permite lancar dez quartos de uma vez, cada um com a hora da folha.
+        occurred_at: (roomOccurredAt ?? loteOccurredAt)?.toISOString() ?? null
       });
     }
 
