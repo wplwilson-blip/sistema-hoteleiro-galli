@@ -262,6 +262,68 @@ export async function callTransitionRpc(params: {
   return { data, error: error ? { message: error.message } : null };
 }
 
+// ---------------------------------------------------------------- o dia da governanca (091)
+
+export type HousekeepingTaskRow = {
+  id: string;
+  housekeeping_day_id: string;
+  room_id: string;
+  service_type: string | null;
+  outcome: string;
+  decline_origin: string | null;
+  completed_at: string | null;
+};
+
+/** O dia ABERTO da unidade, se houver. Nulo quando ninguem abriu -- silencio, nao zero. */
+export async function findOpenDay(unitId: string): Promise<{ id: string; service_date: string } | null> {
+  const { data, error } = await e2eDb()
+    .from("housekeeping_days")
+    .select("id, service_date")
+    .eq("unit_id", unitId)
+    .is("closed_at", null)
+    .order("service_date", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao localizar o dia aberto da unidade ${unitId}: ${error.message}`);
+  }
+
+  return (data?.[0] as { id: string; service_date: string } | undefined) ?? null;
+}
+
+export async function readTask(dayId: string, roomId: string): Promise<HousekeepingTaskRow> {
+  const { data, error } = await e2eDb()
+    .from("housekeeping_tasks")
+    .select("id, housekeeping_day_id, room_id, service_type, outcome, decline_origin, completed_at")
+    .eq("housekeeping_day_id", dayId)
+    .eq("room_id", roomId)
+    .single();
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao ler a tarefa do apartamento ${roomId}: ${error.message}`);
+  }
+
+  return data as HousekeepingTaskRow;
+}
+
+/**
+ * Devolve a tarefa ao estado inicial do dia.
+ *
+ * Escrita por service role, e e' a UNICA da suite -- nao ha rota que reabra tarefa, e nem
+ * deveria haver: reabrir trabalho concluido nao e' operacao de governanca. E' limpeza de
+ * teste, no mesmo espirito da restauracao de estado dos apartamentos.
+ */
+export async function resetTaskToPending(taskId: string): Promise<void> {
+  const { error } = await e2eDb()
+    .from("housekeeping_tasks")
+    .update({ outcome: "pending", service_type: null, decline_origin: null, completed_at: null })
+    .eq("id", taskId);
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao restaurar a tarefa ${taskId}: ${error.message}`);
+  }
+}
+
 /**
  * Resultado do probe do caso 20. NAO e' booleano de proposito: "nao deu certo" e "deu o erro
  * ERRADO" sao coisas diferentes, e achatar as duas num `blocked: boolean` deixaria passar
@@ -297,7 +359,7 @@ export type RpcAnonProbe = {
  * sucesso: e' a prova de que a trava caiu. O esperado e' erro de PERMISSAO, antes de
  * qualquer validacao de argumento.
  */
-export async function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
+export async function probeRpcAsAnon(fn: string, args: Record<string, unknown>): Promise<RpcAnonProbe> {
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   assertStagingUrl(url);
 
@@ -305,12 +367,7 @@ export async function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  const { error } = await anon.rpc("rooms_apply_transition", {
-    p_transitions: [],
-    p_dimension: "housekeeping",
-    p_reason: null,
-    p_actor_id: null
-  });
+  const { error } = await anon.rpc(fn, args);
 
   if (!error) {
     return { outcome: "executed", detail: "a RPC respondeu SEM erro para o papel anon" };
@@ -321,7 +378,7 @@ export async function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
   const detail = `${code} ${message}`.trim();
 
   // O corpo da funcao rodou -> o `execute` foi concedido a alguem que nao devia te-lo.
-  if (message.includes("ROOMS_TRANSITION_")) {
+  if (message.includes("ROOMS_TRANSITION_") || message.includes("HOUSEKEEPING_")) {
     return { outcome: "executed", detail };
   }
 
@@ -337,3 +394,20 @@ export async function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
 
   return { outcome: "unexpected", detail };
 }
+
+/**
+ * Caso 20: a RPC de transicao continua fechada para `anon`.
+ *
+ * Assinatura UNICA de quatro argumentos. A 091 chegou a criar uma sobrecarga de cinco, e o
+ * PostgREST passou a recusar TODA chamada com PGRST203 -- ver o plano 75, D8. O drop no passo
+ * 7 da 091 desfaz isso; se este probe voltar a devolver PGRST203, a sobrecarga ressuscitou.
+ */
+export function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
+  return probeRpcAsAnon("rooms_apply_transition", {
+    p_transitions: [],
+    p_dimension: "housekeeping",
+    p_reason: null,
+    p_actor_id: null
+  });
+}
+

@@ -26,15 +26,23 @@
 -- permissoes, perfis nem policies. Cria duas tabelas e tres enums, e substitui
 -- o corpo da `rooms_apply_transition` por `create or replace`.
 --
--- ATENCAO -- A ASSINATURA DA FUNCAO MUDA: ganha `p_occurred_at timestamptz
--- default null`. Isso cria uma SOBRECARGA: a assinatura antiga de 4 argumentos
--- continua existindo ate ser removida no passo 7. A ordem importa, e o passo 7
--- explica por que o drop vem DEPOIS do create.
+-- A ASSINATURA DA FUNCAO NAO MUDA -- e isso e' deliberado, ver o plano 75, D8.
 --
--- ORDEM DE DEPLOY: aplicar a migration ANTES do deploy do app. O parametro novo
--- tem default, entao o app antigo (que chama com 4 argumentos) continua
--- funcionando pela sobrecarga enquanto o deploy nao sai. O contrario -- app novo
--- com banco velho -- quebra: `p_occurred_at` nao existiria.
+-- Uma versao anterior desta migration acrescentava `p_occurred_at timestamptz`
+-- a assinatura, criando uma SOBRECARGA. NAO FUNCIONA atraves do PostgREST: ele
+-- resolve funcao por NOME DE ARGUMENTO, e uma chamada com os 4 argumentos casa
+-- com as DUAS assinaturas. O resultado e' PGRST203 -- "could not choose the best
+-- candidate function" --, e a chamada nao executa. Nem a de 4, nem a de 5.
+--
+-- Descoberto pela suite E2E, contra staging, depois de a versao com sobrecarga
+-- ja ter sido aplicada la: toda transicao pelo app passou a devolver PGRST203.
+--
+-- A hora do fato entra no ITEM do lote, ao lado de `service_type`. Alem de nao
+-- quebrar nada, e' a modelagem certa: a folha tem uma hora POR APARTAMENTO.
+--
+-- ORDEM DE DEPLOY: sem janela. A funcao mantem os mesmos 4 argumentos, entao o
+-- app antigo continua funcionando depois de aplicar, e o app novo funciona
+-- porque campo desconhecido no jsonb e' simplesmente ignorado por quem nao o le.
 -- ============================================================================
 
 
@@ -329,9 +337,10 @@ comment on function public.housekeeping_open_day(uuid, date, uuid) is
 -- que esta no banco.
 --
 -- O QUE MUDOU em relacao a 090:
---   a) p_occurred_at (D5) -- hora do FATO, com as duas travas: nao futura, e
---      nao anterior a ultima transicao do mesmo apartamento no mesmo dia.
---      Alimenta room_status_history.changed_at E rooms.housekeeping_changed_at.
+--   a) `occurred_at` NO ITEM do lote (D5) -- hora do FATO, por apartamento, com
+--      as duas travas: nao futura, e nao anterior a ultima transicao do mesmo
+--      apartamento no mesmo dia. Alimenta room_status_history.changed_at E
+--      rooms.housekeeping_changed_at. A ASSINATURA NAO MUDA (D8).
 --   b) trava de lote em `inspected` (D4), nas DUAS arestas.
 --   c) efeitos na tarefa do dia: inspected tipa como saida; bloquear cancela;
 --      desbloquear cria a tarefa que faltava.
@@ -341,9 +350,7 @@ create or replace function public.rooms_apply_transition(
   p_transitions jsonb,
   p_dimension text,
   p_reason text default null,
-  p_actor_id uuid default null,
-  -- Hora do FATO, nao da digitacao (plano 75, D5). Nulo = agora.
-  p_occurred_at timestamptz default null
+  p_actor_id uuid default null
 ) returns integer
 language plpgsql
 security definer
@@ -366,15 +373,6 @@ declare
   v_task_outcome public.housekeeping_task_outcome;
   v_count integer := 0;
 begin
-  -- Hora do fato: informada ou agora. Resolvida UMA vez para todo o lote, para que um lote
-  -- nao fique com linhas de historico milissegundos diferentes entre si.
-  v_at := coalesce(p_occurred_at, now());
-
-  -- TRAVA 1 da D5: nao pode ser futura. `now()` como teto, sem tolerancia -- um relogio de
-  -- cliente adiantado nao e' motivo para aceitar um fato que ainda nao aconteceu.
-  if v_at > now() then
-    raise exception 'ROOMS_TRANSITION_OCCURRED_AT_FUTURE' using errcode = '22023';
-  end if;
   if p_dimension is null or p_dimension not in ('occupancy', 'housekeeping', 'blocking') then
     raise exception 'ROOMS_TRANSITION_INVALID_DIMENSION' using errcode = '22023';
   end if;
@@ -422,6 +420,25 @@ begin
     v_from    := v_item ->> 'from';
     v_to      := v_item ->> 'to';
     v_effect  := v_item ->> 'housekeeping_effect';
+
+    -- HORA DO FATO, POR APARTAMENTO (plano 75, D5 e D8). Nulo = agora.
+    --
+    -- Por ITEM, e nao por chamada, porque a folha tem uma hora POR APARTAMENTO: "112 as
+    -- 10h20, 113 as 10h45". Com uma hora por chamada, a governanta teria que lancar um
+    -- apartamento por vez para preservar a hora real -- o que anula o lote exatamente no caso
+    -- em que ele mais serve: ela passa o corredor com a folha na mao e lanca dez de uma vez,
+    -- cada um com a sua hora.
+    --
+    -- Um lote gerando linhas de historico com horas DIFERENTES e' o comportamento certo: os
+    -- fatos aconteceram em horas diferentes. (Uma versao anterior resolvia a hora uma vez para
+    -- o lote inteiro, com o argumento oposto -- estava errado.)
+    v_at := coalesce((v_item ->> 'occurred_at')::timestamptz, now());
+
+    -- TRAVA 1 da D5: nao pode ser futura. `now()` como teto, sem tolerancia -- um relogio de
+    -- cliente adiantado nao e' motivo para aceitar um fato que ainda nao aconteceu.
+    if v_at > now() then
+      raise exception 'ROOMS_TRANSITION_OCCURRED_AT_FUTURE' using errcode = '22023';
+    end if;
 
     -- Lock + releitura da origem. Lemos TAMBEM o housekeeping atual (para o efeito
     -- colateral e para o historico) e o record_status do cadastro.
@@ -685,53 +702,52 @@ end;
 $$;
 
 
-comment on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) is
-  'Envelope TRANSACIONAL da transicao de estado de UH em lote (planos 70 §6.2, 74 e 75). A regra vive em rooms-utils.ts e chega decidida; aqui garantem-se atomicidade, lock em ordem estavel de room_id, releitura da origem sob lock, recusa de UH inativa, hora do FATO (p_occurred_at) e a trava de lote em inspected.';
+comment on function public.rooms_apply_transition(jsonb, text, text, uuid) is
+  'Envelope TRANSACIONAL da transicao de estado de UH em lote (planos 70 §6.2, 74 e 75). A regra vive em rooms-utils.ts e chega decidida; aqui garantem-se atomicidade, lock em ordem estavel de room_id, releitura da origem sob lock, recusa de UH inativa, hora do FATO (`occurred_at` no item do lote) e a trava de lote em inspected.';
 
 
 -- ============================================================================
--- 7) Remocao da sobrecarga antiga
+-- 7) Remocao da SOBRECARGA DE 5 ARGUMENTOS
 --
--- A assinatura ganhou `p_occurred_at`, entao existem agora DUAS funcoes
--- `rooms_apply_transition`: a de 4 argumentos (090) e a de 5 (acima). Isso NAO
--- e' acidente e a ordem importa:
+-- Esta linha existe por causa de uma aplicacao de STAGING que foi corrigida: uma
+-- versao anterior desta migration criou `rooms_apply_transition` com um quinto
+-- argumento (`p_occurred_at`), e staging chegou a receber essa versao. Enquanto
+-- as duas assinaturas coexistem, o PostgREST recusa TODA chamada com PGRST203 --
+-- ver o cabecalho e o plano 75, D8.
 --
---   - o `create or replace` acima nao substitui a antiga, porque assinatura
---     diferente e' funcao diferente para o Postgres;
---   - enquanto o deploy do app nao sai, o app ANTIGO chama com 4 argumentos e
---     precisa que ela continue existindo;
---   - por isso o drop vem por ULTIMO, e e' o unico passo desta migration que
---     NAO pode ser executado antes do deploy.
+-- `if exists` de proposito: em PRODUCAO essa funcao NUNCA nasceu, e a linha e'
+-- inofensiva la. E' o que permite os dois bancos convergirem para o mesmo estado
+-- rodando exatamente o mesmo arquivo -- que e' a regra de ouro: staging e
+-- producao nao terminam divergentes.
 --
--- SE VOCE ESTIVER APLICANDO ANTES DO DEPLOY: pule este passo, aplique o resto,
--- faca o deploy, e volte para rodar so este bloco -- NO MESMO DIA. As duas
--- assinaturas convivem sem risco tecnico, mas conviver e' estado de TRANSICAO:
--- a antiga nao grava hora retroativa nem mexe na tarefa do dia, e quem a chamar
--- por engano nao recebe erro nenhum -- so' o dado que nao aparece.
---
--- A ordem completa esta na SEQUENCIA DE APLICACAO, no fim deste arquivo.
+-- Roda ANTES dos grants abaixo, para nao restar assinatura nenhuma sem ACL.
 -- ============================================================================
 
--- drop function if exists public.rooms_apply_transition(jsonb, text, text, uuid);
+drop function if exists public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz);
 
 
 -- ============================================================================
--- 8) Superficie de execucao -- a ACL da assinatura NOVA
+-- 8) Superficie de execucao
 --
--- CRITICO, e e' um risco que a 090 nao tinha: a funcao de 5 argumentos e' uma
--- funcao NOVA para o Postgres, e nasce com `execute` para PUBLIC por padrao. A
--- ACL da assinatura antiga NAO a protege. Sem o revoke abaixo, esta migration
--- REABRIRIA a porta que a 090 fechou.
+-- A `rooms_apply_transition` mantem a assinatura de 4 argumentos, entao a ACL
+-- fechada pela 090 continua valendo e `create or replace` nao a reseta. Os
+-- revokes sao repetidos assim mesmo: sao baratos e tornam a migration
+-- AUTO-CURATIVA num banco onde alguem tenha reaberto a funcao. O caso 20 da
+-- suite E2E continua sendo a vigia.
+--
+-- As DUAS funcoes novas desta migration (`housekeeping_open_day` e
+-- `housekeeping_service_date`) sao outra historia: nascem com `execute` para
+-- PUBLIC por padrao, e sem os revokes abaixo esta migration abriria porta nova.
 --
 -- `security definer` ignora RLS: com `authenticated` podendo executar, qualquer
 -- usuario logado transiciona qualquer apartamento de qualquer unidade pelo
 -- PostgREST, sem passar pelo gate de permissao da rota.
 -- ============================================================================
 
-revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) from public;
-revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) from anon;
-revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) from authenticated;
-grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz) to service_role;
+revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid) from public;
+revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid) from anon;
+revoke execute on function public.rooms_apply_transition(jsonb, text, text, uuid) from authenticated;
+grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid) to service_role;
 
 revoke execute on function public.housekeeping_service_date(timestamptz, uuid) from public;
 revoke execute on function public.housekeeping_service_date(timestamptz, uuid) from anon;
@@ -751,8 +767,12 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 -- sem RETURNING. "Deu certo" na tela nao prova comportamento.
 -- ============================================================================
 --
--- 1) A ACL das DUAS funcoes esta fechada. ESTE E' O ITEM MAIS IMPORTANTE desta
---    migration: a assinatura nova nasce publica por padrao.
+-- 1) A ACL das QUATRO assinaturas esta fechada. ESTE E' O ITEM MAIS IMPORTANTE
+--    desta migration: a assinatura nova nasce publica por padrao.
+--
+--    `housekeeping_service_date` e' funcao nova desta migration e precisa ser
+--    conferida como as demais: ela le `units`, e um `security definer` aberto a
+--    `authenticated` seria leitura de unidade sem passar por RLS.
 --
 --    select p.proname,
 --           pg_get_function_identity_arguments(p.oid) as args,
@@ -760,29 +780,39 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 --    from pg_proc p
 --    join pg_namespace n on n.oid = p.pronamespace
 --    where n.nspname = 'public'
---      and p.proname in ('rooms_apply_transition', 'housekeeping_open_day')
+--      and p.proname in ('rooms_apply_transition', 'housekeeping_open_day',
+--                        'housekeeping_service_date')
 --    order by p.proname, args;
+--
+--    -- esperado: TRES linhas -- rooms_apply_transition aparece UMA vez, com
+--    -- `jsonb, text, text, uuid`. Se aparecer uma segunda com `timestamptz` no
+--    -- fim, o drop do passo 7 nao rodou e TODA chamada pelo PostgREST esta
+--    -- devolvendo PGRST203.
 --
 --    -- esperado: service_role=X/postgres em TODAS as linhas.
 --    -- REPROVA se qualquer linha trouxer "(sem ACL: PUBLICO)", `=X/` sem papel
 --    -- antes do igual, `anon=X/` ou `authenticated=X/`.
 --
--- 2) O bicondicional da D2.1 esta valendo (as duas devem FALHAR; rodar em
---    staging, dentro de transacao com rollback):
+-- 2) O bicondicional da D2.1 esta valendo, nos DOIS sentidos. As duas devem
+--    FALHAR; rodar em staging, dentro de transacao com rollback.
+--
+--    Por UPDATE, e nao por INSERT: com o dia ja aberto, todo apartamento
+--    elegivel ja tem tarefa, e um insert esbarraria antes na unicidade
+--    (dia, apartamento) -- falharia pelo motivo ERRADO, e o teste passaria sem
+--    ter exercitado o CHECK.
 --
 --    -- begin;
---    --   insert into public.housekeeping_tasks
---    --     (organization_id, unit_id, housekeeping_day_id, room_id, outcome)
---    --   select u.organization_id, d.unit_id, d.id, r.id, 'done'
---    --   from public.housekeeping_days d
---    --   join public.units u on u.id = d.unit_id
---    --   join public.rooms r on r.unit_id = d.unit_id
---    --   limit 1;
+--    --   update public.housekeeping_tasks
+--    --   set outcome = 'done'
+--    --   where id = (select id from public.housekeeping_tasks
+--    --               where outcome = 'pending' limit 1);
 --    -- rollback;  -- esperado: housekeeping_tasks_type_iff_done ('done' sem tipo)
 --
 --    -- begin;
 --    --   update public.housekeeping_tasks
---    --   set service_type = 'stayover' where outcome = 'pending' limit 1;
+--    --   set service_type = 'stayover'
+--    --   where id = (select id from public.housekeeping_tasks
+--    --               where outcome = 'pending' limit 1);
 --    -- rollback;  -- esperado: housekeeping_tasks_type_iff_done (tipo sem 'done')
 --
 -- 3) Abertura do dia e' IDEMPOTENTE. Rode DUAS vezes e compare a contagem:
@@ -812,12 +842,14 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 -- 6) Hora futura recusada -- ROOMS_TRANSITION_OCCURRED_AT_FUTURE, 22023:
 --
 --    select public.rooms_apply_transition(
---      jsonb_build_array(jsonb_build_object('room_id','<ROOM_ID>','from','dirty','to','cleaning','housekeeping_effect',null)),
---      'housekeeping', null, null, now() + interval '1 hour');
+--      jsonb_build_array(jsonb_build_object(
+--        'room_id','<ROOM_ID>','from','dirty','to','cleaning','housekeeping_effect',null,
+--        'occurred_at', (now() + interval '1 hour')::text)),
+--      'housekeeping', null, null);
 --
 -- 7) CONTROLE NEGATIVO -- os caminhos antigos continuam respondendo:
 --
---    select public.rooms_apply_transition('[]'::jsonb, 'housekeeping', null, null, null);
+--    select public.rooms_apply_transition('[]'::jsonb, 'housekeeping', null, null);
 --    -- esperado: ROOMS_TRANSITION_EMPTY_BATCH, 22023.
 --
 --    `create or replace` reescreve o corpo INTEIRO. Um erro de transcricao em
@@ -872,40 +904,24 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 --       -- data da sessao. REPROVA se vier a data de Kiritimati -- significa que
 --       -- `current_date` (ou o fuso da sessao) voltou a mandar no dia do hotel.
 --
--- 9) DEPOIS DO PASSO 7 (o drop da sobrecarga), nos dois bancos: existe UMA e
---    somente uma rooms_apply_transition.
---
---    select pg_get_function_identity_arguments(p.oid) as args
---    from pg_proc p
---    join pg_namespace n on n.oid = p.pronamespace
---    where n.nspname = 'public' and p.proname = 'rooms_apply_transition';
---
---    -- esperado: UMA linha, com `jsonb, text, text, uuid, timestamptz`.
---    -- REPROVA se voltarem duas: a de 4 argumentos sobreviveu, e quem chamar
---    -- por ela perde a hora retroativa e os efeitos na tarefa do dia EM
---    -- SILENCIO -- sem erro, sem log, so' o dado que nao aparece.
---
 --
 -- ============================================================================
--- SEQUENCIA DE APLICACAO (a ordem importa, e o passo 7 tem data)
+-- SEQUENCIA DE APLICACAO
 --
---   1. Aplicar esta migration nos DOIS bancos, com o passo 7 COMENTADO.
---      Pode ser com o app no ar: o parametro novo tem default, e o app antigo
---      continua chamando a assinatura de 4 argumentos pela sobrecarga.
---   2. Rodar os itens 1 a 7 da VALIDACAO em staging.
+--   1. Aplicar esta migration nos DOIS bancos. SEM JANELA: a assinatura da
+--      `rooms_apply_transition` nao muda, entao o app atual continua funcionando
+--      depois de aplicar.
+--   2. Rodar os itens 1 a 7 e 8.1 da VALIDACAO em staging.
 --   3. Suite E2E em staging (item 8). Portao para producao.
---   4. Deploy do app.
---   5. Rodar o PASSO 7 nos DOIS bancos, NO MESMO DIA do deploy.
---   6. Rodar o item 9 da VALIDACAO nos dois bancos.
+--   4. Aplicar em producao e rodar a VALIDACAO la.
+--   5. Deploy do app.
 --
--- POR QUE O PASSO 7 TEM DATA e nao fica adiado: duas assinaturas convivendo e'
--- estado de TRANSICAO, e estado de transicao sem data de fim vira permanente.
--- Daqui a tres meses alguem chama a de 4 argumentos sem saber que existe uma
--- melhor, e a hora retroativa e a tarefa do dia silenciosamente nao acontecem.
--- Nao ha erro para investigar: so' o dado que nunca chega.
+-- O deploy vem por ULTIMO e nao tem pressa: o app novo manda `occurred_at` e
+-- `service_type` DENTRO do jsonb, e o banco antigo simplesmente ignoraria campos
+-- que nao le. Nao ha ordem obrigatoria entre banco e deploy nesta migration --
+-- diferente da 089, e diferente da versao com sobrecarga desta mesma 091, que
+-- criava uma janela em que NADA funcionava.
 -- ============================================================================
---
---
 -- ============================================================================
 -- ROLLBACK (nao executar junto; so' se for preciso desfazer)
 --
@@ -921,7 +937,6 @@ grant execute on function public.housekeeping_open_day(uuid, date, uuid) to serv
 --   --    Se voltar > 0, sao dias de trabalho real.
 --   drop function if exists public.housekeeping_open_day(uuid, date, uuid);
 --   drop function if exists public.housekeeping_service_date(timestamptz, uuid);
---   drop function if exists public.rooms_apply_transition(jsonb, text, text, uuid, timestamptz);
 --   drop table if exists public.housekeeping_tasks;
 --   drop table if exists public.housekeeping_days;
 --   drop type if exists public.housekeeping_decline_origin;

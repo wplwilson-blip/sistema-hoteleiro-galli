@@ -216,6 +216,7 @@ export async function POST(request: Request) {
       to: string;
       housekeeping_effect: string | null;
       service_type: string | null;
+      occurred_at: string | null;
     }> = [];
 
     for (const room of rooms) {
@@ -237,7 +238,12 @@ export async function POST(request: Request) {
         from,
         to: toStatus,
         housekeeping_effect: dimension === "blocking" ? decision.effects.housekeeping ?? null : null,
-        service_type: declaredType ?? null
+        service_type: declaredType ?? null,
+        // A hora do fato viaja NO ITEM, e nao como parametro da funcao (plano 75, D8):
+        // acrescentar argumento a uma RPC exposta cria SOBRECARGA, e o PostgREST recusa toda
+        // chamada com PGRST203 quando o argumento opcional e' omitido. Aqui e' tambem a
+        // modelagem certa -- a folha tem uma hora por apartamento.
+        occurred_at: occurredAt ? occurredAt.toISOString() : null
       });
     }
 
@@ -245,8 +251,7 @@ export async function POST(request: Request) {
       p_transitions: transitions,
       p_dimension: dimension,
       p_reason: reason,
-      p_actor_id: context.session.user.id,
-      p_occurred_at: occurredAt ? occurredAt.toISOString() : null
+      p_actor_id: context.session.user.id
     });
 
     if (rpcError) {

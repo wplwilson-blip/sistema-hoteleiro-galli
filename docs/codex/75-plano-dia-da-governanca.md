@@ -374,6 +374,51 @@ mudariam de significado sem mudar de forma. Se isso for entrar algum dia, é mel
 
 ---
 
+### D8 — Sobrecarga de função NÃO é utilizável através do PostgREST
+
+**Regra geral deste projeto, não observação sobre esta migration.**
+
+A primeira versão da 091 acrescentava `p_occurred_at timestamptz default null` à assinatura da
+`rooms_apply_transition`, criando uma **sobrecarga**: a de 4 argumentos (090) e a de 5
+conviviam. O raciocínio era sobre Postgres, onde sobrecarga com default de fato resolve, e o
+plano afirmava que o app antigo continuaria funcionando durante a janela do deploy.
+
+**Não continua.** O PostgREST resolve função por **nome de argumento**, e uma chamada com os
+quatro casa com as **duas** assinaturas:
+
+```
+PGRST203 Could not choose the best candidate function between:
+  public.rooms_apply_transition(p_transitions, p_dimension, p_reason, p_actor_id),
+  public.rooms_apply_transition(p_transitions, p_dimension, p_reason, p_actor_id, p_occurred_at)
+```
+
+A chamada **não executa** — nem uma, nem outra. Descoberto pela suíte E2E depois de a versão com
+sobrecarga já estar aplicada em staging: **toda transição pelo app passou a devolver PGRST203**,
+e só não incomodou porque ainda não há tela.
+
+**A consequência que vale para toda RPC futura: mudança de assinatura em função exposta pelo
+PostgREST é sempre quebra, nunca compatibilidade.** Não existe "acrescentar parâmetro opcional"
+— existe substituir a função, com janela, ou não mexer na assinatura.
+
+**O que fazemos em vez disso:** parâmetro novo entra **dentro do payload jsonb** que a função já
+recebe, ao lado de `service_type`. Campo desconhecido é ignorado por quem não o lê, então o
+banco novo funciona com o app antigo e o app novo com o banco antigo — compatibilidade nos dois
+sentidos, que é o que a sobrecarga prometia e não entregava.
+
+**E, neste caso, é também a modelagem certa** — não um contorno. A folha tem uma hora **por
+apartamento**: "112 às 10h20, 113 às 10h45". Com hora por chamada, a governanta teria que lançar
+um apartamento por vez para preservar a hora real, **anulando o lote exatamente no caso em que
+ele mais serve**: ela passa o corredor com a folha na mão e lança dez de uma vez, cada um com a
+sua. Um lote gerando linhas de histórico com horas diferentes é o comportamento certo — os fatos
+aconteceram em horas diferentes.
+
+**Como isso passou por duas revisões:** a premissa estava escrita em português no cabeçalho da
+migration ("o app antigo continua funcionando pela sobrecarga") e é verdadeira *sobre o
+Postgres*. Ler SQL não revela o comportamento do PostgREST. **Só a chamada real pega** — é a
+mesma lição do `organization_id` da 089 e do `errcode` da 090, agora pela terceira vez.
+
+---
+
 ## 5. Migration 091
 
 Aditiva. Nenhuma alteração em `rooms`, `room_status_history`, enums existentes ou permissões.
