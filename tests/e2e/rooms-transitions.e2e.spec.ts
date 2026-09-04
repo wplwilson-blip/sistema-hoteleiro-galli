@@ -4,8 +4,13 @@ import {
   callTransitionRpc,
   countHistory,
   findUnitIdByCode,
+  clearCarryOver,
+  countTasksByOutcome,
   findOpenDayForToday,
   lastTransitionAt,
+  listDays,
+  readDayEvents,
+  reopenDayDirect,
   listActiveRooms,
   newHistoryRows,
   probeRpcAsAnon,
@@ -161,6 +166,7 @@ async function restoreRoom(ctx: APIRequestContext, before: RoomStateRow): Promis
 test.describe("Transicao de estado de apartamento (plano 70)", () => {
   let unitId: string;
   let dayId: string;
+  let serviceDate: string;
   let rooms: RoomStateRow[];
   let gov: APIRequestContext;
   let manut: APIRequestContext;
@@ -206,6 +212,7 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     }
 
     dayId = dia.id;
+    serviceDate = dia.service_date;
   });
 
   test.afterAll(async () => {
@@ -978,6 +985,237 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       p_unit_id: unitId
     });
     expect(dataDoDia.outcome, `housekeeping_service_date -> ${dataDoDia.detail}`).toBe("permission_denied");
+  });
+
+
+  // =======================================================================================
+  // FECHAMENTO DO DIA, SOBRA E O CONFLITO QUE DIZ QUAL (plano 77, migration 092)
+  //
+  // LACUNA DECLARADA -- o 409 COM `conflict` na resposta da rota nao e' exercitavel aqui.
+  // Para a rota devolver o conflito, o estado do apartamento precisa mudar ENTRE o SELECT da
+  // rota e o `for update` da RPC -- uma corrida de milissegundos que nao se provoca de fora.
+  // E' a mesma lacuna do 16b, pelo mesmo motivo. O que da' para provar esta dividido:
+  //   - o `detail` sai da RPC completo -> caso 28 abaixo, por chamada direta;
+  //   - a rota le esse `detail` e monta o conflito -> teste unitario 14 (parseTransitionConflict),
+  //     incluindo as seis formas de vir ruim.
+  // =======================================================================================
+
+  test("28 - o STALE carrega QUAL apartamento divergiu, no detail", async () => {
+    const room = rooms[0];
+    const before = await readRoom(room.id);
+
+    try {
+      await driveHousekeepingTo(gov, room.id, "dirty");
+
+      const { error } = await callTransitionRpc({
+        transitions: [{ room_id: room.id, from: "clean", to: "inspected", housekeeping_effect: null }],
+        dimension: "housekeeping"
+      });
+
+      expect(error).not.toBeNull();
+      expect(error?.message ?? "").toContain("ROOMS_TRANSITION_STALE");
+
+      // O ponto do caso: sem isto a governanta lanca dez, o lote inteiro aborta e ela nao sabe
+      // qual dos dez causou.
+      expect(error?.details, "o detail do STALE veio vazio").toBeTruthy();
+
+      const conflito = JSON.parse(error!.details!) as Record<string, string>;
+      expect(conflito.room_id).toBe(room.id);
+      expect(conflito.current).toBe("dirty");
+      expect(conflito.expected).toBe("clean");
+      expect(conflito.dimension).toBe("housekeeping");
+    } finally {
+      await restoreRoom(gov, before);
+    }
+  });
+
+  test("29 - fechar o dia converte pendentes, registra a contagem, e e' idempotente", async () => {
+    // Usa o dia MAIS ANTIGO em aberto, nunca o de hoje: fechar o de hoje derrubaria os casos
+    // seguintes, que precisam dele aberto.
+    const dias = await listDays(unitId);
+    const alvo = dias.find((d) => d.closed_at === null && d.service_date < serviceDate);
+
+    if (!alvo) {
+      throw new Error("[e2e] Nenhum dia anterior em aberto para exercitar o fechamento.");
+    }
+
+    const antes = await countTasksByOutcome(alvo.id);
+    const pendentesAntes = antes.pending ?? 0;
+    const feitasAntes = antes.done ?? 0;
+
+    try {
+      const fechar = await gov.post(`/api/base/rooms/days/${alvo.id}/close`, {
+        headers: { "content-type": "application/json" }
+      });
+      const corpo = (await fechar.json()) as { ok?: boolean; pendingConverted?: number; message?: string };
+
+      expect(fechar.status(), `resposta: ${corpo.message ?? ""}`).toBe(200);
+      expect(corpo.pendingConverted).toBe(pendentesAntes);
+
+      const depois = await countTasksByOutcome(alvo.id);
+      expect(depois.pending ?? 0).toBe(0);
+      expect(depois.not_done ?? 0).toBe(pendentesAntes);
+      // Fechar o dia nao desfaz trabalho feito.
+      expect(depois.done ?? 0).toBe(feitasAntes);
+
+      const trilha = await readDayEvents(alvo.id);
+      const fechamento = trilha.filter((e) => e.event === "closed");
+      expect(fechamento).toHaveLength(1);
+      // A contagem VIVE no evento: reabrir devolve not_done a pending e o numero deste
+      // instante seria irrecuperavel depois.
+      expect(fechamento[0].pending_count).toBe(pendentesAntes);
+
+      // IDEMPOTENCIA: fechar de novo devolve 0 e NAO cria segundo evento.
+      const denovo = await gov.post(`/api/base/rooms/days/${alvo.id}/close`, {
+        headers: { "content-type": "application/json" }
+      });
+      const corpoDenovo = (await denovo.json()) as { pendingConverted?: number };
+      expect(denovo.status()).toBe(200);
+      expect(corpoDenovo.pendingConverted).toBe(0);
+      expect((await readDayEvents(alvo.id)).filter((e) => e.event === "closed")).toHaveLength(1);
+    } finally {
+      await reopenDayDirect(alvo.id);
+    }
+  });
+
+  test("30 - reabrir devolve SO' as not_done, e o fechamento continua registrado", async () => {
+    const dias = await listDays(unitId);
+    const alvo = dias.find((d) => d.closed_at === null && d.service_date < serviceDate);
+
+    if (!alvo) {
+      throw new Error("[e2e] Nenhum dia anterior em aberto para exercitar a reabertura.");
+    }
+
+    const antes = await countTasksByOutcome(alvo.id);
+
+    try {
+      await gov.post(`/api/base/rooms/days/${alvo.id}/close`, {
+        headers: { "content-type": "application/json" }
+      });
+
+      const reabrir = await gov.post(`/api/base/rooms/days/${alvo.id}/reopen`, {
+        data: { note: "[E2E] quarto atrasado depois do fechamento." },
+        headers: { "content-type": "application/json" }
+      });
+      const corpo = (await reabrir.json()) as { restored?: number; message?: string };
+
+      expect(reabrir.status(), `resposta: ${corpo.message ?? ""}`).toBe(200);
+      expect(corpo.restored).toBe(antes.pending ?? 0);
+
+      const depois = await countTasksByOutcome(alvo.id);
+      expect(depois.pending ?? 0).toBe(antes.pending ?? 0);
+      expect(depois.not_done ?? 0).toBe(0);
+      // `done` INTACTA: reabrir o dia nao desfaz trabalho que aconteceu. E' a assimetria com o
+      // desbloqueio, que ressuscita `cancelled` e nunca `done`.
+      expect(depois.done ?? 0).toBe(antes.done ?? 0);
+
+      // O PONTO DA D5: `closed_at` voltou a nulo, e mesmo assim o fechamento continua na
+      // trilha -- com o numero de pendentes daquele instante.
+      const trilha = await readDayEvents(alvo.id);
+      expect(trilha.some((e) => e.event === "closed" && e.pending_count === (antes.pending ?? 0))).toBe(true);
+      expect(trilha.some((e) => e.event === "reopened" && (e.note ?? "").includes("[E2E]"))).toBe(true);
+    } finally {
+      const atual = (await listDays(unitId)).find((d) => d.id === alvo.id);
+
+      if (atual?.closed_at) {
+        await reopenDayDirect(alvo.id);
+      }
+    }
+  });
+
+  test("31 - a sobra ACUMULA, e a marca aparece mesmo na ordem invertida (D6)", async () => {
+    // A ORDEM INVERTIDA e' o cenario real: a governanta abre a segunda as 8h e so' entao fecha
+    // a sexta, as 8h05. Os dias posteriores JA existem quando o anterior fecha, e as tarefas
+    // deles ja foram criadas sem a marca -- e' o FECHAMENTO que precisa propagar.
+    const dias = await listDays(unitId);
+    const anteriores = dias.filter((d) => d.service_date < serviceDate && d.closed_at === null);
+    const hoje = dias.find((d) => d.service_date === serviceDate);
+
+    if (anteriores.length < 2 || !hoje) {
+      throw new Error("[e2e] Precisa de dois dias anteriores em aberto e o dia de hoje.");
+    }
+
+    const [primeiro, segundo] = anteriores;
+    const room = rooms[4];
+
+    try {
+      // Garante o mesmo apartamento pendente nos tres dias.
+      for (const dia of [primeiro, segundo, hoje]) {
+        const tarefa = await readTask(dia.id, room.id);
+        await resetTaskToPending(tarefa.id);
+      }
+
+      // Fecha o PRIMEIRO. A tarefa dele vira not_done e a marca desce para os dois posteriores.
+      await gov.post(`/api/base/rooms/days/${primeiro.id}/close`, {
+        headers: { "content-type": "application/json" }
+      });
+
+      const noSegundo = await readTask(segundo.id, room.id);
+      expect(noSegundo.carried_over_since).toBe(primeiro.service_date);
+      expect(noSegundo.carried_over_days).toBe(1);
+
+      const emHojeApos1 = await readTask(hoje.id, room.id);
+      expect(emHojeApos1.carried_over_since).toBe(primeiro.service_date);
+      expect(emHojeApos1.carried_over_days).toBe(2);
+
+      // Fecha o SEGUNDO. Aqui esta o teste que trava o "reset": a marca em hoje tem que
+      // continuar apontando para o PRIMEIRO dia, nao pular para o segundo.
+      await gov.post(`/api/base/rooms/days/${segundo.id}/close`, {
+        headers: { "content-type": "application/json" }
+      });
+
+      const emHojeApos2 = await readTask(hoje.id, room.id);
+      expect(emHojeApos2.carried_over_since).toBe(primeiro.service_date);
+      expect(emHojeApos2.carried_over_since).not.toBe(segundo.service_date);
+      expect(emHojeApos2.carried_over_days).toBe(2);
+
+      // E a invariante do CHECK: data e contador andam juntos.
+      expect(emHojeApos2.carried_over_since === null).toBe(emHojeApos2.carried_over_days === 0);
+    } finally {
+      for (const dia of [segundo, primeiro]) {
+        const atual = (await listDays(unitId)).find((d) => d.id === dia.id);
+
+        if (atual?.closed_at) {
+          await reopenDayDirect(dia.id);
+        }
+      }
+
+      for (const dia of [primeiro, segundo, hoje]) {
+        await clearCarryOver(dia.id);
+      }
+    }
+  });
+
+  test("32 - a rota do dia distingue SILENCIO de zero, e avisa os dias em aberto", async () => {
+    const resposta = await gov.get(`/api/base/rooms/days/current?unitId=${unitId}`);
+    const corpo = (await resposta.json()) as {
+      ok?: boolean;
+      serviceDate?: string;
+      day?: { id: string } | null;
+      tasks?: unknown[];
+      counts?: Record<string, number>;
+      stalePreviousDays?: Array<{ service_date: string }>;
+    };
+
+    expect(resposta.status()).toBe(200);
+    expect(corpo.serviceDate).toBe(serviceDate);
+
+    // O dia de hoje existe (o beforeAll o abriu) e vem com a fila.
+    expect(corpo.day).not.toBeNull();
+    expect((corpo.tasks ?? []).length).toBeGreaterThan(0);
+
+    // DIA SEM REGISTRO E' SILENCIO, NAO ZERO: quando nao ha dia, `day` e' null -- e' isso que
+    // permite a tela dizer "ninguem abriu" em vez de mostrar uma lista vazia igual a de um dia
+    // sem trabalho nenhum.
+    expect(corpo.day === null ? (corpo.tasks ?? []).length === 0 : true).toBe(true);
+
+    // E os dias anteriores em aberto vem na MESMA resposta, para o aviso da D3 nao depender de
+    // uma segunda consulta -- um aviso que chega depois e' um aviso que ela ja passou por cima.
+    expect(Array.isArray(corpo.stalePreviousDays)).toBe(true);
+
+    for (const dia of corpo.stalePreviousDays ?? []) {
+      expect(dia.service_date < (corpo.serviceDate ?? "")).toBe(true);
+    }
   });
 
 });
