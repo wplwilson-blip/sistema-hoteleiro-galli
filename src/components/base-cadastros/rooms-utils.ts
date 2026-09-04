@@ -683,3 +683,246 @@ export function canTransition(
 export function applyRoomTransition(state: RoomState, effects: Partial<RoomState>): RoomState {
   return { ...state, ...effects };
 }
+
+// =========================================================================================
+// O DIA DA GOVERNANCA (plano docs/codex/75, migration 091)
+//
+// A tarefa do dia e' o registro do TRABALHO; `room_status_history` e' o registro do ESTADO.
+// Sao coisas diferentes, e por isso vivem em tabelas diferentes -- "o 112 foi dispensado" nao
+// e' transicao: o estado do apartamento nao mudou, e e' justamente o ponto.
+// =========================================================================================
+
+/** public.housekeeping_service_type. NAO e' atributo do apartamento: e' do servico do dia. */
+export const HOUSEKEEPING_SERVICE_TYPE_VALUES = ["checkout", "stayover"] as const;
+export type HousekeepingServiceType = (typeof HOUSEKEEPING_SERVICE_TYPE_VALUES)[number];
+
+/** public.housekeeping_task_outcome. */
+export const HOUSEKEEPING_TASK_OUTCOME_VALUES = ["pending", "done", "declined", "cancelled"] as const;
+export type HousekeepingTaskOutcome = (typeof HOUSEKEEPING_TASK_OUTCOME_VALUES)[number];
+
+/** public.housekeeping_decline_origin. */
+export const HOUSEKEEPING_DECLINE_ORIGIN_VALUES = ["front_desk", "housekeeper"] as const;
+export type HousekeepingDeclineOrigin = (typeof HOUSEKEEPING_DECLINE_ORIGIN_VALUES)[number];
+
+export function isHousekeepingServiceType(value: unknown): value is HousekeepingServiceType {
+  return typeof value === "string" && (HOUSEKEEPING_SERVICE_TYPE_VALUES as readonly string[]).includes(value);
+}
+
+export const housekeepingServiceTypeLabelMap: Record<HousekeepingServiceType, string> = {
+  checkout: "Saída",
+  stayover: "Permanência"
+};
+
+export const housekeepingTaskOutcomeLabelMap: Record<HousekeepingTaskOutcome, string> = {
+  pending: "Pendente",
+  done: "Concluída",
+  declined: "Dispensada",
+  cancelled: "Cancelada"
+};
+
+export const housekeepingDeclineOriginLabelMap: Record<HousekeepingDeclineOrigin, string> = {
+  front_desk: "Avisada pela recepção",
+  housekeeper: "Descoberta na porta"
+};
+
+/**
+ * Onde cada tipo de arrumacao TERMINA -- o achado central do plano 75.
+ *
+ * Permanencia para em `clean` e e' isso. Nao ha vistoria porque nao ha o que liberar para
+ * venda: o apartamento ja esta ocupado. Exigir `inspected` numa permanencia seria pedir a
+ * governanta que liberasse para venda um quarto com hospede dentro -- a conflacao que o plano
+ * 70 existiu para desfazer, voltando pela porta da tela.
+ */
+export function terminalStatusFor(serviceType: HousekeepingServiceType): HousekeepingStatus {
+  return serviceType === "checkout" ? "inspected" : "clean";
+}
+
+/** A arrumacao chegou ao fim para aquele tipo? */
+export function isServiceComplete(serviceType: HousekeepingServiceType, housekeeping: HousekeepingStatus): boolean {
+  return housekeeping === terminalStatusFor(serviceType);
+}
+
+/**
+ * Tipo SUGERIDO no fecho da limpeza, derivado da ocupacao NAQUELE instante (plano 75, D2).
+ *
+ * Derivar na ABERTURA do dia estaria errado, e essa foi a primeira versao da D2: as 8h os
+ * apartamentos que vao sair ainda estao `occupied`, entao todos nasceriam como permanencia e a
+ * governanta corrigiria exatamente os 50 que mais importam -- em silencio, porque permanencia
+ * para em `clean` e some da fila de vistoria.
+ *
+ * No FECHO a informacao e' boa por dois motivos independentes: a ocupacao ja respondeu (e' meio
+ * da manha, quem ia sair saiu e a recepcao ja marcou), e quem registra ACABOU DE VER O QUARTO.
+ *
+ * E' sugestao, nao imposicao: a edicao manual vence.
+ */
+export function suggestedServiceType(occupancy: OccupancyStatus): HousekeepingServiceType {
+  return occupancy === "vacant" ? "checkout" : "stayover";
+}
+
+/**
+ * Chegar em `inspected` E' saida, por definicao (plano 75, D2.1).
+ *
+ * Permanencia para em `clean`, logo nao ha outro caminho ate `inspected`. E' isto que fecha o
+ * atalho `cleaning -> inspected` sem exigir um passo a mais -- e o que corrige uma tarefa
+ * tipada `stayover` quando o hospede saiu DEPOIS da arrumacao de permanencia: a vistoria e' o
+ * ato posterior e mais informado, e ela vence.
+ */
+export function serviceTypeImpliedBy(to: HousekeepingStatus): HousekeepingServiceType | null {
+  return to === "inspected" ? "checkout" : null;
+}
+
+/**
+ * O BICONDICIONAL da D2.1: `service_type` preenchido SE E SOMENTE SE `outcome = 'done'`.
+ *
+ * Trabalho feito SEMPRE tem tipo; trabalho nao feito NUNCA tem. Gravar `stayover` numa dispensa
+ * faria o relatorio do mes contar como permanencia realizada um quarto onde ninguem entrou.
+ *
+ * Espelha o CHECK `housekeeping_tasks_type_iff_done` da 091 -- a regra vive nos dois lugares de
+ * proposito: a rota da mensagem util, o banco garante.
+ */
+export function isTaskShapeValid(outcome: HousekeepingTaskOutcome, serviceType: HousekeepingServiceType | null): boolean {
+  return outcome === "done" ? serviceType !== null : serviceType === null;
+}
+
+/** Dispensa exige origem; qualquer outro desfecho a proibe. */
+export function isDeclineShapeValid(
+  outcome: HousekeepingTaskOutcome,
+  origin: HousekeepingDeclineOrigin | null
+): boolean {
+  return outcome === "declined" ? origin !== null : origin === null;
+}
+
+// ------------------------------------------------------------------ trava de lote
+
+/**
+ * Quantos apartamentos uma transicao aceita por chamada (plano 75, D4).
+ *
+ * Chegar em `inspected` aceita UM. A informacao que essa transicao carrega e' "eu olhei este
+ * quarto", e um botao que libera vinte de uma vez e' um botao que libera vinte sem olhar.
+ *
+ * A trava e' sobre CHEGAR em `inspected`, nao sobre uma aresta: vale para `clean -> inspected`
+ * e para o atalho `cleaning -> inspected`. Fechar so' a primeira faria do atalho a porta dos
+ * fundos da vistoria -- a governanta descobriria o desvio em uma semana.
+ *
+ * Todo o resto continua em lote, e continua certo: marcar uma ala inteira como `dirty`, comecar
+ * um corredor, bloquear um andar. Esses sao fatos COLETIVOS. Vistoria nao e'.
+ */
+export function maxRoomsPerTransition(dimension: RoomStateDimension, to: string): number | null {
+  if (dimension === "housekeeping" && to === "inspected") {
+    return 1;
+  }
+
+  return null;
+}
+
+export function isBatchAllowed(dimension: RoomStateDimension, to: string, roomCount: number): boolean {
+  const max = maxRoomsPerTransition(dimension, to);
+  return max === null || roomCount <= max;
+}
+
+// ------------------------------------------------------------------ hora do fato
+
+export type OccurredAtDenial = "future" | "before_last";
+
+export type OccurredAtCheck = { valid: true } | { valid: false; code: OccurredAtDenial; message: string };
+
+/**
+ * As duas travas da hora retroativa (plano 75, D5).
+ *
+ * A camareira anota "112 -- 10h20" na folha; a governanta lanca as 11h05 informando 10h20.
+ * `housekeeping_changed_at` guarda a hora do FATO, nao a da digitacao -- e' a razao de a coluna
+ * existir, e o "Sujo ha 6 horas" sai dela.
+ *
+ *   1. Nao pode ser FUTURA. Sem tolerancia: relogio de cliente adiantado nao e' motivo para
+ *      aceitar um fato que ainda nao aconteceu.
+ *   2. Nao pode ser ANTERIOR a ultima transicao do mesmo apartamento no mesmo dia. Sem isso o
+ *      historico aceita "arrumado as 10h20, sujo as 14h" numa ordem que nao aconteceu, e a
+ *      linha do tempo do apartamento vira ficcao.
+ *
+ * A RPC repete as duas sob o lock -- aqui e' pela mensagem util; la' e' pela garantia.
+ */
+export function validateOccurredAt(
+  occurredAt: Date,
+  now: Date,
+  lastTransitionSameDay: Date | null
+): OccurredAtCheck {
+  if (occurredAt.getTime() > now.getTime()) {
+    return { valid: false, code: "future", message: "A hora informada nao pode estar no futuro." };
+  }
+
+  if (lastTransitionSameDay && occurredAt.getTime() < lastTransitionSameDay.getTime()) {
+    return {
+      valid: false,
+      code: "before_last",
+      message: "A hora informada e' anterior ao ultimo lancamento deste apartamento hoje."
+    };
+  }
+
+  return { valid: true };
+}
+
+// ------------------------------------------------------------------ efeitos na tarefa do dia
+//
+// Espelho das regras que a migration 091 aplica dentro da transacao -- mesma relacao que
+// `backfillRoomState` tem com o backfill da 089. Existem aqui para serem testadas no runner
+// puro; a autoridade continua sendo o SQL, e as duas tabelas precisam continuar identicas.
+
+/**
+ * Bloquear CANCELA a tarefa pendente. Ninguem arruma quarto em obra, e deixa-la pendente para
+ * sempre poria a tela para esconder um dado que o modelo sabe estar errado.
+ *
+ * So' mexe em `pending`: bloquear nao desfaz trabalho ja feito nem dispensa ja decidida.
+ */
+export function taskOutcomeAfterBlock(current: HousekeepingTaskOutcome): HousekeepingTaskOutcome {
+  return current === "pending" ? "cancelled" : current;
+}
+
+/**
+ * Desbloquear RESSUSCITA a tarefa cancelada -- e so' a cancelada.
+ *
+ * Bloquear e desbloquear no MESMO DIA e' a manutencao que resolve em duas horas, que e' a
+ * maioria. Sem esta regra o apartamento sai da obra, cai para `dirty`, volta a precisar de
+ * arrumacao e continua fora da fila -- exatamente o defeito que o efeito de desbloqueio existe
+ * para evitar.
+ *
+ * NUNCA ressuscita `done` (o trabalho aconteceu) nem `declined` (o hospede decidiu):
+ * desbloquear um quarto nao desfaz nenhum dos dois.
+ */
+export function taskOutcomeAfterUnblock(current: HousekeepingTaskOutcome): HousekeepingTaskOutcome {
+  return current === "cancelled" ? "pending" : current;
+}
+
+/**
+ * Chegar em `clean` FECHA a tarefa apenas quando o servico e' permanencia.
+ *
+ * Permanencia termina em `clean` -- nao ha vistoria num quarto ocupado. Saida NAO terminou:
+ * ainda falta a vistoria, entao a tarefa segue `pending` e SEM tipo. Isso nao e' perda: e'
+ * verdade. O tipo dela e' gravado quando chegar em `inspected`, que e' quando o trabalho de
+ * fato acabou -- e e' o que mantem o bicondicional da D2.1 honesto.
+ */
+export function closesTaskAtClean(serviceType: HousekeepingServiceType): boolean {
+  return serviceType === "stayover";
+}
+
+/**
+ * Data operacional de um instante, no fuso da UNIDADE (plano 75, D7).
+ *
+ * Espelho de `public.housekeeping_service_date` da 091 -- mesma relacao que `backfillRoomState`
+ * tem com o backfill da 089. A autoridade e' o SQL; isto existe para o runner puro.
+ *
+ * POR QUE NAO SERVE `new Date().toISOString().slice(0,10)`: isso da a data em UTC. O servidor
+ * roda em UTC e Sao Paulo e' UTC-3, entao as 21h no hotel o dia ja teria virado -- e toda
+ * transicao depois das 21h procuraria o dia de amanha, nao acharia, e os efeitos na tarefa
+ * seriam pulados EM SILENCIO.
+ *
+ * `units.timezone` existe desde a migration 002 e ate' aqui nao tinha nenhum leitor.
+ */
+export function housekeepingServiceDate(at: Date, timeZone: string): string {
+  // `en-CA` produz YYYY-MM-DD, que e' o formato de `date` no Postgres.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(at);
+}

@@ -4,10 +4,15 @@ import {
   callTransitionRpc,
   countHistory,
   findUnitIdByCode,
+  findOpenDayForToday,
+  lastTransitionAt,
   listActiveRooms,
   newHistoryRows,
+  probeRpcAsAnon,
   probeTransitionRpcAsAnon,
   readRoom,
+  readTask,
+  resetTaskToPending,
   snapshotHistoryIds,
   setRoomRecordStatus,
   type RoomStateRow
@@ -63,6 +68,9 @@ type TransitionBody = {
   dimension: Dimension;
   toStatus: string;
   reason?: string;
+  occurredAt?: string;
+  occurredAts?: Record<string, string>;
+  serviceTypes?: Record<string, string>;
 };
 
 /** Contexto HTTP autenticado como um dos usuarios do plano 70. */
@@ -113,10 +121,14 @@ async function driveHousekeepingTo(ctx: APIRequestContext, roomId: string, targe
               ? "inspected"
               : "dirty";
 
+    // `checkout` de proposito na restauracao (plano 75, D2): ele NAO fecha a tarefa do dia.
+    // `stayover` fecharia, e a suite passaria a inventar uma permanencia concluida a cada
+    // rodada -- trabalho que nunca aconteceu, contado no relatorio do mes.
     const { status, payload } = await postTransition(ctx, {
       roomIds: [roomId],
       dimension: "housekeeping",
-      toStatus: next
+      toStatus: next,
+      serviceTypes: next === "clean" ? { [roomId]: "checkout" } : undefined
     });
 
     if (status !== 200) {
@@ -148,6 +160,7 @@ async function restoreRoom(ctx: APIRequestContext, before: RoomStateRow): Promis
 
 test.describe("Transicao de estado de apartamento (plano 70)", () => {
   let unitId: string;
+  let dayId: string;
   let rooms: RoomStateRow[];
   let gov: APIRequestContext;
   let manut: APIRequestContext;
@@ -164,6 +177,35 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
 
     gov = await contextFor("E2E_GOVERNANCA", baseURL);
     manut = await contextFor("E2E_MANUTENCAO", baseURL);
+
+    // O dia da DATA OPERACIONAL DE HOJE -- nao o dia aberto mais recente de qualquer data.
+    // A RPC procura exatamente este; ler outro faria o teste conferir tarefas de um dia
+    // enquanto a RPC opera sobre outro (foi o que aconteceu com o dia de 02/09).
+    let dia = await findOpenDayForToday(unitId);
+
+    if (!dia) {
+      // Abre PELA ROTA, nunca pelo banco: e' a unica forma de exercitar a permissao e o escopo
+      // de unidade dela, que nenhum outro teste toca. E' tambem o que a governanta faz toda
+      // manha -- uma suite que so' passa no dia em que alguem abriu o dia a mao nao e' suite.
+      const abertura = await gov.post("/api/base/rooms/days", {
+        data: { unitId },
+        headers: { "content-type": "application/json" }
+      });
+
+      const corpo = (await abertura.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+
+      if (!abertura.ok()) {
+        throw new Error(`[e2e] Falha ao abrir o dia (HTTP ${abertura.status()}): ${corpo.message ?? ""}`);
+      }
+
+      dia = await findOpenDayForToday(unitId);
+    }
+
+    if (!dia) {
+      throw new Error("[e2e] Dia de governanca ausente mesmo apos a abertura.");
+    }
+
+    dayId = dia.id;
   });
 
   test.afterAll(async () => {
@@ -217,7 +259,10 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
         const { status, payload } = await postTransition(gov, {
           roomIds: [room.id],
           dimension: "housekeeping",
-          toStatus: next
+          toStatus: next,
+          // Com dia aberto, chegar em `clean` exige o tipo (D2). `checkout` nao fecha a
+          // tarefa -- e este caso segue ate a vistoria, que e' quem fecha.
+          serviceTypes: next === "clean" ? { [room.id]: "checkout" } : undefined
         });
 
         expect(status, `passo ${next}: ${payload.message ?? ""}`).toBe(200);
@@ -637,4 +682,302 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       `esperado erro de PERMISSAO (42501) antes de qualquer validacao de argumento; veio: ${detail}`
     ).toBe("permission_denied");
   });
+
+  // =======================================================================================
+  // O DIA DA GOVERNANCA (plano docs/codex/75, migration 091)
+  //
+  // Usa o dia JA ABERTO da unidade, criado pela VALIDACAO da 091 -- nao abre outro e nao o
+  // fecha. Abrir um segundo dia seria impossivel (unico por unidade+data) e fecha-lo
+  // apagaria o estado que o Wilson deixou de proposito para a suite usar.
+  //
+  // Cada caso restaura a tarefa que mexeu, alem do estado do apartamento.
+  // =======================================================================================
+
+  test("21 - hora retroativa alimenta o historico E o relogio da limpeza", async () => {
+    // A camareira anota "112 -- 10h20" na folha; a governanta lanca as 11h05 informando 10h20.
+    // Se so' o historico fosse retroativo e housekeeping_changed_at ficasse em now(), o
+    // "Sujo ha 6 horas" mentiria -- que e' a razao de aquela coluna existir.
+    const room = rooms[0];
+    const before = await readRoom(room.id);
+
+    try {
+      await driveHousekeepingTo(gov, room.id, "dirty");
+
+      const baseline = await snapshotHistoryIds(room.id);
+
+      // ANCORADO NO DADO, nao num numero de segundos. A hora informada precisa ser posterior
+      // ao ultimo lancamento deste apartamento hoje -- e o `driveHousekeepingTo` acima acabou
+      // de lancar. Subtrair "alguns segundos de agora" e' negociar com a corrida: um dia a
+      // maquina esta lenta, o numero volta a ser insuficiente, e alguem aumenta de novo.
+      //
+      // `ultimo + 1s` acaba com a classe do problema: e' sempre >= o ultimo (trava 2 passa) e
+      // sempre < agora (retroativo de verdade, que e' o que o caso prova).
+      const ultima = await lastTransitionAt(room.id);
+      const ocorridoEm = new Date((ultima?.getTime() ?? Date.now() - 5000) + 1000);
+      ocorridoEm.setMilliseconds(0);
+
+      const { status, payload } = await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "housekeeping",
+        toStatus: "cleaning",
+        occurredAt: ocorridoEm.toISOString()
+      });
+
+      expect(status, `resposta: ${payload.message ?? ""}`).toBe(200);
+
+      const historia = await newHistoryRows(room.id, baseline);
+      expect(historia).toHaveLength(1);
+      expect(new Date(historia[0].changed_at).getTime()).toBe(ocorridoEm.getTime());
+
+      // O ponto do caso: os DOIS campos.
+      const depois = await readRoom(room.id);
+      expect(new Date(depois.housekeeping_changed_at).getTime()).toBe(ocorridoEm.getTime());
+    } finally {
+      await restoreRoom(gov, before);
+    }
+  });
+
+  test("21b - horas DIFERENTES no mesmo lote: cada linha com a sua", async () => {
+    // O caso que a D8 existe para permitir. A folha tem uma hora por apartamento -- "112 as
+    // 10h20, 113 as 10h45" -- e a governanta passa o corredor lancando dez de uma vez. Com uma
+    // hora por chamada, ela teria que lancar um por vez para preservar a hora real, anulando o
+    // lote exatamente onde ele mais serve.
+    const lote = rooms.slice(0, 2);
+    const before = await Promise.all(lote.map((r) => readRoom(r.id)));
+
+    try {
+      for (const room of lote) {
+        await driveHousekeepingTo(gov, room.id, "dirty");
+      }
+
+      const baselines = await Promise.all(lote.map((r) => snapshotHistoryIds(r.id)));
+      const ancoras = await Promise.all(lote.map((r) => lastTransitionAt(r.id)));
+
+      // Horas distintas, cada uma ancorada na ultima transicao do SEU apartamento.
+      const horas = ancoras.map((a, i) => {
+        const t = new Date((a?.getTime() ?? Date.now() - 5000) + 1000 + i * 1000);
+        t.setMilliseconds(0);
+        return t;
+      });
+
+      const { status, payload } = await postTransition(gov, {
+        roomIds: lote.map((r) => r.id),
+        dimension: "housekeeping",
+        toStatus: "cleaning",
+        occurredAts: Object.fromEntries(lote.map((r, i) => [r.id, horas[i].toISOString()]))
+      });
+
+      expect(status, `resposta: ${payload.message ?? ""}`).toBe(200);
+      expect(payload.updated).toBe(2);
+
+      // Cada apartamento com a SUA hora, no historico e no relogio da limpeza.
+      for (let i = 0; i < lote.length; i++) {
+        const historia = await newHistoryRows(lote[i].id, baselines[i]);
+        expect(historia).toHaveLength(1);
+        expect(new Date(historia[0].changed_at).getTime()).toBe(horas[i].getTime());
+
+        const quarto = await readRoom(lote[i].id);
+        expect(new Date(quarto.housekeeping_changed_at).getTime()).toBe(horas[i].getTime());
+      }
+
+      // E as duas horas sao mesmo diferentes -- senao o teste passaria por acidente.
+      expect(horas[0].getTime()).not.toBe(horas[1].getTime());
+    } finally {
+      for (const snapshot of before) {
+        await restoreRoom(gov, snapshot);
+      }
+    }
+  });
+
+  test("22 - hora futura e' recusada pela rota", async () => {
+    const room = rooms[0];
+    const daquiUmaHora = new Date(Date.now() + 60 * 60 * 1000);
+
+    const { status } = await postTransition(gov, {
+      roomIds: [room.id],
+      dimension: "housekeeping",
+      toStatus: "cleaning",
+      occurredAt: daquiUmaHora.toISOString()
+    });
+
+    expect(status).toBe(422);
+  });
+
+  test("23 - a trava de lote em inspected atravessa o PostgREST", async () => {
+    // O unitario prova a REGRA; este prova que ela chega ao usuario. Vistoria e' individual
+    // por natureza: um botao que libera vinte de uma vez e' um botao que libera vinte sem
+    // olhar.
+    const lote = rooms.slice(0, 2);
+    const before = await Promise.all(lote.map((r) => readRoom(r.id)));
+
+    try {
+      for (const room of lote) {
+        await driveHousekeepingTo(gov, room.id, "cleaning");
+      }
+
+      const { status } = await postTransition(gov, {
+        roomIds: lote.map((r) => r.id),
+        dimension: "housekeeping",
+        toStatus: "inspected"
+      });
+
+      expect(status).toBe(422);
+
+      // Nada mudou: a recusa e' do lote inteiro.
+      for (const room of lote) {
+        expect((await readRoom(room.id)).housekeeping_status).toBe("cleaning");
+      }
+
+      // E um por vez passa.
+      const individual = await postTransition(gov, {
+        roomIds: [lote[0].id],
+        dimension: "housekeeping",
+        toStatus: "inspected"
+      });
+      expect(individual.status, `resposta: ${individual.payload.message ?? ""}`).toBe(200);
+    } finally {
+      for (const snapshot of before) {
+        await restoreRoom(gov, snapshot);
+      }
+    }
+  });
+
+  test("24 - o tipo no fecho: clean exige tipo, e so' permanencia encerra a tarefa", async () => {
+    const room = rooms[1];
+    const before = await readRoom(room.id);
+    const task = await readTask(dayId, room.id);
+
+    try {
+      await driveHousekeepingTo(gov, room.id, "cleaning");
+      await resetTaskToPending(task.id);
+
+      // Sem tipo, a RPC recusa: sem ele nao ha como saber se a tarefa terminou, e deixar
+      // passar produziria quarto limpo com tarefa pendente para sempre.
+      const semTipo = await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "housekeeping",
+        toStatus: "clean"
+      });
+      expect(semTipo.status).toBe(422);
+      expect((await readRoom(room.id)).housekeeping_status).toBe("cleaning");
+
+      // Permanencia TERMINA em clean: tarefa vira done + stayover.
+      const permanencia = await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "housekeeping",
+        toStatus: "clean",
+        serviceTypes: { [room.id]: "stayover" }
+      });
+      expect(permanencia.status, `resposta: ${permanencia.payload.message ?? ""}`).toBe(200);
+
+      const fechada = await readTask(dayId, room.id);
+      expect(fechada.outcome).toBe("done");
+      expect(fechada.service_type).toBe("stayover");
+      expect(fechada.completed_at).not.toBeNull();
+    } finally {
+      await resetTaskToPending(task.id);
+      await restoreRoom(gov, before);
+    }
+  });
+
+  test("25 - saida NAO fecha em clean; fecha na vistoria, e ai tipa sozinha", async () => {
+    const room = rooms[2];
+    const before = await readRoom(room.id);
+    const task = await readTask(dayId, room.id);
+
+    try {
+      await driveHousekeepingTo(gov, room.id, "cleaning");
+      await resetTaskToPending(task.id);
+
+      await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "housekeeping",
+        toStatus: "clean",
+        serviceTypes: { [room.id]: "checkout" }
+      });
+
+      // Saida NAO terminou: falta a vistoria. A tarefa segue pendente e SEM tipo -- e isso e'
+      // verdade, nao perda de dado.
+      const aindaAberta = await readTask(dayId, room.id);
+      expect(aindaAberta.outcome).toBe("pending");
+      expect(aindaAberta.service_type).toBeNull();
+
+      // A vistoria fecha E tipa sozinha: chegar em `inspected` e' saida por definicao.
+      const vistoria = await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "housekeeping",
+        toStatus: "inspected"
+      });
+      expect(vistoria.status, `resposta: ${vistoria.payload.message ?? ""}`).toBe(200);
+
+      const fechada = await readTask(dayId, room.id);
+      expect(fechada.outcome).toBe("done");
+      expect(fechada.service_type).toBe("checkout");
+    } finally {
+      await resetTaskToPending(task.id);
+      await restoreRoom(gov, before);
+    }
+  });
+
+  test("26 - bloquear CANCELA a tarefa e desbloquear a RESSUSCITA no mesmo dia", async () => {
+    // A manutencao que resolve em duas horas e' a maioria. A primeira versao da 091 usava
+    // `on conflict do nothing` aqui e deixava a tarefa cancelada -- o apartamento saia da
+    // obra, caia para `dirty` e continuava fora da fila.
+    const room = rooms[3];
+    const before = await readRoom(room.id);
+    const task = await readTask(dayId, room.id);
+
+    try {
+      await resetTaskToPending(task.id);
+      expect((await readTask(dayId, room.id)).outcome).toBe("pending");
+
+      const bloqueio = await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "blocking",
+        toStatus: "maintenance"
+      });
+      expect(bloqueio.status, `resposta: ${bloqueio.payload.message ?? ""}`).toBe(200);
+      expect((await readTask(dayId, room.id)).outcome).toBe("cancelled");
+
+      const desbloqueio = await postTransition(gov, {
+        roomIds: [room.id],
+        dimension: "blocking",
+        toStatus: "none",
+        reason: "[E2E] fim da manutencao."
+      });
+      expect(desbloqueio.status, `resposta: ${desbloqueio.payload.message ?? ""}`).toBe(200);
+
+      // De volta a fila -- e o apartamento em `dirty`, precisando de arrumacao.
+      const ressuscitada = await readTask(dayId, room.id);
+      expect(ressuscitada.outcome).toBe("pending");
+      expect(ressuscitada.service_type).toBeNull();
+      expect((await readRoom(room.id)).housekeeping_status).toBe("dirty");
+    } finally {
+      await resetTaskToPending(task.id);
+      await restoreRoom(gov, before);
+    }
+  });
+
+  test("27 - as funcoes novas da 091 tambem nascem fechadas, e nao ha sobrecarga", async () => {
+    // A `rooms_apply_transition` tem assinatura UNICA. Se um dia voltar a ter duas, este
+    // probe devolve PGRST203 em vez de permission_denied -- e o teste falha, que e' o ponto:
+    // sobrecarga em RPC exposta quebra TODA chamada pelo PostgREST (plano 75, D8).
+    const transicao = await probeTransitionRpcAsAnon();
+    expect(transicao.outcome, `rooms_apply_transition -> ${transicao.detail}`).toBe("permission_denied");
+
+    // As duas funcoes novas da 091 nascem com execute para PUBLIC por padrao.
+    const abreDia = await probeRpcAsAnon("housekeeping_open_day", {
+      p_unit_id: unitId,
+      p_service_date: null,
+      p_actor_id: null
+    });
+    expect(abreDia.outcome, `housekeeping_open_day -> ${abreDia.detail}`).toBe("permission_denied");
+
+    const dataDoDia = await probeRpcAsAnon("housekeeping_service_date", {
+      p_at: new Date().toISOString(),
+      p_unit_id: unitId
+    });
+    expect(dataDoDia.outcome, `housekeeping_service_date -> ${dataDoDia.detail}`).toBe("permission_denied");
+  });
+
 });

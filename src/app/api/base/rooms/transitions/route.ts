@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import {
   ROOM_PERMISSIONS,
   canTransition,
+  isBatchAllowed,
+  isHousekeepingServiceType,
   isRoomStateDimension,
+  validateOccurredAt,
   type BlockingStatus,
   type HousekeepingStatus,
   type RoomPermissionCode,
@@ -33,6 +36,24 @@ type TransitionRequestBody = {
   dimension?: unknown;
   toStatus?: unknown;
   reason?: unknown;
+  /** Hora do FATO para o LOTE INTEIRO, ISO. Ausente = agora (plano 75, D5). */
+  occurredAt?: unknown;
+  /**
+   * Hora do FATO POR APARTAMENTO, `roomId -> ISO`. O ESPECIFICO VENCE O GERAL.
+   *
+   * Espelha `serviceTypes`, e existe pelo mesmo motivo: a folha tem uma hora por
+   * apartamento -- "112 as 10h20, 113 as 10h45". Sem este mapa, a governanta que lanca dez de
+   * uma vez carimba os dez com a mesma hora, que e' exatamente o comportamento que a D8
+   * rejeitou ao mover `occurred_at` para dentro do item.
+   */
+  occurredAts?: unknown;
+  /**
+   * Tipo de arrumacao POR APARTAMENTO, exigido ao chegar em `clean` (plano 75, D2).
+   *
+   * Por apartamento, e nao um por chamada: um corredor tem saidas E permanencias misturadas,
+   * entao um tipo unico para o lote estaria errado na metade dos quartos.
+   */
+  serviceTypes?: unknown;
 };
 
 type RoomStateRow = {
@@ -81,6 +102,15 @@ export async function POST(request: Request) {
     const dimension = typeof body.dimension === "string" ? body.dimension : "";
     const toStatus = typeof body.toStatus === "string" ? body.toStatus : "";
     const reason = typeof body.reason === "string" ? body.reason : null;
+    const occurredAtRaw = typeof body.occurredAt === "string" ? body.occurredAt : null;
+    const serviceTypes =
+      body.serviceTypes && typeof body.serviceTypes === "object" && !Array.isArray(body.serviceTypes)
+        ? (body.serviceTypes as Record<string, unknown>)
+        : {};
+    const occurredAts =
+      body.occurredAts && typeof body.occurredAts === "object" && !Array.isArray(body.occurredAts)
+        ? (body.occurredAts as Record<string, unknown>)
+        : {};
 
     if (!roomIds.length) {
       return apiError("Selecione ao menos um apartamento.", 400);
@@ -96,6 +126,40 @@ export async function POST(request: Request) {
 
     if (!isRoomStateDimension(dimension)) {
       return apiError("Dimensao invalida.", 422);
+    }
+
+    // TRAVA DE LOTE (plano 75, D4). Recusada ANTES de qualquer leitura: chegar em `inspected`
+    // com um lote e' pedido malformado, nao um estado que precise ser conferido no banco. A
+    // RPC repete a trava sob o lock -- aqui e' pela mensagem util.
+    if (!isBatchAllowed(dimension, toStatus, uniqueRoomIds.length)) {
+      return apiError(
+        "A vistoria e' feita um apartamento por vez: e' o registro de que voce olhou aquele quarto.",
+        422
+      );
+    }
+
+    // Hora do fato. A trava de ordem (nao anterior ao ultimo lancamento) depende do estado do
+    // banco e vive na RPC, sob o lock; aqui validamos o que da para validar sem I/O.
+    //
+    // `resolveOccurredAt` aplica a precedencia: o mapa por apartamento vence o valor do lote.
+    const parseOccurredAt = (raw: unknown): Date | null | "invalid" => {
+      if (typeof raw !== "string" || !raw) {
+        return null;
+      }
+
+      const parsed = new Date(raw);
+
+      if (Number.isNaN(parsed.getTime())) {
+        return "invalid";
+      }
+
+      return validateOccurredAt(parsed, new Date(), null).valid ? parsed : "invalid";
+    };
+
+    const loteOccurredAt = parseOccurredAt(occurredAtRaw);
+
+    if (loteOccurredAt === "invalid") {
+      return apiError("Hora informada invalida ou no futuro.", 422);
     }
 
     if (!context.accessibleUnitIds.length) {
@@ -163,7 +227,14 @@ export async function POST(request: Request) {
     // Decide TODOS antes de escrever QUALQUER um. A primeira negacao aborta o lote inteiro:
     // um lote meio aplicado deixa a governanta sem saber o que gravou, que e' o motivo pelo
     // qual ela volta para o papel.
-    const transitions: Array<{ room_id: string; from: string; to: string; housekeeping_effect: string | null }> = [];
+    const transitions: Array<{
+      room_id: string;
+      from: string;
+      to: string;
+      housekeeping_effect: string | null;
+      service_type: string | null;
+      occurred_at: string | null;
+    }> = [];
 
     for (const room of rooms) {
       const from = currentValue(room, dimension);
@@ -173,11 +244,31 @@ export async function POST(request: Request) {
         return apiError(decision.message, denialStatusMap[decision.code]);
       }
 
+      const declaredType = serviceTypes[room.id];
+
+      if (declaredType !== undefined && !isHousekeepingServiceType(declaredType)) {
+        return apiError("Tipo de arrumacao invalido.", 422);
+      }
+
+      const roomOccurredAt = parseOccurredAt(occurredAts[room.id]);
+
+      if (roomOccurredAt === "invalid") {
+        return apiError("Hora informada invalida ou no futuro.", 422);
+      }
+
       transitions.push({
         room_id: room.id,
         from,
         to: toStatus,
-        housekeeping_effect: dimension === "blocking" ? decision.effects.housekeeping ?? null : null
+        housekeeping_effect: dimension === "blocking" ? decision.effects.housekeeping ?? null : null,
+        service_type: declaredType ?? null,
+        // A hora do fato viaja NO ITEM, e nao como parametro da funcao (plano 75, D8):
+        // acrescentar argumento a uma RPC exposta cria SOBRECARGA, e o PostgREST recusa toda
+        // chamada com PGRST203 quando o argumento opcional e' omitido.
+        //
+        // O ESPECIFICO VENCE O GERAL: a hora daquele apartamento, se houver, e senao a do
+        // lote. E' o que permite lancar dez quartos de uma vez, cada um com a hora da folha.
+        occurred_at: (roomOccurredAt ?? loteOccurredAt)?.toISOString() ?? null
       });
     }
 
@@ -194,6 +285,34 @@ export async function POST(request: Request) {
       // tela deve recarregar e mostrar o estado real em vez de repetir cegamente.
       if (typeof rpcError.message === "string" && rpcError.message.includes("ROOMS_TRANSITION_STALE")) {
         return apiError("O estado de um dos apartamentos mudou. Recarregue e tente novamente.", 409);
+      }
+
+      // As recusas de REGRA da RPC viram 422, nao 500: sao pedido invalido, nao falha de
+      // infraestrutura. Casamos por MENSAGEM porque e' o acoplamento existente entre rota e
+      // RPC -- registrado como divida em docs/NAO_ALTERAR.md.
+      const message = typeof rpcError.message === "string" ? rpcError.message : "";
+
+      if (message.includes("ROOMS_TRANSITION_INSPECT_NOT_BATCHABLE")) {
+        return apiError(
+          "A vistoria e' feita um apartamento por vez: e' o registro de que voce olhou aquele quarto.",
+          422
+        );
+      }
+
+      if (message.includes("ROOMS_TRANSITION_SERVICE_TYPE_REQUIRED")) {
+        return apiError("Informe se a arrumacao foi de saida ou de permanencia.", 422);
+      }
+
+      if (message.includes("ROOMS_TRANSITION_INVALID_SERVICE_TYPE")) {
+        return apiError("Tipo de arrumacao invalido.", 422);
+      }
+
+      if (message.includes("ROOMS_TRANSITION_OCCURRED_AT_FUTURE")) {
+        return apiError("A hora informada nao pode estar no futuro.", 422);
+      }
+
+      if (message.includes("ROOMS_TRANSITION_OCCURRED_AT_BEFORE_LAST")) {
+        return apiError("A hora informada e' anterior ao ultimo lancamento deste apartamento hoje.", 422);
       }
 
       logBaseCadastroError("rooms.transition_failed", rpcError);
