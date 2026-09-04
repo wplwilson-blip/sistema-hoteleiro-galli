@@ -292,6 +292,26 @@ pontos de contato entre RPC e rota em vez de um. É aceitável porque o `detail`
 quem não o lê continua funcionando — mas entra na mesma nota do `NAO_ALTERAR`: mexer no formato
 do `detail` exige revisão dos dois lados.
 
+#### A lacuna, e por que ela é aceitável
+
+O 409 **com o campo `conflict`** não é exercitável de fora: exigiria o estado mudar **entre** o
+`SELECT` da rota e o `for update` da RPC — uma janela de milissegundos que não se provoca. É a
+mesma natureza da lacuna 16b, e o precedente vale: um teste que finge cobrir isso é pior que a
+lacuna declarada.
+
+A prova fica **dividida, com as duas metades testadas**: a RPC produz o `detail` completo (E2E,
+caso 28) e a rota o interpreta, incluindo seis formas de vir malformado (unitário 14). O que
+fica sem prova é só o **encontro dos dois na corrida real**.
+
+**E é isto que a torna aceitável — a diferença em relação ao 16b: aqui a falha é para o lado
+seguro.** `detail` ausente, vazio ou ilegível cai na mensagem genérica de antes; a governanta vê
+*"recarregue e tente novamente"*, que é **exatamente o comportamento que já existia**. Nunca fica
+pior do que era.
+
+No 16b a falha era o oposto: a requisição **pendurava até o timeout**, e o 409 nunca chegava. As
+duas lacunas parecem equivalentes por serem "a corrida não é testável", e não são — uma degrada
+para o comportamento anterior, a outra degradava para nenhum comportamento.
+
 **O que NÃO fazemos:** aplicar parcialmente o lote, gravando os nove que deram certo. O lote é
 atômico de propósito (plano 70, §6.2), e um lote meio aplicado deixa a governanta sem saber o
 que gravou — que é o estado que a transação existe para impedir.

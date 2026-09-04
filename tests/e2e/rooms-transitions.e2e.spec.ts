@@ -46,6 +46,19 @@ import {
 // nada), mas nao tem volta. Isto esta escrito aqui para ninguem se assustar.
 // -------------------------------------------------------------------------------------
 //
+// PRINCIPIO DA SUITE -- vale para todo caso novo:
+//
+//   A suite LE o estado que encontra e escolhe um alvo COMPATIVEL. Ela nunca reescreve estado
+//   alheio para montar cenario. Um caso que nao acha alvo e' um caso PULADO COM MOTIVO, nao um
+//   caso que fabrica o alvo.
+//
+// Isto nao e' preferencia de estilo. O caso 31 chegou a resetar tarefas de dias PASSADOS para
+// garantir um apartamento pendente nos tres dias -- e com isso um apartamento registrado como
+// arrumado passou a constar como NAO arrumado. A suite falsificou historico.
+//
+// E restaurar depois nao resolve: o dado fica falsificado DURANTE a execucao, que e'
+// exatamente quando outro caso poderia le-lo.
+//
 // LACUNAS DECLARADAS -- casos que NAO estao aqui, e o motivo. Nenhum deles tem teste que
 // finja cobri-lo: um teste que finge e' pior que a lacuna escrita (§11 do plano ja registrou
 // um "teste vazio por construcao" uma vez).
@@ -1042,6 +1055,8 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     const antes = await countTasksByOutcome(alvo.id);
     const pendentesAntes = antes.pending ?? 0;
     const feitasAntes = antes.done ?? 0;
+    // Retrato da trilha ANTES: o dia ja pode ter fechamentos de outras rodadas.
+    const eventosAntes = new Set((await readDayEvents(alvo.id)).map((e) => e.occurred_at));
 
     try {
       const fechar = await gov.post(`/api/base/rooms/days/${alvo.id}/close`, {
@@ -1058,21 +1073,28 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       // Fechar o dia nao desfaz trabalho feito.
       expect(depois.done ?? 0).toBe(feitasAntes);
 
+      // POR DELTA, nunca por contagem absoluta: a trilha DEVE acumular -- e' o ponto da D5, e
+      // um dia real ja tem fechamentos anteriores (a validacao manual da 092 deixou um). A
+      // versao anterior afirmava `toHaveLength(1)` sobre a trilha inteira e reprovava num dia
+      // com historia, que e' o unico tipo de dia que existe em staging.
       const trilha = await readDayEvents(alvo.id);
-      const fechamento = trilha.filter((e) => e.event === "closed");
-      expect(fechamento).toHaveLength(1);
+      const novos = trilha.filter((e) => !eventosAntes.has(e.occurred_at) && e.event === "closed");
+
+      expect(novos).toHaveLength(1);
       // A contagem VIVE no evento: reabrir devolve not_done a pending e o numero deste
       // instante seria irrecuperavel depois.
-      expect(fechamento[0].pending_count).toBe(pendentesAntes);
+      expect(novos[0].pending_count).toBe(pendentesAntes);
 
-      // IDEMPOTENCIA: fechar de novo devolve 0 e NAO cria segundo evento.
+      // IDEMPOTENCIA: fechar de novo devolve 0 e NAO acrescenta evento.
       const denovo = await gov.post(`/api/base/rooms/days/${alvo.id}/close`, {
         headers: { "content-type": "application/json" }
       });
       const corpoDenovo = (await denovo.json()) as { pendingConverted?: number };
       expect(denovo.status()).toBe(200);
       expect(corpoDenovo.pendingConverted).toBe(0);
-      expect((await readDayEvents(alvo.id)).filter((e) => e.event === "closed")).toHaveLength(1);
+
+      const depoisDoSegundo = await readDayEvents(alvo.id);
+      expect(depoisDoSegundo.filter((e) => !eventosAntes.has(e.occurred_at) && e.event === "closed")).toHaveLength(1);
     } finally {
       await reopenDayDirect(alvo.id);
     }
@@ -1136,15 +1158,36 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     }
 
     const [primeiro, segundo] = anteriores;
-    const room = rooms[4];
+
+    // ESCOLHE UM ALVO COMPATIVEL -- nao fabrica um. Ver o PRINCIPIO no cabecalho: a versao
+    // anterior resetava a tarefa dos tres dias para forcar o cenario, e com isso um
+    // apartamento registrado como arrumado em 02/09 passou a constar como nao arrumado. A
+    // suite falsificava historico para poder testar.
+    let room: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      const desfechos = await Promise.all(
+        [primeiro, segundo, hoje].map(async (dia) => (await readTask(dia.id, candidato.id)).outcome)
+      );
+
+      if (desfechos.every((outcome) => outcome === "pending")) {
+        room = candidato;
+        break;
+      }
+    }
+
+    // PULADO COM MOTIVO, nunca fabricando o alvo. Um dia em que todos os apartamentos ja
+    // tiveram desfecho e' um dia legitimo -- so' nao serve para este caso.
+    test.skip(
+      room === null,
+      "Nenhum apartamento pendente nos tres dias: a suite nao reescreve estado alheio para montar cenario."
+    );
+
+    if (!room) {
+      return;
+    }
 
     try {
-      // Garante o mesmo apartamento pendente nos tres dias.
-      for (const dia of [primeiro, segundo, hoje]) {
-        const tarefa = await readTask(dia.id, room.id);
-        await resetTaskToPending(tarefa.id);
-      }
-
       // Fecha o PRIMEIRO. A tarefa dele vira not_done e a marca desce para os dois posteriores.
       await gov.post(`/api/base/rooms/days/${primeiro.id}/close`, {
         headers: { "content-type": "application/json" }
@@ -1172,6 +1215,9 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       // E a invariante do CHECK: data e contador andam juntos.
       expect(emHojeApos2.carried_over_since === null).toBe(emHojeApos2.carried_over_days === 0);
     } finally {
+      // Reabrir devolve as `not_done` para `pending` -- o desfecho de origem do alvo era
+      // `pending`, entao a restauracao e' exata. E' o que torna esta limpeza honesta: ela so'
+      // desfaz o que o caso fez.
       for (const dia of [segundo, primeiro]) {
         const atual = (await listDays(unitId)).find((d) => d.id === dia.id);
 
