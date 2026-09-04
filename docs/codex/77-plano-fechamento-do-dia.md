@@ -135,7 +135,27 @@ Duas colunas em `housekeeping_tasks`:
   vez** nesta sequência. Nulo quando não é sobra.
 - **`carried_over_days integer`** — quantos dias a sequência já dura. Redundante com a data, e é
   de propósito: a tela e os relatórios perguntam "há quantos dias" com muito mais frequência do
-  que "desde qual data", e derivar exigiria contar dias úteis do calendário da unidade.
+  que "desde qual data", e derivar exigiria contar os dias registrados da unidade.
+
+**A DATA É A FONTE; O CONTADOR É CONVENIÊNCIA.** Dado redundante desincroniza — é sempre a mesma
+história —, então precisa existir a pergunta que diz qual dos dois está certo. A resposta é
+sempre `carried_over_since`.
+
+O contador é **recalculável**, e a consulta que o recalcula entra na VALIDACAO da 092: é a
+contagem de `housekeeping_days` daquela unidade com `service_date` entre o `carried_over_since`
+(inclusive) e o dia da tarefa (exclusive). São os **dias registrados** em que o apartamento
+passou sem ser feito — e não dias de calendário, porque um domingo que ninguém abriu não é um dia
+em que a governança deixou de arrumar.
+
+```
+carried_over_days  ==  count(housekeeping_days d2
+                             where d2.unit_id = <unidade>
+                               and d2.service_date >= tarefa.carried_over_since
+                               and d2.service_date <  dia.service_date)
+```
+
+Divergência entre os dois significa **defeito na propagação**, não dado a corrigir na mão: o
+número errado é sintoma, e a data é o que vale.
 
 **A propagação é o ponto:** ao abrir o dia, a tarefa nova copia o `carried_over_since` da tarefa
 anterior **se já houver um** — e só usa a data do dia anterior quando a sequência começa ali.
@@ -185,10 +205,18 @@ ocupantes têm o mesmo acesso, por decisão, não por omissão.
 
 Aditiva. Não altera `rooms`, `room_status_history` nem as funções da 089/090.
 
-1. **`not_done` no enum `housekeeping_task_outcome`.** `alter type … add value if not exists`.
-   **Atenção operacional:** `add value` **não pode rodar dentro de bloco de transação** em
-   versões antigas do Postgres. O arquivo separa esse comando e documenta o motivo.
-   O `CHECK` do bicondicional **não muda** — `not_done` já cai no lado "sem tipo".
+1. **`not_done` no enum `housekeeping_task_outcome`.** `alter type … add value if not exists`,
+   **em comando separado, sozinho, antes de tudo**, com o motivo escrito no arquivo:
+   `add value` **não roda dentro de bloco de transação** em versões mais antigas do Postgres —
+   e é exatamente o tipo de coisa que falha no SQL Editor, como a 089 falhou.
+
+   **NÃO É REVERSÍVEL, e o ROLLBACK precisa dizer isso:** não existe `drop value` num enum do
+   Postgres. Desfeito todo o resto da 092, `not_done` **permanece no tipo para sempre**. Isso
+   **não impede o rollback** — um valor de enum sem nenhuma linha usando não faz mal nenhum —,
+   mas fica escrito para ninguém se assustar ao ver o valor sobrevivendo ao desfazimento.
+
+   O `CHECK` do bicondicional **não muda** — `not_done` já cai no lado "sem tipo", o que é
+   confirmação de que a regra da D2.1 do plano 75 estava bem formulada.
 
 2. **`public.housekeeping_day_events`** (D5): `housekeeping_day_id` FK not null, `event`
    (`opened` | `closed` | `reopened`), `occurred_at`, `actor_id`, `pending_count` (nulo fora de
@@ -234,6 +262,40 @@ antes da entrega.
 rota e E2E fecham **antes** de existir interface. Um defeito de gravação descoberto com a tela
 pronta vira "problema de tela", e a investigação começa no lugar errado.
 
+### 4.1 O 409 precisa dizer QUAL apartamento divergiu
+
+A D7 diz que a tela trata 409 como caso normal. Está certo e é **incompleto**: hoje a rota
+responde *"O estado de um dos apartamentos mudou. Recarregue e tente novamente."* — e nada mais.
+
+Numa manhã com duas ocupantes operando ao mesmo tempo, a governanta lança dez apartamentos, **o
+lote inteiro aborta**, ela perde os outros nove e **não sabe qual dos dez causou**. Refazer o
+corredor às cegas é pior que o erro. "Tratar como caso normal" sem essa informação é apenas
+"mostrar erro genérico e mandar recomeçar", que é o que já acontece.
+
+**A informação existe e é descartada.** Quando a RPC levanta `ROOMS_TRANSITION_STALE`, ela está
+**sob o lock** e tem `v_room_id`, `v_from` (o que a rota esperava) e `v_current` (o que está lá
+agora). Hoje nada disso viaja.
+
+#### Como carregar sem quebrar o padrão de exceção
+
+`raise exception … using errcode = …, detail = …`. O `detail` é campo próprio do erro do
+Postgres, chega ao PostgREST e aparece em `error.details` no supabase-js — **ao lado** da
+mensagem, sem alterá-la. Nenhuma das travas existentes muda de forma.
+
+O `detail` vai como JSON (`room_id`, `expected`, `current`), a rota o interpreta e responde 409
+com o apartamento e o estado real. **Interpretação defensiva:** `detail` ausente ou ilegível cai
+na mensagem genérica de hoje — o erro nunca fica pior do que já era.
+
+**Custo declarado, e é um acoplamento novo:** hoje a rota casa o erro por **mensagem**
+(dívida já registrada em `docs/NAO_ALTERAR.md`); passa a ler também o **`detail`**. São dois
+pontos de contato entre RPC e rota em vez de um. É aceitável porque o `detail` é **aditivo** —
+quem não o lê continua funcionando — mas entra na mesma nota do `NAO_ALTERAR`: mexer no formato
+do `detail` exige revisão dos dois lados.
+
+**O que NÃO fazemos:** aplicar parcialmente o lote, gravando os nove que deram certo. O lote é
+atômico de propósito (plano 70, §6.2), e um lote meio aplicado deixa a governanta sem saber o
+que gravou — que é o estado que a transação existe para impedir.
+
 ---
 
 ## 5. Testes (§7)
@@ -250,6 +312,9 @@ Puros, espelhando as regras do SQL como `backfillRoomState` espelha o backfill d
 5. **Só `not_done` carrega:** `declined` e `cancelled` não viram sobra.
 6. **`carried_over_since` nulo ⟺ `carried_over_days = 0`**, nos dois sentidos.
 7. **Fechar é idempotente** e reabrir um dia aberto é no-op.
+8. **O `detail` do 409 (§4.1):** a rota extrai `room_id` e `current` de um `detail` bem formado;
+   e cai na mensagem genérica quando ele vem ausente, vazio ou ilegível — o erro nunca fica pior
+   do que já era.
 
 E, na suíte E2E (que hoje roda 26/26): fechar com pendência devolvendo a contagem, reabrir
 trazendo só as `not_done`, e o evento registrado nos dois casos.

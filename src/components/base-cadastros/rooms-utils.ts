@@ -697,7 +697,16 @@ export const HOUSEKEEPING_SERVICE_TYPE_VALUES = ["checkout", "stayover"] as cons
 export type HousekeepingServiceType = (typeof HOUSEKEEPING_SERVICE_TYPE_VALUES)[number];
 
 /** public.housekeeping_task_outcome. */
-export const HOUSEKEEPING_TASK_OUTCOME_VALUES = ["pending", "done", "declined", "cancelled"] as const;
+export const HOUSEKEEPING_TASK_OUTCOME_VALUES = [
+  "pending",
+  "done",
+  "declined",
+  "cancelled",
+  // Plano 77, D2: o dia FECHOU e este apartamento ficou sem arrumar. Separa isso de
+  // `pending`, que e' "ainda nao foi feito porque o dia esta aberto" -- sem a distincao, a
+  // fila de hoje se mistura com a sobra de ontem.
+  "not_done"
+] as const;
 export type HousekeepingTaskOutcome = (typeof HOUSEKEEPING_TASK_OUTCOME_VALUES)[number];
 
 /** public.housekeeping_decline_origin. */
@@ -717,7 +726,8 @@ export const housekeepingTaskOutcomeLabelMap: Record<HousekeepingTaskOutcome, st
   pending: "Pendente",
   done: "Concluída",
   declined: "Dispensada",
-  cancelled: "Cancelada"
+  cancelled: "Cancelada",
+  not_done: "Não arrumada"
 };
 
 export const housekeepingDeclineOriginLabelMap: Record<HousekeepingDeclineOrigin, string> = {
@@ -925,4 +935,135 @@ export function housekeepingServiceDate(at: Date, timeZone: string): string {
     month: "2-digit",
     day: "2-digit"
   }).format(at);
+}
+
+// =========================================================================================
+// FECHAMENTO DO DIA, SOBRA E O CONFLITO QUE DIZ QUAL (plano docs/codex/77, migration 092)
+//
+// Espelho das regras que a 092 aplica dentro da transacao -- mesma relacao que
+// `backfillRoomState` tem com o backfill da 089. Existem aqui para serem testadas no runner
+// puro; a autoridade continua sendo o SQL.
+// =========================================================================================
+
+/**
+ * Fechar o dia converte `pending` em `not_done` -- e so' isso.
+ *
+ * `not_done` separa "ficou sem arrumar e o dia fechou" de "esta pendente porque o dia ainda
+ * esta aberto". Sem essa distincao, a fila de hoje se mistura com a sobra de ontem, e um quarto
+ * que ficou sem arrumar e' justamente o que a governanta quer ver amanha.
+ */
+export function taskOutcomeAfterDayClose(current: HousekeepingTaskOutcome): HousekeepingTaskOutcome {
+  return current === "pending" ? "not_done" : current;
+}
+
+/**
+ * Reabrir o dia devolve `not_done` a `pending` -- e SO' ela.
+ *
+ * A assimetria com o desbloqueio (que ressuscita so' `cancelled`, nunca `done` nem `declined`)
+ * e' justificada, e a razao esta nas NATUREZAS, nao na regra:
+ *
+ *   `done` e `declined` sao FATOS CONSUMADOS -- alguem arrumou, ou o hospede recusou. Nem
+ *   reabrir o dia nem desbloquear o quarto desfazem qualquer um dos dois.
+ *
+ *   `not_done` NAO e' fato consumado: e' o registro de que O DIA ACABOU ANTES DO TRABALHO.
+ *   Reabrir o dia desfaz exatamente essa premissa -- nao apaga um fato, corrige uma conclusao
+ *   que deixou de valer.
+ */
+export function taskOutcomeAfterDayReopen(current: HousekeepingTaskOutcome): HousekeepingTaskOutcome {
+  return current === "not_done" ? "pending" : current;
+}
+
+/** Apenas `not_done` vira sobra. Dispensa nao e' sobra; cancelamento tampouco. */
+export function carriesOverToNextDay(previous: HousekeepingTaskOutcome): boolean {
+  return previous === "not_done";
+}
+
+export type CarryOver = { since: string; days: number } | null;
+
+/**
+ * A sobra ACUMULA: propaga a data ORIGINAL da sequencia, nunca a de ontem.
+ *
+ * `previousSince` e' o `carried_over_since` da tarefa anterior (nulo quando a sequencia comeca
+ * agora); `previousDate` e' a data do dia anterior; `registeredDays` e' quantos dias
+ * REGISTRADOS existem entre a origem e hoje.
+ *
+ * Copiar a data de ontem SEMPRE seria o "reset" que a D6 recusa: um quarto sem arrumar desde
+ * sexta apareceria no domingo como "sobra de sabado", e a historia toda se perderia. E' o mesmo
+ * motivo pelo qual `housekeeping_changed_at` existe: "Sujo" sozinho nao conta a historia.
+ *
+ * Dias REGISTRADOS, e nao de calendario: um domingo que ninguem abriu nao e' um dia em que a
+ * governanca deixou de arrumar.
+ */
+export function nextCarryOver(
+  previousOutcome: HousekeepingTaskOutcome,
+  previousSince: string | null,
+  previousDate: string,
+  registeredDays: number
+): CarryOver {
+  if (!carriesOverToNextDay(previousOutcome)) {
+    return null;
+  }
+
+  return { since: previousSince ?? previousDate, days: registeredDays };
+}
+
+/** `carried_over_since` nulo SE E SOMENTE SE `carried_over_days` for zero (CHECK da 092). */
+export function isCarryOverShapeValid(since: string | null, days: number): boolean {
+  return since === null ? days === 0 : days > 0;
+}
+
+// ------------------------------------------------------------------ o conflito (409)
+
+export type TransitionConflict = {
+  roomId: string;
+  expected: string;
+  current: string;
+  dimension: string;
+};
+
+/**
+ * Le o `detail` do `ROOMS_TRANSITION_STALE` (plano 77, §4.1).
+ *
+ * POR QUE ISTO EXISTE: o lote inteiro aborta, e sem saber QUAL apartamento divergiu a
+ * governanta perde os outros nove lancamentos e refaz o corredor as cegas. Numa manha com duas
+ * ocupantes operando ao mesmo tempo -- que a D7 diz que vira rotina --, "recarregue e tente
+ * novamente" nao e' resposta.
+ *
+ * DEFENSIVA DE PROPOSITO: `detail` ausente, vazio, nao-JSON ou sem os campos esperados devolve
+ * `null`, e a rota cai na mensagem generica de antes. O erro nunca fica PIOR do que ja era --
+ * o que importa quando o que se le vem de outra camada.
+ */
+export function parseTransitionConflict(detail: unknown): TransitionConflict | null {
+  if (typeof detail !== "string" || !detail.trim()) {
+    return null;
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(detail);
+  } catch {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  const bag = parsed as Record<string, unknown>;
+  const roomId = bag.room_id;
+  const current = bag.current;
+
+  // `room_id` e `current` sao o minimo util: sem os dois, a tela nao consegue apontar o
+  // apartamento nem mostrar o estado real, e a mensagem generica e' mais honesta.
+  if (typeof roomId !== "string" || !roomId || typeof current !== "string" || !current) {
+    return null;
+  }
+
+  return {
+    roomId,
+    current,
+    expected: typeof bag.expected === "string" ? bag.expected : "",
+    dimension: typeof bag.dimension === "string" ? bag.dimension : ""
+  };
 }
