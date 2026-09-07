@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, LogOut } from "lucide-react";
+import { KeyRound, LogOut, Menu } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { ActiveUnitSwitcher } from "@/components/layout/active-unit-switcher";
 import { ChangePasswordForm } from "@/components/auth/change-password-form";
 import { useAppStore } from "@/store/app-store";
 
-export function AppHeader() {
+export function AppHeader({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const user = useAppStore((state) => state.user);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const router = useRouter();
@@ -22,8 +22,32 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/95 px-4 py-3 shadow-sm shadow-primary/5 backdrop-blur sm:flex-nowrap lg:px-6 xl:px-8">
-      <div className="min-w-0 flex-1">
-        <ActiveUnitSwitcher />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {/*
+          O BOTAO DE MENU (plano docs/codex/73). `lg:hidden` de proposito: acima de 1024px a
+          barra lateral esta la, e o botao NAO PODE EXISTIR -- e' o que o teste 2 do §7 afirma
+          nos dois sentidos, e o que garante que o desktop nao mudou (D4).
+
+          `h-11 w-11` (44px) nesta INSTANCIA, e nao na variante `icon` do Button: aquela
+          variante tem 341 usos em 54 arquivos, e mexer nela mudaria a densidade de 34 telas que
+          ninguem esta revisando (D3).
+        */}
+        {onOpenMenu ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 shrink-0 lg:hidden"
+            onClick={onOpenMenu}
+            aria-label="Abrir menu"
+            data-testid="abrir-menu"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        ) : null}
+
+        <div className="min-w-0 flex-1">
+          <ActiveUnitSwitcher />
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">

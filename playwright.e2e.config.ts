@@ -71,8 +71,36 @@ export default defineConfig({
     { name: "setup", testMatch: /auth\.setup\.ts$/ },
     {
       name: "chromium",
+      // A casca abaixo de 1024px tem projeto proprio (abaixo); este roda todo o RESTO.
       testMatch: /.*\.e2e\.spec\.ts$/,
+      testIgnore: /shell-mobile\.e2e\.spec\.ts$/,
       use: { ...devices["Desktop Chrome"], trace: "retain-on-failure" },
+      dependencies: ["setup"]
+    },
+    // ------------------------------------------------------------------ casca abaixo de 1024px
+    //
+    // POR QUE PROJETOS PROPRIOS (plano docs/codex/73, §5): os dois configs do Playwright rodam
+    // em 1440x1200. Se a gaveta quebrar, NINGUEM VE -- e o modo de falha aqui nao e' logica, e'
+    // CSS e DOM: z-index atras do header, foco preso, gaveta que nao fecha ao navegar. Teste
+    // unitario nao pega nada disso.
+    //
+    // Ja pagamos tres vezes por defeito que so' a execucao real pegou: o organization_id da
+    // 089, o errcode da 090 e o PGRST203 da 091.
+    //
+    // DUAS ORIENTACOES, porque os tablets ainda nao foram comprados e a decisao e' nao amarrar
+    // a compra a uma limitacao que nos mesmos criariamos.
+    {
+      name: "tablet-retrato",
+      testMatch: /shell-mobile\.e2e\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 834, height: 1112 }, trace: "retain-on-failure" },
+      dependencies: ["setup"]
+    },
+    {
+      name: "tablet-paisagem",
+      // 1000px e' de proposito: abaixo do corte de 1024, para exercitar a faixa do tablet
+      // pequeno DEITADO -- que e' onde um corte por orientacao (e nao por largura) erraria.
+      testMatch: /shell-mobile\.e2e\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1000, height: 768 }, trace: "retain-on-failure" },
       dependencies: ["setup"]
     }
   ]
