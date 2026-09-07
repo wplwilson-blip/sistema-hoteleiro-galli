@@ -182,7 +182,7 @@ ou três que reprovaram.
 
 Nesta fatia entra **a rota já em lote**. A tela que a consome é o **plano 71**.
 
-### D4 — Camareira responsável — **RETIRADO, vira o plano 72**
+### D4 — Camareira responsável — **RETIRADO, vira o plano 76**
 A proposta original (escolher a camareira na transição para `cleaning`) está descartada: seria
 115 confirmações diárias de uma decisão tomada uma vez de manhã. Ela deixaria em branco, e a
 coluna viraria campo órfão.
@@ -194,9 +194,9 @@ vistoria, derivando da escala daquela data.
 
 Nesta fatia entra só o que a 72 precisa encontrar pronto: `housekeeping_employee_id uuid`
 **nullable em `room_status_history`** — não em `rooms`, porque a pergunta é histórica e uma
-coluna em `rooms` é sobrescrita no dia seguinte. Fica nulo até o plano 72.
+coluna em `rooms` é sobrescrita no dia seguinte. Fica nulo até o plano 76.
 
-Notas para o plano 72 não nascer torto:
+Notas para o plano 76 não nascer torto:
 - A folha sai **na ordem do corredor** — andar, ala, número. `groupRoomsByFloorAndBlock`
   (`rooms-utils.ts`) já produz essa ordem.
 - Espaço para a camareira anotar à mão: ocorrência, achados e perdidos, horário. A governanta
@@ -357,7 +357,7 @@ vendabilidade. Tudo passa por `rooms-utils.ts`.
 - Reserva, check-in, check-out, tarifa. Continua não sendo PMS.
 - UI de ocupação (D1).
 - **Tela de Governança — plano 71.**
-- **Escala de arrumação e folha impressa — plano 72.**
+- **Escala de arrumação e folha impressa — plano 76.**
 - **Navegação mobile — plano 73.**
 - Achados e perdidos, checklist de limpeza, chamado de manutenção — fatias próprias. Esta
   entrega **o estado**; as rotinas em cima dele vêm depois.

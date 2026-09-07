@@ -8,7 +8,13 @@ import {
   isDeclineShapeValid,
   isServiceComplete,
   isTaskShapeValid,
+  carriesOverToNextDay,
   closesTaskAtClean,
+  isCarryOverShapeValid,
+  nextCarryOver,
+  parseTransitionConflict,
+  taskOutcomeAfterDayClose,
+  taskOutcomeAfterDayReopen,
   housekeepingServiceDate,
   maxRoomsPerTransition,
   serviceTypeImpliedBy,
@@ -127,7 +133,7 @@ test("5b - o bicondicional: tipo se e somente se concluida", () => {
 
   // Trabalho NAO feito nunca tem. Gravar `stayover` numa dispensa faria o relatorio do mes
   // contar como permanencia realizada um quarto onde ninguem entrou.
-  for (const outcome of ["pending", "declined", "cancelled"] as const) {
+  for (const outcome of ["pending", "declined", "cancelled", "not_done"] as const) {
     expect(isTaskShapeValid(outcome, null)).toBe(true);
     expect(isTaskShapeValid(outcome, "stayover")).toBe(false);
     expect(isTaskShapeValid(outcome, "checkout")).toBe(false);
@@ -145,8 +151,18 @@ test("5b - o bicondicional: tipo se e somente se concluida", () => {
     }
   }
 
-  // done x 2 tipos + 3 desfechos x null = 5.
-  expect(validas).toBe(5);
+  // DERIVADO, e nao fixo: `done` com cada tipo, mais um desfecho x null para cada um dos
+  // demais. Fixar o numero faria este teste quebrar a cada valor novo do enum -- foi o que
+  // aconteceu quando `not_done` entrou (plano 77, D2) --, e quebrar por contagem esconde o que
+  // o teste realmente protege, que e' NENHUMA combinacao fora do bicondicional passar.
+  expect(validas).toBe(
+    HOUSEKEEPING_SERVICE_TYPE_VALUES.length + (HOUSEKEEPING_TASK_OUTCOME_VALUES.length - 1)
+  );
+
+  // E o valor novo esta do lado certo: trabalho NAO feito nunca tem tipo.
+  expect(HOUSEKEEPING_TASK_OUTCOME_VALUES).toContain("not_done");
+  expect(isTaskShapeValid("not_done", null)).toBe(true);
+  expect(isTaskShapeValid("not_done", "checkout")).toBe(false);
 });
 
 test("5c - o atalho tipa sozinho: chegar em inspected e' saida por definicao", () => {
@@ -271,4 +287,90 @@ test("10 - data operacional e' a do fuso da unidade, nao a do servidor", () => {
   // E o fuso e' por UNIDADE: o mesmo instante em outro fuso da outra data. E' o que o SaaS vai
   // precisar no primeiro hotel fora do horario de Brasilia.
   expect(housekeepingServiceDate(noite, "UTC")).toBe("2026-09-03");
+});
+
+// ================================================================== plano 77 (migration 092)
+
+test("9 - fechar o dia converte pending em not_done, e so isso", () => {
+  expect(taskOutcomeAfterDayClose("pending")).toBe("not_done");
+
+  // Nada mais e' tocado: fechar o dia nao desfaz trabalho feito nem decisao do hospede.
+  for (const outcome of ["done", "declined", "cancelled", "not_done"] as const) {
+    expect(taskOutcomeAfterDayClose(outcome)).toBe(outcome);
+  }
+});
+
+test("10 - reabrir devolve SO as not_done, e a assimetria com o desbloqueio e deliberada", () => {
+  expect(taskOutcomeAfterDayReopen("not_done")).toBe("pending");
+
+  for (const outcome of ["done", "declined", "cancelled", "pending"] as const) {
+    expect(taskOutcomeAfterDayReopen(outcome)).toBe(outcome);
+  }
+
+  // A assimetria, lado a lado: desbloquear ressuscita `cancelled` e NAO `not_done`; reabrir o
+  // dia ressuscita `not_done` e NAO `cancelled`. As naturezas sao diferentes, nao a regra --
+  // `done` e `declined` sao fatos consumados; `not_done` e' a conclusao de que o dia acabou
+  // antes do trabalho, e reabrir desfaz essa premissa.
+  expect(taskOutcomeAfterUnblock("cancelled")).toBe("pending");
+  expect(taskOutcomeAfterUnblock("not_done")).toBe("not_done");
+  expect(taskOutcomeAfterDayReopen("cancelled")).toBe("cancelled");
+});
+
+test("11 - a sobra ACUMULA: a data original propaga, nao a de ontem", () => {
+  // Sexta: o quarto fica sem arrumar. Sabado herda a data de SEXTA.
+  const sabado = nextCarryOver("not_done", null, "2026-09-04", 1);
+  expect(sabado).toEqual({ since: "2026-09-04", days: 1 });
+
+  // Domingo herda a data de SEXTA de novo -- nao a de sabado. Este e' O teste que trava o
+  // "reset": se alguem copiar a data do dia anterior em vez de propagar a original, ele quebra.
+  const domingo = nextCarryOver("not_done", sabado!.since, "2026-09-05", 2);
+  expect(domingo!.since).toBe("2026-09-04");
+  expect(domingo!.since).not.toBe("2026-09-05");
+  expect(domingo!.days).toBe(2);
+
+  // E a contagem cresce enquanto a data nao muda -- "sobra desde sexta" em vez de "sobra de
+  // ontem", que e' o mesmo raciocinio do housekeeping_changed_at.
+  expect(domingo!.days).toBeGreaterThan(sabado!.days);
+});
+
+test("12 - so not_done carrega: dispensa e cancelamento nao sao sobra", () => {
+  expect(carriesOverToNextDay("not_done")).toBe(true);
+
+  // Dispensa nao e' sobra: nada ficou por fazer -- o hospede recusou. Cancelamento tampouco:
+  // o apartamento saiu de operacao.
+  for (const outcome of ["done", "declined", "cancelled", "pending"] as const) {
+    expect(carriesOverToNextDay(outcome)).toBe(false);
+    expect(nextCarryOver(outcome, "2026-09-04", "2026-09-05", 3)).toBeNull();
+  }
+});
+
+test("13 - carried_over_since nulo se e somente se carried_over_days zero", () => {
+  expect(isCarryOverShapeValid(null, 0)).toBe(true);
+  expect(isCarryOverShapeValid("2026-09-04", 2)).toBe(true);
+
+  // Sobra sem data seria sobra que nao sabe desde quando -- o defeito que a D6 evita.
+  expect(isCarryOverShapeValid(null, 2)).toBe(false);
+  expect(isCarryOverShapeValid("2026-09-04", 0)).toBe(false);
+});
+
+test("14 - o 409 diz qual apartamento, e falha para o generico quando nao da", () => {
+  const bom = parseTransitionConflict(
+    JSON.stringify({ room_id: "abc", expected: "clean", current: "dirty", dimension: "housekeeping" })
+  );
+
+  expect(bom).toEqual({ roomId: "abc", expected: "clean", current: "dirty", dimension: "housekeeping" });
+
+  // DEFENSIVA: qualquer coisa que nao sirva cai no generico. O erro nunca fica PIOR do que ja
+  // era -- e o que se le aqui vem de outra camada.
+  expect(parseTransitionConflict(undefined)).toBeNull();
+  expect(parseTransitionConflict("")).toBeNull();
+  expect(parseTransitionConflict("nao e json")).toBeNull();
+  expect(parseTransitionConflict("[1,2,3]")).toBeNull();
+  expect(parseTransitionConflict(JSON.stringify({ current: "dirty" }))).toBeNull();
+  expect(parseTransitionConflict(JSON.stringify({ room_id: "abc" }))).toBeNull();
+
+  // Campos secundarios ausentes NAO invalidam: room_id e current sao o minimo util.
+  const parcial = parseTransitionConflict(JSON.stringify({ room_id: "abc", current: "dirty" }));
+  expect(parcial?.roomId).toBe("abc");
+  expect(parcial?.expected).toBe("");
 });

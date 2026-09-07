@@ -5,6 +5,7 @@ import {
   isBatchAllowed,
   isHousekeepingServiceType,
   isRoomStateDimension,
+  parseTransitionConflict,
   validateOccurredAt,
   type BlockingStatus,
   type HousekeepingStatus,
@@ -284,6 +285,27 @@ export async function POST(request: Request) {
       // gravado (a RPC e' transacional). 409 e nao 500: nao e' falha, e' concorrencia, e a
       // tela deve recarregar e mostrar o estado real em vez de repetir cegamente.
       if (typeof rpcError.message === "string" && rpcError.message.includes("ROOMS_TRANSITION_STALE")) {
+        // O 409 DIZ QUAL APARTAMENTO (plano 77, §4.1). O lote inteiro aborta -- e sem essa
+        // informacao a governanta perde os outros nove lancamentos e nao sabe qual dos dez
+        // causou. Numa manha com duas ocupantes operando ao mesmo tempo (77, D7), refazer o
+        // corredor as cegas e' pior que o erro.
+        //
+        // O `detail` vem da RPC, que tem o apartamento e o estado real SOB O LOCK.
+        // `parseTransitionConflict` e' defensiva: detail ausente ou ilegivel cai na mensagem
+        // generica de antes, e o erro nunca fica pior do que ja era.
+        const conflito = parseTransitionConflict((rpcError as { details?: unknown }).details);
+
+        if (conflito) {
+          return NextResponse.json(
+            {
+              ok: false,
+              message: "O estado de um apartamento mudou enquanto voce lancava. Nada foi gravado.",
+              conflict: conflito
+            },
+            { status: 409 }
+          );
+        }
+
         return apiError("O estado de um dos apartamentos mudou. Recarregue e tente novamente.", 409);
       }
 

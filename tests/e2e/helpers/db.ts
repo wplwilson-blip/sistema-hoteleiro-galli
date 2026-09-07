@@ -251,7 +251,7 @@ export async function callTransitionRpc(params: {
   dimension: string;
   reason?: string | null;
   actorId?: string | null;
-}): Promise<{ data: unknown; error: { message: string } | null }> {
+}): Promise<{ data: unknown; error: { message: string; details: string | null } | null }> {
   const { data, error } = await e2eDb().rpc("rooms_apply_transition", {
     p_transitions: params.transitions,
     p_dimension: params.dimension,
@@ -259,7 +259,14 @@ export async function callTransitionRpc(params: {
     p_actor_id: params.actorId ?? null
   });
 
-  return { data, error: error ? { message: error.message } : null };
+  // `details` carrega o `detail` do raise -- e' por ele que o STALE diz QUAL apartamento
+  // divergiu (plano 77, §4.1).
+  return {
+    data,
+    error: error
+      ? { message: error.message, details: (error as { details?: string | null }).details ?? null }
+      : null
+  };
 }
 
 // ---------------------------------------------------------------- o dia da governanca (091)
@@ -272,6 +279,8 @@ export type HousekeepingTaskRow = {
   outcome: string;
   decline_origin: string | null;
   completed_at: string | null;
+  carried_over_since: string | null;
+  carried_over_days: number;
 };
 
 /**
@@ -330,7 +339,9 @@ export async function lastTransitionAt(roomId: string): Promise<Date | null> {
 export async function readTask(dayId: string, roomId: string): Promise<HousekeepingTaskRow> {
   const { data, error } = await e2eDb()
     .from("housekeeping_tasks")
-    .select("id, housekeeping_day_id, room_id, service_type, outcome, decline_origin, completed_at")
+    .select(
+      "id, housekeeping_day_id, room_id, service_type, outcome, decline_origin, completed_at, carried_over_since, carried_over_days"
+    )
     .eq("housekeeping_day_id", dayId)
     .eq("room_id", roomId)
     .single();
@@ -447,3 +458,91 @@ export function probeTransitionRpcAsAnon(): Promise<RpcAnonProbe> {
   });
 }
 
+// ---------------------------------------------------------------- fechamento do dia (092)
+
+export type DayRow = { id: string; service_date: string; closed_at: string | null };
+
+/** Todos os dias da unidade, mais antigo primeiro. */
+export async function listDays(unitId: string): Promise<DayRow[]> {
+  const { data, error } = await e2eDb()
+    .from("housekeeping_days")
+    .select("id, service_date, closed_at")
+    .eq("unit_id", unitId)
+    .order("service_date", { ascending: true });
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao listar os dias da unidade ${unitId}: ${error.message}`);
+  }
+
+  return (data ?? []) as DayRow[];
+}
+
+export type DayEventRow = {
+  event: string;
+  pending_count: number | null;
+  note: string | null;
+  occurred_at: string;
+};
+
+/** A trilha do dia, mais antigo primeiro. E' o que prova que o fechamento sobrevive a reabertura. */
+export async function readDayEvents(dayId: string): Promise<DayEventRow[]> {
+  const { data, error } = await e2eDb()
+    .from("housekeeping_day_events")
+    .select("event, pending_count, note, occurred_at")
+    .eq("housekeeping_day_id", dayId)
+    .order("occurred_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao ler a trilha do dia ${dayId}: ${error.message}`);
+  }
+
+  return (data ?? []) as DayEventRow[];
+}
+
+/** Contagem de tarefas por desfecho num dia. */
+export async function countTasksByOutcome(dayId: string): Promise<Record<string, number>> {
+  const { data, error } = await e2eDb()
+    .from("housekeeping_tasks")
+    .select("outcome")
+    .eq("housekeeping_day_id", dayId);
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao contar tarefas do dia ${dayId}: ${error.message}`);
+  }
+
+  return (data ?? []).reduce<Record<string, number>>((acc, row) => {
+    const key = (row as { outcome: string }).outcome;
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+/**
+ * Limpa a marca de sobra de um dia inteiro.
+ *
+ * Escrita por service role, como `resetTaskToPending`: nao ha rota que apague sobra, e nem
+ * deveria haver -- a sobra e' derivada do trabalho, nao editada a mao. E' limpeza de teste.
+ */
+export async function clearCarryOver(dayId: string): Promise<void> {
+  const { error } = await e2eDb()
+    .from("housekeeping_tasks")
+    .update({ carried_over_since: null, carried_over_days: 0 })
+    .eq("housekeeping_day_id", dayId);
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao limpar a sobra do dia ${dayId}: ${error.message}`);
+  }
+}
+
+/** Reabre um dia por service role -- restauracao de teste, fora do caminho da rota. */
+export async function reopenDayDirect(dayId: string): Promise<void> {
+  const { error } = await e2eDb().rpc("housekeeping_reopen_day", {
+    p_day_id: dayId,
+    p_actor_id: null,
+    p_note: "[E2E] restauracao do estado anterior ao teste."
+  });
+
+  if (error) {
+    throw new Error(`[e2e][db] Falha ao reabrir o dia ${dayId}: ${error.message}`);
+  }
+}
