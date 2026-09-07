@@ -128,6 +128,27 @@ na casca chega lá** (§1.3a).
 
 **A gaveta usa 44px. A barra lateral do desktop continua com 40px.**
 
+#### Isto NÃO toca no `button.tsx` — e a distinção é de alcance, não de gosto
+
+O item de navegação **não é** o componente `Button`: é um `<Link>` com classes próprias
+(`flex h-10 items-center …`). São coisas separadas, e os números explicam por que isso importa:
+
+| O que se mexe | Alcance |
+| --- | --- |
+| Item de navegação (esta decisão) | **1 componente**, só na casca |
+| `button.tsx` (`min-h-10`, `sm:min-h-9`) | **341 usos em 54 arquivos** — 258 deles `size="sm"` |
+
+Mudar a variante do `Button` mudaria 341 botões, inclusive os de ação por linha em tabela, onde
+8px a mais alteram a densidade de 34 telas. **Isso não é casca, é sistema de design, e seria
+fatia própria.**
+
+**Exceção declarada, de uma instância:** o botão de menu no header **é** um `Button`
+(`size="icon"`, 40px). Ele recebe 44px por `className` **naquela instância** — não na variante.
+Uma instância, não 341.
+
+**Alternativa descartada: crescer em todo lugar.** Uniforme e tentador. Custa mudança visual em
+34 telas que ninguém está revisando, para resolver um problema que só existe onde há dedo.
+
 **Por que não subir os dois.** Subir 4px em cada item multiplica por um menu que, no
 `SUPER_ADMIN`, tem dezenas de linhas — mais rolagem para quem hoje não tem problema nenhum.
 É a §4: **mudança de layout não pode piorar quem já usa**. São contextos de entrada diferentes
@@ -239,10 +260,27 @@ escapam porque trazem o próprio `overflow-x-auto`.
 `overflow-x-auto` mudaria o comportamento de **34 telas de conteúdo** de uma vez, e nenhuma delas
 está sendo revisada aqui. O risco de mudar em silêncio o layout de tudo é maior que o benefício.
 
-**Vira restrição herdada pelo plano 71, e ela é dura:** a grade de 115 apartamentos **precisa
-trazer o próprio container de rolagem**, como as 34 tabelas fazem. Se nascer sem, será cortada —
-sem erro, sem aviso, sem rolagem. Exatamente o modo de falha silenciosa que esta linha de
-trabalho já encontrou três vezes no banco, agora na tela.
+### 6.1 A regra, escrita para quem vai construir
+
+> **Toda tela nova que possa exceder a largura da viewport traz o seu próprio container
+> rolável.** O `<main>` corta.
+>
+> **Não é erro, não é log, não é aviso: o conteúdo simplesmente não existe além da borda.**
+
+A grade de 115 apartamentos do plano **71 é exatamente esse caso** — e é o tipo de armadilha que
+só aparece meses depois, quando alguém abre num tablet e não entende por que faltam apartamentos.
+
+O padrão a copiar é o que as 34 tabelas já usam:
+
+```
+<div className="max-w-full overflow-x-auto …">
+  <conteúdo largo />
+</div>
+```
+
+É o mesmo modo de falha silenciosa que esta linha de trabalho encontrou três vezes no banco — o
+`organization_id`, o `errcode`, o `PGRST203` —, agora na tela. Nenhum deles avisava; todos
+simplesmente não entregavam o dado.
 
 ---
 
