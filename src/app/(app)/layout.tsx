@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/layout/app-header";
+import { AppShellNav } from "@/components/layout/app-shell-nav";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppProviders } from "@/components/providers/app-providers";
 import { PasswordChangeGate } from "@/components/auth/password-change-gate";
@@ -26,7 +26,7 @@ export default async function AuthenticatedLayout({
       <div className="flex h-screen overflow-hidden bg-background">
         <AppSidebar />
         <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-          <AppHeader />
+          <AppShellNav />
           <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-5 lg:px-6 xl:px-8">{children}</main>
         </div>
       </div>
