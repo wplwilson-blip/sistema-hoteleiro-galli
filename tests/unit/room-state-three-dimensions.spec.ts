@@ -74,11 +74,24 @@ test("1 - matriz de transicao por permissao: quem registra limpeza nao vistoria"
   expect(canTransition(MANUTENCAO, "blocking", "none", "maintenance").allowed).toBe(true);
   expect(canTransition([ROOM_PERMISSIONS.housekeeping], "blocking", "none", "maintenance").allowed).toBe(false);
 
-  // Ocupacao entra SEM ESCRITOR (D1): negada para todo mundo, inclusive para quem tem tudo.
-  // Nao e' "falta tela" -- e' trava, e vale para chamada direta a rota.
+  // OCUPACAO: A TRAVA MUDOU DE NATUREZA NA FATIA 78, e este teste mudou junto -- de proposito,
+  // e nao para acomodar codigo novo.
+  //
+  // Ate' a 092 a asserção aqui era `code === "no_writer"`: a D1 do plano 70 decidiu que a
+  // coluna nasceria SEM ESCRITOR, e a ocupacao era negada para TODO MUNDO, inclusive para quem
+  // tinha tudo. A mesma D1 previu que o escritor apareceria -- e' a Recepcao (plano 78).
+  //
+  // A trava NAO CAIU: ELA ESTREITOU. Antes bloqueava por AUSENCIA de escritor, o que e' uma
+  // trava sobre um vazio -- some no dia em que o vazio e' preenchido. Agora a ocupacao e'
+  // negada a quem NAO TEM `rooms.occupancy`, e so' aceita duas formas. A governanta continua
+  // negada; o que mudou e' o MOTIVO, e o motivo novo sobrevive ao dia seguinte.
   const ocupacao = canTransition(GOVERNANTA, "occupancy", "vacant", "occupied");
   expect(ocupacao.allowed).toBe(false);
-  expect(ocupacao.allowed === false && ocupacao.code).toBe("no_writer");
+  expect(ocupacao.allowed === false && ocupacao.code).toBe("forbidden");
+
+  // E o `no_writer` CONTINUA existindo como codigo, sem ser alcancavel pela ocupacao -- ver o
+  // comentario em RoomTransitionDenialCode. Tirar o codigo e a chave dele no `denialStatusMap`
+  // da rota, e descobrir o buraco em producao, e' caro; manter custa uma linha.
 });
 
 // ---------------------------------------------------------------------------- §7.2
@@ -326,6 +339,10 @@ test("7 - allowlist FECHADA de rooms.inspect: so' os perfis da D5", () => {
     "DEPARTMENT_MANAGER",
     "LIDER_GOVERNANCA",
     "LIDER_MANUTENCAO",
+    // RECEPCAO entra na fatia 78 (migration 093): bloqueio COMERCIAL -- tirar um apartamento
+    // de venda -- e' decisao de recepcao. Continua exigindo observacao, como para todo mundo,
+    // e continua NAO dando vistoria: a lista de `inspect` logo acima nao mudou.
+    "RECEPCAO",
     // `SUPERVISOR` antes de `SUPER_ADMIN`: .sort() e' lexicografico por codigo, e "V" (0x56)
     // vem antes de "_" (0x5F).
     "SUPERVISOR",
@@ -336,4 +353,148 @@ test("7 - allowlist FECHADA de rooms.inspect: so' os perfis da D5", () => {
   // Nenhum dos perfis novos recebe `rooms.manage`: quem opera o mapa nao redefine o
   // inventario -- criterio que a 088 ja fixou ao negar `manage` ao SUPERVISOR.
   expect(Object.keys(ROOM_PERMISSION_PROFILE_GRANTS)).not.toContain("BASE:rooms.manage");
+});
+
+// =========================================================================================
+// A RECEPCAO ESCREVE A OCUPACAO (plano docs/codex/78, migration 093)
+//
+// A trava da ocupacao NAO CAIU: ELA ESTREITOU. Ate' a 092, `canTransition` negava toda
+// transicao de ocupacao com o codigo `no_writer` -- uma trava sobre um VAZIO, que some no dia
+// em que o vazio e' preenchido. Agora sao DUAS FORMAS e nada mais, e o check-out EXIGE o
+// efeito: "de ocupado para livre nao existe, tem que ir para sujo" virou regra, aqui e no
+// banco.
+//
+// Estes testes sao o espelho puro da validacao que a 093 faz na RPC. Eles NAO executam o SQL
+// -- a prova do banco sao os itens 1 a 4 da secao VALIDACAO da 093, na mao de quem aplica.
+// =========================================================================================
+
+const RECEPCAO = [ROOM_PERMISSIONS.occupancy, ROOM_PERMISSIONS.view, ROOM_PERMISSIONS.block];
+
+/**
+ * O codigo de negacao, ou `null` se a transicao foi PERMITIDA.
+ *
+ * `RoomTransitionResult` e' uniao discriminada: `code` so' existe no ramo negado. Sem este
+ * estreitamento o teste compara `undefined` com o codigo esperado e PASSA quando a transicao
+ * foi permitida -- exatamente o contrario do que ele afirma.
+ */
+function codigoDeNegacao(resultado: ReturnType<typeof canTransition>): string | null {
+  return resultado.allowed ? null : resultado.code;
+}
+
+test("78.1 - as duas formas da ocupacao passam com rooms.occupancy, e nenhuma sem ela", () => {
+  const checkIn = canTransition(RECEPCAO, "occupancy", "vacant", "occupied");
+  const checkOut = canTransition(RECEPCAO, "occupancy", "occupied", "vacant");
+
+  expect(checkIn.allowed).toBe(true);
+  expect(checkOut.allowed).toBe(true);
+
+  // A GOVERNANTA NAO MARCA OCUPACAO. E' a metade reciproca da D4: cada setor escreve numa
+  // dimensao so'. Se um dia alguem conceder `rooms.occupancy` a LIDER_GOVERNANCA, este teste
+  // continua passando -- quem quebra e' o 78.6, que assere a allowlist fechada.
+  expect(canTransition(GOVERNANTA, "occupancy", "vacant", "occupied").allowed).toBe(false);
+  expect(canTransition(GOVERNANTA, "occupancy", "occupied", "vacant").allowed).toBe(false);
+  expect(codigoDeNegacao(canTransition(SEM_PERMISSAO, "occupancy", "vacant", "occupied"))).toBe("forbidden");
+});
+
+test("78.2 - o check-out CARREGA o efeito `dirty`, e o check-in nao carrega efeito nenhum", () => {
+  const checkOut = canTransition(RECEPCAO, "occupancy", "occupied", "vacant");
+
+  if (!checkOut.allowed) {
+    throw new Error("check-out deveria ser permitido");
+  }
+
+  // O CORACAO DA FATIA. Sem esta linha o apartamento ficaria `vacant` mantendo o estado de
+  // limpeza anterior -- e se esse estado fosse `inspected`, ele seria VENDAVEL COM O QUARTO
+  // SUJO. E' o unico modo de falha que a fatia inteira existe para impedir.
+  expect(checkOut.effects).toEqual({ occupancy: "vacant", housekeeping: "dirty" });
+
+  const checkIn = canTransition(RECEPCAO, "occupancy", "vacant", "occupied");
+
+  if (!checkIn.allowed) {
+    throw new Error("check-in deveria ser permitido");
+  }
+
+  // O hospede acabou de entrar num quarto que estava arrumado: zerar a limpeza aqui diria que
+  // esta' sujo quando nao esta'.
+  expect(checkIn.effects).toEqual({ occupancy: "occupied" });
+  expect(checkIn.effects.housekeeping).toBeUndefined();
+});
+
+test("78.3 - as formas que NAO existem sao negadas", () => {
+  // A allowlist e' fechada por construcao: o que nao esta na matriz e' negado. Uma denylist
+  // deixaria `vacant -> vacant` passar por esquecimento.
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "occupancy", "vacant", "vacant"))).toBe("invalid_transition");
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "occupancy", "occupied", "occupied"))).toBe("invalid_transition");
+
+  // Valor que nao pertence a dimensao -- `dirty` e' limpeza, nunca ocupacao.
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "occupancy", "occupied", "dirty"))).toBe("invalid_dimension_value");
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "occupancy", "occupied", "inspected"))).toBe("invalid_dimension_value");
+});
+
+test("78.4 - a RECEPCAO nao alcanca `inspected` por nenhum caminho (D4)", () => {
+  // A fronteira que o plano 70 inteiro existiu para proteger, vista da terceira camada -- as
+  // outras duas sao a forma na RPC (a unica que vale contra chamada direta) e o perfil sem
+  // `rooms.inspect`.
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "housekeeping", "clean", "inspected"))).toBe("forbidden");
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "housekeeping", "cleaning", "inspected"))).toBe("forbidden");
+
+  // E nao alcanca nem o ciclo de limpeza: a recepcao marca ocupado, marca sujo PELO CHECK-OUT,
+  // e bloqueia. Nada mais.
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "housekeeping", "dirty", "cleaning"))).toBe("forbidden");
+  expect(codigoDeNegacao(canTransition(RECEPCAO, "housekeeping", "cleaning", "clean"))).toBe("forbidden");
+});
+
+test("78.5 - o check-out produz um estado NAO vendavel; vendavel continua exigindo vistoria", () => {
+  // O pior caso, e o motivo de a fatia existir: ocupado E vistoriado. Se o check-out mexesse
+  // so' na ocupacao, o resultado seria vago + vistoriado = VENDAVEL, com o quarto sujo.
+  const ocupadoEVistoriado: RoomState = {
+    record: "active",
+    occupancy: "occupied",
+    housekeeping: "inspected",
+    blocking: "none"
+  };
+
+  const decisao = canTransition(RECEPCAO, "occupancy", "occupied", "vacant");
+
+  if (!decisao.allowed) {
+    throw new Error("check-out deveria ser permitido");
+  }
+
+  const depois = applyRoomTransition(ocupadoEVistoriado, decisao.effects);
+
+  expect(depois).toEqual({
+    record: "active",
+    occupancy: "vacant",
+    housekeeping: "dirty",
+    blocking: "none"
+  });
+  expect(isRoomSellable(depois)).toBe(false);
+
+  // "Livre" nao e' conceito novo: e' o nosso `inspected`. O check-out devolve o apartamento
+  // para a GOVERNANCA, nao para a venda -- e quem o devolve a venda continua sendo so' quem
+  // tem `rooms.inspect`.
+  expect(isRoomSellable({ ...depois, housekeeping: "inspected" })).toBe(true);
+});
+
+test("78.6 - allowlist FECHADA de rooms.occupancy", () => {
+  const permitidos = ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.occupancy];
+
+  expect([...permitidos].sort()).toEqual(["RECEPCAO", "SUPER_ADMIN", "UNIT_DIRECTOR"]);
+
+  // LIDER_GOVERNANCA fora, e e' DECISAO: a governanta nao marca ocupacao pelo mesmo motivo que
+  // a recepcionista nao vistoria. Se alguem conceder na migration sem atualizar a matriz, ou
+  // vice-versa, este teste quebra.
+  expect(permitidos).not.toContain("LIDER_GOVERNANCA");
+  expect(permitidos).not.toContain("LIDER_MANUTENCAO");
+
+  for (const perfil of ["DEPARTMENT_MANAGER", "SUPERVISOR", "EMPLOYEE", "AUDIT", "NETWORK_MANAGER", "FINANCE"]) {
+    expect(permitidos).not.toContain(perfil);
+  }
+
+  // E o RECIPROCO, que e' a fronteira da D4 vista pela concessao: a RECEPCAO nao recebe nem
+  // vistoria nem limpeza.
+  expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.inspect]).not.toContain("RECEPCAO");
+  expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.housekeeping]).not.toContain("RECEPCAO");
+  expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.view]).toContain("RECEPCAO");
+  expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.block]).toContain("RECEPCAO");
 });

@@ -76,8 +76,30 @@ export async function PATCH(request: Request, { params }: Params) {
       return apiError("Tarefa nao encontrada.", 404);
     }
 
-    if (!(await userHasPermissionForUnit(supabase, context.session, ROOM_PERMISSIONS.housekeeping, task.unit_id))) {
-      return apiError("Voce nao tem permissao para registrar dispensa.", 403);
+    // A ORIGEM DECLARADA PRECISA CASAR COM QUEM ESTA' LANCANDO (plano 78, D6).
+    //
+    // ACHADO, e a versao honesta dele: este gate NAO estava aberto demais -- estava fechado
+    // para a Recepcao. Ate' aqui ele exigia `rooms.housekeeping` para QUALQUER dispensa,
+    // inclusive a de origem `front_desk`, que por definicao e' lancada por quem NAO opera
+    // limpeza. A dispensa da recepcao existia no modelo desde a 091 e nao tinha por onde
+    // entrar; ninguem percebeu porque nao havia perfil de recepcao para tentar.
+    //
+    // O QUE CONTINUA ERRADO SE SO' ABRIRMOS: a origem seria auto-declarada. Quem tivesse
+    // `rooms.housekeeping` poderia registrar `front_desk` -- afirmar que a recepcao avisou --
+    // e vice-versa. E a origem NAO e' um rotulo decorativo: a D3 do plano 75 a criou para
+    // responder "o aviso da recepcao esta' funcionando?". Um campo que qualquer um preenche
+    // com qualquer valor nao responde essa pergunta; ele so' parece responder.
+    //
+    // Entao o gate e' POR ORIGEM:
+    //   `front_desk`  -> `rooms.occupancy`     (a recepcao avisou antes)
+    //   `housekeeper` -> `rooms.housekeeping`  (a camareira descobriu na porta)
+    //
+    // Uma recepcionista nao registra "descoberto na porta": ela nao esteve na porta.
+    const permissaoDaOrigem =
+      body.declineOrigin === "front_desk" ? ROOM_PERMISSIONS.occupancy : ROOM_PERMISSIONS.housekeeping;
+
+    if (!(await userHasPermissionForUnit(supabase, context.session, permissaoDaOrigem, task.unit_id))) {
+      return apiError("Voce nao tem permissao para registrar dispensa com esta origem.", 403);
     }
 
     const day = task.housekeeping_days as unknown as { closed_at: string | null };

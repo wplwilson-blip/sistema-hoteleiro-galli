@@ -276,6 +276,23 @@ O lote **continua** para tudo que é fato coletivo: marcar uma ala inteira como 
 o dia, marcar `cleaning` quando a camareira começa o corredor, bloquear um andar. Esses são
 fatos sobre muitos quartos ao mesmo tempo. Vistoria não é.
 
+> **O princípio geral, encontrado depois — registrado aqui na D8 do [plano 78](78-plano-recepcao-check-in-out.md).**
+>
+> Esta decisão foi escrita como caso particular ("vistoria é individual"), e o critério que a
+> explica só apareceu quando o check-in e o check-out precisaram decidir a mesma coisa e
+> chegaram à resposta **oposta** — lote permitido:
+>
+> **Lote é proibido quando a transição afirma um ato individual de quem lança; permitido
+> quando registra um fato que aconteceu no mundo.**
+>
+> *"Eu olhei este quarto"* é afirmação sobre quem lança, e um botão que libera vinte é um botão
+> que libera vinte sem olhar. Uma excursão que desocupa vinte apartamentos às 9h **aconteceu**,
+> independentemente de quem digita — e obrigar vinte chamadas transformaria um lançamento
+> correto em vinte oportunidades de erro.
+>
+> As duas decisões não se contradizem: a segunda **explica** a primeira. O critério fica aqui
+> para a próxima transição não precisar redescobri-lo.
+
 **Por que entra aqui e não como correção imediata:** a trava da matriz (`inspected → cleaning`,
 já corrigida) é comportamento **errado** hoje. Esta é comportamento **certo** que precisa ficar
 mais estreito, e ninguém consegue usá-la errado porque não existe tela. Sem urgência, e

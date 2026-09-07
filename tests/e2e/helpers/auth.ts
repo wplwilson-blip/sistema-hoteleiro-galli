@@ -16,14 +16,36 @@ import path from "node:path";
 //   E2E_MANUTENCAO_USERNAME / _PASSWORD      -> perfil LIDER_MANUTENCAO (plano 70)
 // Se faltar alguma, o helper FALHA com mensagem clara (nunca silencioso).
 
-export type E2EUserKey = "E2E_ADMIN" | "E2E_MULTI" | "E2E_GOVERNANCA" | "E2E_MANUTENCAO";
+export type E2EUserKey =
+  | "E2E_ADMIN"
+  | "E2E_MULTI"
+  | "E2E_GOVERNANCA"
+  | "E2E_MANUTENCAO"
+  /** Plano 78: perfil RECEPCAO. So' existe depois da migration 093 aplicada. */
+  | "E2E_RECEPCAO";
 
 export const E2E_USERS: readonly E2EUserKey[] = [
   "E2E_ADMIN",
   "E2E_MULTI",
   "E2E_GOVERNANCA",
-  "E2E_MANUTENCAO"
+  "E2E_MANUTENCAO",
+  "E2E_RECEPCAO"
 ];
+
+/**
+ * O ator esta' configurado no ambiente?
+ *
+ * Existe por causa da ORDEM: a suite da fatia 78 e' escrita ANTES de a migration 093 ser
+ * aplicada e antes de o usuario de recepcao existir no banco de staging. Sem esta funcao, os
+ * casos novos falhariam por falta de credencial -- uma falha que nao diz nada sobre o produto
+ * e que ensina a suite a ficar vermelha por motivo errado.
+ *
+ * Com ela, os casos PULAM COM MOTIVO ate' o ator existir, e passam a rodar sozinhos no dia em
+ * que as duas variaveis forem definidas. Pular com motivo e' honesto; passar sem executar nao.
+ */
+export function isUserConfigured(user: E2EUserKey): boolean {
+  return Boolean(process.env[`${user}_USERNAME`]?.trim() && process.env[`${user}_PASSWORD`]?.trim());
+}
 
 const AUTH_DIR = path.join("playwright", ".auth");
 

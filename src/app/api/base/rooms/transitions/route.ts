@@ -211,16 +211,20 @@ export async function POST(request: Request) {
     // As permissoes de escrita que o ator possui NAQUELA unidade. `canTransition` recebe a
     // lista e decide -- a rota nao sabe qual codigo cada transicao exige, e e' de proposito:
     // essa tabela vive num lugar so'.
-    const [hasHousekeeping, hasInspect, hasBlock] = await Promise.all([
+    const [hasHousekeeping, hasInspect, hasBlock, hasOccupancy] = await Promise.all([
       userHasPermissionForUnit(supabase, context.session, ROOM_PERMISSIONS.housekeeping, unitId),
       userHasPermissionForUnit(supabase, context.session, ROOM_PERMISSIONS.inspect, unitId),
-      userHasPermissionForUnit(supabase, context.session, ROOM_PERMISSIONS.block, unitId)
+      userHasPermissionForUnit(supabase, context.session, ROOM_PERMISSIONS.block, unitId),
+      userHasPermissionForUnit(supabase, context.session, ROOM_PERMISSIONS.occupancy, unitId)
     ]);
 
     const heldCodes: Array<RoomPermissionCode | null> = [
       hasHousekeeping ? ROOM_PERMISSIONS.housekeeping : null,
       hasInspect ? ROOM_PERMISSIONS.inspect : null,
-      hasBlock ? ROOM_PERMISSIONS.block : null
+      hasBlock ? ROOM_PERMISSIONS.block : null,
+      // Plano 78: a ocupacao passou a ter escritor. Sem esta linha, `canTransition` receberia
+      // a lista SEM o codigo e negaria todo check-in com 403 -- o "botao morto" da D3.
+      hasOccupancy ? ROOM_PERMISSIONS.occupancy : null
     ];
 
     const permissions = heldCodes.filter((code): code is RoomPermissionCode => code !== null);
@@ -261,7 +265,13 @@ export async function POST(request: Request) {
         room_id: room.id,
         from,
         to: toStatus,
-        housekeeping_effect: dimension === "blocking" ? decision.effects.housekeeping ?? null : null,
+        // O EFEITO VEM DA DECISAO, seja qual for a dimensao. Ate' a fatia 78 esta linha
+        // filtrava `dimension === "blocking"` porque era a unica com efeito colateral. Com o
+        // check-out (occupancy -> vacant, que derruba a limpeza para `dirty`), o filtro
+        // mandaria efeito NULO e a RPC recusaria com CHECKOUT_REQUIRES_DIRTY -- a trava
+        // funcionando contra a propria rota. Ler a decisao e' o que mantem as duas pontas
+        // dizendo a mesma coisa.
+        housekeeping_effect: decision.effects.housekeeping ?? null,
         service_type: declaredType ?? null,
         // A hora do fato viaja NO ITEM, e nao como parametro da funcao (plano 75, D8):
         // acrescentar argumento a uma RPC exposta cria SOBRECARGA, e o PostgREST recusa toda
@@ -335,6 +345,24 @@ export async function POST(request: Request) {
 
       if (message.includes("ROOMS_TRANSITION_OCCURRED_AT_BEFORE_LAST")) {
         return apiError("A hora informada e' anterior ao ultimo lancamento deste apartamento hoje.", 422);
+      }
+
+      // AS DUAS RECUSAS DE FORMA DA OCUPACAO (plano 78, D1).
+      //
+      // Em operacao normal elas NAO acontecem: a rota so' monta o item depois que
+      // `canTransition` aprovou, e a matriz de la' produz exatamente as duas formas que a RPC
+      // aceita. Estao mapeadas porque o dia em que acontecerem sera' o dia em que as duas
+      // pontas DIVERGIRAM -- e divergencia tem que aparecer como 422 legivel, nao como 500
+      // generico que manda todo mundo procurar no lugar errado.
+      if (message.includes("ROOMS_TRANSITION_CHECKOUT_REQUIRES_DIRTY")) {
+        return apiError(
+          "O check-out devolve o apartamento para a governanca: de ocupado para livre nao existe.",
+          422
+        );
+      }
+
+      if (message.includes("ROOMS_TRANSITION_OCCUPANCY_INVALID_FORM")) {
+        return apiError("A ocupacao aceita apenas check-in e check-out.", 422);
       }
 
       logBaseCadastroError("rooms.transition_failed", rpcError);

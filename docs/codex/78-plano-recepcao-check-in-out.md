@@ -35,8 +35,9 @@ Esta fatia não a altera — faz ela **passar a dizer a verdade**.
 **(c) A fila da governanta depende de conversa.** Sem check-out registrado, saber que o 112
 desocupou às 10h só acontece se alguém contar para alguém.
 
-E há um achado de segurança, tratado na D6: a rota de dispensa está gateada por `rooms.view`, e o
-perfil de Recepção nasce com `rooms.view`.
+E há um achado na rota de dispensa, tratado na D6 — que **mudou de sinal** durante a
+implementação: ela não está aberta demais, está **fechada para a Recepção**, e a origem que ela
+grava é auto-declarada.
 
 ---
 
@@ -171,26 +172,43 @@ D4.
 **Confirmado pelo Wilson:** a recepcionista de plantão é sempre quem faz o check-out, inclusive de
 madrugada. Não há porteiro nem gerente fazendo isso. `RECEPCAO` é perfil só.
 
-### D6 — O gate da dispensa é **achado de segurança**, não ajuste de rota
+### D6 — O gate da dispensa — **corrigido depois de escrever o código**
 
-`PATCH /api/base/rooms/tasks/[id]` é gateada por `ROOM_PERMISSIONS.view`
-([route.ts:31](../../src/app/api/base/rooms/tasks/[id]/route.ts#L31)). Hoje isso **dá o resultado
-certo por acidente**: ninguém com `rooms.view` além da governança e da liderança existe, então na
-prática só quem deve dispensar dispensa.
+> **CORREÇÃO. A versão original desta decisão estava errada, e no sentido oposto.**
+>
+> Ela dizia que a rota de dispensa estava **aberta demais** — gateada só por `rooms.view` —, e
+> que o perfil `RECEPCAO` ganharia dispensa de graça. Isso veio de ler a linha 31 e parar ali.
+> Quarenta e oito linhas abaixo há um **segundo** gate, por unidade, exigindo
+> `rooms.housekeeping`. Encontrei ao implementar.
+>
+> O gate **não estava aberto: estava fechado para a Recepção.** Ele exigia `rooms.housekeeping`
+> para **qualquer** dispensa, inclusive a de origem `front_desk` — que por definição é lançada
+> por quem **não** opera limpeza. A dispensa da recepção existe no modelo desde a 091 (a D3 do
+> plano 75 criou o enum com os dois valores) e **não tinha por onde entrar**. Ninguém percebeu
+> porque não havia perfil de recepção para tentar.
 
-O perfil `RECEPCAO` nasce com `rooms.view` — e ganharia dispensa **de graça**, no mesmo dia, sem
-que ninguém tivesse decidido isso. É o mesmo formato do incidente
-`DEPARTMENT_MANAGER`/`approvals.decide` que o comentário do `permissions.ts` cita: **a coisa
-funciona, então ninguém olha**.
+O desenho continua o mesmo, e o motivo dele fica **mais forte** com a correção: só abrir o gate
+deixaria a **origem auto-declarada**. Quem tem `rooms.housekeeping` poderia registrar
+`front_desk` — afirmar que a recepção avisou — e, depois desta fatia, o inverso também.
 
-Neste caso o resultado desejado até coincide — a Recepção **deve** poder lançar dispensa com
-origem `front_desk`. Mas coincidência não é decisão, e a próxima permissão a entrar pode não
-coincidir. O gate passa a ser **explícito**: a rota exige `rooms.view` **e** a permissão da
-operação, e a origem declarada é conferida contra quem está chamando — `front_desk` para quem tem
-`rooms.occupancy`, `housekeeper` para quem tem `rooms.housekeeping`. Uma recepcionista não
-registra "descoberto na porta"; ela não esteve na porta.
+A origem não é rótulo decorativo: a [D3 do plano 75](75-plano-dia-da-governanca.md) a criou para
+responder *"o aviso da recepção está funcionando?"*. Um campo que qualquer um preenche com
+qualquer valor não responde essa pergunta — ele só **parece** responder, que é a mesma forma
+cara de um dado estar errado que a §1 descreve no `occupancy_status` congelado.
 
-Com teste que **quebra se alguém alargar o gate de novo** (§7.6).
+O gate passa a ser **por origem**:
+
+| Origem declarada | Permissão exigida | Por quê |
+|---|---|---|
+| `front_desk` | `BASE:rooms.occupancy` | A recepção avisou antes |
+| `housekeeper` | `BASE:rooms.housekeeping` | A camareira descobriu na porta |
+
+Uma recepcionista não registra "descoberto na porta": ela não esteve na porta. Com teste que
+quebra se alguém alargar o gate de novo, nos **dois** sentidos (§7.10).
+
+**O que a correção muda no peso do achado:** deixa de ser "permissão aberta em produção" e passa
+a ser "um campo de auditoria que não audita". O primeiro seria mais urgente; o segundo é mais
+silencioso — e é o que estava lá.
 
 ### D7 — Fronteira negativa: `reason` **não recebe dado de hóspede**. É LGPD, não estética
 
@@ -275,6 +293,35 @@ Não construir para reservas; não construir nada que impeça. Concretamente:
   precisa e nenhuma das que reservas precisa, seria migrada no primeiro dia da fatia seguinte.
 - **`reason` fica limpo (D7).** É o que permite a reserva ligar por chave depois, em vez de
   alguém tentar parsear nome de hóspede de texto livre.
+
+### D12 — O check-out tardio e a tarefa já concluída: **limite registrado, não resolvido**
+
+Descoberto escrevendo a migration, e não está na versão aprovada deste plano. **Não é defeito
+desta fatia** — é um limite do modelo do plano 75 que a fatia torna **alcançável pela primeira
+vez**.
+
+Hóspede em permanência. A camareira arruma às 9h e a tarefa do dia fecha como `done`, tipo
+`stayover`. Às 14h ele faz check-out tardio: o apartamento vai para `dirty` — correto —, mas a
+tarefa daquele dia já está `done`. O quarto precisa de arrumação de saída e **não aparece como
+pendente**.
+
+**Por que não ressuscitei a tarefa**, que seria o reflexo óbvio (é o que o desbloqueio faz):
+a tabela tem **uma linha por apartamento por dia**. Pôr a tarefa de volta em `pending` apagaria
+que a arrumação de permanência aconteceu às 9h, `completed_at` incluído. Seria falsificar
+histórico para o número fechar — o erro que o caso 31 do E2E existe para lembrar.
+
+O modelo de uma linha por apartamento por dia **não consegue** representar "dois serviços no
+mesmo dia". Isso é mudança de schema, e mudança de schema decidida no meio de outra fatia é como
+se acumulam decisões que ninguém tomou.
+
+**O que acontece hoje:** o apartamento aparece `dirty` no parque. A informação **não se perde**
+— ela só não está na fila de tarefas. Quem olha o mapa vê.
+
+As duas saídas, para a fatia que decidir isto: **(i)** a fila da tela ler
+`rooms.housekeeping_status = 'dirty'` além da tarefa pendente (sem mudar schema); **(ii)**
+permitir mais de uma tarefa por apartamento por dia, derrubando o unique
+`(housekeeping_day_id, room_id)`. Recomendo **(i)** quando chegar a hora: não muda modelo, e o
+dado já está lá. Registrado também no rodapé da 093.
 
 ---
 
