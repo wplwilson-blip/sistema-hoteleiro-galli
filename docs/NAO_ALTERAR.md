@@ -35,7 +35,9 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 
 - O sistema não é PMS.
 - Não criar reservas.
-- Não criar check-in/check-out.
+- Check-in/check-out limitado a registrar a ocupação da UH (ocupada/livre), para alimentar a Governança (docs/codex/78).
+- Nenhum dado de hóspede em nenhum campo, inclusive observação/texto livre: nome, documento, telefone (LGPD).
+- Continuam proibidos, sem exceção: reserva, entidade de hóspede ou estadia, previsão de saída, valor `reserved` de ocupação, folio/conta, tarifa.
 - Não criar tarifas.
 - Não criar disponibilidade.
 - Financeiro limitado a Contas a Pagar operacional (ver seção Financeiro).
@@ -82,3 +84,7 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - Não fazer push sem instrução explícita.
 - Não criar migration em sprint somente UI/documentação.
 - Não alterar API em sprint somente UI/documentação.
+
+## Revisão desta Lista
+
+- Qualquer proibição desta lista só é revista por decisão explícita do Wilson, registrada neste arquivo.
