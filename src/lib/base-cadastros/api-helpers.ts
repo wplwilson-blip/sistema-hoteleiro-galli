@@ -25,8 +25,9 @@ export async function requireAuthenticatedRequest() {
   }
 
   // #5: senha temporaria (definida por admin) ainda nao trocada -> nenhuma rota de negocio
-  // responde. Este e' o afunil por onde passam 128 das 136 rotas da API: requirePermission
+  // responde. Este e' o afunil por onde passam 136 das 144 rotas da API: requirePermission
   // (direto), requireHrPermission (via requirePermission) e requireHrWorkflowPermission.
+  // As outras 8 sao excecoes deliberadas -- ver o comentario no fim desta funcao.
   //
   // A rota POST /api/auth/change-password NAO passa por aqui DE PROPOSITO -- ela usa
   // getCurrentSessionContext direto. E' a saida: trava-la deixaria o usuario sem como
@@ -39,7 +40,11 @@ export async function requireAuthenticatedRequest() {
     return { session: null, response: apiError(PASSWORD_CHANGE_REQUIRED_MESSAGE, 403) };
   }
 
-  // TODO Sprint 4C: aplicar matriz granular de permissoes por modulo, unidade e acao.
+  // Regra: toda rota de negocio passa por requirePermission / requireHrPermission /
+  //  requireHrWorkflowPermission. Excecoes deliberadas (8): auth/active-unit,
+  //  auth/change-password, auth/login, auth/logout, cron/run-jobs, hr/apply-due,
+  //  hr/movements/apply-due, setup/initial-admin. Rota nova fora do afunil exige
+  //  justificativa neste comentario.
   return { session, response: null };
 }
 

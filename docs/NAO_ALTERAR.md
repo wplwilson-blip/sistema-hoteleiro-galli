@@ -38,7 +38,7 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - Não criar check-in/check-out.
 - Não criar tarifas.
 - Não criar disponibilidade.
-- Não criar financeiro completo.
+- Financeiro limitado a Contas a Pagar operacional (ver seção Financeiro).
 - Não criar ponto eletrônico.
 - Não transformar em ERP genérico.
 
@@ -51,6 +51,16 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - Bucket `attachments`.
 - Status de aprovação.
 - Histórico de decisões.
+- Alçada por valor é a fonte única (docs/codex/59). Nenhum tipo de compra, título avulso ou tolerância de divergência pode desligar ou contornar a alçada.
+- Quem é o comprador do pedido não registra o recebimento da mesma compra (inclusive super admin).
+
+## Financeiro
+
+- Escopo permitido: Contas a Pagar operacional — títulos com ou sem pedido de compra, parcelas, retenções de serviço, baixa manual com comprovante, cancelamento com justificativa.
+- Fora do escopo: conciliação bancária, fluxo de caixa projetado, DRE, CNAB/remessa, contas a receber, emissão de NF.
+- Título sem pedido só em categorias marcadas como "despesa sem pedido".
+- Despesa recorrente: Diretoria aprova o contrato uma vez, com valor-teto; títulos dentro do teto não reaprovam.
+- Folha/encargos: somente valor total, nunca título por colaborador.
 
 ## Cadastros
 
