@@ -363,7 +363,16 @@ export async function readTask(dayId: string, roomId: string): Promise<Housekeep
 export async function resetTaskToPending(taskId: string): Promise<void> {
   const { error } = await e2eDb()
     .from("housekeeping_tasks")
-    .update({ outcome: "pending", service_type: null, decline_origin: null, completed_at: null })
+    // `decline_note` TAMBEM volta a nulo. Sem isso a tarefa restaurada fica `pending`
+    // carregando a observacao de uma dispensa que nao existe mais -- dado contraditorio que o
+    // bicondicional nao pega, porque ele so' guarda a ORIGEM.
+    .update({
+      outcome: "pending",
+      service_type: null,
+      decline_origin: null,
+      decline_note: null,
+      completed_at: null
+    })
     .eq("id", taskId);
 
   if (error) {

@@ -189,7 +189,22 @@ export async function POST(request: Request) {
       unitId
     );
 
-    const permissoes = temOcupacao ? [ROOM_PERMISSIONS.occupancy] : [];
+    // PERMISSAO ANTES DE QUALQUER COISA SOBRE O ESTADO -- e isto e' correcao, nao zelo.
+    //
+    // A primeira versao desta rota resolvia a permissao aqui e so' recusava la' embaixo, dentro
+    // do laco, DEPOIS de comparar `occupancy_status` com a forma do evento. O resultado: quem
+    // NAO tem `rooms.occupancy` recebia 409 num apartamento ocupado e 403 num vago -- ou seja,
+    // descobria a ocupacao do apartamento pela diferenca entre dois codigos de erro.
+    //
+    // E' o mesmo principio que o `canTransition` ja aplica ("permissao antes de observacao") e
+    // que a rota de login aplica desde o plano 54: quem nao pode fazer a coisa nao aprende nada
+    // sobre ela pela mensagem de erro. O caso 78.9 pegou isto -- ele esperava 403 e recebeu 409
+    // porque o apartamento tinha ficado ocupado por outro caso.
+    if (!temOcupacao) {
+      return apiError("Voce nao tem permissao para registrar check-in e check-out.", 403);
+    }
+
+    const permissoes = [ROOM_PERMISSIONS.occupancy];
     const porId = new Map(rooms.map((room) => [room.id, room]));
 
     // Decide TODOS antes de escrever QUALQUER um, como na rota de transicao: um lote meio

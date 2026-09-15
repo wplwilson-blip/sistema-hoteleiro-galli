@@ -26,6 +26,18 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
   mudança nele exige revisão conjunta dos dois lados. Hoje o acoplamento é por texto
   (`includes("ROOMS_TRANSITION_STALE")`), e funciona por acidente. É o tipo de acoplamento
   implícito que só machuca quando alguém "melhora" um dos lados sozinho.
+- **Filtro que parece redundante é carga até prova em contrário. A prova é um teste que falhe
+  sem ele — não um raciocínio sobre o que ele parece fazer.**
+  Lição do `dimension === "blocking" ? efeito : null` na rota de transições (plano 78). O
+  filtro parecia descuido de quem só tinha uma dimensão com efeito colateral; era carga.
+  `canTransition` devolve `effects` contendo **sempre** a dimensão primária, então lê-lo cru
+  numa transição de limpeza manda o próprio destino como "efeito colateral" e a RPC grava uma
+  segunda linha de `room_status_history` marcada `is_automatic`. O estado do apartamento fica
+  certo e só a **trilha de auditoria** fica duplicada — 91 linhas em staging numa rodada, sem
+  sintoma em tela nenhuma. E o comentário escrito na hora da mudança afirmava o **oposto** do
+  que o código passou a fazer, o que torna a releitura do diff inútil: quem confere lê a
+  justificativa e não o efeito. Antes de remover uma condição por parecer supérflua, escreva o
+  teste que falha sem ela. Se não conseguir escrever, você ainda não sabe o que ela faz.
 - Arquivo de ambiente novo: conferir o `.gitignore` ANTES de escrever a primeira linha nele.
   O repositorio e' publico, e a regra `.env*.local` nao cobre nomes como `.env.e2e`. A
   diferenca entre uma regra faltando e um vazamento de service key e' so' alguem ter criado o
