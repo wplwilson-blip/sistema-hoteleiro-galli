@@ -1,6 +1,6 @@
 # 59 — Plano: alçada de compra por VALOR como fonte única da verdade (P5)
 
-Status: plano para revisão (sem código). Decisão de negócio: Wilson, 25/08/2026 — Opção A.
+Status: implementado no commit 0f3df66 (25/08/2026), testes em tests/unit/purchase-approval-level.spec.ts. Decisão de negócio: Wilson, 25/08/2026 — Opção A.
 Origem: MELHORIAS_GALLI.md, achado P5 (navegação assistida de 24/08/2026).
 Depende de: nada. Bloqueia: a fatia visual da tela de Nova cotação (M1, M1.1, M2, P3, P4), porque os textos da tela mudam aqui.
 
