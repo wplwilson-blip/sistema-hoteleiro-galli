@@ -35,10 +35,12 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 
 - O sistema não é PMS.
 - Não criar reservas.
-- Não criar check-in/check-out.
+- Check-in/check-out limitado a registrar a ocupação da UH (ocupada/livre), para alimentar a Governança (docs/codex/78).
+- Nenhum dado de hóspede em nenhum campo, inclusive observação/texto livre: nome, documento, telefone (LGPD).
+- Continuam proibidos, sem exceção: reserva, entidade de hóspede ou estadia, previsão de saída, valor `reserved` de ocupação, folio/conta, tarifa.
 - Não criar tarifas.
 - Não criar disponibilidade.
-- Não criar financeiro completo.
+- Financeiro limitado a Contas a Pagar operacional (ver seção Financeiro).
 - Não criar ponto eletrônico.
 - Não transformar em ERP genérico.
 
@@ -51,6 +53,16 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - Bucket `attachments`.
 - Status de aprovação.
 - Histórico de decisões.
+- Alçada por valor é a fonte única (docs/codex/59). Nenhum tipo de compra, título avulso ou tolerância de divergência pode desligar ou contornar a alçada.
+- Quem é o comprador do pedido não registra o recebimento da mesma compra (inclusive super admin).
+
+## Financeiro
+
+- Escopo permitido: Contas a Pagar operacional — títulos com ou sem pedido de compra, parcelas, retenções de serviço, baixa manual com comprovante, cancelamento com justificativa.
+- Fora do escopo: conciliação bancária, fluxo de caixa projetado, DRE, CNAB/remessa, contas a receber, emissão de NF.
+- Título sem pedido só em categorias marcadas como "despesa sem pedido".
+- Despesa recorrente: Diretoria aprova o contrato uma vez, com valor-teto; títulos dentro do teto não reaprovam.
+- Folha/encargos: somente valor total, nunca título por colaborador.
 
 ## Cadastros
 
@@ -72,3 +84,7 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - Não fazer push sem instrução explícita.
 - Não criar migration em sprint somente UI/documentação.
 - Não alterar API em sprint somente UI/documentação.
+
+## Revisão desta Lista
+
+- Qualquer proibição desta lista só é revista por decisão explícita do Wilson, registrada neste arquivo.

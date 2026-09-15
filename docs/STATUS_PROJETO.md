@@ -78,7 +78,7 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 - Compras registra os fatos da proposta; o sistema calcula a classificação documental; o aprovador decide com base no dossiê formal.
 - A função central de classificação é `classifyPurchaseQuoteEvidence`.
 - Classificações: `formal_sufficient`, `acceptable_with_reservation`, `fragile` e `critical`.
-- Evidência crítica força `approval_level = general_directorate` no envio/reenvio formal.
+- Evidência crítica não altera a alçada (docs/codex/59, commit 0f3df66): gera selo no dossiê e exige justificativa.
 - `evidence_confidence`, `requires_attachment`, `requires_justification` e `has_formal_evidence` são derivados da regra do sistema, não julgamento livre do usuário nem fonte absoluta de verdade.
 - Listagens e APIs de consulta devem refletir a classificação calculada, considerando anexos reais quando disponíveis, para evitar falso positivo em cotação antiga com default legado.
 
@@ -86,7 +86,8 @@ O Sistema Administrativo Hotel Galli está funcional em V1 para base administrat
 
 - Até R$ 200,00: Gerência Administrativa.
 - Acima de R$ 200,00: Diretoria Geral.
-- Evidência crítica: Diretoria Geral mesmo quando o valor da compra for baixo.
+- A alçada é definida **somente pelo valor**: evidência frágil ou crítica não escala a alçada (docs/codex/59).
+- Evidência crítica de baixo valor permanece na Gerência Administrativa; o controle é o selo de risco visível no dossiê somado à justificativa obrigatória.
 - Não usar nome de pessoa no status.
 - Aprovar confirma a compra.
 - Reprovar encerra a compra e exige justificativa.
