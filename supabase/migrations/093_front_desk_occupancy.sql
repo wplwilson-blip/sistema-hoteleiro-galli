@@ -717,11 +717,11 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --
 -- Escolha um apartamento de teste e guarde o id:
 --
---   select id, number, occupancy_status, housekeeping_status, blocking_status, status
+--   select id, room_number, occupancy_status, housekeeping_status, blocking_status, status
 --   from public.rooms
 --   where unit_id = '<UNIT_ID>' and deleted_at is null and status = 'active'
 --     and blocking_status = 'none'
---   order by number limit 10;
+--   order by room_number limit 10;
 -- ============================================================================
 --
 -- 1) O CHECK-OUT ATOMICO -- o que a fatia existe para garantir.
@@ -898,11 +898,21 @@ grant execute on function public.rooms_apply_transition(jsonb, text, text, uuid)
 --    --
 --    -- delete from public.permissions where code = 'BASE:rooms.occupancy';
 --    --
---    -- -- O perfil so' se apaga se ninguem estiver usando. Confira ANTES:
---    -- select count(*) from public.app_users u
---    -- join public.access_profiles p on p.id = u.access_profile_id
---    -- where p.code = 'RECEPCAO';
---    -- -- Se for > 0, os usuarios ficam sem perfil. Reatribua antes de apagar.
+--    -- -- O perfil so' se apaga se NINGUEM estiver usando. Confira ANTES.
+--    -- --
+--    -- -- O vinculo NAO vive em `app_users`: essa tabela nao tem `access_profile_id`.
+--    -- -- Ele vive em `user_unit_links` (003:130), porque perfil e' POR UNIDADE -- a mesma
+--    -- -- pessoa pode ser recepcao numa unidade e outra coisa noutra.
+--    -- --
+--    -- -- Uma salvaguarda que FALHA e' pior que salvaguarda nenhuma: quem estiver fazendo
+--    -- -- rollback as pressas roda, ve' o erro, e pode concluir que nao ha usuarios.
+--    -- select au.username, u.code as unidade, ul.status
+--    -- from public.user_unit_links ul
+--    -- join public.app_users au on au.id = ul.app_user_id
+--    -- join public.access_profiles ap on ap.id = ul.access_profile_id
+--    -- join public.units u on u.id = ul.unit_id
+--    -- where ap.code = 'RECEPCAO' and ul.deleted_at is null;
+--    -- -- Se voltar QUALQUER linha, esses vinculos perdem o perfil. Reatribua antes de apagar.
 --    --
 --    -- delete from public.access_profiles where code = 'RECEPCAO';
 --

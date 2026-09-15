@@ -210,6 +210,13 @@ quebra se alguém alargar o gate de novo, nos **dois** sentidos (§7.10).
 a ser "um campo de auditoria que não audita". O primeiro seria mais urgente; o segundo é mais
 silencioso — e é o que estava lá.
 
+**A lição de método, registrada porque o erro foi dos dois lados.** A alegação errada foi
+conferida no código antes de ser aceita — a disciplina certa. Mas a conferência leu **o mesmo
+trecho** que a alegação citava, e parou na mesma linha. **Conferir a mesma linha não é
+conferência independente: é repetir o mesmo passo com mais confiança.** Uma verificação de gate
+de permissão só vale se percorrer o caminho inteiro da requisição até a escrita — o gate de
+entrada, os gates por unidade e a própria escrita —, e não o ponto que alguém apontou.
+
 ### D7 — Fronteira negativa: `reason` **não recebe dado de hóspede**. É LGPD, não estética
 
 O check-in escreve "ocupado" sem registrar **quem**. Não existe entidade de hóspede nem de
@@ -320,8 +327,26 @@ se acumulam decisões que ninguém tomou.
 As duas saídas, para a fatia que decidir isto: **(i)** a fila da tela ler
 `rooms.housekeeping_status = 'dirty'` além da tarefa pendente (sem mudar schema); **(ii)**
 permitir mais de uma tarefa por apartamento por dia, derrubando o unique
-`(housekeeping_day_id, room_id)`. Recomendo **(i)** quando chegar a hora: não muda modelo, e o
-dado já está lá. Registrado também no rodapé da 093.
+`(housekeeping_day_id, room_id)`. Recomendo **(i)**: não muda modelo, e o dado já está lá.
+Registrado também no rodapé da 093.
+
+#### A restrição que o 79 herda — e o 71 depois dele
+
+> **A fila de arrumação não é a lista de tarefas pendentes. É a união de duas coisas:
+> as tarefas `pending` do dia E os apartamentos que estão `dirty` agora.**
+>
+> Quem montar a tela vai olhar `housekeeping_tasks`, ver uma coluna `outcome` com `pending`
+> bem ali, e concluir — razoavelmente — que a fila é `where outcome = 'pending'`. **É quase
+> certo, e erra num caso que acontece toda semana:** o check-out tardio depois da arrumação de
+> permanência deixa a tarefa `done` e o quarto `dirty`.
+>
+> Esse apartamento **precisa de arrumação e não aparece na sua consulta.** Não há erro, não há
+> log, não há aviso: a linha existe, o `outcome` está correto, a consulta roda. O quarto
+> simplesmente não está na lista — e a camareira descobre pela hóspede que ligou reclamando.
+>
+> Um apartamento `dirty` com tarefa `done` **não é dado inconsistente.** As duas coisas são
+> verdadeiras ao mesmo tempo: o trabalho de hoje aconteceu, e há trabalho novo. Não "conserte"
+> nenhuma das duas — mostre as duas.
 
 ---
 

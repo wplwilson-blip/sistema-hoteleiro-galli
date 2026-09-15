@@ -19,6 +19,32 @@ DUAS VERSOES ANTERIORES DESTE CHECK DERAM ALARME FALSO, e por isso ele e' um TOK
 Por isso todo arquivo conhecidamente BOM entra como CONTROLE POSITIVO: se o proprio check
 reprovar uma migration que esta' aplicada em producao, o defeito e' do check.
 
+-----------------------------------------------------------------------------------------
+LIMITE CONHECIDO -- ESTE SCRIPT E' SINTATICO, NAO SEMANTICO.
+-----------------------------------------------------------------------------------------
+
+Ele prova que o arquivo PARSEIA. Nao prova que as consultas RODAM.
+
+MEDIDO com controle negativo, nao suposto: a 093 passou com DOIS defeitos plantados de
+proposito -- um `order by numero_que_nao_existe` num comentario e um valor a mais no
+`insert` do perfil, que morreria no apply. O check disse "ok" nas duas vezes.
+
+O que ele NAO pega, e nenhuma versao dele vai pegar sem um banco do lado:
+  - nome de coluna que nao existe (`rooms.number` em vez de `rooms.room_number`);
+  - coluna em tabela errada (`app_users.access_profile_id`, que vive em user_unit_links);
+  - numero de valores diferente do numero de colunas num insert;
+  - tipo incompativel, funcao inexistente, join por chave errada.
+
+E' a MESMA distincao que separou o item 2 do item 6 da 090: um prova que o arquivo esta'
+bem formado, o outro prova que o banco se comporta. Nenhum substitui o outro.
+
+CONSEQUENCIA PRATICA, para quem aplica: "passou no check" NAO autoriza pular a VALIDACAO.
+As consultas da VALIDACAO sao COMENTADAS -- ninguem as executa por engano, e por isso um
+erro de nome dentro delas so' aparece na mao de quem esta' aplicando, no pior momento
+possivel. Os dois defeitos encontrados na revisao da 093 eram exatamente isso, e um deles
+era uma SALVAGUARDA de rollback: uma salvaguarda que falha e' pior que salvaguarda nenhuma,
+porque na nenhuma pelo menos ninguem confia.
+
 Uso:
     python scripts/codex/check-sql-syntax.py supabase/migrations/093_*.sql
 """
@@ -205,6 +231,11 @@ def main():
         sys.exit(1)
 
     print("\nTres conferencias da §8 do plano 74: passaram.")
+    print(
+        "LIMITE: isto e' SINTATICO -- prova que o arquivo PARSEIA, nao que as consultas RODAM.\n"
+        "        Nome de coluna, tabela errada e arity de insert passam batido (medido).\n"
+        "        Passar aqui NAO autoriza pular a secao VALIDACAO."
+    )
 
 
 if __name__ == "__main__":
