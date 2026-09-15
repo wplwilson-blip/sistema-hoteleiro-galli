@@ -723,6 +723,37 @@ export function canTransition(
   };
 }
 
+/**
+ * O efeito COLATERAL de limpeza que viaja no item da RPC -- ou `null` quando nao ha um.
+ *
+ * LEIA ANTES DE "SIMPLIFICAR": `canTransition` devolve `effects` contendo SEMPRE a dimensao
+ * primaria (`{ [dimension]: to, ...rule.effects }`). Entao, numa transicao de limpeza,
+ * `effects.housekeeping` e' o PROPRIO destino -- nao um efeito colateral.
+ *
+ * Mandar esse valor como `housekeeping_effect` faz a RPC gravar uma SEGUNDA linha de
+ * historico, marcada `is_automatic = true`, para um fato que a primeira linha ja registrou.
+ * O estado do apartamento fica certo e a trilha de auditoria fica duplicada -- defeito que
+ * nao aparece na tela e so' se descobre contando linhas.
+ *
+ * ISSO ACONTECEU. A fatia 78 trocou o filtro `dimension === "blocking"` por "leia sempre a
+ * decisao", com o argumento de que ler a decisao mantem as duas pontas dizendo a mesma coisa.
+ * O filtro nao era descuido: era carga. A troca gravou 91 linhas duplicadas em staging numa
+ * unica rodada da suite, e foram os casos 1, 17, 21, 29, 30 e 31 que a pegaram.
+ *
+ * A regra verdadeira nao e' "blocking": e' **outra dimensao**. Efeito colateral e' efeito
+ * sobre dimensao DIFERENTE da que esta transitando.
+ */
+export function housekeepingSideEffect(
+  dimension: RoomStateDimension,
+  effects: Partial<RoomState>
+): HousekeepingStatus | null {
+  if (dimension === "housekeeping") {
+    return null;
+  }
+
+  return effects.housekeeping ?? null;
+}
+
 /** Aplica os efeitos de uma transicao permitida sobre o estado atual. */
 export function applyRoomTransition(state: RoomState, effects: Partial<RoomState>): RoomState {
   return { ...state, ...effects };

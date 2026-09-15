@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   ROOM_PERMISSIONS,
   canTransition,
+  housekeepingSideEffect,
   isBatchAllowed,
   isHousekeepingServiceType,
   isRoomStateDimension,
@@ -265,13 +266,9 @@ export async function POST(request: Request) {
         room_id: room.id,
         from,
         to: toStatus,
-        // O EFEITO VEM DA DECISAO, seja qual for a dimensao. Ate' a fatia 78 esta linha
-        // filtrava `dimension === "blocking"` porque era a unica com efeito colateral. Com o
-        // check-out (occupancy -> vacant, que derruba a limpeza para `dirty`), o filtro
-        // mandaria efeito NULO e a RPC recusaria com CHECKOUT_REQUIRES_DIRTY -- a trava
-        // funcionando contra a propria rota. Ler a decisao e' o que mantem as duas pontas
-        // dizendo a mesma coisa.
-        housekeeping_effect: decision.effects.housekeeping ?? null,
+        // Efeito COLATERAL -- sobre outra dimensao. Ver `housekeepingSideEffect`: ler
+        // `effects.housekeeping` cru duplica a linha de historico das transicoes de limpeza.
+        housekeeping_effect: housekeepingSideEffect(dimension, decision.effects),
         service_type: declaredType ?? null,
         // A hora do fato viaja NO ITEM, e nao como parametro da funcao (plano 75, D8):
         // acrescentar argumento a uma RPC exposta cria SOBRECARGA, e o PostgREST recusa toda

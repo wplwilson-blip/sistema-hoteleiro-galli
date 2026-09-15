@@ -10,6 +10,7 @@ import {
   backfillRoomState,
   canTransition,
   describeRoomState,
+  housekeepingSideEffect,
   isRoomSellable,
   type RoomState
 } from "../../src/components/base-cadastros/rooms-utils";
@@ -497,4 +498,70 @@ test("78.6 - allowlist FECHADA de rooms.occupancy", () => {
   expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.housekeeping]).not.toContain("RECEPCAO");
   expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.view]).toContain("RECEPCAO");
   expect(ROOM_PERMISSION_PROFILE_GRANTS[ROOM_PERMISSIONS.block]).toContain("RECEPCAO");
+});
+
+test("78.7 - efeito COLATERAL e' so' sobre OUTRA dimensao (a regressao das 91 linhas)", () => {
+  // O TESTE QUE FALTAVA, escrito depois do defeito e nao antes -- registrado assim de
+  // proposito.
+  //
+  // A fatia 78 trocou, na rota, `dimension === "blocking" ? efeito : null` por "leia sempre
+  // `decision.effects.housekeeping`". O argumento parecia bom: ler a decisao mantem as duas
+  // pontas dizendo a mesma coisa. Estava errado, porque `canTransition` devolve `effects`
+  // contendo SEMPRE a dimensao primaria -- numa transicao de limpeza, `effects.housekeeping`
+  // e' o proprio destino.
+  //
+  // Resultado: a RPC gravava uma SEGUNDA linha de historico, `is_automatic = true`, para o
+  // fato que a primeira ja registrava. O estado do apartamento ficava CERTO e a trilha de
+  // auditoria ficava duplicada -- 91 linhas a mais em staging numa rodada so'.
+  //
+  // Nenhum teste puro pegava porque nenhum olhava o que a rota MANDA para a RPC; os que
+  // pegaram foram seis casos E2E contando linhas de historico.
+
+  // LIMPEZA: o destino nao e' efeito colateral de si mesmo.
+  for (const [de, para] of [
+    ["dirty", "cleaning"],
+    ["cleaning", "clean"],
+    ["clean", "inspected"],
+    ["inspected", "dirty"]
+  ]) {
+    const decisao = canTransition(GOVERNANTA, "housekeeping", de, para);
+
+    if (!decisao.allowed) {
+      throw new Error(`${de} -> ${para} deveria ser permitida`);
+    }
+
+    // `effects` CARREGA a dimensao primaria -- e' o que engana.
+    expect(decisao.effects.housekeeping).toBe(para);
+    // E o que vai para a RPC e' nulo.
+    expect(housekeepingSideEffect("housekeeping", decisao.effects)).toBeNull();
+  }
+
+  // BLOQUEIO: encerrar bloqueio derruba a limpeza. Efeito colateral de verdade.
+  const desbloqueio = canTransition(GOVERNANTA, "blocking", "maintenance", "none", "obra concluida");
+
+  if (!desbloqueio.allowed) {
+    throw new Error("desbloqueio deveria ser permitido");
+  }
+
+  expect(housekeepingSideEffect("blocking", desbloqueio.effects)).toBe("dirty");
+
+  // ENTRAR em bloqueio nao mexe na limpeza: sem efeito.
+  const bloqueio = canTransition(GOVERNANTA, "blocking", "none", "maintenance");
+
+  if (!bloqueio.allowed) {
+    throw new Error("bloqueio deveria ser permitido");
+  }
+
+  expect(housekeepingSideEffect("blocking", bloqueio.effects)).toBeNull();
+
+  // OCUPACAO: o check-out carrega `dirty` e o check-in nao carrega nada.
+  const checkOut = canTransition(RECEPCAO, "occupancy", "occupied", "vacant");
+  const checkIn = canTransition(RECEPCAO, "occupancy", "vacant", "occupied");
+
+  if (!checkOut.allowed || !checkIn.allowed) {
+    throw new Error("as duas formas deveriam ser permitidas");
+  }
+
+  expect(housekeepingSideEffect("occupancy", checkOut.effects)).toBe("dirty");
+  expect(housekeepingSideEffect("occupancy", checkIn.effects)).toBeNull();
 });

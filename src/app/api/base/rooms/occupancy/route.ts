@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   ROOM_PERMISSIONS,
   canTransition,
+  housekeepingSideEffect,
   isRoomSellable,
   validateOccurredAt,
   type BlockingStatus,
@@ -278,8 +279,10 @@ export async function POST(request: Request) {
         from: forma.from,
         to: forma.to,
         // O EFEITO VEM DA DECISAO, nunca do cliente. E' o que garante que todo check-out
-        // carregue `dirty` -- e a RPC recusa o item se ele nao carregar.
-        housekeeping_effect: decision.effects.housekeeping ?? null,
+        // carregue `dirty` -- e a RPC recusa o item se ele nao carregar. Passa pelo mesmo
+        // helper da rota de transicao: aqui a dimensao e' `occupancy`, entao o efeito de
+        // limpeza E' colateral de verdade e sobrevive ao filtro.
+        housekeeping_effect: housekeepingSideEffect("occupancy", decision.effects),
         service_type: null,
         // No item, e nao como argumento da funcao: acrescentar argumento a uma RPC exposta
         // cria sobrecarga e o PostgREST recusa tudo com PGRST203 (plano 75, D8).
