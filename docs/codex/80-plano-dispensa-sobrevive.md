@@ -101,9 +101,16 @@ exatamente a distinção que a (A) mantém separada, com precedente já validado
 
 `ROOMS_TRANSITION_TASK_DECLINED`, 422, mensagem própria.
 
-**Custo — e é por isso que não serve como resposta final:** a única aresta que torna o
-apartamento **vendável** é `→ inspected`. Recusar trava o quarto fora de venda até alguém mexer
-na tarefa por fora. Trocar um 500 por um bloqueio de receita não é conserto; é mudar de vítima.
+**Custo:** a recusa é **na tarefa, não na aresta** — ela olha o desfecho `declined`, não o
+caminho. Refazer o ciclo (`inspected → cleaning → clean → inspected`) volta a bater na mesma
+recusa, então o apartamento fica fora de venda até alguém editar a tarefa por fora. Não é
+"trabalho a mais": é bloqueio.
+
+**Mas não é este o argumento que decide.** Mesmo que houvesse contorno operacional, a escolha
+continuaria sendo a da §2: entre perder o registro de um fato que tem outro domicílio e perder o
+único registro de outro, não há escolha. **A assimetria é a razão; o custo operacional é só o
+agravante.** Escrito assim de propósito — se a decisão se apoiasse no custo, derrubar o custo
+derrubaria junto uma decisão que está certa por outro motivo.
 
 ---
 
