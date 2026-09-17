@@ -1662,15 +1662,29 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     }
   });
 
-  test("78.10 - a dispensa `front_desk` exige rooms.occupancy, e a `housekeeper` exige rooms.housekeeping", async ({
+  test("78.10/71.0 - o gate por origem e' ASSIMETRICO: `housekeeper` so' de quem opera limpeza", async ({
     baseURL
   }) => {
-    // O GATE POR ORIGEM (plano 78, D6). Este teste quebra se alguem alargar o gate de novo --
-    // e' a razao de ele existir.
+    // O GATE POR ORIGEM (plano 78, D6), REESCRITO PELA 71.0 (D2) -- nao removido. A origem
+    // continua sem ser rotulo decorativo: a D3 do plano 75 a criou para responder "o aviso da
+    // recepcao esta funcionando?".
     //
-    // A origem NAO e' rotulo decorativo: a D3 do plano 75 a criou para responder "o aviso da
-    // recepcao esta funcionando?". Um campo que qualquer um preenche com qualquer valor nao
-    // responde essa pergunta -- so' parece responder.
+    // O QUE MUDOU, E POR QUE. A versao anterior afirmava que a governanta tambem recebia 403
+    // ao declarar `front_desk` -- "ela nao e' a recepcao". Isso se apoiava numa reciproca
+    // FALSA: a governanta TAMBEM nao esteve na porta quando declara `housekeeper`; quem esteve
+    // foi a camareira, que contou para ela (D6 do plano 75, "hoje ela avisa e a governanta
+    // lanca"). O gate nunca protegeu presenca -- protege DE QUAL SETOR VEIO A INFORMACAO.
+    //
+    //   INFORMACAO VIAJA DA RECEPCAO PARA A GOVERNANCA POR DESENHO.
+    //   PRESENCA FISICA NAO VIAJA.
+    //
+    // O SENTIDO QUE CONTINUA FECHADO e' o que este teste existe para travar, e ele nao
+    // afrouxou: `RECEPCAO` declarando `housekeeper` continua 403. Se alguem alargar o gate
+    // NAQUELA direcao, este caso quebra.
+    //
+    // E NAO "RESOLVA" o 403 da governanta pela matriz de concessoes: dar `rooms.occupancy` a
+    // LIDER_GOVERNANCA desfaria a D4 do plano 78 (ela passaria a fazer check-in/check-out). O
+    // unitario 78.6 e' o que quebra nesse caminho.
     test.skip(
       !isUserConfigured("E2E_RECEPCAO"),
       "E2E_RECEPCAO nao configurado: o perfil RECEPCAO nasce com a migration 093."
@@ -1707,25 +1721,40 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
 
       expect(origemErrada.status()).toBe(403);
 
-      // E A GOVERNANTA NAO REGISTRA "A RECEPCAO AVISOU": ela nao e' a recepcao.
-      const govNaOrigemDaRecepcao = await gov.patch(`/api/base/rooms/tasks/${tarefaId}`, {
-        data: { outcome: "declined", declineOrigin: "front_desk" },
-        headers: { "content-type": "application/json" }
-      });
-
-      expect(govNaOrigemDaRecepcao.status()).toBe(403);
-
-      // A tarefa continua INTOCADA depois das duas recusas.
+      // A tarefa continua INTOCADA depois da recusa.
       expect((await readTask(dayId, quartoDaTarefa)).outcome).toBe("pending");
 
-      // E a origem CERTA passa -- que e' a dispensa da recepcao, que ate' esta fatia nao tinha
-      // por onde entrar: o gate exigia `rooms.housekeeping` para QUALQUER origem.
-      const origemCerta = await recepcao.patch(`/api/base/rooms/tasks/${tarefaId}`, {
+      // A RECEPCAO REGISTRA O PROPRIO AVISO -- sem regressao para o ator do plano 79.
+      const recepcaoNaPropriaOrigem = await recepcao.patch(`/api/base/rooms/tasks/${tarefaId}`, {
         data: { outcome: "declined", declineOrigin: "front_desk", declineNote: "E2E 78.10" },
         headers: { "content-type": "application/json" }
       });
 
-      expect(origemCerta.status()).toBe(200);
+      expect(recepcaoNaPropriaOrigem.status()).toBe(200);
+      expect((await readTask(dayId, quartoDaTarefa)).decline_origin).toBe("front_desk");
+
+      // Devolve a tarefa para poder provar o OUTRO lado na mesma tarefa: a rota recusa
+      // dispensar quem ja' tem desfecho (422), entao sem este reset o proximo passo mediria a
+      // trava errada e passaria por acidente.
+      await resetTaskToPending(tarefaId);
+
+      // O CASO QUE ERA 403 ATE' A 71.0: a governanta TRANSCREVE o aviso da recepcao.
+      //
+      // Enquanto o plano 79 nao existir, este e' o UNICO caminho que esse fato tem -- e o
+      // registro continua honesto, porque `updated_by` guarda quem lancou. A alternativa era
+      // lancar tudo como `housekeeper`, o que levaria a contagem de `front_desk` a zero e
+      // afirmaria "a recepcao nunca avisa" -- o oposto da verdade, na unica pergunta que o
+      // campo responde.
+      const govTranscreve = await gov.patch(`/api/base/rooms/tasks/${tarefaId}`, {
+        data: { outcome: "declined", declineOrigin: "front_desk", declineNote: "E2E 71.0" },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(govTranscreve.status()).toBe(200);
+
+      const transcrita = await readTask(dayId, quartoDaTarefa);
+      expect(transcrita.outcome).toBe("declined");
+      expect(transcrita.decline_origin).toBe("front_desk");
     } finally {
       // DEVOLVE A TAREFA. Este caso DISPENSA uma tarefa de verdade -- e' a escrita que ele
       // existe para provar --, e deixar a dispensa no banco e' residuo: a tarefa fica
@@ -1962,6 +1991,111 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     } finally {
       // Desfaz o proprio rastro: a dispensa foi ESTE caso que lancou.
       await resetTaskToPending(tarefaId);
+      await restoreRoom(gov, estadoOriginal);
+    }
+  });
+
+  // =========================================================================================
+  // REPROVAR ANTES DE LIBERAR (plano docs/codex/71-0, D1)
+  // =========================================================================================
+
+  test("71.0.1 - reprovar na fila leva `clean` para `cleaning` SEM passar por `inspected`", async () => {
+    // O TESTE QUE TRAVA A FALSIFICACAO. Antes desta aresta, reprovar um apartamento que estava
+    // em `clean` so' tinha dois caminhos, e os dois eram ruins:
+    //
+    //   `clean -> dirty`                    -- refazer do zero. O custo de reprovar fica tao
+    //                                          alto que a saida barata vira NAO REPROVAR.
+    //   `clean -> inspected -> cleaning`    -- grava uma vistoria aprovada que NAO ACONTECEU,
+    //                                          com hora e autor, e deixa o apartamento
+    //                                          VENDAVEL na janela entre as duas chamadas.
+    //
+    // Este caso prova que o segundo caminho nao e' mais necessario: a asserção sobre o
+    // historico e' o que quebra se alguem o reintroduzir.
+    const alvo = rooms.find((room) => room.blocking_status === "none");
+
+    test.skip(!alvo, "Nenhum apartamento sem bloqueio: a suite nao desbloqueia quarto alheio.");
+
+    if (!alvo) return;
+
+    const estadoOriginal = await readRoom(alvo.id);
+
+    try {
+      await driveHousekeepingTo(gov, alvo.id, "clean");
+
+      const baseline = await snapshotHistoryIds(alvo.id);
+
+      const reprovacao = await postTransition(gov, {
+        roomIds: [alvo.id],
+        dimension: "housekeeping",
+        toStatus: "cleaning"
+      });
+
+      expect(reprovacao.status).toBe(200);
+      expect((await readRoom(alvo.id)).housekeeping_status).toBe("cleaning");
+
+      // O HISTORICO NAO PASSOU POR `inspected`. E' a metade que importa: o apartamento voltou
+      // para a camareira sem que ninguem tenha afirmado "eu olhei e aprovei".
+      const novasLinhas = await newHistoryRows(alvo.id, baseline);
+      const limpeza = novasLinhas.filter((linha) => linha.dimension === "housekeeping");
+
+      expect(limpeza.length).toBe(1);
+      expect(limpeza[0].previous_status).toBe("clean");
+      expect(limpeza[0].new_status).toBe("cleaning");
+      expect(novasLinhas.some((linha) => linha.new_status === "inspected")).toBe(false);
+    } finally {
+      await restoreRoom(gov, estadoOriginal);
+    }
+  });
+
+  test("71.0.2 - reprovar NAO mexe na tarefa do dia: continua pendente e sem tipo", async () => {
+    // O bicondicional da D2.1 do plano 75 -- `service_type` preenchido SE E SOMENTE SE
+    // `outcome = 'done'` -- continua valendo sem excecao.
+    //
+    // Reprovar nao produz desfecho: o trabalho NAO acabou, entao a tarefa fica `pending` e sem
+    // tipo, e a contagem do dia nao infla. Se a aresta nova um dia passar a fechar tarefa, e'
+    // aqui que aparece.
+    // ALVO COMPATIVEL ESCOLHIDO NO ESTADO ENCONTRADO: um apartamento sem bloqueio CUJA TAREFA
+    // DE HOJE AINDA ESTA PENDENTE. Nao basta pegar o primeiro sem bloqueio -- o 71.0.1 restaura
+    // o apartamento dele passando por `inspected`, o que FECHA a tarefa do dia, e este caso
+    // mediria um alvo ja' concluido. A suite nao reabre tarefa alheia para montar cenario.
+    let alvo: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      if (candidato.blocking_status !== "none") {
+        continue;
+      }
+
+      if ((await readTask(dayId, candidato.id)).outcome === "pending") {
+        alvo = candidato;
+        break;
+      }
+    }
+
+    test.skip(alvo === null, "Nenhum apartamento sem bloqueio com tarefa pendente hoje.");
+
+    if (!alvo) return;
+
+    const estadoOriginal = await readRoom(alvo.id);
+
+    try {
+      // `checkout` de proposito: `stayover` FECHARIA a tarefa em `clean` (D2 do plano 75), e o
+      // caso passaria a medir outra coisa.
+      await driveHousekeepingTo(gov, alvo.id, "clean");
+      expect((await readTask(dayId, alvo.id)).outcome).toBe("pending");
+
+      const reprovacao = await postTransition(gov, {
+        roomIds: [alvo.id],
+        dimension: "housekeeping",
+        toStatus: "cleaning"
+      });
+
+      expect(reprovacao.status).toBe(200);
+
+      const tarefaDepois = await readTask(dayId, alvo.id);
+      expect(tarefaDepois.outcome).toBe("pending");
+      expect(tarefaDepois.service_type).toBeNull();
+      expect(tarefaDepois.completed_at).toBeNull();
+    } finally {
       await restoreRoom(gov, estadoOriginal);
     }
   });

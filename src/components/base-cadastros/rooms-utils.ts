@@ -578,6 +578,39 @@ const HOUSEKEEPING_RULES: readonly TransitionRule[] = [
   // marcar "Limpo" em quarenta apartamentos e depois "Vistoriado" nos mesmos quarenta, ela
   // pularia o primeiro -- e o estado viraria ritual vazio.
   { from: "cleaning", to: "inspected", permission: ROOM_PERMISSIONS.inspect },
+  // REPROVAR ANTES DE LIBERAR (plano 71.0, D1). E' aqui que a fila de vistoria reprova: o
+  // apartamento esta' em `clean`, ela olha o quarto, falta toalha, e devolve para a camareira
+  // SEM nunca ter dito que vistoriou.
+  //
+  // ERRO DE ESPECIFICACAO REGISTRADO: o requisito era "reprovar volta para cleaning, nao
+  // dirty", e a primeira implementacao entregou `inspected -> cleaning` (commit 5da3d44).
+  // E' OUTRO CASO. O requisito nao dizia DE ONDE ela reprova, e a leitura natural -- reprovar
+  // o que ja' foi vistoriado -- foi a escrita. AS DUAS ARESTAS EXISTEM, para casos diferentes:
+  //
+  //   clean     -> cleaning : reprova ANTES de liberar. E' a fila de vistoria.
+  //   inspected -> cleaning : reprova DEPOIS de liberar. Ela aprovou e so' entao viu.
+  //
+  // Sem esta linha as duas saidas eram ruins, e a primeira e' a que importa:
+  //
+  //   `clean -> dirty` existe e diz a coisa errada -- `dirty` e' REFAZER DO ZERO. E' o mesmo
+  //   mecanismo que o comentario abaixo descreve: o custo de reprovar fica tao alto que a
+  //   saida barata vira NAO REPROVAR, e a governanta aprova o que nao devia para nao punir a
+  //   camareira com uma arrumacao inteira. Um sistema que torna a coisa certa cara ensina a
+  //   coisa errada, e ensina calado.
+  //
+  //   `clean -> inspected -> cleaning` funciona e FALSIFICA HISTORICO: grava uma vistoria
+  //   aprovada que nao aconteceu, com hora e autor, e deixa o apartamento VENDAVEL
+  //   (`isRoomSellable`) na janela entre as duas chamadas.
+  //
+  // `rooms.inspect`, e NAO `rooms.housekeeping`: reprovar e' ato de quem vistoria. Com
+  // `housekeeping` esta aresta viraria um segundo "desfazer" e colidiria com o `clean ->
+  // dirty` logo abaixo -- duas arestas para o mesmo gesto e' como se ensina a escolher a errada.
+  //
+  // LOTE: `maxRoomsPerTransition` so' limita `inspected`, entao reprovar em lote fica
+  // PERMITIDO pela rota. DECISAO CONSCIENTE, nao omissao: a trava de lote existe por um
+  // argumento especifico -- "eu olhei este quarto" -- que nao se aplica a reprovar. A tela nao
+  // oferece (D3 do plano 71); estender a trava sem caso de uso real seria inventar restricao.
+  { from: "clean", to: "cleaning", permission: ROOM_PERMISSIONS.inspect },
   // Reprovar na vistoria, em DOIS destinos -- e a escolha e' de quem vistoria.
   //
   // `cleaning` e' o caso comum: faltou trocar a toalha, cinco minutos, a camareira volta e

@@ -11,7 +11,9 @@ import {
   canTransition,
   describeRoomState,
   housekeepingSideEffect,
+  isBatchAllowed,
   isRoomSellable,
+  maxRoomsPerTransition,
   type RoomState
 } from "../../src/components/base-cadastros/rooms-utils";
 
@@ -283,9 +285,16 @@ test("6 - atalho cleaning -> inspected permitido; dirty -> inspected negado", ()
   expect(canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "clean", "dirty").allowed).toBe(true);
   expect(canTransition(SEM_PERMISSAO, "housekeeping", "clean", "dirty").allowed).toBe(false);
 
-  // Voltam para `dirty`, NUNCA para `cleaning`: reabrir uma limpeza que nao aconteceu seria
-  // inventar um fato.
-  expect(canTransition(GOVERNANTA, "housekeeping", "clean", "cleaning").allowed).toBe(false);
+  // DESFAZER volta para `dirty`, NUNCA para `cleaning`: reabrir uma limpeza que nao aconteceu
+  // seria inventar um fato.
+  //
+  // A ASSERCAO FOI ESTREITADA, nao afrouxada (plano 71.0, D1). Ela usava GOVERNANTA, que tem
+  // limpeza E vistoria, e por isso afirmava duas coisas de uma vez. Hoje `clean -> cleaning`
+  // EXISTE, com `rooms.inspect`, e e' a REPROVACAO na fila de vistoria -- outro ato, outra
+  // permissao. O que esta linha protege continua intacto e agora esta' dito com precisao:
+  // QUEM SO' REGISTRA LIMPEZA nao consegue devolver um `clean` para `cleaning`, porque para
+  // essa pessoa o gesto seria desfazer, e desfazer para `cleaning` inventaria o fato.
+  expect(canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "clean", "cleaning").allowed).toBe(false);
 
   // Transicoes que a matriz da D3 nao lista continuam negadas -- allowlist, nao denylist.
   expect(canTransition(GOVERNANTA, "housekeeping", "dirty", "clean").allowed).toBe(false);
@@ -485,6 +494,13 @@ test("78.6 - allowlist FECHADA de rooms.occupancy", () => {
   // LIDER_GOVERNANCA fora, e e' DECISAO: a governanta nao marca ocupacao pelo mesmo motivo que
   // a recepcionista nao vistoria. Se alguem conceder na migration sem atualizar a matriz, ou
   // vice-versa, este teste quebra.
+  //
+  // E ELE GANHOU UM SEGUNDO MOTIVO (plano 71.0, D2). A governanta precisa registrar dispensa
+  // com origem `front_desk`, e ate' a 71.0 isso respondia 403. A saida foi alargar O GATE DA
+  // ROTA -- que aceita `rooms.occupancy` OU `rooms.housekeeping` para aquela origem --, e NAO
+  // esta matriz: dar `rooms.occupancy` a LIDER_GOVERNANCA desfaria a D4 do plano 78 inteira,
+  // porque ela passaria a fazer check-in e check-out. ESTE TESTE E' O QUE QUEBRA se alguem
+  // "resolver" o 403 pelo caminho errado.
   expect(permitidos).not.toContain("LIDER_GOVERNANCA");
   expect(permitidos).not.toContain("LIDER_MANUTENCAO");
 
@@ -564,4 +580,76 @@ test("78.7 - efeito COLATERAL e' so' sobre OUTRA dimensao (a regressao das 91 li
 
   expect(housekeepingSideEffect("occupancy", checkOut.effects)).toBe("dirty");
   expect(housekeepingSideEffect("occupancy", checkIn.effects)).toBeNull();
+});
+
+// ---------------------------------------------------------------------------- plano 71.0
+
+test("71.0.1 - reprovar ANTES de liberar: clean -> cleaning exige rooms.inspect", () => {
+  // A fila de vistoria e' de apartamentos em `clean`, e e' ali que ela reprova: olha o quarto,
+  // falta toalha, devolve para a camareira SEM nunca ter dito que vistoriou.
+  expect(canTransition(GOVERNANTA, "housekeeping", "clean", "cleaning").allowed).toBe(true);
+
+  // A PERMISSAO E' O QUE SEPARA OS DOIS ATOS sobre a mesma aresta. Quem so' registra limpeza
+  // esta' desfazendo um "Limpo" clicado por engano, e desfazer para `cleaning` inventaria uma
+  // limpeza que nao aconteceu -- para essa pessoa o destino continua sendo `dirty`.
+  const soLimpeza = canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "clean", "cleaning");
+  expect(soLimpeza.allowed).toBe(false);
+  expect(soLimpeza.allowed === false && soLimpeza.code).toBe("forbidden");
+
+  expect(canTransition(SEM_PERMISSAO, "housekeeping", "clean", "cleaning").allowed).toBe(false);
+
+  // AS DUAS ARESTAS COEXISTEM, para casos diferentes -- o erro de especificacao que o plano
+  // 71.0 registra. `inspected -> cleaning` e' reprovar DEPOIS de liberar; a de cima e' ANTES.
+  expect(canTransition(GOVERNANTA, "housekeeping", "inspected", "cleaning").allowed).toBe(true);
+
+  // E o desfazer continua existindo, com a permissao de quem lancou.
+  expect(canTransition([ROOM_PERMISSIONS.housekeeping], "housekeeping", "clean", "dirty").allowed).toBe(true);
+});
+
+test("71.0.2 - a aresta nova nao trouxe vizinha de carona: a allowlist continua fechada", () => {
+  // Acrescentar uma aresta e' o momento classico de outra entrar junto por descuido. O furo
+  // que a matriz existe para fechar continua fechado: ninguem vistoria o que ninguem arrumou.
+  expect(canTransition(GOVERNANTA, "housekeeping", "dirty", "inspected").allowed).toBe(false);
+  expect(canTransition(GOVERNANTA, "housekeeping", "dirty", "clean").allowed).toBe(false);
+  expect(canTransition(GOVERNANTA, "housekeeping", "inspected", "clean").allowed).toBe(false);
+
+  // `cleaning -> cleaning` e `clean -> clean` nao viraram validas por simetria.
+  expect(canTransition(GOVERNANTA, "housekeeping", "cleaning", "cleaning").allowed).toBe(false);
+  expect(canTransition(GOVERNANTA, "housekeeping", "clean", "clean").allowed).toBe(false);
+
+  // `dirty -> cleaning` continua sendo limpeza, nao vistoria: quem so' vistoria nao comeca
+  // arrumacao. A aresta nova nao inverteu a fronteira.
+  expect(canTransition([ROOM_PERMISSIONS.inspect], "housekeeping", "dirty", "cleaning").allowed).toBe(false);
+
+  // REPROVAR NAO CARREGA EFEITO em outra dimensao -- a ocupacao nao se mexe porque a camareira
+  // vai voltar ao quarto.
+  const reprovacao = canTransition(GOVERNANTA, "housekeeping", "clean", "cleaning");
+
+  if (!reprovacao.allowed) {
+    throw new Error("a reprovacao deveria ser permitida");
+  }
+
+  expect(housekeepingSideEffect("housekeeping", reprovacao.effects)).toBeNull();
+  expect(reprovacao.effects.occupancy).toBeUndefined();
+  expect(reprovacao.effects.blocking).toBeUndefined();
+
+  // E NAO EXIGE OBSERVACAO: so' o encerramento de bloqueio e o bloqueio comercial exigem.
+  // Registrado porque a tela oferece o campo, e oferecer nao e' o mesmo que obrigar.
+  expect(canTransition(GOVERNANTA, "housekeeping", "clean", "cleaning", null).allowed).toBe(true);
+});
+
+test("71.0.3 - reprovar em lote fica PERMITIDO pela rota, e isso e' decisao consciente", () => {
+  // A trava de lote existe por um argumento especifico -- "eu olhei este quarto" -- que nao se
+  // aplica a reprovar. Estender a trava sem caso de uso real seria inventar restricao, entao a
+  // rota nao impede e a TELA nao oferece (D3 do plano 71).
+  //
+  // Este teste existe para que a decisao seja ENCONTRADA por quem mudar de ideia, em vez de
+  // parecer esquecimento -- e para quebrar se alguem estender a trava sem registrar por que.
+  expect(isBatchAllowed("housekeeping", "cleaning", 20)).toBe(true);
+  expect(maxRoomsPerTransition("housekeeping", "cleaning")).toBeNull();
+
+  // O que a trava protege continua protegido: chegar em `inspected` e' um por vez, pelos DOIS
+  // caminhos (clean -> inspected e o atalho cleaning -> inspected).
+  expect(maxRoomsPerTransition("housekeeping", "inspected")).toBe(1);
+  expect(isBatchAllowed("housekeeping", "inspected", 2)).toBe(false);
 });
