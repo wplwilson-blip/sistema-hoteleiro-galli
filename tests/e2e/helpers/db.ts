@@ -278,6 +278,7 @@ export type HousekeepingTaskRow = {
   service_type: string | null;
   outcome: string;
   decline_origin: string | null;
+  decline_note: string | null;
   completed_at: string | null;
   carried_over_since: string | null;
   carried_over_days: number;
@@ -340,7 +341,7 @@ export async function readTask(dayId: string, roomId: string): Promise<Housekeep
   const { data, error } = await e2eDb()
     .from("housekeeping_tasks")
     .select(
-      "id, housekeeping_day_id, room_id, service_type, outcome, decline_origin, completed_at, carried_over_since, carried_over_days"
+      "id, housekeeping_day_id, room_id, service_type, outcome, decline_origin, decline_note, completed_at, carried_over_since, carried_over_days"
     )
     .eq("housekeeping_day_id", dayId)
     .eq("room_id", roomId)

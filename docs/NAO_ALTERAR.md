@@ -89,6 +89,34 @@ Este arquivo lista áreas sensíveis. O Codex deve parar e pedir confirmação a
 - Usar alçadas/funções: Gerência Administrativa e Diretoria Geral.
 - Não exibir códigos técnicos em inglês para usuário operacional quando houver label amigável.
 
+## Testes
+
+- **Teste novo que passa de primeira roda contra o estado SEM a correção antes de valer. Se
+  passar nos dois, não testa nada.**
+  Não é zelo: é a única prova barata de que a asserção tem dentes. Custa uma execução.
+- **Caso que monta a própria precondição e a desfaz NÃO é fabricar dado — é o cenário do caso.
+  Fabricar dado é reescrever estado de que outro é dono.**
+  A distinção é sobre **propriedade**, não sobre escrever. O caso 31 estava errado porque
+  resetava tarefas de **dias passados**, com trabalho registrado por outra pessoa — um
+  apartamento que constava arrumado em 02/09 passou a constar não arrumado. Já ocupar um
+  apartamento e desocupá-lo, ou sujá-lo e devolvê-lo, é o próprio cenário sendo montado e
+  desmontado. Aplicar a regra nos dois sentidos deixa testes **inertes**: foi o que aconteceu
+  com os casos 78.8 e 78.11, que pularam para sempre por falta de um ponto de partida que eles
+  mesmos podiam criar.
+- **As três formas de falso verde já encontradas neste projeto — a próxima será uma quarta.**
+  Todas passaram, todas não provavam nada, e nenhuma se parece com as outras:
+  1. **Comparar listas vazias** (teste 5, plano 73). A igualdade entre dois menus era real e
+     inútil: os grupos estavam colapsados, e os dois lados tinham dois itens. Passaria contra
+     exatamente a lista curada que o teste existia para proibir.
+  2. **Não transicionar nada** (caso 80.1). O helper volta na hora quando o estado atual já é o
+     alvo, e os apartamentos viviam no alvo. O caso pedia a transição que estoura e nenhuma
+     transição acontecia.
+  3. **Não começar** (casos 78.8 e 78.11). `test.skip` por falta de alvo compatível, para
+     sempre, porque o resto da suíte convergiu o estado. `skipped` não é verde, mas conta como
+     "não falhou" e some no meio do placar.
+  Ao ler um teste verde, a pergunta não é "passou?" — é **"o que exatamente foi executado, e o
+  que teria acontecido se o produto estivesse errado?"**.
+
 ## Git e Sprint
 
 - Não misturar sprints.

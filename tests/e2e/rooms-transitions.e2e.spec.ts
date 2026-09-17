@@ -48,16 +48,36 @@ import {
 //
 // PRINCIPIO DA SUITE -- vale para todo caso novo:
 //
-//   A suite LE o estado que encontra e escolhe um alvo COMPATIVEL. Ela nunca reescreve estado
-//   alheio para montar cenario. Um caso que nao acha alvo e' um caso PULADO COM MOTIVO, nao um
-//   caso que fabrica o alvo.
+//   A suite nunca reescreve estado DE QUE OUTRO E' DONO. Um caso que precisa de estado alheio
+//   e nao o encontra e' um caso PULADO COM MOTIVO.
 //
 // Isto nao e' preferencia de estilo. O caso 31 chegou a resetar tarefas de dias PASSADOS para
 // garantir um apartamento pendente nos tres dias -- e com isso um apartamento registrado como
-// arrumado passou a constar como NAO arrumado. A suite falsificou historico.
+// arrumado passou a constar como NAO arrumado. A suite falsificou historico. E restaurar
+// depois nao resolve: o dado fica falsificado DURANTE a execucao, que e' exatamente quando
+// outro caso poderia le-lo.
 //
-// E restaurar depois nao resolve: o dado fica falsificado DURANTE a execucao, que e'
-// exatamente quando outro caso poderia le-lo.
+// ------------------------------------------------------------------------------------
+// A DISTINCAO E' SOBRE PROPRIEDADE, NAO SOBRE ESCREVER. Leia antes de aplicar a regra.
+//
+//   FABRICAR DADO (proibido): reescrever o que outro registrou. A tarefa de 02/09, o
+//   desfecho que a governanta lancou, o bloqueio que a manutencao abriu. Esse dado tem dono,
+//   e nao e' a suite.
+//
+//   MONTAR A PROPRIA PRECONDICAO (correto): ocupar um apartamento para poder testar o
+//   check-out, sujar um para poder testar o check-in em nao vendavel, fechar o dia para poder
+//   testar a madrugada. O caso cria, usa e DESFAZ no `finally`. E' o cenario do caso, do
+//   comeco ao fim, e nunca sai da mao dele.
+//
+// APLICAR A REGRA NOS DOIS SENTIDOS DEIXA TESTE INERTE, e isso aconteceu aqui: quando os
+// casos da fatia 78 aprenderam a devolver o estado, os oito apartamentos convergiram para
+// `vacant / inspected / none` -- e o 78.8 e o 78.11, que precisam de OUTRO ponto de partida,
+// passaram a pular PARA SEMPRE. O 78.8 e' justamente o que prova que a trava estreitada da
+// ocupacao vale contra chamada direta a RPC, o argumento central daquela fatia. Dois casos
+// verdes no placar, zero execucoes.
+//
+// `skipped` NAO E' VERDE. Ao ler o placar, conte os pulados e pergunte por que.
+// ------------------------------------------------------------------------------------
 //
 // LACUNAS DECLARADAS -- casos que NAO estao aqui, e o motivo. Nenhum deles tem teste que
 // finja cobri-lo: um teste que finge e' pior que a lacuna escrita (§11 do plano ja registrou
@@ -1193,13 +1213,26 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
         headers: { "content-type": "application/json" }
       });
 
+      // O NUMERO ESPERADO E' LIDO, NAO FIXADO -- e esta e' a correcao do caso.
+      //
+      // `carried_over_days` conta os DIAS REGISTRADOS no intervalo [carried_over_since, dia)
+      // (092, secao 5). A versao anterior fixava 2 para hoje, assumindo que os unicos dias
+      // entre `primeiro` e `hoje` eram `primeiro` e `segundo`. O staging tem quatro dias
+      // anteriores em aberto (02, 03, 04 e 07/09), entao o numero real e' 4 -- e o caso
+      // falhava com "Expected: 2, Received: 4" acusando o produto de um erro que era dele.
+      //
+      // Um teste que fixa uma suposicao em vez de ler o que encontra quebra com o calendario,
+      // que e' o oposto do principio que o cabecalho desta suite prega.
+      const diasEntre = (de: string, ate: string) =>
+        dias.filter((d) => d.service_date >= de && d.service_date < ate).length;
+
       const noSegundo = await readTask(segundo.id, room.id);
       expect(noSegundo.carried_over_since).toBe(primeiro.service_date);
-      expect(noSegundo.carried_over_days).toBe(1);
+      expect(noSegundo.carried_over_days).toBe(diasEntre(primeiro.service_date, segundo.service_date));
 
       const emHojeApos1 = await readTask(hoje.id, room.id);
       expect(emHojeApos1.carried_over_since).toBe(primeiro.service_date);
-      expect(emHojeApos1.carried_over_days).toBe(2);
+      expect(emHojeApos1.carried_over_days).toBe(diasEntre(primeiro.service_date, hoje.service_date));
 
       // Fecha o SEGUNDO. Aqui esta o teste que trava o "reset": a marca em hoje tem que
       // continuar apontando para o PRIMEIRO dia, nao pular para o segundo.
@@ -1210,7 +1243,10 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       const emHojeApos2 = await readTask(hoje.id, room.id);
       expect(emHojeApos2.carried_over_since).toBe(primeiro.service_date);
       expect(emHojeApos2.carried_over_since).not.toBe(segundo.service_date);
-      expect(emHojeApos2.carried_over_days).toBe(2);
+      // O MESMO numero de antes: fechar o segundo dia NAO pode reiniciar a contagem. E' o
+      // "reset" que este caso existe para travar -- e por isso a comparacao e' com o valor
+      // lido antes, e nao com uma constante.
+      expect(emHojeApos2.carried_over_days).toBe(emHojeApos1.carried_over_days);
 
       // E a invariante do CHECK: data e contador andam juntos.
       expect(emHojeApos2.carried_over_since === null).toBe(emHojeApos2.carried_over_days === 0);
@@ -1226,7 +1262,17 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
         }
       }
 
-      for (const dia of [primeiro, segundo, hoje]) {
+      // LIMPA A SOBRA EM TODOS OS DIAS QUE ELA PODE TER ALCANCADO, e nao so' nos tres que o
+      // caso nomeia.
+      //
+      // Fechar `primeiro` propaga a marca para TODO dia posterior ainda aberto (092, secao 5)
+      // -- no staging isso e' 03, 04, 07 e 15/09, nao so' os tres daqui. Limpando apenas
+      // `primeiro`, `segundo` e `hoje`, a marca ficava nos dias do meio e SE ACUMULAVA a cada
+      // rodada: 202 tarefas marcadas numa conferencia, 302 na seguinte.
+      //
+      // Residuo que cresce e' pior que residuo que fica: ele muda o resultado das proximas
+      // execucoes e a causa fica cada vez mais longe do efeito.
+      for (const dia of dias.filter((d) => d.service_date >= primeiro.service_date)) {
         await clearCarryOver(dia.id);
       }
     }
@@ -1358,7 +1404,9 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     }
   });
 
-  test("78.8 - A INVARIANTE, pela porta dos fundos: a RPC recusa check-out sem o efeito", async () => {
+  test("78.8 - A INVARIANTE, pela porta dos fundos: a RPC recusa check-out sem o efeito", async ({
+    baseURL
+  }) => {
     // O TESTE QUE PROVA QUE A TRAVA ESTREITADA E' MAIS FORTE QUE A NO_WRITER.
     //
     // Vai DIRETO na RPC com service role -- o mesmo uso ja declarado no cabecalho de
@@ -1368,21 +1416,59 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     //
     // NAO HA RISCO DE RESIDUO por construcao: se a chamada FALHAR (o esperado), nada foi
     // escrito. Se ela PASSAR, o teste quebra -- e a falha e' justamente a noticia.
-    let alvo: RoomStateRow | null = null;
+    // ESTE CASO MONTA A PROPRIA PRECONDICAO -- e a versao anterior nao montava, o que o
+    // deixou INERTE. Ele pulava com "nenhum apartamento ocupado", e nenhum ficava ocupado
+    // depois que os outros casos da fatia aprenderam a devolver o estado. Resultado: o caso
+    // que prova o ARGUMENTO CENTRAL da fatia 78 nunca executou.
+    //
+    // Ocupar um apartamento e desocupa-lo no `finally` NAO e' fabricar dado: e' o cenario do
+    // caso, do comeco ao fim, e nunca sai da mao dele. Fabricar seria reescrever o desfecho
+    // que a governanta lancou ou a tarefa de um dia passado -- coisas de que outro e' dono.
+    test.skip(
+      !isUserConfigured("E2E_RECEPCAO"),
+      "E2E_RECEPCAO nao configurado: quem ocupa o apartamento e' a recepcao, pela rota."
+    );
 
-    for (const candidato of rooms) {
-      const atual = await readRoom(candidato.id);
+    if (!baseURL) throw new Error("[e2e] baseURL ausente.");
 
-      if (atual.occupancy_status === "occupied") {
-        alvo = atual;
-        break;
+    const candidato = rooms.find(() => true);
+
+    if (!candidato) return;
+
+    const estadoOriginal = await readRoom(candidato.id);
+    const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
+
+    try {
+      // A PRECONDICAO, pela rota real -- nao por escrita direta no banco.
+      if (estadoOriginal.occupancy_status === "vacant") {
+        const entrada = await recepcao.post("/api/base/rooms/occupancy", {
+          data: { entries: [{ roomId: candidato.id, event: "check_in", reason: "[E2E] 78.8 precondicao" }] },
+          headers: { "content-type": "application/json" }
+        });
+
+        expect(entrada.status(), "nao consegui ocupar o apartamento para montar o cenario").toBe(200);
       }
+
+      const alvo = await readRoom(candidato.id);
+
+      expect(alvo.occupancy_status).toBe("occupied");
+
+      await provarInvarianteDoCheckOut(alvo);
+    } finally {
+      if ((await readRoom(candidato.id)).occupancy_status === "occupied") {
+        await recepcao.post("/api/base/rooms/occupancy", {
+          data: { entries: [{ roomId: candidato.id, event: "check_out" }] },
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      await restoreRoom(gov, estadoOriginal);
+      await recepcao.dispose();
     }
+  });
 
-    test.skip(alvo === null, "Nenhum apartamento ocupado: a suite nao ocupa um para poder testar.");
-
-    if (!alvo) return;
-
+  /** O miolo do 78.8, separado so' para o caso acima ficar legivel. */
+  async function provarInvarianteDoCheckOut(alvo: RoomStateRow): Promise<void> {
     const antes = await readRoom(alvo.id);
 
     const semEfeito = await callTransitionRpc({
@@ -1406,7 +1492,7 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
 
     expect(depois.occupancy_status).toBe(antes.occupancy_status);
     expect(depois.housekeeping_status).toBe(antes.housekeeping_status);
-  });
+  }
 
   test("78.9 - a GOVERNANCA nao marca ocupacao: 403 PELA CAUSA CERTA (metade reciproca da D4)", async () => {
     const alvo = rooms[0];
@@ -1669,29 +1755,31 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
 
     if (!baseURL) throw new Error("[e2e] baseURL ausente.");
 
-    // Alvo compativel: vago, sem bloqueio e NAO vistoriado -- ou seja, nao vendavel.
-    let alvo: RoomStateRow | null = null;
-
-    for (const candidato of rooms) {
-      const atual = await readRoom(candidato.id);
-
-      if (
-        atual.occupancy_status === "vacant" &&
-        atual.blocking_status === "none" &&
-        atual.housekeeping_status !== "inspected"
-      ) {
-        alvo = atual;
-        break;
-      }
-    }
-
-    test.skip(alvo === null, "Nenhum apartamento vago e nao vistoriado: a suite nao suja um para poder testar.");
+    // ESTE CASO TAMBEM MONTA A PROPRIA PRECONDICAO. A versao anterior procurava um
+    // apartamento vago e NAO vistoriado, e pulava quando nao achava -- que passou a ser
+    // sempre, porque os oito terminam a suite em `inspected`. Inerte.
+    //
+    // Sujar um apartamento e devolve-lo ao estado encontrado e' o cenario do caso. Quem suja
+    // e' a GOVERNANCA, pela rota, com a permissao dela -- e quem devolve tambem.
+    const alvo = rooms.find(() => true) ?? null;
 
     if (!alvo) return;
+
+    const estadoOriginal = await readRoom(alvo.id);
+
+    test.skip(
+      estadoOriginal.blocking_status !== "none",
+      "O apartamento escolhido esta bloqueado: bloqueio e' estado de que a manutencao e' dona."
+    );
 
     const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
 
     try {
+      // A PRECONDICAO: nao vendavel. `dirty` basta -- `isRoomSellable` exige `inspected`.
+      await driveHousekeepingTo(gov, alvo.id, "dirty");
+
+      expect((await readRoom(alvo.id)).housekeeping_status).toBe("dirty");
+
       const semMotivo = await recepcao.post("/api/base/rooms/occupancy", {
         data: { entries: [{ roomId: alvo.id, event: "check_in" }] },
         headers: { "content-type": "application/json" }
@@ -1712,9 +1800,12 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       expect(comMotivo.status()).toBe(200);
       expect((await readRoom(alvo.id)).occupancy_status).toBe("occupied");
     } finally {
-      // Este caso OCUPA um apartamento de proposito e precisa desocupa-lo. Sem isto ele deixa
-      // um hospede fantasma no parque -- o pior residuo possivel para uma suite que conta
-      // apartamentos vagos para escolher alvo.
+      // Este caso OCUPA e SUJA um apartamento de proposito, e devolve as duas coisas. Sem a
+      // desocupacao ele deixa um hospede fantasma no parque -- o pior residuo possivel para
+      // uma suite que conta apartamentos vagos para escolher alvo.
+      //
+      // A restauracao usa `estadoOriginal`, LIDO no comeco do caso -- e nao o `alvo` do
+      // `beforeAll`, que e' uma foto tirada antes de todos os outros casos rodarem.
       if ((await readRoom(alvo.id)).occupancy_status === "occupied") {
         await recepcao.post("/api/base/rooms/occupancy", {
           data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
@@ -1722,7 +1813,7 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
         });
       }
 
-      await restoreRoom(gov, alvo);
+      await restoreRoom(gov, estadoOriginal);
       await recepcao.dispose();
     }
   });
@@ -1775,5 +1866,104 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
     }
   });
 
+
+
+  // ===========================================================================================
+  // A DISPENSA SOBREVIVE AO RESTO DO DIA (plano docs/codex/80, migration 094)
+  // ===========================================================================================
+
+  test("80.1 - vistoriar NAO apaga a dispensa, e o apartamento volta a vender", async () => {
+    // O CASO QUE PROVA OS DOIS LADOS, e nenhum deles sozinho basta:
+    //
+    //   (i)  a dispensa fica INTACTA -- origem, nota e hora. Ela e' o UNICO registro de si
+    //        mesma: dispensa nao e' transicao (§3 do plano 75), entao nao esta em
+    //        `room_status_history`. Sobrescrever a tarefa apagava o fato de vez.
+    //   (ii) o apartamento CHEGA a `inspected` e volta a ser vendavel. Sem esta metade, a
+    //        correcao poderia ter sido "a RPC recusa a transicao" -- que nao derruba com 23514,
+    //        nao perde dado, e deixa o quarto fora de venda. Trocaria de vitima.
+    //
+    // Antes da 094 este caminho respondia HTTP 500: o bloco (a) gravava `outcome = 'done'` sem
+    // limpar `decline_origin`, violando o bicondicional da 091 (SQLSTATE 23514).
+    let alvo: RoomStateRow | null = null;
+    let tarefaId: string | null = null;
+
+    for (const candidato of rooms) {
+      const atual = await readRoom(candidato.id);
+
+      if (atual.blocking_status !== "none") {
+        continue;
+      }
+
+      const tarefa = await readTask(dayId, candidato.id);
+
+      if (tarefa.outcome === "pending") {
+        alvo = atual;
+        tarefaId = tarefa.id;
+        break;
+      }
+    }
+
+    test.skip(
+      alvo === null,
+      "Nenhum apartamento sem bloqueio com tarefa pendente hoje: a suite nao reabre tarefa alheia para montar o cenario."
+    );
+
+    if (!alvo || !tarefaId) return;
+
+    const estadoOriginal = await readRoom(alvo.id);
+
+    try {
+      // A MANHA: o hospede dispensa a arrumacao. Pela ROTA, com a origem da camareira -- o
+      // caminho da governanta, que nao depende do ator da recepcao existir.
+      const dispensa = await gov.patch(`/api/base/rooms/tasks/${tarefaId}`, {
+        data: { outcome: "declined", declineOrigin: "housekeeper", declineNote: "[E2E] 80.1 hospede dispensou" },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(dispensa.status()).toBe(200);
+
+      const dispensada = await readTask(dayId, alvo.id);
+
+      expect(dispensada.outcome).toBe("declined");
+      expect(dispensada.decline_origin).toBe("housekeeper");
+
+      // A TARDE: o hospede sai, o quarto e' arrumado e vistoriado.
+      //
+      // O `dirty` PRIMEIRO E' OBRIGATORIO, e nao e' cerimonia. `driveHousekeepingTo` volta na
+      // hora quando o estado atual JA E' o alvo -- e os apartamentos desta faixa vivem em
+      // `inspected`. Sem esta linha o caso pedia "leve a inspected" a um quarto que ja estava
+      // la', NENHUMA transicao acontecia, e ele passava verde sem ter exercitado nada. Foi o
+      // que aconteceu na primeira execucao, contra um banco SEM a 094: o defeito estava la' e
+      // o teste nao o viu.
+      //
+      // Com o ciclo forcado, a chegada em `inspected` acontece de verdade -- e e' nela que o
+      // bloco (a) tocava a tarefa dispensada e estourava 23514.
+      await driveHousekeepingTo(gov, alvo.id, "dirty");
+      await driveHousekeepingTo(gov, alvo.id, "inspected");
+
+      // (ii) O APARTAMENTO VOLTA A VENDER.
+      const depois = await readRoom(alvo.id);
+
+      expect(depois.housekeeping_status).toBe("inspected");
+      expect(depois.occupancy_status).toBe("vacant");
+      expect(depois.blocking_status).toBe("none");
+
+      // (i) A DISPENSA CONTINUA LA', inteira -- comparada com ela mesma antes da vistoria, e
+      // nao com valores fixos.
+      const aindaDispensada = await readTask(dayId, alvo.id);
+
+      expect(aindaDispensada.outcome).toBe("declined");
+      expect(aindaDispensada.decline_origin).toBe(dispensada.decline_origin);
+      expect(aindaDispensada.decline_note).toBe(dispensada.decline_note);
+      expect(aindaDispensada.completed_at).toBe(dispensada.completed_at);
+
+      // E o bicondicional da D2.1 continua satisfeito: tarefa sem `done` nao carrega tipo.
+      expect(aindaDispensada.service_type).toBeNull();
+    } finally {
+      // Desfaz o proprio rastro: a dispensa foi ESTE caso que lancou.
+      await resetTaskToPending(tarefaId);
+      await restoreRoom(gov, estadoOriginal);
+    }
+  });
 
 });
