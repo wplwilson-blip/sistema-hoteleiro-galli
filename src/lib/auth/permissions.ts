@@ -29,7 +29,8 @@ export const BASE_PERMISSIONS = {
   suppliersManage: "BASE:suppliers.manage",
   usersView: "BASE:users.view",
   usersManage: "BASE:users.manage",
-  // Apartamentos (UHs) — 088 (view/block/manage) e 089 (housekeeping/inspect).
+  // Apartamentos (UHs) — 088 (view/block/manage), 089 (housekeeping/inspect) e
+  // 093 (occupancy).
   //
   // Os codigos REFERENCIAM ROOM_PERMISSIONS em rooms-utils.ts em vez de repetir as strings:
   // duas fontes com o mesmo valor divergem, e um code divergente aqui nao quebra o build --
@@ -43,7 +44,8 @@ export const BASE_PERMISSIONS = {
   roomsBlock: ROOM_PERMISSIONS.block,
   roomsManage: ROOM_PERMISSIONS.manage,
   roomsHousekeeping: ROOM_PERMISSIONS.housekeeping,
-  roomsInspect: ROOM_PERMISSIONS.inspect
+  roomsInspect: ROOM_PERMISSIONS.inspect,
+  roomsOccupancy: ROOM_PERMISSIONS.occupancy
 } as const;
 
 export const PURCHASES_PERMISSIONS = {

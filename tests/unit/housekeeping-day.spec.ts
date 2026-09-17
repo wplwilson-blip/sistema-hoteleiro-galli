@@ -123,6 +123,16 @@ test("5 - tipo no fecho: sugerido pela ocupacao daquele instante, nunca na abert
   // A funcao e' SUGESTAO no fecho. O teste que trava a volta do defeito da D2 anterior e' o
   // 5b abaixo: uma tarefa pendente NAO pode ter tipo -- ou seja, a abertura do dia nao tipa
   // nada, e nenhum caminho consegue faze-lo.
+  //
+  // ATE' O PLANO 78 ESTA FUNCAO ESTAVA CORRETA E ERA INUTIL. Ela le' `occupancy_status`, que
+  // nao tinha escritor: a 089 fez backfill da coluna a partir do `room_status` legado e
+  // NENHUMA linha de codigo a alterou depois. Nao era um vazio inerte -- era um retrato
+  // CONGELADO, que parecia plausivel e se afastava da realidade a cada check-in que acontecia
+  // no mundo e nao no sistema. A sugestao saia com aparencia de certa.
+  //
+  // A fatia 78 (migration 093) da' escritor a coluna. A funcao nao mudou; ela passou a dizer
+  // a verdade. Se a tela da governanta (plano 71) tivesse chegado antes, teria consumido a
+  // mentira sem nenhum sinal de que era mentira.
 });
 
 test("5b - o bicondicional: tipo se e somente se concluida", () => {

@@ -1,5 +1,5 @@
 import { test as setup } from "@playwright/test";
-import { createAuthState } from "./helpers/auth";
+import { createAuthState, isUserConfigured } from "./helpers/auth";
 
 // Projeto "setup" do Playwright: loga programaticamente os usuarios de teste e grava o
 // storageState de cada um. Os specs (projeto chromium) dependem deste projeto, entao isto
@@ -26,4 +26,16 @@ setup("autenticar E2E_GOVERNANCA", async ({ baseURL }) => {
 setup("autenticar E2E_MANUTENCAO", async ({ baseURL }) => {
   if (!baseURL) throw new Error("[e2e] baseURL ausente na config do Playwright.");
   await createAuthState("E2E_MANUTENCAO", baseURL);
+});
+
+// Plano 78 (a Recepcao escreve a ocupacao). PULA enquanto o ator nao existir: o perfil
+// RECEPCAO nasce com a migration 093, e a suite foi escrita antes de ela ser aplicada.
+setup("autenticar E2E_RECEPCAO", async ({ baseURL }) => {
+  setup.skip(
+    !isUserConfigured("E2E_RECEPCAO"),
+    "E2E_RECEPCAO_USERNAME/_PASSWORD nao definidos: o perfil RECEPCAO nasce com a migration 093."
+  );
+
+  if (!baseURL) throw new Error("[e2e] baseURL ausente na config do Playwright.");
+  await createAuthState("E2E_RECEPCAO", baseURL);
 });

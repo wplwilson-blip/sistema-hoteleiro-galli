@@ -1,5 +1,5 @@
 import { expect, request as playwrightRequest, test, type APIRequestContext } from "@playwright/test";
-import { authStatePath } from "./helpers/auth";
+import { authStatePath, isUserConfigured } from "./helpers/auth";
 import {
   callTransitionRpc,
   countHistory,
@@ -93,7 +93,7 @@ type TransitionBody = {
 
 /** Contexto HTTP autenticado como um dos usuarios do plano 70. */
 async function contextFor(
-  user: "E2E_GOVERNANCA" | "E2E_MANUTENCAO",
+  user: "E2E_GOVERNANCA" | "E2E_MANUTENCAO" | "E2E_RECEPCAO",
   baseURL: string
 ): Promise<APIRequestContext> {
   return playwrightRequest.newContext({ baseURL, storageState: authStatePath(user) });
@@ -1263,5 +1263,517 @@ test.describe("Transicao de estado de apartamento (plano 70)", () => {
       expect(dia.service_date < (corpo.serviceDate ?? "")).toBe(true);
     }
   });
+
+
+  // ===========================================================================================
+  // A RECEPCAO ESCREVE A OCUPACAO (plano docs/codex/78, migration 093)
+  //
+  // ATOR: E2E_RECEPCAO, perfil RECEPCAO -- que NASCE COM A 093. Enquanto a migration nao for
+  // aplicada e o usuario nao existir, estes casos PULAM COM MOTIVO. Pular com motivo e'
+  // honesto; ficar vermelho por falta de credencial ensina a suite a ser ignorada.
+  // ===========================================================================================
+
+  test("78.7 - o caminho inteiro: check-out devolve para a governanca, e so' ela devolve para a venda", async ({
+    baseURL
+  }) => {
+    test.skip(
+      !isUserConfigured("E2E_RECEPCAO"),
+      "E2E_RECEPCAO nao configurado: o perfil RECEPCAO nasce com a migration 093."
+    );
+
+    if (!baseURL) throw new Error("[e2e] baseURL ausente.");
+
+    // ALVO COMPATIVEL, escolhido no estado encontrado (principio da suite): um apartamento
+    // VAGO, sem bloqueio. A suite nao fabrica o cenario.
+    let alvo: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      const atual = await readRoom(candidato.id);
+
+      if (atual.occupancy_status === "vacant" && atual.blocking_status === "none") {
+        alvo = atual;
+        break;
+      }
+    }
+
+    test.skip(alvo === null, "Nenhum apartamento vago e sem bloqueio: a suite nao reescreve estado alheio.");
+
+    if (!alvo) return;
+
+    const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
+
+    try {
+      // 1) CHECK-IN. A ocupacao muda; a limpeza NAO.
+      const antes = await readRoom(alvo.id);
+      const entrada = await recepcao.post("/api/base/rooms/occupancy", {
+        data: { entries: [{ roomId: alvo.id, event: "check_in", reason: "E2E 78.7" }] },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(entrada.status()).toBe(200);
+
+      const ocupado = await readRoom(alvo.id);
+
+      expect(ocupado.occupancy_status).toBe("occupied");
+      expect(ocupado.housekeeping_status).toBe(antes.housekeeping_status);
+
+      // 2) CHECK-OUT. AS DUAS DIMENSOES, e e' o que a fatia existe para garantir.
+      const saida = await recepcao.post("/api/base/rooms/occupancy", {
+        data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(saida.status()).toBe(200);
+
+      const depois = await readRoom(alvo.id);
+
+      expect(depois.occupancy_status).toBe("vacant");
+      // O CORACAO: sujo, nunca vistoriado. Vago + vistoriado aqui seria um apartamento
+      // VENDAVEL COM O QUARTO SUJO.
+      expect(depois.housekeeping_status).toBe("dirty");
+
+      // 3) E A RECEPCAO NAO CONSEGUE DEVOLVER PARA A VENDA (D4). Quem libera e' a governanca.
+      const tentativa = await recepcao.post("/api/base/rooms/transitions", {
+        data: { roomIds: [alvo.id], dimension: "housekeeping", toStatus: "cleaning" },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(tentativa.status()).toBe(403);
+    } finally {
+      // DEVOLVE O QUE ESTE CASO ESCREVEU. Ele deixa o apartamento `vacant + dirty` -- que e'
+      // justamente o resultado que ele prova --, e sem esta limpeza o estado fica para as
+      // rodadas seguintes. Cada setor desfaz a sua dimensao: a ocupacao pela recepcao, a
+      // limpeza pela governanca.
+      const atual = await readRoom(alvo.id);
+
+      if (atual.occupancy_status === "occupied") {
+        await recepcao.post("/api/base/rooms/occupancy", {
+          data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      await restoreRoom(gov, alvo);
+      await recepcao.dispose();
+    }
+  });
+
+  test("78.8 - A INVARIANTE, pela porta dos fundos: a RPC recusa check-out sem o efeito", async () => {
+    // O TESTE QUE PROVA QUE A TRAVA ESTREITADA E' MAIS FORTE QUE A NO_WRITER.
+    //
+    // Vai DIRETO na RPC com service role -- o mesmo uso ja declarado no cabecalho de
+    // helpers/db.ts para "forcar um `from` obsoleto". E' a unica forma de exercitar a camada
+    // que vale contra uma segunda rota escrita amanha ou um select no SQL Editor: pela rota, o
+    // efeito e' calculado por `canTransition` e nunca chega errado.
+    //
+    // NAO HA RISCO DE RESIDUO por construcao: se a chamada FALHAR (o esperado), nada foi
+    // escrito. Se ela PASSAR, o teste quebra -- e a falha e' justamente a noticia.
+    let alvo: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      const atual = await readRoom(candidato.id);
+
+      if (atual.occupancy_status === "occupied") {
+        alvo = atual;
+        break;
+      }
+    }
+
+    test.skip(alvo === null, "Nenhum apartamento ocupado: a suite nao ocupa um para poder testar.");
+
+    if (!alvo) return;
+
+    const antes = await readRoom(alvo.id);
+
+    const semEfeito = await callTransitionRpc({
+      transitions: [{ room_id: alvo.id, from: "occupied", to: "vacant", housekeeping_effect: null }],
+      dimension: "occupancy"
+    });
+
+    expect(semEfeito.error).not.toBeNull();
+    expect(semEfeito.error?.message ?? "").toContain("ROOMS_TRANSITION_CHECKOUT_REQUIRES_DIRTY");
+
+    // E `inspected` como efeito morre pela MESMA trava -- a tentativa que a D4 impede.
+    const comInspected = await callTransitionRpc({
+      transitions: [{ room_id: alvo.id, from: "occupied", to: "vacant", housekeeping_effect: "inspected" }],
+      dimension: "occupancy"
+    });
+
+    expect(comInspected.error?.message ?? "").toContain("ROOMS_TRANSITION_CHECKOUT_REQUIRES_DIRTY");
+
+    // NADA FOI ESCRITO nas duas tentativas: a RPC e' transacional.
+    const depois = await readRoom(alvo.id);
+
+    expect(depois.occupancy_status).toBe(antes.occupancy_status);
+    expect(depois.housekeeping_status).toBe(antes.housekeeping_status);
+  });
+
+  test("78.9 - a GOVERNANCA nao marca ocupacao: 403 PELA CAUSA CERTA (metade reciproca da D4)", async () => {
+    const alvo = rooms[0];
+    const antes = await readRoom(alvo.id);
+
+    const resposta = await gov.post("/api/base/rooms/occupancy", {
+      data: { entries: [{ roomId: alvo.id, event: "check_in" }] },
+      headers: { "content-type": "application/json" }
+    });
+
+    const corpo = (await resposta.json().catch(() => ({}))) as { message?: string };
+
+    // 403 e nao 422: e' falta de permissao, e a governanta nao deve descobrir pela mensagem
+    // que faltava so' preencher um campo. Cada setor escreve numa dimensao so'.
+    expect(resposta.status()).toBe(403);
+
+    // A CAUSA, e nao so' o numero. Um 403 pode vir do gate de ENTRADA (`rooms.view`), e nesse
+    // caso o teste passaria sem nunca ter exercitado a regra que ele afirma -- verde por
+    // falhar ANTES do banco. A governanta TEM `rooms.view`, entao o unico 403 que ela alcanca
+    // e' o de `canTransition`, DEPOIS de carregar o apartamento e resolver `rooms.occupancy`
+    // por unidade. A mensagem e' privativa desse ponto.
+    expect(corpo.message).toBe("Voce nao tem permissao para registrar check-in e check-out.");
+
+    // E a prova de que a rota LE O BANCO antes de decidir: um apartamento inexistente responde
+    // 404 -- que so' e' alcancavel depois da consulta. Se a recusa viesse antes do banco, este
+    // caso responderia 403 tambem.
+    const inexistente = await gov.post("/api/base/rooms/occupancy", {
+      data: { entries: [{ roomId: "00000000-0000-0000-0000-000000000000", event: "check_in" }] },
+      headers: { "content-type": "application/json" }
+    });
+
+    expect(inexistente.status()).toBe(404);
+
+    // Nada mudou no apartamento.
+    const depois = await readRoom(alvo.id);
+    expect(depois.occupancy_status).toBe(antes.occupancy_status);
+  });
+
+  test("78.13 - check-out DE MADRUGADA, com o dia FECHADO: o estado muda e nada se perde", async ({
+    baseURL
+  }) => {
+    // O ITEM 6 DA VALIDACAO da 093, exercitado de verdade.
+    //
+    // A recepcionista de plantao faz check-out as 2h; o dia da governanca so' abre as 8h. A
+    // RPC procura o dia ABERTO daquela data operacional, nao acha, e PULA o bloco da tarefa.
+    // Isso esta' certo -- a duvida e' se o apartamento se PERDE. Ele nao se perde: a abertura
+    // do dia materializa todos os ativos sem bloqueio (091:312).
+    //
+    // O cenario nao existe naturalmente (o dia esta' aberto agora), entao o caso FECHA e
+    // REABRE o dia de hoje, como os casos 29 e 30 ja fazem -- e devolve tudo no `finally`,
+    // inclusive o apartamento.
+    test.skip(
+      !isUserConfigured("E2E_RECEPCAO"),
+      "E2E_RECEPCAO nao configurado: o perfil RECEPCAO nasce com a migration 093."
+    );
+
+    if (!baseURL) throw new Error("[e2e] baseURL ausente.");
+
+    // ALVO COMPATIVEL EM TRES CONDICOES, e a terceira foi aprendida na primeira execucao:
+    // vago, sem bloqueio E COM A TAREFA DE HOJE AINDA `pending`.
+    //
+    // A versao anterior deste caso so' exigia as duas primeiras, e falhou: pegou um
+    // apartamento que casos anteriores da suite ja tinham levado a `inspected`, entao a tarefa
+    // dele estava `done`. Fechar o dia converte SO' as `pending` -- uma `done` continua `done`,
+    // o que esta' certo (reabrir o dia nao desfaz trabalho que aconteceu) e nao serve para
+    // este caso. Era assercao minha errada, nao comportamento errado do produto.
+    let alvo: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      const atual = await readRoom(candidato.id);
+
+      if (atual.occupancy_status !== "vacant" || atual.blocking_status !== "none") {
+        continue;
+      }
+
+      if ((await readTask(dayId, candidato.id)).outcome === "pending") {
+        alvo = atual;
+        break;
+      }
+    }
+
+    test.skip(
+      alvo === null,
+      "Nenhum apartamento vago, sem bloqueio e com tarefa pendente hoje: a suite nao reabre tarefa alheia para montar o cenario."
+    );
+
+    if (!alvo) return;
+
+    const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
+    const estadoOriginal = await readRoom(alvo.id);
+    let fechou = false;
+
+    try {
+      // O hospede entra (com o dia ainda aberto).
+      const entrada = await recepcao.post("/api/base/rooms/occupancy", {
+        data: { entries: [{ roomId: alvo.id, event: "check_in", reason: "E2E 78.13" }] },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(entrada.status()).toBe(200);
+
+      // O dia FECHA -- e' a madrugada.
+      const fechamento = await gov.post(`/api/base/rooms/days/${dayId}/close`, {
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(fechamento.status()).toBe(200);
+      fechou = true;
+
+      // A tarefa do apartamento agora e' `not_done` (o fechamento converteu as pendentes).
+      const tarefaNoFechamento = await readTask(dayId, alvo.id);
+
+      expect(tarefaNoFechamento.outcome).toBe("not_done");
+
+      // O CHECK-OUT DE MADRUGADA, com o dia fechado.
+      const saida = await recepcao.post("/api/base/rooms/occupancy", {
+        data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
+        headers: { "content-type": "application/json" }
+      });
+
+      // NAO e' recusado: o dia fechado trava LANCAMENTO DE TAREFA, nao o estado do
+      // apartamento. O hospede foi embora as 2h, e isso aconteceu.
+      expect(saida.status(), `resposta: ${JSON.stringify(await saida.json().catch(() => ({})))}`).toBe(200);
+
+      const depois = await readRoom(alvo.id);
+
+      expect(depois.occupancy_status).toBe("vacant");
+      expect(depois.housekeeping_status).toBe("dirty");
+
+      // E A TAREFA NAO FOI TOCADA -- comparada com o que ela era ANTES do check-out, e nao
+      // contra um valor fixo. O bloco da tarefa foi pulado porque nao havia dia aberto, que e'
+      // exatamente o que o item 6 afirma.
+      const tarefaDepois = await readTask(dayId, alvo.id);
+
+      expect(tarefaDepois.outcome).toBe(tarefaNoFechamento.outcome);
+      expect(tarefaDepois.completed_at).toBe(tarefaNoFechamento.completed_at);
+      expect(tarefaDepois.service_type).toBe(tarefaNoFechamento.service_type);
+
+      // AS 8H o dia reabre: o apartamento volta para a fila. Nada se perdeu.
+      const reabertura = await gov.post(`/api/base/rooms/days/${dayId}/reopen`, {
+        data: { note: "[E2E] abertura da manha seguinte." },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(reabertura.status()).toBe(200);
+      fechou = false;
+
+      expect((await readTask(dayId, alvo.id)).outcome).toBe("pending");
+    } finally {
+      if (fechou) {
+        await reopenDayDirect(dayId);
+      }
+
+      // Devolve o apartamento ao estado em que foi encontrado -- ocupacao pela recepcao,
+      // limpeza pela governanca. Cada setor desfaz o que escreveu.
+      const atual = await readRoom(alvo.id);
+
+      if (atual.occupancy_status === "occupied") {
+        await recepcao.post("/api/base/rooms/occupancy", {
+          data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      await restoreRoom(gov, estadoOriginal);
+      await recepcao.dispose();
+    }
+  });
+
+  test("78.10 - a dispensa `front_desk` exige rooms.occupancy, e a `housekeeper` exige rooms.housekeeping", async ({
+    baseURL
+  }) => {
+    // O GATE POR ORIGEM (plano 78, D6). Este teste quebra se alguem alargar o gate de novo --
+    // e' a razao de ele existir.
+    //
+    // A origem NAO e' rotulo decorativo: a D3 do plano 75 a criou para responder "o aviso da
+    // recepcao esta funcionando?". Um campo que qualquer um preenche com qualquer valor nao
+    // responde essa pergunta -- so' parece responder.
+    test.skip(
+      !isUserConfigured("E2E_RECEPCAO"),
+      "E2E_RECEPCAO nao configurado: o perfil RECEPCAO nasce com a migration 093."
+    );
+
+    if (!baseURL) throw new Error("[e2e] baseURL ausente.");
+
+    // Alvo compativel: uma tarefa PENDENTE do dia de hoje.
+    let tarefaId: string | null = null;
+    let quartoDaTarefa: string | null = null;
+
+    for (const candidato of rooms) {
+      const tarefa = await readTask(dayId, candidato.id);
+
+      if (tarefa.outcome === "pending") {
+        tarefaId = tarefa.id;
+        quartoDaTarefa = candidato.id;
+        break;
+      }
+    }
+
+    test.skip(tarefaId === null, "Nenhuma tarefa pendente hoje: a suite nao reabre tarefa alheia.");
+
+    if (!tarefaId || !quartoDaTarefa) return;
+
+    const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
+
+    try {
+      // A RECEPCIONISTA NAO REGISTRA "DESCOBERTO NA PORTA": ela nao esteve na porta.
+      const origemErrada = await recepcao.patch(`/api/base/rooms/tasks/${tarefaId}`, {
+        data: { outcome: "declined", declineOrigin: "housekeeper" },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(origemErrada.status()).toBe(403);
+
+      // E A GOVERNANTA NAO REGISTRA "A RECEPCAO AVISOU": ela nao e' a recepcao.
+      const govNaOrigemDaRecepcao = await gov.patch(`/api/base/rooms/tasks/${tarefaId}`, {
+        data: { outcome: "declined", declineOrigin: "front_desk" },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(govNaOrigemDaRecepcao.status()).toBe(403);
+
+      // A tarefa continua INTOCADA depois das duas recusas.
+      expect((await readTask(dayId, quartoDaTarefa)).outcome).toBe("pending");
+
+      // E a origem CERTA passa -- que e' a dispensa da recepcao, que ate' esta fatia nao tinha
+      // por onde entrar: o gate exigia `rooms.housekeeping` para QUALQUER origem.
+      const origemCerta = await recepcao.patch(`/api/base/rooms/tasks/${tarefaId}`, {
+        data: { outcome: "declined", declineOrigin: "front_desk", declineNote: "E2E 78.10" },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(origemCerta.status()).toBe(200);
+    } finally {
+      // DEVOLVE A TAREFA. Este caso DISPENSA uma tarefa de verdade -- e' a escrita que ele
+      // existe para provar --, e deixar a dispensa no banco e' residuo: a tarefa fica
+      // `declined` para sempre, e as rodadas seguintes herdam um estado que este caso criou.
+      //
+      // NAO E' HIPOTETICO: a rodada anterior deixou uma `declined` e ela derrubou os casos 4,
+      // 17 e 25 com HTTP 500 -- porque levar ao `inspected` uma tarefa dispensada viola o
+      // bicondicional `decline_origin_iff_declined` (defeito da RPC, registrado a parte).
+      //
+      // Restaurar o que ESTE caso escreveu nao e' falsificar estado alheio: e' desfazer o
+      // proprio rastro, que e' o oposto do que o caso 31 fazia.
+      if (tarefaId) {
+        await resetTaskToPending(tarefaId);
+      }
+
+      await recepcao.dispose();
+    }
+  });
+
+  test("78.11 - check-in em apartamento nao vendavel: 422 sem motivo, aceito com motivo (D9)", async ({
+    baseURL
+  }) => {
+    test.skip(
+      !isUserConfigured("E2E_RECEPCAO"),
+      "E2E_RECEPCAO nao configurado: o perfil RECEPCAO nasce com a migration 093."
+    );
+
+    if (!baseURL) throw new Error("[e2e] baseURL ausente.");
+
+    // Alvo compativel: vago, sem bloqueio e NAO vistoriado -- ou seja, nao vendavel.
+    let alvo: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      const atual = await readRoom(candidato.id);
+
+      if (
+        atual.occupancy_status === "vacant" &&
+        atual.blocking_status === "none" &&
+        atual.housekeeping_status !== "inspected"
+      ) {
+        alvo = atual;
+        break;
+      }
+    }
+
+    test.skip(alvo === null, "Nenhum apartamento vago e nao vistoriado: a suite nao suja um para poder testar.");
+
+    if (!alvo) return;
+
+    const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
+
+    try {
+      const semMotivo = await recepcao.post("/api/base/rooms/occupancy", {
+        data: { entries: [{ roomId: alvo.id, event: "check_in" }] },
+        headers: { "content-type": "application/json" }
+      });
+
+      // Nao e' proibicao: e' exigencia de registro. Recusar de vez produziria um apartamento
+      // marcado vago com o hospede dentro -- pior que o problema.
+      expect(semMotivo.status()).toBe(422);
+      expect((await readRoom(alvo.id)).occupancy_status).toBe("vacant");
+
+      const comMotivo = await recepcao.post("/api/base/rooms/occupancy", {
+        data: {
+          entries: [{ roomId: alvo.id, event: "check_in", reason: "E2E 78.11 - hospede chegou antes da vistoria" }]
+        },
+        headers: { "content-type": "application/json" }
+      });
+
+      expect(comMotivo.status()).toBe(200);
+      expect((await readRoom(alvo.id)).occupancy_status).toBe("occupied");
+    } finally {
+      // Este caso OCUPA um apartamento de proposito e precisa desocupa-lo. Sem isto ele deixa
+      // um hospede fantasma no parque -- o pior residuo possivel para uma suite que conta
+      // apartamentos vagos para escolher alvo.
+      if ((await readRoom(alvo.id)).occupancy_status === "occupied") {
+        await recepcao.post("/api/base/rooms/occupancy", {
+          data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      await restoreRoom(gov, alvo);
+      await recepcao.dispose();
+    }
+  });
+
+  test("78.12 - check-out em apartamento que ja consta livre: 409 dizendo QUAL", async ({ baseURL }) => {
+    test.skip(
+      !isUserConfigured("E2E_RECEPCAO"),
+      "E2E_RECEPCAO nao configurado: o perfil RECEPCAO nasce com a migration 093."
+    );
+
+    if (!baseURL) throw new Error("[e2e] baseURL ausente.");
+
+    let alvo: RoomStateRow | null = null;
+
+    for (const candidato of rooms) {
+      const atual = await readRoom(candidato.id);
+
+      if (atual.occupancy_status === "vacant") {
+        alvo = atual;
+        break;
+      }
+    }
+
+    test.skip(alvo === null, "Nenhum apartamento vago.");
+
+    if (!alvo) return;
+
+    const recepcao = await contextFor("E2E_RECEPCAO", baseURL);
+
+    try {
+      const resposta = await recepcao.post("/api/base/rooms/occupancy", {
+        data: { entries: [{ roomId: alvo.id, event: "check_out" }] },
+        headers: { "content-type": "application/json" }
+      });
+
+      // 409 e nao 422: nao e' pedido malformado, e' o mundo em desacordo com a tela. E DIZ
+      // QUAL apartamento, no formato do plano 77 -- sem isso a recepcionista perde o lote
+      // inteiro e nao sabe qual dos dez causou.
+      expect(resposta.status()).toBe(409);
+
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        conflict?: { roomId?: string; current?: string; dimension?: string };
+      };
+
+      expect(corpo.conflict?.roomId).toBe(alvo.id);
+      expect(corpo.conflict?.current).toBe("vacant");
+      expect(corpo.conflict?.dimension).toBe("occupancy");
+    } finally {
+      await recepcao.dispose();
+    }
+  });
+
 
 });
