@@ -4,6 +4,12 @@
 >
 > **Nada aqui foi executado.** Todos os campos de resultado estão em branco de propósito.
 >
+> **ESCOPO CONFIRMADO EM 2026-09-21 — leia antes de usar este roteiro.** Uma execução real mediu
+> produção e encontrou **2 índices**, não 8: **nove** índices históricos estão ausentes, não três.
+> O objetivo **deixou de ser paridade com a `023`** e passou a ser **restauração seletiva de três
+> índices de FK**, com decisão registrada sobre os outros seis. Ver §0 abaixo, e §13/§14 do
+> [`PLANO_RECONCILIACAO_MIGRATIONS.md`](PLANO_RECONCILIACAO_MIGRATIONS.md).
+>
 > Quando for executado, os resultados devem ser preenchidos e o documento renomeado com a data,
 > como foi feito com
 > [`PREFLIGHT_STAGING_RECONCILIACAO_MIGRATIONS_2026-09-18.md`](PREFLIGHT_STAGING_RECONCILIACAO_MIGRATIONS_2026-09-18.md).
@@ -45,6 +51,33 @@ Project ref: jascnmgagejlvjlenduv
 
 ---
 
+## 0. O escopo, confirmado por medição
+
+**Este roteiro não busca paridade com a `023`.**
+
+| | |
+| --- | --- |
+| Declarados na `023` | **11** |
+| **Medidos em produção** (2026-09-21) | **2** — `_pkey` e `_unique_idx` |
+| **Ausentes** | **9** |
+| **Selecionados para restauração** | **3** — `unit_idx`, `workflow_idx`, `actor_idx` |
+| **Deliberadamente excluídos** | **6** |
+
+Os seis excluídos, com justificativa e critério de reavaliação no **§14 do plano**:
+
+```
+organization_idx · action_idx · status_idx
+expires_at_idx · status_expires_at_idx · created_at_idx
+```
+
+> **O que esperar depois de aplicar:** a tabela terá **5 índices**, não 11. **Isso é o resultado
+> correto**, não uma aplicação incompleta. Um preflight que espere 11 vai concluir errado.
+
+**Todas as travas de segurança deste roteiro continuam valendo sem alteração** — a mudança é de
+escopo declarado, não de procedimento.
+
+---
+
 ## 1. Produção NÃO herda nada de staging
 
 O preflight de staging foi executado em 2026-09-18 e está arquivado. **Nenhum resultado dele vale
@@ -59,13 +92,14 @@ aqui.** Tudo abaixo precisa ser medido de novo, em produção.
 | Taxa de escrita | Staging: 0 escritas em 119 dias. **Diz nada sobre produção** |
 | Atividade / transações | Foto de outro ambiente, outro momento |
 | Locks | Idem |
-| **Existência dos índices** | **Em staging os três existem; em produção o relato é que faltam.** É a diferença central |
+| **Existência dos índices** | **Em staging os 11 existem; em produção foram medidos 2.** É a diferença central — e o relato original ("faltam 3") estava errado |
 | **Conformidade dos índices** | Precisa ser medida onde existir |
 | Resultado do §12.4 | Depende do conjunto de índices daquele banco |
 
-> **A diferença que mais importa:** em staging a migration é **no-op**; em produção ela **cria três
-> índices**. O caminho de criação **nunca foi exercitado** — nem em staging (onde não há o que
-> criar), nem em banco descartável (§6 do plano, pendente por Docker ausente).
+> **A diferença que mais importa:** em staging a migration é **no-op**; em produção ela **cria os
+> três índices de FK selecionados** — deixando a tabela com 5 de 11, por decisão. O caminho de
+> criação **nunca foi exercitado** — nem em staging (onde não há o que criar), nem em banco
+> descartável (§6 do plano, pendente por Docker ausente).
 
 ---
 

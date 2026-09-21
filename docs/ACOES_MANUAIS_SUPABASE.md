@@ -232,7 +232,7 @@ mas por nunca ter sido aplicada em lugar nenhum.
 
 ---
 
-## AM-04 — Aplicação da migration de paridade de índices (Correção 1)
+## AM-04 — Aplicação da migration de restauração dos três índices de FK (Correção 1)
 
 `supabase/migrations/20260918120033_hr_workflow_idempotency_indexes_parity.sql` está **escrita e não
 aplicada**.
@@ -249,6 +249,36 @@ aplicada**.
 
 As três colunas são `uuid`. Todas as consultas do §12 do plano usam **exatamente** estes nomes; se
 alguma medição for rodada contra outra tabela, o resultado não vale.
+
+### ⚠️ O escopo real: três de nove, por decisão
+
+Esta ação **não** restaura todos os índices históricos. Ela cria **os três índices de FK
+selecionados para restauração, entre os nove índices históricos ausentes identificados em
+produção**.
+
+| | |
+| --- | --- |
+| Declarados na `023` | **11** |
+| Medidos em produção (2026-09-21) | **2** — `_pkey` e `_unique_idx` |
+| Ausentes | **9** |
+| **Restaurados por esta ação** | **3** — `unit_idx`, `workflow_idx`, `actor_idx` |
+| **Não restaurados, por decisão registrada** | **6** |
+
+Os seis não restaurados:
+
+```
+hr_workflow_idempotency_keys_organization_idx
+hr_workflow_idempotency_keys_action_idx
+hr_workflow_idempotency_keys_status_idx
+hr_workflow_idempotency_keys_expires_at_idx
+hr_workflow_idempotency_keys_status_expires_at_idx
+hr_workflow_idempotency_keys_created_at_idx
+```
+
+**A justificativa de cada um, com o critério de reavaliação, está no §14 do
+[`PLANO_RECONCILIACAO_MIGRATIONS.md`](PLANO_RECONCILIACAO_MIGRATIONS.md)** — esta é a fonte da
+decisão. Aqui fica só o necessário para executar com segurança: **depois de aplicar, a tabela terá
+5 índices, não 11, e isso é o esperado.**
 
 | | |
 | --- | --- |
@@ -308,7 +338,7 @@ fixo.** Não há limiar pré-definido, e inventar um substituiria a medição po
 
 | Decisão de §12.2 | Como aplicar |
 | --- | --- |
-| **`create index` normal** | Aplicar a migration normalmente: ela cria os três índices e registra a versão |
+| **`create index` normal** | Aplicar a migration normalmente: ela cria os **três índices de FK selecionados** e registra a versão |
 | **`CONCURRENTLY`** | Criar os três **manualmente, fora de transação**, um de cada vez; **validar por §12.3 e executar o detector orientado a alvos do §12.4**; **e só então aplicar a migration**, que será **no-op** e servirá para registrar a versão no histórico |
 
 **Nos dois casos a migration é aplicada** — nunca pulada, nunca reparada. É o `db push` que põe a

@@ -131,7 +131,7 @@ existe em produção. Tratá-las juntas marcaria a corretiva como aplicada sem c
 | Nova ausente do histórico | — | **1** (nunca aplicada) | **1** (nunca aplicada) |
 | **Fila total antes do `repair`** | — | **30** | **56** |
 | Evolução funcional | — | até `094` **(medido)** | até `094` *(relatado)* |
-| Índices de `hr_workflow_idempotency_keys` | 11 declarados na `023` | **11 presentes (medido)** | **8** *(relatado: faltam 3)* |
+| Índices de `hr_workflow_idempotency_keys` | 11 declarados na `023` | **11 presentes (medido)** | **2 presentes (MEDIDO 2026-09-21)** — faltam **9** |
 
 **A assimetria é o ponto, e ela não é só de histórico.** Os ambientes possuem, segundo as
 evidências disponíveis, **evolução funcional até a migration `094`** — mas **não têm schema
@@ -676,10 +676,15 @@ custo aceito, e daqui para frente **toda migration nova sai do `migration new`**
 
 ---
 
-## 12. Runbook — migration de paridade de índices
+## 12. Runbook — migration de restauração dos três índices de FK
 
 Arquivo: `supabase/migrations/20260918120033_hr_workflow_idempotency_indexes_parity.sql`.
 **Escrita e não aplicada.** A migration não autoriza aplicação por si só; este runbook é a condição.
+
+> **O nome do arquivo diz `indexes_parity` e está impreciso.** Mantido de propósito — ele já é citado
+> por documentos de evidência datados, e reescrever referência histórica para ajustar rótulo custaria
+> mais que a impressão. **Esta migration não entrega paridade com a `023`:** ela restaura **3** dos
+> **9** índices históricos ausentes. Ver **§13 e §14**.
 
 ### 12.1 Medições obrigatórias ANTES de produção
 
@@ -1121,3 +1126,234 @@ automaticamente.**
   **remover o registro** (§7.2).
 - **Em staging o rollback não tem caso de uso.** Lá a migration é no-op quanto aos índices: ela não
   cria nada, logo não há nada que ela tenha criado para desfazer.
+
+---
+
+## 13. Decisão sobre os nove índices históricos ausentes de `hr_workflow_idempotency_keys`
+
+> **Esta seção reescreve o objeto da Correção 1.** Ela nasceu de um achado do preflight de produção
+> de 2026-09-21: a caracterização original do drift — "faltam 3 índices" — estava **errada por um
+> fator de três**.
+
+### 13.1 O achado que reabriu a reconciliação
+
+| | |
+| --- | --- |
+| **Estado histórico da `023`** | **11 índices** (1 da primary key + 10 por `create index`) |
+| **Estado medido em produção** (2026-09-21) | **2 índices** — `_pkey` e `_unique_idx` |
+| **Ausentes** | **9** |
+| **Restaurados nesta correção** | **3** — `unit_idx`, `workflow_idx`, `actor_idx` |
+| **Deliberadamente não restaurados** | **6** |
+
+**Como o achado apareceu:** a aritmética do tamanho não fechava. Staging tinha 11 índices, 0 linhas,
+88 kB — 8 kB por índice, exato. Produção reportou **32 kB** com 11 linhas, quando 8 índices populados
+exigiriam **≥ 128 kB**. A consulta que verificou devolveu 2.
+
+**Nenhum dos quatro documentos do pacote teria revelado isso** — todos repetiam o número relatado
+pela auditoria original.
+
+### 13.2 O objetivo mudou de nome
+
+Este plano **não** entrega paridade com a `023`, e não deve dizer que entrega:
+
+```
+OBJETIVO: reconciliação seletiva dos índices atualmente justificados —
+          restauração dos três índices de FK selecionados.
+
+NÃO É: paridade completa com a migration 023.
+```
+
+Aplicada a correção, produção terá **5 dos 11** índices da `023`. Os outros 6 seguem ausentes **por
+decisão registrada**, não por omissão.
+
+### 13.3 O que sustenta cada decisão — o levantamento de uso
+
+Auditoria local do repositório (sem acesso remoto). **Todo acesso à tabela**:
+
+| Origem | Operação | Predicado |
+| --- | --- | --- |
+| `src/lib/hr/workflow-mutations.ts:795` | `SELECT` | `organization_id` + `actor_user_id` + `action` + `idempotency_key` |
+| 8 RPCs (`025`–`031`, `040`) | `SELECT … for update` | **idêntico** |
+| idem | `INSERT` | linha completa |
+| idem | `UPDATE` | **`where id = …`** (primary key) |
+| `024` | trigger `before update` | `updated_at` |
+
+**Nenhuma consulta filtra isoladamente por `unit_id`, `workflow_id`, `actor_user_id`, `action`,
+`status`, `expires_at` ou `created_at`.**
+
+É por isso que produção funciona hoje com dois índices: **os dois que ela tem são exatamente os dois
+que o código usa** — o `unique_idx` para toda leitura, a PK para toda escrita.
+
+### 13.4 Nenhuma remoção foi intencional
+
+`grep` por `drop index`, `alter index` e `rename index` nas 94 migrations: as únicas ocorrências são
+**blocos de rollback comentados** nas migrations `084`, `087` e `089`, e **nenhuma menciona esta
+tabela**. Os nove nomes aparecem só na `023`.
+
+**Isso é evidência de drift, não prova de desnecessidade.** Ninguém decidiu remover — eles nunca
+chegaram lá. Nove de dez `create index` ausentes, com o primeiro (`_unique_idx`) presente, reforça a
+hipótese de aplicação parcial já registrada na §3.2, agora em escala maior.
+
+---
+
+## 14. Matriz de decisão dos nove índices ausentes
+
+### 14.1 Os três RESTAURADOS
+
+| Índice | Definição | Existia na `023` | Produção atual | Uso atual | Cobertura/redundância | Decisão | Justificativa | Reavaliar quando |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `_unit_idx` | `(unit_id)` | ✔ | **ausente** | Nenhuma consulta | **Não coberto** — nenhum índice tem `unit_id` como leading column | **RESTAURAR** | FK para `units` (`on delete restrict`); checagem de integridade latente | — |
+| `_workflow_idx` | `(workflow_id)` | ✔ | **ausente** | Selecionado, nunca filtrado | **Não coberto** | **RESTAURAR** | FK para `hr_workflows` (`on delete restrict`) | — |
+| `_actor_idx` | `(actor_user_id)` | ✔ | **ausente** | Nunca isolado | **Não coberto** — `actor_user_id` está na **2ª posição** do `unique_idx`, e composto não substitui filtro isolado | **RESTAURAR** | FK para `app_users` (`on delete restrict`) | — |
+
+> **Ressalva honesta sobre a força deste motivo.** A aplicação usa **soft delete** (`deleted_at`) para
+> usuários, unidades e organizações — não há `.delete()` físico em nenhum deles. As checagens de FK
+> `restrict` **praticamente não disparam hoje**. A justificativa é de **integridade latente e paridade
+> estrutural de FK**, não de performance atual. Dito assim para ninguém futuro achar que havia
+> medição de ganho por trás.
+
+### 14.2 Os seis DELIBERADAMENTE NÃO RESTAURADOS
+
+| Índice | Definição | Existia na `023` | Produção atual | Uso atual | Cobertura/redundância | Decisão | Justificativa | Reavaliar quando |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `_organization_idx` | `(organization_id)` | ✔ | ausente | Nenhuma consulta isolada | **REDUNDANTE** — o `unique_idx` **começa** por `organization_id` | **NÃO RESTAURAR — REDUNDANTE** | Por regra de prefixo de btree, o composto atende filtro isolado por `organization_id` | Se o `unique_idx` for alterado ou removido |
+| `_action_idx` | `(action)` | ✔ | ausente | Sempre junto com org + actor + key | **NÃO é redundante por cobertura** — ver 14.3 | **NÃO RESTAURAR — SEM USO ATUAL** | Ausência de consultas isoladas por `action`; cardinalidade baixa (CHECK limita os valores); tabela pequena; nenhum consumidor operacional | Se surgir consulta isolada, relatório ou filtro por `action` |
+| `_status_idx` | `(status)` | ✔ | ausente | Selecionado, nunca filtrado | Baixa seletividade (`processing`, `completed`, `failed`) | **NÃO RESTAURAR — SEM USO ATUAL** | Nenhum filtro atual por `status`; cardinalidade baixa; sem evidência operacional | Se existirem filas, cleanup ou filtros por `status` |
+| `_expires_at_idx` | `(expires_at)` | ✔ | ausente | **Nunca lido** | — | **NÃO RESTAURAR — CLEANUP AUSENTE** | `expires_at` é escrito e nunca consultado; não existe job que consuma o campo | **Antes** de implementar retenção/TTL real (§15) |
+| `_status_expires_at_idx` | `(status, expires_at)` | ✔ | ausente | **Nunca lido** | Lidera por `status` | **NÃO RESTAURAR — CLEANUP AUSENTE** | Não existe consulta por `status + expires_at`; não existe cleanup | Junto com a eventual implementação do cleanup |
+| `_created_at_idx` | `(created_at)` | ✔ | ausente | Nunca filtrado nem ordenado | — | **NÃO RESTAURAR — SEM USO ATUAL** | Nenhuma consulta filtra ou ordena por `created_at` | Se surgirem relatórios ou auditorias por data de criação |
+
+### 14.3 `action_idx` NÃO é redundante por cobertura — correção de um erro de análise
+
+> **Correção de uma versão anterior desta análise.** O `action_idx` foi classificado como
+> "REDUNDANTE — 3ª posição do `unique_idx`". **Está errado, e o erro é de mecânica de índice.**
+
+O `unique_idx` é:
+
+```
+(organization_id, actor_user_id, action, idempotency_key)
+```
+
+Um btree composto só serve filtros que usam um **prefixo** das colunas. Para um filtro **isolado por
+`action`** não existe prefixo utilizável — `action` está na terceira posição, e o planejador não
+consegue usar o índice para isso.
+
+A análise anterior conflacionou duas coisas distintas:
+
+| Afirmação | Verdade |
+| --- | --- |
+| *"`action` sempre aparece junto com as outras três colunas"* | **Verdadeira** — e é o motivo real da decisão |
+| *"o `unique_idx` cobre `action`"* | **Falsa** — não há prefixo para filtro isolado |
+
+**A decisão de não restaurar se apoia em ausência de uso, não em cobertura.** Se amanhã aparecer uma
+consulta que filtre só por `action`, **nenhum índice existente vai atendê-la**, e o
+`_action_idx` volta à mesa.
+
+**O mesmo raciocínio, aplicado ao `organization_idx`, dá o resultado oposto** — e por isso a
+classificação dele é diferente: `organization_id` **é** a primeira coluna, o prefixo existe, e a
+cobertura é real.
+
+### 14.4 `status_expires_at_idx` — o que ele atenderia e o que não atenderia
+
+Registrado porque a distinção decide a reavaliação futura:
+
+```
+(status, expires_at) ATENDE   filtro que COMEÇA por status
+                              -- ex.: where status = 'completed' and expires_at < now()
+
+(status, expires_at) NÃO ATENDE   filtro isolado por expires_at
+                                  -- ex.: where expires_at < now()
+```
+
+**Um cleanup que varra por vencimento sem filtrar status precisaria de `_expires_at_idx`, não deste
+composto.** Quando o cleanup for desenhado (§15), é a forma da consulta dele que decide qual dos dois
+— ou se os dois — fazem sentido. **Não criar por antecipação.**
+
+---
+
+## 15. Dívida separada — TTL/cleanup não implementado
+
+```
+TTL/cleanup de hr_workflow_idempotency_keys NÃO está implementado.
+```
+
+**Não é para resolver nesta correção.** Registrado aqui para não virar descoberta futura.
+
+O estado medido no repositório:
+
+- **`expires_at` existe** — `not null default (now() + interval '48 hours')`, com CHECK
+  `expires_at > created_at`;
+- **a retenção conceitual é de 48h**, declarada no schema da `023`;
+- **nenhum job ou cleanup atual remove registros expirados** — não há `delete from
+  hr_workflow_idempotency_keys` em migration, RPC, rota, job ou teste;
+- os tipos de job existentes (`sla_scan`, `escalation_scan`, `notification_dispatch`,
+  `audit_cleanup`, `analytics_refresh`, `dashboard_refresh`, `training_expiration_scan`,
+  `occupational_expiration_scan`) **não tocam esta tabela**.
+
+**Consequência:** o TTL está declarado no schema e não é aplicado em lugar nenhum. A tabela cresce
+sem poda — devagar (11 linhas em produção), mas sem mecanismo.
+
+**Os índices relacionados a `expires_at` devem ser reavaliados quando esse consumidor for
+implementado** — e não antes. Criar índice para um consumidor que não existe é custo de escrita sem
+leitura, que é o defeito que a §14 recusa nos outros cinco casos.
+
+**Não criar job. Não criar cron. Não criar índice por antecipação.**
+
+---
+
+---
+
+## 16. Teste em banco descartável — cenário atualizado após o achado
+
+**Continua BLOQUEANTE. Não executar agora.** Docker indisponível (§6.3).
+
+O cenário mudou com o achado da §13: não é mais "aplicar em banco vazio", porque **nenhum ambiente
+real tem o estado de partida relevante** — staging tem 11 índices, produção tem 2 mas é produção.
+
+### Estado inicial exigido
+
+```
+- tabela com a estrutura atual de public.hr_workflow_idempotency_keys;
+- 11 linhas de teste, ou massa mínima equivalente;
+- APENAS dois índices:
+    hr_workflow_idempotency_keys_pkey
+    hr_workflow_idempotency_keys_unique_idx
+```
+
+### Sequência
+
+1. **Aplicar a migration corretiva.**
+
+   **Resultado esperado: 5 índices no total.**
+
+   ```
+   hr_workflow_idempotency_keys_pkey
+   hr_workflow_idempotency_keys_unique_idx
+   hr_workflow_idempotency_keys_unit_idx
+   hr_workflow_idempotency_keys_workflow_idx
+   hr_workflow_idempotency_keys_actor_idx
+   ```
+
+2. **§12.3** → os **três restaurados** com `conforme = true`.
+
+3. **§12.4** → **0 concorrentes inesperados**.
+
+4. **Reaplicar a migration** → **no-op / idempotente**, sem erro e sem índice novo.
+
+5. **Confirmar que os seis deliberadamente não restaurados continuam ausentes:**
+
+   ```
+   organization_idx · action_idx · status_idx
+   expires_at_idx · status_expires_at_idx · created_at_idx
+   ```
+
+   **Este passo é tão importante quanto o 1.** Ele prova que a migration faz **exatamente** o que a
+   §14 decidiu — nem menos, nem mais. Uma migration que restaurasse os nove passaria nos passos 1 a
+   4 e falharia aqui, e é justamente essa a diferença entre o pacote atual e o que ele era antes da
+   §13.
+
+6. **Rollback**, quando aplicável (§12.6): derrubar só os índices cujo preflight registrou
+   `esperado_existe = false`, e confirmar que a tabela volta a **2 índices**.
+
+**Nenhum ambiente real serve como substituto.** Staging tem 11 e produção é o alvo que se quer
+proteger.
