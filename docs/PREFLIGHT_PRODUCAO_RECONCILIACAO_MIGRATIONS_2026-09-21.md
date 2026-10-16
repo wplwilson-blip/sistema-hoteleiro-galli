@@ -454,7 +454,21 @@ verdade o caminho onde o detector antigo falhava.**
 
 ---
 
-## 11. Teste em banco descartável — **BLOQUEIO ABERTO**
+## 11. Teste em banco descartável — **RESOLVIDO (2026-10-16)**
+
+```
+RESOLVIDO — teste local em PostgreSQL 17 concluído com sucesso.
+```
+
+> **Atualização posterior a esta execução (2026-10-16).** O teste foi feito em PostgreSQL 17 local
+> descartável, partindo do estado estrutural de produção (2 índices). Resultado: 5 índices,
+> §12.3 conforme nos três, §12.4 com zero linhas, reaplicação sem efeito. Evidência:
+> [`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
+> Usou-se a Opção 1 abaixo, na variante sem Docker: PostgreSQL puro, sem a stack Supabase.
+>
+> O restante desta seção é o texto de 2026-09-21, mantido como registro do estado daquele momento.
+
+Estado registrado em 2026-09-21:
 
 ```
 BLOQUEIO ABERTO:
@@ -581,7 +595,7 @@ Em qualquer um: **PARAR. Não corrigir automaticamente. Não remover nem renomea
 | Migration versionada | ✅ `b3bb080` | Não | Não aplicada. **Cabeçalho corrigido**: 3 de 9, não paridade |
 | Blob conferido | ✅ `74ccd8e2…` | Não | Identidade estável, independente de LF/CRLF |
 | Rollback condicionado a preflight | ✅ `esperado_existe = false` nos três | Não | Registro arquivado — §12.6 fica executável |
-| **Teste em banco descartável** | 🔴 **NÃO EXECUTADO** | **SIM** | Docker indisponível. Caminho de criação nunca exercitado |
+| **Teste em banco descartável** | ✅ **RESOLVIDO em 2026-10-16** (em 2026-09-21: 🔴 não executado) | **Não** (em 2026-09-21: **SIM**) | Teste local em PostgreSQL 17 concluído com sucesso. Ver [`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md) |
 | **O-2 — contagem de índices** | ✅ **VERIFICADO** — produção tem **2**, faltam **9** | **Resolvido** | Gerou o `NO-GO`. Decisão sobre os nove: §13/§14 do plano |
 | O-1 — contadores incompletos | 🟡 Registrado | Não | Não afeta o lock; afeta leitura histórica |
 | Janela operacional | 🟡 Recomendada, não fixada | Não | Falta definir horário, duração e quem aborta |
@@ -603,6 +617,17 @@ NO-GO — o plano original de reconciliação estava baseado em uma
 > `023`, quando o resultado seria 5 de 11.
 >
 > **Após esta revisão documental, haverá nova decisão GO/NO-GO.**
+
+> **Atualização posterior (2026-10-16).**
+>
+> ```text
+> O bloqueio do teste descartável foi resolvido posteriormente.
+> A decisão final de execução deve ser tomada em documento separado.
+> ```
+>
+> O `NO-GO` acima é o veredito **de 2026-09-21** e fica como registro. Esta atualização não o
+> converte em `GO`. A decisão atual está em
+> [`GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md`](GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md).
 
 ### O veredito anterior, e por que caiu
 
@@ -643,9 +668,12 @@ verdadeiro.
 O drift é de **nove**, não de três. A Correção 1 foi reaberta, o escopo documental foi corrigido
 (§13/§14 do plano), e o veredito deste documento passou a **`NO-GO`**.
 
-**Prioridade 1 (nova) — decidir sobre o teste em banco descartável.** Opção 1 (Docker), 2 (projeto
-descartável autorizado) ou 3 (aceitar risco residual, registrado explicitamente). **Não é decisão
-técnica isolada:** envolve disponibilidade de ferramenta e apetite de risco.
+**~~Prioridade 1 (nova) — decidir sobre o teste em banco descartável.~~ ✅ RESOLVIDO em
+2026-10-16.** Teste local em PostgreSQL 17 concluído com sucesso. Ver
+[`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
+*Texto original:* Opção 1 (Docker), 2 (projeto descartável autorizado) ou 3 (aceitar risco residual,
+registrado explicitamente). Não é decisão técnica isolada: envolve disponibilidade de ferramenta e
+apetite de risco.
 
 **Prioridade 3 — fixar a janela**, com horário, duração máxima tolerada e quem aborta se estourar.
 

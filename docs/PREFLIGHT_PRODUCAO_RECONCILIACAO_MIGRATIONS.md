@@ -135,10 +135,10 @@ Confirmação visual:  [ ] nome conferido   [ ] ref conferido na URL
 Data/hora início:
 Data/hora fim:
 Operador:
-Commit Git:          a1cfbb4
+Commit Git:          b29055b   (ou o commit efetivamente autorizado, ver abaixo)
 Migration:           20260918120033_hr_workflow_idempotency_indexes_parity.sql
-Blob Git (identidade): 74ccd8e2a2a8d322f1e1a1c423e92f86a5da13ee
-MD5 nesta máquina:   ee9d1a11f93a9034b5c5e7e24b27ebef
+Blob Git (identidade): ff9fa1115504cee3096a689cef5b1c8b04512703
+MD5 nesta máquina:   (informativo; varia com os finais de linha, ver abaixo)
 ```
 
 ### Como conferir a identidade da migration — **use o blob, não o MD5**
@@ -147,13 +147,30 @@ MD5 nesta máquina:   ee9d1a11f93a9034b5c5e7e24b27ebef
 git rev-parse HEAD:supabase/migrations/20260918120033_hr_workflow_idempotency_indexes_parity.sql
 ```
 
-**Esperado:** `74ccd8e2a2a8d322f1e1a1c423e92f86a5da13ee`. Se divergir, **parar**: o objeto analisado
-não é o que foi revisado.
+**Esperado:** `ff9fa1115504cee3096a689cef5b1c8b04512703` (commit `b29055b`). Se divergir, **parar**:
+o objeto analisado não é o que foi revisado.
 
+> **Por que o blob esperado mudou.** As versões anteriores deste roteiro esperavam
+> `74ccd8e2a2a8d322f1e1a1c423e92f86a5da13ee`, do commit `a1cfbb4`. O commit `b29055b` corrigiu
+> **somente o cabeçalho de comentários** da migration: trocou "paridade" por "restauração de 3 de 9".
+> **Os três `create index if not exists` ficaram idênticos.** Uma comparação das linhas executáveis
+> entre `a1cfbb4` e `b29055b` não mostra diferença. Mudar comentários muda o blob, e por isso a
+> **identidade operacional atual é `ff9fa111…`**.
+>
+> **Regra para qualquer preflight futuro:** comparar com o blob **do commit efetivamente autorizado
+> para a aplicação**, não com o valor gravado numa evidência histórica. As evidências de staging
+> (2026-09-18) e de produção (2026-09-21) registram `74ccd8e2…` porque esse era o blob naquela data.
+> Esse valor está **correto como histórico** e **não serve como valor esperado hoje**. Se o arquivo
+> mudar de novo depois de `b29055b`, o blob esperado muda junto, e a mudança precisa de revisão
+> própria antes do preflight.
+>
 > **Por que não o MD5.** Este repositório roda com `core.autocrlf = true` e **sem `.gitattributes`**.
-> O arquivo em disco tem finais de linha convertidos pela plataforma, então **o MD5 muda de máquina
-> para máquina** sem que o conteúdo mude. O valor `ee9d1a11f93a9034b5c5e7e24b27ebef` é o da forma
-> **CRLF**, observada no Windows; num checkout Linux (LF) ele tende a ser outro.
+> O arquivo em disco pode ter finais de linha convertidos pela plataforma, então **o MD5 pode mudar
+> de máquina para máquina** sem que o conteúdo mude. Para `b29055b`, a forma LF dá
+> `c95468b698f99bc7c74c07699f62c9da` e a forma CRLF dá `9dee5d07c83391a5a940dcb7dcae4a1c`.
+>
+> *Correção de uma versão anterior deste roteiro:* o valor `ee9d1a11f93a9034b5c5e7e24b27ebef`
+> registrado antes era a forma **LF** do arquivo em `a1cfbb4`, não a forma CRLF.
 >
 > **Um MD5 diferente ali não prova adulteração — e isso importa nos dois sentidos:** ele produziria
 > uma **falsa parada** em quem clonou noutra plataforma, e é fraco como prova de integridade.
@@ -161,7 +178,7 @@ não é o que foi revisado.
 > **O que `git rev-parse HEAD:<caminho>` devolve, com precisão:** o identificador do **blob
 > efetivamente versionado no commit** — o objeto que está no repositório. O comando **não lê nem
 > calcula hash da árvore de trabalho**; ele resolve um caminho dentro da árvore do commit. Por isso
-> o valor é o mesmo para qualquer pessoa que tenha o commit `a1cfbb4`, **independentemente de o
+> o valor é o mesmo para qualquer pessoa que tenha o commit `b29055b`, **independentemente de o
 > checkout dela ter materializado LF ou CRLF**.
 >
 > ⚠️ **Não use `git hash-object <arquivo-da-working-tree>` como prova cross-platform.** Esse comando
@@ -173,6 +190,13 @@ não é o que foi revisado.
 > Serve também, e pelo mesmo motivo, `git status` limpo + `git diff HEAD -- <arquivo>` vazio: as
 > duas coisas comparam a árvore de trabalho com o commit **após os filtros**, afirmando identidade
 > de conteúdo sem depender de finais de linha.
+
+> **Condição separada, fora deste preflight.** Conferir a identidade da migration não autoriza
+> `db push`. Em produção, `db push` continua dependendo do `repair` das **55 migrations legadas**,
+> validadas pela matriz do §5(b) do plano. Sem isso, a fila tentaria aplicar 56 (R1). E a
+> corretiva **nunca** entra em `repair` (R3). Ver §5 do
+> [`PLANO_RECONCILIACAO_MIGRATIONS.md`](PLANO_RECONCILIACAO_MIGRATIONS.md) e P4 em
+> [`GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md`](GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md).
 
 ---
 

@@ -49,7 +49,7 @@ rodar** sem decisão explícita.
 
 | Ferramenta | Estado | Consequência |
 | --- | --- | --- |
-| **Docker** | Ausente | `supabase db reset`, `db diff` e `migration up --local` **não rodam**. O teste em banco vazio (§6) fica **PENDENTE** |
+| **Docker** | Ausente | `supabase db reset`, `db diff` e `migration up --local` **não rodam**. A reprodução completa em banco vazio (§6.4) fica **PENDENTE**. O teste do caminho de criação dos índices (§6.1–6.3, §16) foi **CONCLUÍDO** sem Docker, em PostgreSQL 17 local: [`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md) |
 | **psql** | Ausente | Sem consulta SQL direta |
 | **Supabase CLI** | Disponível via `npx` (2.117.0), linkada a staging | Leitura de histórico e telemetria de staging funcionam |
 | **Acesso a produção** | Nenhum | Tudo sobre produção neste documento é relato da auditoria |
@@ -445,7 +445,17 @@ não aconteceu.
 
 ---
 
-## 6. Teste em banco vazio — **PENDENTE, não aprovado**
+## 6. Teste em banco vazio
+
+> **Estado em 2026-10-16:**
+>
+> ```text
+> TESTE DESCARTÁVEL (caminho de criação dos índices, §6.1–6.3 e §16): CONCLUÍDO COM SUCESSO
+> REPRODUÇÃO COMPLETA 001 → atual (§6.4):                              PENDENTE
+> ```
+>
+> Evidência: [`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
+> O texto abaixo foi mantido como estava quando o teste ainda não tinha rodado.
 
 ### 6.1 O que staging NÃO prova
 
@@ -483,7 +493,13 @@ npx supabase start
 npx supabase db reset
 ```
 
-**Status: PENDENTE.** Não é "aprovado com ressalva" nem "coberto por staging".
+**Status original: PENDENTE.** Não é "aprovado com ressalva" nem "coberto por staging".
+
+**Atualização 2026-10-16:** o teste do caminho de criação foi feito **sem Docker**, em PostgreSQL 17
+local descartável. O estado estrutural de produção (2 índices) foi reproduzido à mão. **CONCLUÍDO COM
+SUCESSO.** Ver
+[`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
+Staging continua **não** servindo de substituto. Não foi usado para isso.
 
 ### 6.4 A sequência completa, separadamente
 
@@ -584,8 +600,10 @@ preservação de data, porque não há data.
 
 **Pendências que NÃO podem ser marcadas como concluídas neste ambiente:**
 
-- [ ] **PENDENTE — Docker ausente.** Teste do caminho de criação dos índices em banco descartável
-      sem os três (§6.1–6.3). Staging é no-op e **não** substitui.
+- [x] **CONCLUÍDO COM SUCESSO — 2026-10-16.** Teste do caminho de criação dos índices em banco
+      descartável sem os três (§6.1–6.3, §16), em PostgreSQL 17 local. Staging **não** foi usado como
+      substituto. Evidência:
+      [`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
 - [ ] **PENDENTE — Docker ausente.** Reprodução da sequência completa em banco vazio (§6.4).
 - [ ] **PENDENTE — sem acesso.** Medições (a)–(e) do §12.1 em produção.
 - [ ] **PENDENTE — bloqueado em código.** AM-01 (senhas vazadas) — ver `docs/ACOES_MANUAIS_SUPABASE.md`.
@@ -649,7 +667,7 @@ npx supabase migration squash
 | A8 | Aplicar a migration corretiva | Exige as medições do §12.1 |
 | A9 | Escolher `create index` ou `CONCURRENTLY` | Sai das medições, não de regra fixa — §12.2 |
 | A10 | Definir a janela de manutenção | §12.1(e) |
-| A11 | Disponibilizar Docker (ou branch descartável) | Sem isso, §6 permanece PENDENTE |
+| A11 | Disponibilizar Docker (ou branch descartável) | **Teste de criação dos índices: resolvido em 2026-10-16** com PostgreSQL 17 local, sem Docker ([evidência](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md)). Continua necessário só para a reprodução completa do §6.4 |
 
 ---
 
@@ -1305,7 +1323,25 @@ leitura, que é o defeito que a §14 recusa nos outros cinco casos.
 
 ## 16. Teste em banco descartável — cenário atualizado após o achado
 
-**Continua BLOQUEANTE. Não executar agora.** Docker indisponível (§6.3).
+```text
+TESTE DESCARTÁVEL: CONCLUÍDO COM SUCESSO — 2026-10-16
+```
+
+Executado em PostgreSQL 17 local descartável (`hotel_galli_migration_test`), sem Docker. Evidência:
+[`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
+
+| Passo | Resultado |
+| --- | --- |
+| Estado inicial | 2 índices (`_pkey`, `_unique_idx`) |
+| 1. Aplicar | **5 índices**, os esperados |
+| 2. §12.3 | Os três com `existe = true`, `conforme = true` |
+| 3. §12.4 | **0 linhas** |
+| 4. Reaplicar | No-op. Total continua **5** |
+| 5. Seis não restaurados | **Ausentes.** A listagem final tem só os 5 nomes esperados |
+| 6. Rollback | **Não exercitado** neste teste. Continua regido pelo §12.6 |
+
+*Texto original desta seção, mantido como registro:* ~~Continua BLOQUEANTE. Não executar agora.
+Docker indisponível (§6.3).~~
 
 O cenário mudou com o achado da §13: não é mais "aplicar em banco vazio", porque **nenhum ambiente
 real tem o estado de partida relevante** — staging tem 11 índices, produção tem 2 mas é produção.
