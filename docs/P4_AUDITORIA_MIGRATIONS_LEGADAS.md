@@ -695,9 +695,19 @@ decisão.
 ### Achado de segurança, fora do escopo de P4: RLS das tabelas de governança
 
 ```text
-ACHADO DE SEGURANÇA A CONFIRMAR REMOTAMENTE
-Estado: PENDENTE DE CONFIRMAÇÃO REMOTA
+CONFIRMADO SEGURO PARA CRUD DE LINHAS POR RLS/DEFAULT DENY
+HARDENING DE GRANTS PENDENTE
 ```
+
+> **Atualização 2026-10-19.** Auditoria somente leitura feita em **staging e produção**. Nos dois:
+> RLS ativo, 0 policies, `anon`/`authenticated` sem `BYPASSRLS` e sem serem donos, mas com todos os
+> privilégios de tabela concedidos (incluindo `TRUNCATE`, `REFERENCES`, `TRIGGER` e `MAINTAIN`).
+> Evidência e análise: [`P4_RLS_GOVERNANCA_2026-10-19.md`](P4_RLS_GOVERNANCA_2026-10-19.md).
+> Frente futura: `SEC-HARDEN-HOUSEKEEPING-GRANTS`. **Não bloqueia P4 e não altera a classificação de
+> nenhuma migration.**
+>
+> O texto abaixo é o registro de antes da confirmação, mantido como estava. O estado anterior era
+> **PENDENTE DE CONFIRMAÇÃO REMOTA**.
 
 **O que foi visto no repositório:** nas migrations analisadas não há
 `alter table … enable row level security`, `create policy` nem `revoke` de privilégio de tabela para:
@@ -881,8 +891,10 @@ foram corrigidas as menções ao teste descartável e às medições de produç�
 2. **Autorizar a fotografia do ledger** de staging e de produção. É a primeira leitura remota, e a
    de produção ainda é relato.
 3. **Rodar a etapa 1 do §10 em staging** (6 migrations simples) como piloto dos templates.
-4. **Confirmar remotamente o achado de segurança** das tabelas de governança com as consultas do
-   §13.1, separado de P4. Hoje ele está **PENDENTE DE CONFIRMAÇÃO REMOTA**.
+4. ~~**Confirmar remotamente o achado de segurança** das tabelas de governança com as consultas do
+   §13.1, separado de P4.~~ **Feito em 2026-10-19:** confirmado seguro para CRUD de linhas por
+   RLS/default deny; hardening de grants pendente (`SEC-HARDEN-HOUSEKEEPING-GRANTS`). Ver
+   [`P4_RLS_GOVERNANCA_2026-10-19.md`](P4_RLS_GOVERNANCA_2026-10-19.md).
 5. **Decidir as D esperadas** (050, 051, 058, 059) antes de chegar a elas: buscar evidência
    externa, ou aceitar por decisão registrada.
 
