@@ -97,9 +97,10 @@ aqui.** Tudo abaixo precisa ser medido de novo, em produção.
 | Resultado do §12.4 | Depende do conjunto de índices daquele banco |
 
 > **A diferença que mais importa:** em staging a migration é **no-op**; em produção ela **cria os
-> três índices de FK selecionados** — deixando a tabela com 5 de 11, por decisão. O caminho de
-> criação **nunca foi exercitado** — nem em staging (onde não há o que criar), nem em banco
-> descartável (§6 do plano, pendente por Docker ausente).
+> três índices de FK selecionados** — deixando a tabela com 5 de 11, por decisão. Staging não
+> exercita o caminho de criação, porque lá não há o que criar. Esse caminho foi exercitado em
+> **banco local descartável em 2026-10-16**, partindo dos 2 índices de produção. Ver
+> `TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`.
 
 ---
 
@@ -192,8 +193,8 @@ o objeto analisado não é o que foi revisado.
 > de conteúdo sem depender de finais de linha.
 
 > **Condição separada, fora deste preflight.** Conferir a identidade da migration não autoriza
-> `db push`. Em produção, `db push` continua dependendo do `repair` das **55 migrations legadas**,
-> validadas pela matriz do §5(b) do plano. Sem isso, a fila tentaria aplicar 56 (R1). E a
+> `db push`. Em produção, `db push` continua dependendo do `repair` das **54 migrations legadas**,
+> validadas pela matriz do §5(b) do plano. Sem isso, a fila tentaria aplicar 55 (R1). E a
 > corretiva **nunca** entra em `repair` (R3). Ver §5 do
 > [`PLANO_RECONCILIACAO_MIGRATIONS.md`](PLANO_RECONCILIACAO_MIGRATIONS.md) e P4 em
 > [`GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md`](GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md).
@@ -514,8 +515,9 @@ DEVOLVER A SAÍDA COMPLETA PARA INVESTIGAÇÃO.
 ```
 
 **Um preflight limpo não é autorização.** Ele remove obstáculos conhecidos; a decisão de aplicar
-continua sendo de quem responde pelo banco, e depende também do que ainda está pendente: o teste do
-caminho de criação em banco descartável (§6 do plano) e a decisão do §12.2.
+continua sendo de quem responde pelo banco, e depende também do que ainda está pendente: a decisão
+do §12.2 (P5) e as demais condições de `GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md`. O teste do
+caminho de criação em banco descartável (§6 do plano) foi **concluído em 2026-10-16**.
 
 ---
 

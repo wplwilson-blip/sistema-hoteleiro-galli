@@ -136,7 +136,7 @@ impedimento técnico conhecido** para alguém com autoridade sobre o banco decid
 | **P1** | ✅ **Resolvido.** O §3 do roteiro [`PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS.md`](PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS.md) foi alinhado com `b29055b` e o blob `ff9fa111…` | Evitava a falsa parada por blob divergente (§1). Versionado junto com P2 |
 | **P2** | **Checkpoint documental.** A condição é satisfeita pelo commit que versiona este documento e as evidências associadas. **Antes da aplicação, confirmar que o commit autorizado está em `main` e em `origin/main`** | O documento que sustenta a decisão tem de estar versionado e publicado antes de ser usado |
 | **P3** | Fixar a janela: horário, duração máxima tolerada e quem aborta | Pendente desde 2026-09-21 |
-| **P4** | Decidir e registrar **como** a migration entra em produção | §5(j) do plano: `db push` sem o `repair` das 55 legadas tentaria aplicar 56 (R1). O `repair` exige a matriz §5(b). Qualquer alternativa precisa de decisão explícita própria, e **nunca** pode incluir `repair` na corretiva (R3) |
+| **P4** | Decidir e registrar **como** a migration entra em produção | §5(j) do plano: `db push` sem o `repair` das 54 legadas tentaria aplicar 55 (R1). *(Contagem corrigida em 2026-10-19: antes dizia 55 e 56, contando o `074`, que não existe.)* O `repair` exige a matriz §5(b). Qualquer alternativa precisa de decisão explícita própria, e **nunca** pode incluir `repair` na corretiva (R3) |
 | **P5** | Registrar a escolha `create index` normal × `CONCURRENTLY` (A9) | Os dados de produção apontam para `create index` normal: 11 linhas, 0 escrita, sem locks. A escolha ainda não foi registrada |
 
 ### 4.2 Preflight de última hora, imediatamente antes da aplicação

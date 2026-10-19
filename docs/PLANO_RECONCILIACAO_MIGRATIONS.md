@@ -17,7 +17,7 @@ conclusões abaixo depende de qual das duas caixas o dado está.
 | Índices e volumes do **staging** | `supabase inspect db index-stats --linked`, contagens via PostgREST | **Medido** |
 | Versão do Postgres | `supabase/.temp/postgres-version` → **17.6.1.127** | **Medido** |
 | Histórico de migrations da **produção** | Relatado na auditoria (até `039`) | **NÃO verificado** |
-| Índices ausentes em **produção** | Relatado na auditoria | **NÃO verificado** |
+| Índices ausentes em **produção** | Relatado na auditoria; **medido depois**, em 2026-09-21 | **Medido**: 2 presentes, 9 ausentes. Ver `PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS_2026-09-21.md` |
 | Advisors (views, search_path, RLS, grants) | Relatados na auditoria | **NÃO verificado** |
 | Contagem de 102 tabelas / 78 usadas / 11 RPCs | Relatado na auditoria | **NÃO verificado** |
 
@@ -91,19 +91,24 @@ com ou sem ele.
 | Faixa | `remote` | Situação |
 | --- | --- | --- |
 | `001` … `065` | preenchido | **Registradas** no histórico |
-| `066` … `094` | **vazio** | **Ausentes** — 29 legadas |
+| `066` … `094` | **vazio** | **Ausentes** — **28** legadas (`074` não existe) |
 
 Isso **confirma o número da auditoria**: staging registra até `065`.
 
+> **Correção de contagem (2026-10-19).** Versões anteriores deste plano diziam **29** legadas em
+> staging e **55** em produção, com filas de **30** e **56**. A conta incluía o `074`, que nunca
+> existiu (§1.2). Medido no repositório: `066`–`094` são **28** arquivos e `040`–`094` são **54**.
+> Ver [`P4_AUDITORIA_MIGRATIONS_LEGADAS.md`](P4_AUDITORIA_MIGRATIONS_LEGADAS.md) §4–§5.
+
 ### 1.4 Histórico da produção — relatado, não verificado
 
-A auditoria informa que produção registra até `039`. Se correto, **55 migrations legadas**
+A auditoria informa que produção registra até `039`. Se correto, **54 migrations legadas**
 (`040`–`094`, sem `074`) estão ausentes do histórico de produção enquanto seus efeitos estão no
 schema.
 
-### 1.5 A fila real antes do `repair` — **30 e 56, não 29 e 55**
+### 1.5 A fila real antes do `repair` — **29 e 55, não 28 e 54**
 
-> **29 e 55 são o backlog LEGADO — não o total da fila.**
+> **28 e 54 são o backlog LEGADO — não o total da fila.**
 >
 > A migration corretiva **também** está ausente do histórico dos dois ambientes, e por um motivo
 > completamente diferente: ela **nunca foi aplicada em lugar nenhum**. As legadas estão ausentes do
@@ -111,8 +116,8 @@ schema.
 
 | Ambiente | Legadas ausentes | Nova | **Fila total antes do `repair`** |
 | --- | --- | --- | --- |
-| **Staging** | 29 (`066`–`094`) | 1 | **30** |
-| **Produção** *(se o relato até `039` estiver correto)* | 55 (`040`–`094`) | 1 | **56** |
+| **Staging** | 28 (`066`–`094`, sem `074`) | 1 | **29** |
+| **Produção** *(se o relato até `039` estiver correto)* | 54 (`040`–`094`, sem `074`) | 1 | **55** |
 
 **A distinção decide o procedimento inteiro.** As legadas se resolvem por `repair` — declaração sem
 execução, porque o efeito já está no banco. A nova **precisa ser executada**: o efeito dela não
@@ -127,20 +132,22 @@ existe em produção. Tratá-las juntas marcaria a corretiva como aplicada sem c
 | --- | --- | --- | --- |
 | Arquivos | **94** (93 legadas + 1 nova) | — | — |
 | Histórico registrado | — | `001`–`065` **(medido)** | `001`–`039` *(relatado)* |
-| Legadas ausentes do histórico | — | **29** (`066`–`094`) | **55** *(`040`–`094`)* |
+| Legadas ausentes do histórico | — | **28** (`066`–`094`) | **54** *(`040`–`094`)* |
 | Nova ausente do histórico | — | **1** (nunca aplicada) | **1** (nunca aplicada) |
-| **Fila total antes do `repair`** | — | **30** | **56** |
+| **Fila total antes do `repair`** | — | **29** | **55** |
 | Evolução funcional | — | até `094` **(medido)** | até `094` *(relatado)* |
 | Índices de `hr_workflow_idempotency_keys` | 11 declarados na `023` | **11 presentes (medido)** | **2 presentes (MEDIDO 2026-09-21)** — faltam **9** |
 
 **A assimetria é o ponto, e ela não é só de histórico.** Os ambientes possuem, segundo as
 evidências disponíveis, **evolução funcional até a migration `094`** — mas **não têm schema
-idêntico**: há drift conhecido de **três índices em produção** (§3.2), e **outros efeitos ainda
-dependem da matriz de validação** do §5(b), que não foi executada.
+idêntico**: há drift **medido** de **nove índices em produção** (2 presentes dos 11 da `023`; §13),
+e **outros efeitos ainda dependem da matriz de validação** do §5(b), que não foi executada.
 
-**Produção permanece NÃO VERIFICADA** (§0): tudo naquela coluna é relato da auditoria. Afirmar
-"mesmo schema" seria estender a uma comparação completa uma evidência que cobre um único objeto — e
-foi exatamente esse tipo de extrapolação que deixou os três índices faltando sem ninguém notar.
+**O resto da coluna de produção continua NÃO VERIFICADO** (§0). Só a linha de índices foi medida, em
+2026-09-21. O ledger e a evolução funcional seguem como relato da auditoria. Afirmar "mesmo schema"
+seria estender a uma comparação completa uma evidência que cobre um único objeto. Foi exatamente esse
+tipo de extrapolação que deixou índices faltando sem ninguém notar. O relato original falava em três;
+a medição achou nove.
 
 ---
 
@@ -203,15 +210,34 @@ todos do mesmo lugar:
 
 Os **10 explícitos** são de nível superior, em sequência, sem bloco `do $$`:
 
-| Linha | Índice | Produção |
-| --- | --- | --- |
-| 139 | `_unique_idx` | presente |
-| 147 | `_organization_idx` | **presente** |
-| 149 | `_unit_idx` | **AUSENTE** |
-| 151 | `_workflow_idx` | **AUSENTE** |
-| 153 | `_actor_idx` | **AUSENTE** |
-| 155 | `_action_idx` | **presente** |
-| 157–163 | `_status`, `_expires_at`, `_status_expires_at`, `_created_at` | presentes |
+| Linha | Índice | Produção — relato original | Produção — **medido em 2026-09-21** |
+| --- | --- | --- | --- |
+| 139 | `_unique_idx` | presente | **presente** |
+| 147 | `_organization_idx` | presente | **AUSENTE** |
+| 149 | `_unit_idx` | AUSENTE | **AUSENTE** |
+| 151 | `_workflow_idx` | AUSENTE | **AUSENTE** |
+| 153 | `_actor_idx` | AUSENTE | **AUSENTE** |
+| 155 | `_action_idx` | presente | **AUSENTE** |
+| 157–163 | `_status`, `_expires_at`, `_status_expires_at`, `_created_at` | presentes | **AUSENTES** |
+
+> **Correção de estado (2026-10-19).** A coluna "relato original" é o que a auditoria afirmava e o que
+> este plano repetia. **Está errada.** A medição de produção de 2026-09-21 achou **2 índices**: a PK
+> e o `_unique_idx`. Dos 10 `create index` explícitos, **9 estão ausentes**. Estado atual:
+>
+> ```text
+> histórico 023:                    11
+> produção medida:                   2
+> ausentes históricos:               9
+> selecionados para restauração:     3
+> deliberadamente não restaurados:   6
+> ```
+>
+> **O raciocínio abaixo, do "bloco contíguo", foi construído sobre o relato e não vale mais.** Ele é
+> mantido como registro. Com o estado medido, a premissa "índice presente imediatamente antes e
+> depois" é falsa. Os índices posteriores ao `_unique_idx` faltam **todos**, e isso **não elimina**
+> o aborto no meio. A análise atualizada está no §13.4.
+
+*Texto original, mantido como registro:*
 
 **Os três ausentes formam um bloco contíguo, com índice presente imediatamente antes e depois.**
 Isso elimina:
@@ -261,7 +287,7 @@ repositório, e **nada disso está no ledger de migrations** (§7.2).
 
 | # | Risco | Gravidade | Mitigação |
 | --- | --- | --- | --- |
-| R1 | Rodar `db push` com o histórico atual tentaria aplicar **30 migrations em staging e 56 em produção** — 29/55 legadas que **não devem** reexecutar, mais a corretiva | **Crítico** | Nunca rodar `db push` antes do `repair` das legadas. Sempre `--dry-run` primeiro |
+| R1 | Rodar `db push` com o histórico atual tentaria aplicar **29 migrations em staging e 55 em produção** — 28/54 legadas que **não devem** reexecutar, mais a corretiva | **Crítico** | Nunca rodar `db push` antes do `repair` das legadas. Sempre `--dry-run` primeiro |
 | R2 | Reexecutar migrations legadas **recria objetos e pode apagar dado** (`drop`/`create` de função, backfill repetido) | **Crítico** | `repair` declara **sem executar** — é essa a saída, e só para as legadas |
 | R3 | **`repair` na migration corretiva** marcaria como aplicada uma migration **nunca executada** — os índices continuariam faltando, agora com o histórico afirmando o contrário | **Crítico** | §5(d). A corretiva **nunca** entra em `repair`, em nenhum ambiente |
 | R4 | Tratar "fila vazia depois do `repair`" como meta | **Alto** | §5(e): depois do `repair` tem de sobrar **exatamente uma** pendente |
@@ -299,7 +325,7 @@ dizia antes.
 
 ### (b) Validar objeto por objeto — **somente as legadas**
 
-**Alvo: as 29 legadas em staging / 55 em produção. A migration corretiva não entra aqui** — ela não
+**Alvo: as 28 legadas em staging / 54 em produção. A migration corretiva não entra aqui** — ela não
 tem efeito no banco para validar; é justamente o que falta.
 
 **Um objeto sentinela NÃO basta.** Conferir só "a tabela existe" carimba como concluída uma migration
@@ -337,7 +363,7 @@ npx supabase migration repair --status applied 066 --linked
 Confirmado pelo `--help`: `migration repair [flags] [<version...>]`, com `--status applied|reverted`.
 
 **Uma de cada vez**, conferindo a saída entre cada uma: se uma versão não tiver o efeito no schema,
-você descobre nela, não no fim de um lote de 29.
+você descobre nela, não no fim de um lote de 28.
 
 ### (d) **NUNCA** `repair` na migration corretiva
 
@@ -430,7 +456,7 @@ correto — porque a corretiva foi **executada**, não declarada.
 ### (j) Repetir a sequência autorizada em produção
 
 Mesma sequência (a)→(i), com dois agravantes: sem CLI (R8) e com decisão explícita a cada passo. São
-**55 legadas** a validar e reparar, não 29 — e a fila parte de **56**.
+**54 legadas** a validar e reparar, não 28 — e a fila parte de **55**.
 
 **Na etapa (g), o formato depende da decisão de §12.2:**
 
@@ -593,7 +619,7 @@ preservação de data, porque não há data.
 - [ ] **§12.4 DEPOIS** da aplicação: zero linhas — e, em especial, nenhum candidato que não
       existisse no preflight. Se houver, **parar e investigar a origem**, sem atribuir causa.
 - [ ] `db push --dry-run` final: **zero pendentes** — §5(i). Só aqui zero é o esperado.
-- [ ] Mesma sequência completa em produção — §5(j), partindo de **56**.
+- [ ] Mesma sequência completa em produção — §5(j), partindo de **55**.
 - [ ] `git status --short --untracked-files=all` limpo de arquivos de migration não intencionais.
 - [ ] Suíte E2E verde **depois** da reconciliação (o `repair` não deveria mexer em nada — é por isso
       que serve como controle).
@@ -605,7 +631,10 @@ preservação de data, porque não há data.
       substituto. Evidência:
       [`TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`](TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md).
 - [ ] **PENDENTE — Docker ausente.** Reprodução da sequência completa em banco vazio (§6.4).
-- [ ] **PENDENTE — sem acesso.** Medições (a)–(e) do §12.1 em produção.
+- [x] **CONCLUÍDO — 2026-09-21.** Medições (a)–(d) do §12.1 em produção, mais §12.3 e §12.4. Ver
+      [`PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS_2026-09-21.md`](PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS_2026-09-21.md).
+      A janela (e) continua **não fixada** (P3). **Isto não dispensa o preflight de última hora**,
+      imediatamente antes de qualquer aplicação.
 - [ ] **PENDENTE — bloqueado em código.** AM-01 (senhas vazadas) — ver `docs/ACOES_MANUAIS_SUPABASE.md`.
 
 ---
@@ -637,7 +666,7 @@ npx supabase init && npx supabase start && npx supabase db reset
 **Nunca rodar:**
 
 ```bash
-# R1: tentaria aplicar 30 (staging) / 56 (producao) -- inclusive as legadas,
+# R1: tentaria aplicar 29 (staging) / 55 (producao) -- inclusive as legadas,
 #     que NAO devem reexecutar
 npx supabase db push --linked          # ANTES do repair das legadas
 
@@ -658,8 +687,8 @@ npx supabase migration squash
 | # | Ponto | Por quê |
 | --- | --- | --- |
 | A1 | **Qualquer comando de CLI contra produção** | A CLI escreve ("Initialising login role") mesmo para ler — R8 |
-| A2 | `migration repair` nas **29 legadas** de staging | Altera o histórico |
-| A3 | `migration repair` nas **55 legadas** de produção | Idem |
+| A2 | `migration repair` nas **28 legadas** de staging | Altera o histórico |
+| A3 | `migration repair` nas **54 legadas** de produção | Idem |
 | A4 | Aceitar que as datas reais de aplicação **não são recuperáveis pelo ledger** | §7.2 |
 | A5 | Decidir se `058`/`059` estavam aplicadas em 2026-06-24 | Só log/backup responde — §7.2 |
 | A6 | Rodar `supabase init` | Cria `config.toml`, que hoje não existe |
@@ -706,8 +735,14 @@ Arquivo: `supabase/migrations/20260918120033_hr_workflow_idempotency_indexes_par
 
 ### 12.1 Medições obrigatórias ANTES de produção
 
-Nenhuma foi feita em produção — **não tenho acesso** (§0). Todas são leitura pura, executáveis no SQL
-Editor sem criar papel.
+**CONCLUÍDO — (a) a (d), mais §12.3 e §12.4, medidos em produção em 2026-09-21.** Ver
+[`PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS_2026-09-21.md`](PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS_2026-09-21.md):
+11 linhas, 80 kB no total, 0 escritas em 3h02min, sem locks, sem bloqueios. A janela (e) ainda não
+foi fixada.
+
+**A medição arquivada não autoriza aplicação.** As mesmas consultas precisam ser **repetidas
+imediatamente antes** de qualquer aplicação, como preflight de última hora. Todas são leitura pura,
+executáveis no SQL Editor sem criar papel.
 
 **(a) Volume de linhas**
 

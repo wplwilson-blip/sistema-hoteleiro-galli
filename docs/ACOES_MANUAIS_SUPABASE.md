@@ -220,10 +220,13 @@ preserva o conteúdo do ledger e a evidência do estado anterior, não uma data 
 
 | Ambiente | Legadas ausentes | Migration nova | **Fila antes do `repair`** |
 | --- | --- | --- | --- |
-| Staging | 29 | 1 | **30** |
-| Produção *(relato até `039`)* | 55 | 1 | **56** |
+| Staging | 28 | 1 | **29** |
+| Produção *(relato até `039`)* | 54 | 1 | **55** |
 
-**29 e 55 são o backlog LEGADO, não o total.** A migration corretiva também está fora do histórico —
+> **Correção de contagem (2026-10-19):** versões anteriores diziam 29/55 e 30/56, porque contavam
+> o `074`, que não existe. Ver `docs/P4_AUDITORIA_MIGRATIONS_LEGADAS.md` §5.
+
+**28 e 54 são o backlog LEGADO, não o total.** A migration corretiva também está fora do histórico —
 mas por nunca ter sido aplicada em lugar nenhum.
 
 > 🔴 **O `repair` é SÓ para as legadas.** A corretiva **nunca** entra em `repair`: isso a marcaria
@@ -283,11 +286,11 @@ decisão. Aqui fica só o necessário para executar com segurança: **depois de 
 | | |
 | --- | --- |
 | **Staging** | **No-op** quanto aos índices (já existem). O efeito real é **registrar a versão no histórico**. Prova parsing, idempotência e o caminho do `db push` |
-| **Produção** | Aqui os índices seriam de fato criados — e **esse caminho não foi testado** |
+| **Produção** | Aqui os índices seriam de fato criados. O caminho foi **testado em banco local descartável** em 2026-10-16 |
 
 > **Não trate a passagem em staging como aprovação.** Ela não exercita a criação. O teste do caminho
-> de criação exige banco descartável sem os três índices, e está **PENDENTE** (Docker ausente).
-> Ver §6.1–6.3 do plano de reconciliação.
+> de criação exige banco descartável sem os três índices. **CONCLUÍDO em 2026-10-16**, em PostgreSQL
+> 17 local: ver `docs/TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md` e §6 do plano.
 
 ### Onde esta ação entra na ordem
 
@@ -368,7 +371,7 @@ quanto a eles, e portanto não criou nada que se possa desfazer. Rodar `drop ind
 | P2 | **Implementar o mapeamento `weak_password`** nas quatro rotas, com testes | **AM-01 inteiro** |
 | P3 | Só depois de P2: ativar AM-01 em staging | Correção 8 |
 | P4 | Confirmar que os projetos estão em plano **Pro ou superior** | AM-01 — recurso indisponível abaixo disso |
-| P5 | Disponibilizar Docker ou branch descartável | Teste do caminho de criação dos índices (§6 do plano) |
-| P6 | Medições do §12.1 em produção | AM-04 |
+| ~~P5~~ | ~~Disponibilizar Docker ou branch descartável~~ **RESOLVIDO em 2026-10-16**: teste local em PostgreSQL 17, sem Docker (`docs/TESTE_LOCAL_RECONCILIACAO_INDICES_2026-10-16.md`). Docker segue necessário só para a reprodução completa (§6.4 do plano) | — |
+| ~~P6~~ | ~~Medições do §12.1 em produção~~ **CONCLUÍDO em 2026-09-21** (`docs/PREFLIGHT_PRODUCAO_RECONCILIACAO_MIGRATIONS_2026-09-21.md`). O preflight de última hora continua obrigatório antes de aplicar | — |
 | P7 | Decidir cada candidato devolvido pelo detector do §12.4 no preflight, se houver | AM-04 — a aplicação fica parada até a decisão |
 | P8 | Observar e registrar o comportamento real do login em staging com a proteção ligada | AM-01 — o impacto sobre senha já existente é **incerto** |
