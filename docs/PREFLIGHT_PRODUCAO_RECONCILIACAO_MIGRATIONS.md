@@ -194,8 +194,11 @@ o objeto analisado não é o que foi revisado.
 
 > **Condição separada, fora deste preflight.** Conferir a identidade da migration não autoriza
 > `db push`. Em produção, `db push` continua dependendo do `repair` das **54 migrations legadas**,
-> validadas pela matriz do §5(b) do plano. Sem isso, a fila tentaria aplicar 55 (R1). E a
-> corretiva **nunca** entra em `repair` (R3). Ver §5 do
+> validadas pela matriz do §5(b) do plano. Sem isso, a fila tentaria aplicar 56: 54 legadas mais as
+> 2 novas (R1). **Nenhuma das duas novas entra em `repair`** (R3):
+> `20260918120033_hr_workflow_idempotency_indexes_parity` e
+> `20261019184500_housekeeping_security_hardening`. O `db push`, quando autorizado, aplica **as
+> duas** na mesma execução. Ver §5 do
 > [`PLANO_RECONCILIACAO_MIGRATIONS.md`](PLANO_RECONCILIACAO_MIGRATIONS.md) e P4 em
 > [`GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md`](GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md).
 

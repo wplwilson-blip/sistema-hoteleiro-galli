@@ -58,15 +58,20 @@ rodar** sem decisão explícita.
 
 ## 1. Estado atual
 
-### 1.1 Inventário de arquivos — **94 no total**
+### 1.1 Inventário de arquivos — **95 no total**
 
-Depois da inclusão da migration corretiva:
+Depois da inclusão das duas migrations novas:
 
 | Grupo | Quantidade |
 | --- | --- |
 | Migrations **legadas**, convenção `NNN_` | **93** (`001`–`094`, sem `074`) |
-| Migration **nova**, convenção timestamp | **1** (`20260918120033_hr_workflow_idempotency_indexes_parity`) |
-| **Total de arquivos** | **94** |
+| Migrations **novas**, convenção timestamp | **2**: `20260918120033_hr_workflow_idempotency_indexes_parity` e `20261019184500_housekeeping_security_hardening` |
+| **Total de arquivos** | **95** |
+
+> **Nota temporal.** Até 2026-10-19 eram **94** arquivos (93 + 1). A segunda migration timestamp,
+> de hardening da governança, foi desenhada e testada localmente em 2026-10-19
+> (`P4_S1_HARDENING_GOVERNANCA.md`, `P4_S1A_TESTE_LOCAL_HARDENING_GOVERNANCA_2026-10-19.md`).
+> **Não foi aplicada em nenhum ambiente.**
 
 A numeração legada não tem duplicados, e **`074` é o único número ausente**.
 
@@ -106,22 +111,33 @@ A auditoria informa que produção registra até `039`. Se correto, **54 migrati
 (`040`–`094`, sem `074`) estão ausentes do histórico de produção enquanto seus efeitos estão no
 schema.
 
-### 1.5 A fila real antes do `repair` — **29 e 55, não 28 e 54**
+### 1.5 A fila real antes do `repair` — **30 e 56, não 28 e 54**
 
 > **28 e 54 são o backlog LEGADO — não o total da fila.**
 >
-> A migration corretiva **também** está ausente do histórico dos dois ambientes, e por um motivo
-> completamente diferente: ela **nunca foi aplicada em lugar nenhum**. As legadas estão ausentes do
-> histórico mas **presentes no schema**; a nova está ausente das duas coisas.
+> As **duas migrations novas** também estão ausentes do histórico dos dois ambientes, e por um
+> motivo completamente diferente: **nunca foram aplicadas em lugar nenhum**. As legadas estão
+> ausentes do histórico mas **presentes no schema**; as novas estão ausentes das duas coisas.
 
-| Ambiente | Legadas ausentes | Nova | **Fila total antes do `repair`** |
+| Ambiente | Legadas ausentes | Novas | **Fila total antes do `repair`** |
 | --- | --- | --- | --- |
-| **Staging** | 28 (`066`–`094`, sem `074`) | 1 | **29** |
-| **Produção** *(se o relato até `039` estiver correto)* | 54 (`040`–`094`, sem `074`) | 1 | **55** |
+| **Staging** | 28 (`066`–`094`, sem `074`) | 2 | **30** |
+| **Produção** *(se o relato até `039` estiver correto)* | 54 (`040`–`094`, sem `074`) | 2 | **56** |
+
+As duas novas, que **nunca** entram em `repair`:
+
+1. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`: 3 índices de FK em
+   `hr_workflow_idempotency_keys`.
+2. `20261019184500_housekeeping_security_hardening.sql`: RLS declarado e grants das 3 tabelas da
+   governança.
+
+> **Nota temporal.** Até 2026-10-19 havia **uma** migration nova, e as filas eram **29 e 55**. Antes
+> da correção de contagem de 2026-10-19 os documentos diziam 30 e 56, por contar o `074`. **Os
+> números 30 e 56 de agora estão certos por outro motivo:** 28 + 2 e 54 + 2.
 
 **A distinção decide o procedimento inteiro.** As legadas se resolvem por `repair` — declaração sem
-execução, porque o efeito já está no banco. A nova **precisa ser executada**: o efeito dela não
-existe em produção. Tratá-las juntas marcaria a corretiva como aplicada sem criar índice nenhum, que
+execução, porque o efeito já está no banco. As novas **precisam ser executadas**: o efeito delas não
+existe nos bancos. Tratá-las juntas marcaria uma migration nova como aplicada sem nenhum efeito, que
 é o pior desfecho possível desta reconciliação — ver §5, alínea (d).
 
 ---
@@ -130,11 +146,11 @@ existe em produção. Tratá-las juntas marcaria a corretiva como aplicada sem c
 
 | | Local | Staging | Produção |
 | --- | --- | --- | --- |
-| Arquivos | **94** (93 legadas + 1 nova) | — | — |
+| Arquivos | **95** (93 legadas + 2 novas) | — | — |
 | Histórico registrado | — | `001`–`065` **(medido)** | `001`–`039` *(relatado)* |
 | Legadas ausentes do histórico | — | **28** (`066`–`094`) | **54** *(`040`–`094`)* |
-| Nova ausente do histórico | — | **1** (nunca aplicada) | **1** (nunca aplicada) |
-| **Fila total antes do `repair`** | — | **29** | **55** |
+| Novas ausentes do histórico | — | **2** (nunca aplicadas) | **2** (nunca aplicadas) |
+| **Fila total antes do `repair`** | — | **30** | **56** |
 | Evolução funcional | — | até `094` **(medido)** | até `094` *(relatado)* |
 | Índices de `hr_workflow_idempotency_keys` | 11 declarados na `023` | **11 presentes (medido)** | **2 presentes (MEDIDO 2026-09-21)** — faltam **9** |
 
@@ -287,10 +303,10 @@ repositório, e **nada disso está no ledger de migrations** (§7.2).
 
 | # | Risco | Gravidade | Mitigação |
 | --- | --- | --- | --- |
-| R1 | Rodar `db push` com o histórico atual tentaria aplicar **29 migrations em staging e 55 em produção** — 28/54 legadas que **não devem** reexecutar, mais a corretiva | **Crítico** | Nunca rodar `db push` antes do `repair` das legadas. Sempre `--dry-run` primeiro |
+| R1 | Rodar `db push` com o histórico atual tentaria aplicar **30 migrations em staging e 56 em produção** — 28/54 legadas que **não devem** reexecutar, mais as 2 novas | **Crítico** | Nunca rodar `db push` antes do `repair` das legadas. Sempre `--dry-run` primeiro |
 | R2 | Reexecutar migrations legadas **recria objetos e pode apagar dado** (`drop`/`create` de função, backfill repetido) | **Crítico** | `repair` declara **sem executar** — é essa a saída, e só para as legadas |
-| R3 | **`repair` na migration corretiva** marcaria como aplicada uma migration **nunca executada** — os índices continuariam faltando, agora com o histórico afirmando o contrário | **Crítico** | §5(d). A corretiva **nunca** entra em `repair`, em nenhum ambiente |
-| R4 | Tratar "fila vazia depois do `repair`" como meta | **Alto** | §5(e): depois do `repair` tem de sobrar **exatamente uma** pendente |
+| R3 | **`repair` numa migration nova** (índices ou hardening) marcaria como aplicada uma migration **nunca executada** — os índices continuariam faltando, ou os grants continuariam abertos, agora com o histórico afirmando o contrário | **Crítico** | §5(d). As 2 novas **nunca** entram em `repair`, em nenhum ambiente |
+| R4 | Tratar "fila vazia depois do `repair`" como meta | **Alto** | §5(e): depois do `repair` têm de sobrar **exatamente as 2 migrations timestamp** deliberadamente não reparadas, identificadas pelo nome |
 | R5 | `repair` declara aplicado algo que **não está** no schema | **Alto** | Matriz de efeitos antes (§5b). `repair` é declaração, não verificação |
 | R6 | Arquivo local diverge do que foi aplicado (`29954f9`) | **Médio** | Registrar a divergência; não "corrigir" o arquivo para casar |
 | R7 | Produção e staging divergirem mais durante a reconciliação | **Médio** | Congelar aplicação manual até terminar |
@@ -365,10 +381,14 @@ Confirmado pelo `--help`: `migration repair [flags] [<version...>]`, com `--stat
 **Uma de cada vez**, conferindo a saída entre cada uma: se uma versão não tiver o efeito no schema,
 você descobre nela, não no fim de um lote de 28.
 
-### (d) **NUNCA** `repair` na migration corretiva
+### (d) **NUNCA** `repair` nas migrations novas
 
-> **`20260918120033_hr_workflow_idempotency_indexes_parity` não entra em `repair`. Em nenhum
-> ambiente, em nenhuma circunstância.**
+> **`20260918120033_hr_workflow_idempotency_indexes_parity` e
+> `20261019184500_housekeeping_security_hardening` não entram em `repair`. Em nenhum ambiente, em
+> nenhuma circunstância.**
+>
+> O argumento abaixo foi escrito para a de índices e vale igualmente para a de hardening: um
+> `repair` nela declararia RLS e grants corrigidos sem ter executado nada.
 >
 > `repair` declara aplicada uma migration **sem executá-la**. Isso está certo para as legadas, cujo
 > efeito já está no banco. Para a corretiva estaria **exatamente errado**: os três índices
@@ -378,7 +398,7 @@ você descobre nela, não no fim de um lote de 28.
 > ambientes; depois de um `repair` indevido, o ledger mentiria e a próxima auditoria concluiria que
 > a Correção 1 foi entregue.
 
-### (e) `dry-run` depois do `repair`: **exatamente UMA pendente**
+### (e) `dry-run` depois do `repair`: **exatamente as 2 migrations novas**
 
 ```bash
 npx supabase db push --dry-run --linked
@@ -387,14 +407,25 @@ npx supabase db push --dry-run --linked
 `--dry-run` está no `--help`: *"Print the migrations that would be applied, but don't actually apply
 them."*
 
+**Critério:** depois do `repair` das legadas devem restar **exatamente 2** migrations pendentes, e
+elas devem ser **exatamente**:
+
+1. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
+2. `20261019184500_housekeeping_security_hardening.sql`
+
 | Resultado | Significado |
 | --- | --- |
-| **1 pendente**, e é `20260918120033_...` | **Correto.** Siga para (f) |
-| **0 pendentes** | 🔴 **PARE.** A corretiva foi marcada por engano — R3. Investigue antes de tudo |
-| **Mais de 1** | (c) ficou incompleto. Volte, **sem** rodar `db push` sem `--dry-run` |
+| **2 pendentes, e são exatamente estas duas** | **Correto.** Siga para (f) |
+| **1 pendente** (uma das duas sumiu) | 🔴 **PARE.** Uma nova foi marcada por engano — R3 |
+| **0 pendentes** | 🔴 **PARE.** As duas foram marcadas por engano — R3. Investigue antes de tudo |
+| **2 pendentes, mas não estas duas** | 🔴 **PARE.** Uma legada ficou fora do `repair` **e** uma nova foi marcada |
+| **3 ou mais** | 🔴 **PARE.** (c) ficou incompleto, ou surgiu migration inesperada. Volte, **sem** rodar `db push` sem `--dry-run` |
 
-**A fila não deve esvaziar neste ponto.** Esvaziar aqui significa que a corretiva foi declarada sem
-execução.
+**A fila não deve esvaziar neste ponto.** Esvaziar aqui significa que as novas foram declaradas sem
+execução. **Conferir pelo nome, não só pela contagem.**
+
+> **Nota temporal.** Até 2026-10-19 o critério era "exatamente UMA pendente", a de índices. Mudou
+> com a criação da migration de hardening (`P4_S1_HARDENING_GOVERNANCA.md`).
 
 ### (f) Preflight dos índices — **§12.3 E §12.4, as duas**
 
@@ -424,14 +455,22 @@ Rodar a §12.4 só depois descobriria o problema **com o índice redundante já 
 > própria), ou remover o existente (migration própria, com justificativa). **Nenhuma das duas sai
 > daqui automaticamente.**
 
-### (g) Aplicar a migration em staging
+### (g) Aplicar as migrations novas em staging
 
 ```bash
 npx supabase db push --linked
 ```
 
-Em staging isto é **no-op** quanto aos índices (já existem) — o efeito real é **registrar a versão no
-histórico**. Prova parsing, idempotência e o caminho do `db push`; **não** prova a criação (§6.1).
+> **O `db push` aplica TODAS as pendentes, na ordem do timestamp.** Depois do `repair` correto, isso
+> significa **as duas novas na mesma execução**: primeiro a de índices, depois a de hardening. Não
+> existe "aplicar só a de índices" por `db push` enquanto as duas estiverem pendentes.
+
+- **Índices** (`20260918120033`): em staging é **no-op** quanto aos índices, que já existem. O
+  efeito real é **registrar a versão no histórico**. Prova parsing, idempotência e o caminho do
+  `db push`; **não** prova a criação (§6.1).
+- **Hardening** (`20261019184500`): em staging **NÃO é no-op**. Revoga os privilégios de tabela de
+  `anon` e `authenticated` nas 3 tabelas da governança e declara RLS e o CRUD de `service_role`.
+  Exige o preflight e o smoke de `P4_S1_HARDENING_GOVERNANCA.md` §6–§7.
 
 ### (h) Validar índices e histórico — **§12.3 e §12.4 de novo**
 
@@ -443,6 +482,8 @@ As **mesmas duas** consultas do preflight, agora como confirmação:
   investigar se veio da migration ou de alteração concorrente**. Não atribuir a causa sem prova — o
   intervalo entre as duas consultas é aberto a outros atores.
 - A versão `20260918120033_...` aparece no ledger.
+- **Hardening:** a validação (1)–(4) do próprio arquivo `20261019184500_...` e o smoke da aplicação
+  (`P4_S1_HARDENING_GOVERNANCA.md` §6). A versão `20261019184500_...` aparece no ledger.
 
 ### (i) `dry-run` final: **zero pendentes**
 
@@ -451,12 +492,12 @@ npx supabase db push --dry-run --linked
 ```
 
 **Agora sim zero.** Este é o único ponto do procedimento em que "zero pendentes" é o resultado
-correto — porque a corretiva foi **executada**, não declarada.
+correto — porque as **duas** migrations novas foram **executadas**, não declaradas.
 
 ### (j) Repetir a sequência autorizada em produção
 
 Mesma sequência (a)→(i), com dois agravantes: sem CLI (R8) e com decisão explícita a cada passo. São
-**54 legadas** a validar e reparar, não 28 — e a fila parte de **55**.
+**54 legadas** a validar e reparar, não 28 — e a fila parte de **56** (54 + as 2 novas).
 
 **Na etapa (g), o formato depende da decisão de §12.2:**
 
@@ -601,7 +642,9 @@ preservação de data, porque não há data.
       grants, enums e backfills. Sentinela única só **com justificativa escrita**.
 - [ ] Nenhuma versão legada declarada como aplicada sem **todos** os efeitos confirmados.
 - [ ] **`repair` executado SOMENTE em migrations legadas** — nunca em `20260918120033_...` (R3).
-- [ ] `db push --dry-run` depois do `repair`: **exatamente UMA pendente**, e é a corretiva — §5(e).
+- [ ] `db push --dry-run` depois do `repair`: **exatamente as 2 migrations novas**, conferidas pelo
+      nome (`20260918120033_hr_workflow_idempotency_indexes_parity` e
+      `20261019184500_housekeeping_security_hardening`) — §5(e).
       **Zero aqui é condição de parada**, não sucesso.
 - [ ] Preflight **§12.3 ANTES** da aplicação: nenhum dos três nomes com `existe = true` e
       `conforme = false`.
@@ -619,7 +662,7 @@ preservação de data, porque não há data.
 - [ ] **§12.4 DEPOIS** da aplicação: zero linhas — e, em especial, nenhum candidato que não
       existisse no preflight. Se houver, **parar e investigar a origem**, sem atribuir causa.
 - [ ] `db push --dry-run` final: **zero pendentes** — §5(i). Só aqui zero é o esperado.
-- [ ] Mesma sequência completa em produção — §5(j), partindo de **55**.
+- [ ] Mesma sequência completa em produção — §5(j), partindo de **56**.
 - [ ] `git status --short --untracked-files=all` limpo de arquivos de migration não intencionais.
 - [ ] Suíte E2E verde **depois** da reconciliação (o `repair` não deveria mexer em nada — é por isso
       que serve como controle).
@@ -653,10 +696,12 @@ npx supabase migration repair --status applied <versao-legada> --linked
 
 # (e) e (i) CONFERENCIA SEM APLICAR
 npx supabase db push --dry-run --linked
-#   depois do repair  -> esperado: EXATAMENTE 1 pendente (a corretiva)
+#   depois do repair  -> esperado: EXATAMENTE 2 pendentes, pelo nome:
+#                        20260918120033_hr_workflow_idempotency_indexes_parity
+#                        20261019184500_housekeeping_security_hardening
 #   depois de aplicar -> esperado: 0 pendentes
 
-# (g) APLICAR a corretiva
+# (g) APLICAR as 2 novas (o db push aplica as duas na mesma execucao)
 npx supabase db push --linked
 
 # 6. BANCO VAZIO (exige Docker)
@@ -666,7 +711,7 @@ npx supabase init && npx supabase start && npx supabase db reset
 **Nunca rodar:**
 
 ```bash
-# R1: tentaria aplicar 29 (staging) / 55 (producao) -- inclusive as legadas,
+# R1: tentaria aplicar 30 (staging) / 56 (producao) -- inclusive as legadas,
 #     que NAO devem reexecutar
 npx supabase db push --linked          # ANTES do repair das legadas
 
@@ -675,6 +720,8 @@ npx supabase db push --include-all
 
 # R3: marcaria como aplicada uma migration NUNCA executada
 npx supabase migration repair --status applied 20260918120033_hr_workflow_idempotency_indexes_parity --linked
+#     e o mesmo vale para 20261019184500_housekeeping_security_hardening:
+#     NUNCA em repair, em nenhum ambiente
 
 # 7.1: apaga a trilha de decisoes
 npx supabase migration squash
@@ -716,7 +763,12 @@ O repositório usava `NNN_nome.sql` nas 93 legadas, e o `migration list` lê o p
 **removida**.
 
 **Consequência registrada:** o repositório passa a ter **duas convenções convivendo** — 93 arquivos
-`NNN_` e 1 em timestamp, **94 no total**. Funciona (o timestamp ordena depois de `094`), mas a
+`NNN_` e **2** em timestamp, **95 no total** (eram 1 e 94 até 2026-10-19).
+
+> **Exceção registrada (2026-10-19).** A segunda migration timestamp,
+> `20261019184500_housekeeping_security_hardening.sql`, **não** saiu do `migration new`. A CLI não
+> estava instalada localmente, e o `npx` a baixaria. O nome foi dado à mão **no mesmo formato**
+> (`YYYYMMDDHHMMSS`, UTC), e é posterior a `20260918120033`. Funciona (o timestamp ordena depois de `094`), mas a
 leitura visual do diretório fica mista. Padronizar as legadas exigiria renomear arquivos já
 aplicados, o que **quebraria o casamento com o histórico remoto** — não se faz. A convivência é o
 custo aceito, e daqui para frente **toda migration nova sai do `migration new`**.
@@ -1239,7 +1291,8 @@ que o código usa** — o `unique_idx` para toda leitura, a PK para toda escrita
 
 ### 13.4 Nenhuma remoção foi intencional
 
-`grep` por `drop index`, `alter index` e `rename index` nas 94 migrations: as únicas ocorrências são
+`grep` por `drop index`, `alter index` e `rename index` nas 94 migrations *(eram 94 na data do grep;
+a 95ª, `20261019184500_housekeeping_security_hardening`, não contém nenhum dos três)*: as únicas ocorrências são
 **blocos de rollback comentados** nas migrations `084`, `087` e `089`, e **nenhuma menciona esta
 tabela**. Os nove nomes aparecem só na `023`.
 

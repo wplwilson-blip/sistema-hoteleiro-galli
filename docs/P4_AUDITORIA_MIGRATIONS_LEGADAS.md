@@ -77,8 +77,8 @@ As regras que decorrem disso:
 | Grupo | Quantidade | Faixa |
 | --- | --- | --- |
 | Legadas, convenção `NNN_` | **93** | `001`–`094`, sem `074` |
-| Timestamp, `YYYYMMDDHHMMSS_` | **1** | `20260918120033_hr_workflow_idempotency_indexes_parity` |
-| **Total** | **94** | |
+| Timestamp, `YYYYMMDDHHMMSS_` | **2** | `20260918120033_hr_workflow_idempotency_indexes_parity`, `20261019184500_housekeeping_security_hardening` |
+| **Total** | **95** | (94 até 2026-10-19) |
 | Legadas `≤ 039` | 39 | |
 | Legadas `≤ 065` | 65 | |
 | Legadas `040`–`094` | **54** | |
@@ -86,6 +86,9 @@ As regras que decorrem disso:
 
 `074` nunca existiu (§1.2 do plano). Os comentários de `075` e `076` confirmam que o número foi
 pulado.
+
+> **Atualização P4-S1 (2026-10-19):** com `20261019184500_housekeeping_security_hardening.sql`
+> passam a ser **2** migrations timestamp e **95** arquivos no total. As 93 legadas não mudam (§14.1).
 
 ### Inventário do backlog de produção
 
@@ -153,26 +156,48 @@ As 54 legadas de `040` a `094`. **Linhas** é o tamanho do arquivo, comentários
 
 ## 5. Backlog por ambiente
 
-| Ambiente | Ledger | Backlog legado | Migration nova | **Fila antes do `repair`** | Fonte |
+| Ambiente | Ledger | Backlog legado | Migrations novas | **Fila antes do `repair`** | Fonte |
 | --- | --- | --- | --- | --- | --- |
-| **Staging** | `001`–`065` | **28** (`066`–`094`) | 1 | **29** | Ledger medido. Contagem medida neste documento |
-| **Produção** | `001`–`039` | **54** (`040`–`094`) | 1 | **55** | Ledger **relatado**. Contagem medida neste documento |
+| **Staging** | `001`–`065` | **28** (`066`–`094`) | 2 | **30** | Ledger medido. Contagem medida neste documento |
+| **Produção** | `001`–`039` | **54** (`040`–`094`) | 2 | **56** | Ledger **relatado**. Contagem medida neste documento |
+
+**Depois do `repair` das legadas devem restar exatamente 2 pendentes, e devem ser exatamente:**
+
+1. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
+2. `20261019184500_housekeeping_security_hardening.sql`
+
+Uma terceira migration pendente, ou o sumiço de qualquer uma das duas: **PARAR.**
 
 > **Correção factual dos documentos atuais.** O plano, `ACOES_MANUAIS_SUPABASE.md`, o roteiro de
 > preflight e o GO/NO-GO falam em **29 / 55 legadas** e **filas de 30 / 56**. **Os números estão
 > errados por um:** contaram o `074`, que não existe. Medido no repositório: `066`–`094` são **28**
-> arquivos e `040`–`094` são **54**. As filas reais são **29 / 55**.
+> arquivos e `040`–`094` são **54**. As filas reais, **naquele momento**, eram **29 / 55**.
 >
-> **O procedimento não muda.** O critério do §5(e), "exatamente UMA pendente depois do `repair`",
-> continua certo. Só as contagens estavam erradas. **Corrigido em 2026-10-19** nos quatro
+> **O procedimento não mudou com essa correção.** O critério do §5(e), "exatamente UMA pendente
+> depois do `repair`", continuava certo; só as contagens estavam erradas. *(Esse critério mudou
+> depois, com a migration de hardening — ver a atualização abaixo.)* **Corrigido em 2026-10-19** nos quatro
 > documentos (§15.1).
+>
+> **Atualização P4-S1 (2026-10-19).** A migration de hardening
+> `20261019184500_housekeeping_security_hardening.sql` foi **escrita, testada localmente e
+> versionada; não aplicada**. Com ela, são
+> **duas** migrations novas deliberadamente fora do `repair`. Os números passam a ser:
+>
+> | Ambiente | Legadas | Novas | Fila antes do `repair` | Pendentes depois do `repair` |
+> | --- | --- | --- | --- | --- |
+> | Staging | 28 | 2 | **30** | **2** |
+> | Produção | 54 | 2 | **56** | **2** |
+>
+> O critério deixa de ser "exatamente UMA pendente" e passa a ser **"exatamente as migrations
+> novas deliberadamente não reparadas"**. Ver §14 e
+> [`P4_S1_HARDENING_GOVERNANCA.md`](P4_S1_HARDENING_GOVERNANCA.md) §8.
 
-### O backlog legado e a migration nova são problemas opostos
+### O backlog legado e as migrations novas são problemas opostos
 
-| | Legadas (28 / 54) | Timestamp (1) |
+| | Legadas (28 / 54) | Timestamp (2) |
 | --- | --- | --- |
 | No ledger | **não** | **não** |
-| No schema | **a provar**, efeito por efeito | **não**. Os 3 índices faltam em produção |
+| No schema | **a provar**, efeito por efeito | **não**. Os 3 índices faltam em produção; os grants da governança seguem abertos |
 | Saída correta | `repair applied`, **somente com efeito comprovado** | **ser executada**, nunca `repair` |
 
 ### Recorte por ambiente
@@ -855,10 +880,41 @@ PENDENTE PARA APLICAÇÃO REAL
 ```
 
 - Ela **não entra** em nenhuma matriz de `repair`, em nenhum ambiente.
-- Ela é a **única** pendente esperada depois do `repair` das legadas (§5(e) do plano).
+- ~~Ela é a **única** pendente esperada depois do `repair` das legadas (§5(e) do plano).~~ Desde
+  P4-S1 ela é **uma das duas** pendentes esperadas. Ver abaixo.
 - Seus efeitos (3 índices) **não existem** em produção e precisam ser **criados**.
 - Ela não toca nenhum objeto das legadas. Só cria índices em `hr_workflow_idempotency_keys`, que a
   078 deixou sem policy de propósito.
+
+### 14.1 Segunda migration timestamp — hardening da governança (P4-S1)
+
+```text
+20261019184500_housekeeping_security_hardening.sql
+
+NÃO REPAIR
+PENDENTE PARA APLICAÇÃO REAL
+
+Migration desenhada:     SIM
+Teste local:             APROVADO (PostgreSQL 17.11, cenários A/B/C)
+Versionada:              SIM (commit db-housekeeping-security-hardening)
+Aplicada em staging:     NÃO
+Aplicada em produção:    NÃO
+```
+
+Evidência do teste:
+[`P4_S1A_TESTE_LOCAL_HARDENING_GOVERNANCA_2026-10-19.md`](P4_S1A_TESTE_LOCAL_HARDENING_GOVERNANCA_2026-10-19.md).
+Blob: `fa7308befcfa85e35818b9726c573f50b1970e10`.
+
+- Habilita RLS de forma declarada, revoga todos os privilégios de tabela de `anon`, `authenticated`
+  e PUBLIC, e concede CRUD explícito a `service_role` em `housekeeping_days`, `housekeeping_tasks` e
+  `housekeeping_day_events`.
+- Objetos disjuntos dos da migration de índices.
+- **Também está bloqueada pelo `repair` das legadas** para entrar por `db push`.
+- **Não altera a classificação de 091 nem de 092.** A auditoria delas continua sobre o que elas
+  fizeram. O hardening é efeito novo, de outra migration.
+
+**Critério pós-`repair`:** exatamente estas **duas** pendentes. 1, 0 ou 3+ é parada. Desenho e
+testes: [`P4_S1_HARDENING_GOVERNANCA.md`](P4_S1_HARDENING_GOVERNANCA.md).
 
 ---
 

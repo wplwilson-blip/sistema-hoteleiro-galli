@@ -1,0 +1,188 @@
+-- ============================================================================
+-- Hardening de seguranca das tabelas da Governanca
+--
+-- NATUREZA: HARDENING + REPRODUTIBILIDADE DE SEGURANCA.
+-- NAO e' correcao de incidente. Staging e producao foram auditados em 2026-10-19
+-- (docs/P4_RLS_GOVERNANCA_2026-10-19.md) e estao SEGUROS para CRUD de linhas:
+-- RLS ativo, 0 policies, anon/authenticated sem BYPASSRLS -> default deny.
+--
+-- STATUS: ESCRITA E NAO APLICADA. Desenho e testes em
+-- docs/P4_S1_HARDENING_GOVERNANCA.md. Nao aplicar fora daquele plano.
+--
+-- TABELAS:
+--   public.housekeeping_days        (091)
+--   public.housekeeping_tasks       (091)
+--   public.housekeeping_day_events  (092)
+--
+-- O QUE ESTA MIGRATION FAZ, E POR QUE
+--
+-- 1) Declara `enable row level security` nas tres tabelas.
+--    Os dois bancos ja' tem RLS ativo, mas NENHUMA migration o habilita: o
+--    estado veio de fora do repositorio. Um banco reconstruido so' pelas
+--    migrations ficaria SEM RLS, e os grants amplos de anon/authenticated
+--    passariam a alcancar linhas. Esta migration torna o estado reproduzivel.
+--
+-- 2) Revoga TODOS os privilegios de tabela de anon, authenticated e PUBLIC.
+--    Medido nos dois ambientes: anon e authenticated tem SELECT, INSERT,
+--    UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER e MAINTAIN. Nenhum e'
+--    usado: a aplicacao acessa estas tabelas SO' pelo servidor, com
+--    service_role, depois de requirePermission(). O RLS filtra linhas em
+--    SELECT/INSERT/UPDATE/DELETE, mas TRUNCATE nao passa por ele, e
+--    REFERENCES/TRIGGER/MAINTAIN operam sobre a tabela, nao sobre linhas.
+--
+--    `revoke all privileges` em vez de listar privilegio por privilegio:
+--    cobre MAINTAIN no PostgreSQL 17 sem nomea-lo, e continua valido num
+--    PostgreSQL anterior, onde MAINTAIN nao existe e nomea-lo seria erro.
+--
+--    PUBLIC entra por defesa: o ACL padrao do dono nao concede nada a PUBLIC,
+--    entao o revoke e' no-op se nada foi concedido, e fecha a porta se foi.
+--
+-- 3) Concede explicitamente SELECT, INSERT, UPDATE e DELETE a service_role.
+--    A aplicacao depende disso (rotas: SELECT nas 3, UPDATE em tasks; testes
+--    E2E: SELECT e UPDATE). BYPASSRLS dispensa o RLS, NAO dispensa o GRANT.
+--    Nenhuma migration concede esses privilegios: o acesso que funciona hoje
+--    vem de fora do repositorio, provavelmente dos privilegios padrao do
+--    schema. A ACL atual de service_role NAO foi medida na auditoria de
+--    2026-10-19, e e' item do preflight. O grant explicito tira a dependencia
+--    desse estado externo.
+--    NAO revoga nada de service_role e NAO amplia alem do CRUD.
+--
+-- O QUE ESTA MIGRATION NAO FAZ
+--
+--   - NAO cria policy. O desenho e' backend-only:
+--       cliente -> API Next.js -> requirePermission -> service_role -> banco
+--   - NAO liga FORCE ROW LEVEL SECURITY. As RPCs da governanca
+--     (housekeeping_open_day, _close_day, _reopen_day, rooms_apply_transition)
+--     sao SECURITY DEFINER e rodam como o dono da funcao. Com FORCE ligado e
+--     0 policies, o dono passaria a ser filtrado pelo RLS e as RPCs deixariam
+--     de ver e de gravar linhas. Quebraria a governanca inteira.
+--   - NAO altera ACL de funcao. As 5 RPCs ja' tem execute so' para service_role
+--     (091/092/093/094).
+--   - NAO altera os privilegios padrao do schema (`alter default privileges`).
+--     Isso afeta toda tabela futura e e' decisao separada.
+--   - NAO toca outras tabelas.
+--
+-- IDEMPOTENCIA
+--   - `enable row level security` em tabela que ja' tem RLS: sem efeito, sem erro.
+--   - `revoke` de privilegio que o papel nao tem: sem efeito, sem erro.
+--   - `grant` de privilegio que o papel ja' tem: sem efeito, sem erro.
+--   Funciona com RLS ligado ou desligado, e com grants presentes, parciais ou
+--   ja' removidos.
+--
+-- DEPENDENCIAS
+--   - 091 e 092: se as tabelas nao existirem, a migration FALHA. E' o
+--     comportamento correto: nao ha' o que proteger, e o erro mostra que a
+--     ordem esta' errada.
+--   - Papeis anon, authenticated e service_role (padrao do Supabase).
+--
+-- LOCK
+--   `alter table ... enable row level security` toma ACCESS EXCLUSIVE na
+--   tabela, por instante. Tabelas pequenas. Rodar o preflight de locks antes.
+-- ============================================================================
+
+alter table public.housekeeping_days        enable row level security;
+alter table public.housekeeping_tasks       enable row level security;
+alter table public.housekeeping_day_events  enable row level security;
+
+revoke all privileges on table public.housekeeping_days        from anon, authenticated;
+revoke all privileges on table public.housekeeping_tasks       from anon, authenticated;
+revoke all privileges on table public.housekeeping_day_events  from anon, authenticated;
+
+revoke all privileges on table public.housekeeping_days        from public;
+revoke all privileges on table public.housekeeping_tasks       from public;
+revoke all privileges on table public.housekeeping_day_events  from public;
+
+grant select, insert, update, delete on table public.housekeeping_days        to service_role;
+grant select, insert, update, delete on table public.housekeeping_tasks       to service_role;
+grant select, insert, update, delete on table public.housekeeping_day_events  to service_role;
+
+
+-- ============================================================================
+-- VALIDACAO (rodar APOS aplicar; somente leitura)
+-- ============================================================================
+--
+-- 1) RLS ligado, FORCE desligado, nas tres:
+--
+--    select c.relname, c.relrowsecurity, c.relforcerowsecurity
+--    from pg_class c
+--    join pg_namespace n on n.oid = c.relnamespace
+--    where n.nspname = 'public'
+--      and c.relname in ('housekeeping_days', 'housekeeping_tasks', 'housekeeping_day_events')
+--    order by c.relname;
+--
+--    Esperado: 3 linhas, relrowsecurity = true, relforcerowsecurity = false.
+--
+-- 2) Nenhum privilegio de tabela para anon/authenticated; CRUD para service_role:
+--
+--    select c.relname, r.papel,
+--           has_table_privilege(r.papel, c.oid, 'SELECT')     as sel,
+--           has_table_privilege(r.papel, c.oid, 'INSERT')     as ins,
+--           has_table_privilege(r.papel, c.oid, 'UPDATE')     as upd,
+--           has_table_privilege(r.papel, c.oid, 'DELETE')     as del,
+--           has_table_privilege(r.papel, c.oid, 'TRUNCATE')   as trn,
+--           has_table_privilege(r.papel, c.oid, 'REFERENCES') as ref,
+--           has_table_privilege(r.papel, c.oid, 'TRIGGER')    as trg
+--    from pg_class c
+--    join pg_namespace n on n.oid = c.relnamespace
+--    cross join (values ('anon'), ('authenticated'), ('service_role')) as r(papel)
+--    where n.nspname = 'public'
+--      and c.relname in ('housekeeping_days', 'housekeeping_tasks', 'housekeeping_day_events')
+--    order by c.relname, r.papel;
+--
+--    Esperado: anon e authenticated com TUDO false.
+--              service_role com sel/ins/upd/del = true.
+--              (trn/ref/trg de service_role nao sao alterados por esta migration.)
+--
+-- 3) ACL bruta, incluindo MAINTAIN e PUBLIC:
+--
+--    select c.relname, array_to_string(c.relacl, ' | ') as acl
+--    from pg_class c
+--    join pg_namespace n on n.oid = c.relnamespace
+--    where n.nspname = 'public'
+--      and c.relname in ('housekeeping_days', 'housekeeping_tasks', 'housekeeping_day_events');
+--
+--    Esperado: nenhuma entrada `anon=`, `authenticated=` nem `=` (PUBLIC).
+--
+-- 4) Continua sem policy:
+--
+--    select count(*) from pg_policies
+--    where schemaname = 'public'
+--      and tablename in ('housekeeping_days', 'housekeeping_tasks', 'housekeeping_day_events');
+--
+--    Esperado: 0.
+--
+-- 5) Smoke da aplicacao: ver docs/P4_S1_HARDENING_GOVERNANCA.md §8.
+--
+-- ============================================================================
+-- ROLLBACK -- COMENTADO. LER ANTES DE USAR.
+-- ============================================================================
+--
+-- Rollback de seguranca NAO e' "voltar ao estado anterior". O estado anterior
+-- tinha grants amplos e desnecessarios. Restaura-los sem motivo desfaz o
+-- hardening e nao conserta nada.
+--
+-- Esta migration NAO remove acesso de service_role. Se uma rota da governanca
+-- quebrar depois dela, a primeira hipotese NAO e' esta migration: conferir a
+-- validacao (2) para service_role antes de qualquer rollback.
+--
+-- (a) Se aparecer um consumidor legitimo que precisa de acesso direto como
+--     anon/authenticated (hoje nao existe nenhum), NAO restaurar tudo: conceder
+--     SOMENTE o privilegio necessario, e criar a policy correspondente, em
+--     migration propria e revisada.
+--
+-- (b) NUNCA desligar o RLS como rollback. Com qualquer grant presente, isso
+--     expoe linhas:
+--
+--       -- NAO USAR: alter table public.housekeeping_days disable row level security;
+--
+-- (c) Restauracao literal do estado anterior -- SO' com decisao explicita e
+--     registrada, sabendo que reabre TRUNCATE/REFERENCES/TRIGGER/MAINTAIN para
+--     anon e authenticated:
+--
+--       -- grant all privileges on table public.housekeeping_days       to anon, authenticated;
+--       -- grant all privileges on table public.housekeeping_tasks      to anon, authenticated;
+--       -- grant all privileges on table public.housekeeping_day_events to anon, authenticated;
+--
+--     O grant explicito a service_role NAO precisa ser desfeito: ele so'
+--     declara o que a aplicacao ja' usa.
+-- ============================================================================

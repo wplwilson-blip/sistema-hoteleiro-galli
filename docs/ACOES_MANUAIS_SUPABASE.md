@@ -218,20 +218,30 @@ preserva o conteúdo do ledger e a evidência do estado anterior, não uma data 
 
 ### O tamanho real da fila
 
-| Ambiente | Legadas ausentes | Migration nova | **Fila antes do `repair`** |
+| Ambiente | Legadas ausentes | Migrations novas | **Fila antes do `repair`** |
 | --- | --- | --- | --- |
-| Staging | 28 | 1 | **29** |
-| Produção *(relato até `039`)* | 54 | 1 | **55** |
+| Staging | 28 | 2 | **30** |
+| Produção *(relato até `039`)* | 54 | 2 | **56** |
+
+As duas novas:
+
+1. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`: índices (AM-04).
+2. `20261019184500_housekeeping_security_hardening.sql`: RLS e grants da governança
+   (`docs/P4_S1_HARDENING_GOVERNANCA.md`).
 
 > **Correção de contagem (2026-10-19):** versões anteriores diziam 29/55 e 30/56, porque contavam
 > o `074`, que não existe. Ver `docs/P4_AUDITORIA_MIGRATIONS_LEGADAS.md` §5.
+>
+> **Nota temporal (2026-10-19):** com uma só migration nova, as filas corretas eram 29 e 55. Com a
+> migration de hardening passam a **30 e 56** (28 + 2 e 54 + 2).
 
-**28 e 54 são o backlog LEGADO, não o total.** A migration corretiva também está fora do histórico —
-mas por nunca ter sido aplicada em lugar nenhum.
+**28 e 54 são o backlog LEGADO, não o total.** As duas migrations novas também estão fora do
+histórico — mas por nunca terem sido aplicadas em lugar nenhum.
 
-> 🔴 **O `repair` é SÓ para as legadas.** A corretiva **nunca** entra em `repair`: isso a marcaria
-> como aplicada sem criar índice nenhum, e o histórico passaria a afirmar que a Correção 1 foi
-> entregue quando não foi.
+> 🔴 **O `repair` é SÓ para as legadas.** As novas **nunca** entram em `repair`. Para a de índices,
+> isso a marcaria como aplicada sem criar índice nenhum, e o histórico passaria a afirmar que a
+> Correção 1 foi entregue quando não foi. Para a de hardening, afirmaria grants revogados e RLS
+> declarado sem nada ter sido executado.
 
 ---
 
@@ -300,8 +310,12 @@ decisão. Aqui fica só o necessário para executar com segurança: **depois de 
 2. **(b)** validar objeto por objeto **somente as legadas**;
 3. **(c)** `repair` **somente nas legadas comprovadas**;
 4. **(d)** **nunca** `repair` nesta migration;
-5. **(e)** `db push --dry-run` deve mostrar **exatamente UMA pendente** — esta. **Zero aqui é
-   condição de parada**, não sucesso: significaria que ela foi marcada sem execução;
+5. **(e)** `db push --dry-run` deve mostrar **exatamente 2 pendentes**, e devem ser **exatamente**
+   `20260918120033_hr_workflow_idempotency_indexes_parity` (esta) e
+   `20261019184500_housekeeping_security_hardening`. **0 ou 1 aqui é condição de parada**, não
+   sucesso: significaria que uma nova foi marcada sem execução. **3 ou mais também param.** O
+   `db push` da etapa (g) aplica **as duas** na mesma execução. *(Até 2026-10-19 o critério era
+   "exatamente UMA pendente".)*
 6. **(f)** preflight dos índices — **§12.3 E §12.4, as duas**, antes de aplicar.
 
 **As duas consultas do preflight param o procedimento, por motivos diferentes:**
