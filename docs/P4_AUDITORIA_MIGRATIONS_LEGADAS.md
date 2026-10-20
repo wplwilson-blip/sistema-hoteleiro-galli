@@ -488,6 +488,21 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 - **Versão anterior do arquivo detectada** (corpo antigo em 079/083, coluna `username` em 084) é
   **C**, nunca A.
 
+### 9.1 Classificações medidas em STAGING
+
+| Migration | Classificação | Data | Evidência |
+| --- | --- | --- | --- |
+| `068_employees_unique_cpf` | **A** | 2026-10-20 | [`P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md`](P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md) |
+| `073_employee_movements_applied_marker` | **A** | 2026-10-20 | idem |
+| `075_employee_terminations_applied_marker` | **A** | 2026-10-20 | idem |
+| `085_app_users_must_change_password` | **A** | 2026-10-20 | idem |
+
+As outras **24** ausentes do ledger de staging continuam **não classificadas**.
+
+> **A não autoriza `repair`.** As 4 continuam **ausentes do ledger de staging**. A decisão de
+> `repair` só vem depois da auditoria das 28 e da revisão das dependências (§7). Estas
+> classificações valem **só para staging**: produção não foi medida.
+
 ---
 
 ## 10. Plano da auditoria em staging
