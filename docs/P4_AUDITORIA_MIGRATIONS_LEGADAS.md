@@ -30,7 +30,7 @@ Este documento faz três coisas:
 | Commit | `28a8636` (`main` = `origin/main`), working tree limpa |
 | Migration seletiva | `20260918120033_hr_workflow_idempotency_indexes_parity.sql`, blob `ff9fa111…`, **não aplicada** |
 | Veredito da migration seletiva | `GO CONDICIONADO`, com P3, P4 e P5 abertos |
-| Ledger de staging | `001`–`065` registradas, **medido** em 2026-09-18 (§1.3 do plano) |
+| Ledger de staging | `001`–`065` registradas, **medido** em 2026-09-18 (§1.3 do plano) e **remedido em 2026-10-19** ([`P4_LEDGER_STAGING_2026-10-19.md`](P4_LEDGER_STAGING_2026-10-19.md)) |
 | Ledger de produção | `001`–`039`, **relato da auditoria, NÃO medido** (§1.4 do plano) |
 
 > **Atenção.** Todo o backlog de produção deste documento parte de um relato, não de uma medição.
@@ -155,6 +155,20 @@ As 54 legadas de `040` a `094`. **Linhas** é o tamanho do arquivo, comentários
 ---
 
 ## 5. Backlog por ambiente
+
+```text
+STAGING LEDGER — MEDIDO EM 2026-10-19
+65 presentes            (001–065, contínuas)
+28 legadas ausentes     (066–094, sem 074)
+ 2 timestamp ausentes   (20260918120033, 20261019184500)
+nenhuma entrada só no ledger
+65/65 nomes conferidos com o repositório
+md5 de statements das 65 registrados (Apêndice A da evidência)
+```
+
+Evidência: [`P4_LEDGER_STAGING_2026-10-19.md`](P4_LEDGER_STAGING_2026-10-19.md). A fotografia
+**confirma** o backlog legado de 28 e a fila de 30 em staging. **Não classifica** as 28 em A/B/C/D,
+e nenhuma classificação deste documento mudou. Produção continua **não medida**.
 
 | Ambiente | Ledger | Backlog legado | Migrations novas | **Fila antes do `repair`** | Fonte |
 | --- | --- | --- | --- | --- | --- |
