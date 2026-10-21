@@ -493,11 +493,20 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 | Migration | Classificação | Data | Evidência |
 | --- | --- | --- | --- |
 | `068_employees_unique_cpf` | **A** | 2026-10-20 | [`P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md`](P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md) |
-| `073_employee_movements_applied_marker` | **A** | 2026-10-20 | idem |
-| `075_employee_terminations_applied_marker` | **A** | 2026-10-20 | idem |
-| `085_app_users_must_change_password` | **A** | 2026-10-20 | idem |
+| `073_employee_movements_applied_marker` | **A** | 2026-10-20 | Lote 01 |
+| `075_employee_terminations_applied_marker` | **A** | 2026-10-20 | Lote 01 |
+| `076_hr_functional_event_types_nr_expiration` | **A** | 2026-10-20 | [`P4_STAGING_EFEITOS_LOTE_02_2026-10-20.md`](P4_STAGING_EFEITOS_LOTE_02_2026-10-20.md) |
+| `082_purchase_quote_selected_by` | **A** | 2026-10-20 | Lote 02 |
+| `085_app_users_must_change_password` | **A** | 2026-10-20 | Lote 01 |
+| `086_audit_trail_author_from_row` | **A** | 2026-10-20 | Lote 02 |
+| `088_auth_grants_rooms` | **A** | 2026-10-20 | Lote 02 |
 
-As outras **24** ausentes do ledger de staging continuam **não classificadas**.
+**8 de 28 comprovadas.** As outras **20** ausentes do ledger de staging continuam **não
+classificadas**.
+
+> **Método para funções (do Lote 02):** comparar o MD5 do corpo **sem `\r`**
+> (`md5(replace(prosrc, chr(13), ''))`). A 086 foi aplicada em staging a partir de um arquivo com
+> CRLF, e o MD5 bruto divergiria sem diferença lógica.
 
 > **A não autoriza `repair`.** As 4 continuam **ausentes do ledger de staging**. A decisão de
 > `repair` só vem depois da auditoria das 28 e da revisão das dependências (§7). Estas
