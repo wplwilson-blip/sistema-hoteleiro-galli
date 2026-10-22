@@ -492,17 +492,38 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 
 | Migration | Classificação | Data | Evidência |
 | --- | --- | --- | --- |
+| `066_rls_policies_non_sensitive_foundation` | **A** | 2026-10-22 | [`P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md`](P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md) |
 | `068_employees_unique_cpf` | **A** | 2026-10-20 | [`P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md`](P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md) |
+| `069_rls_policies_hr_sensitive_core` | **A** | 2026-10-22 | Lote 03 |
+| `071_rls_policies_hr_employee_scope` | **A** | 2026-10-22 | Lote 03 |
+| `072_rls_policies_hr_recruitment_scope` | **A** | 2026-10-22 | Lote 03 |
 | `073_employee_movements_applied_marker` | **A** | 2026-10-20 | Lote 01 |
 | `075_employee_terminations_applied_marker` | **A** | 2026-10-20 | Lote 01 |
 | `076_hr_functional_event_types_nr_expiration` | **A** | 2026-10-20 | [`P4_STAGING_EFEITOS_LOTE_02_2026-10-20.md`](P4_STAGING_EFEITOS_LOTE_02_2026-10-20.md) |
+| `077_rls_policies_hr_workflow_admission_scope` | **A** | 2026-10-22 | Lote 03 (policies **e** RLS de 8 tabelas) |
+| `078_rls_policies_hr_templates_children_system_scope` | **A** | 2026-10-22 | Lote 03 (policies **e** RLS de 12 tabelas) |
 | `082_purchase_quote_selected_by` | **A** | 2026-10-20 | Lote 02 |
 | `085_app_users_must_change_password` | **A** | 2026-10-20 | Lote 01 |
 | `086_audit_trail_author_from_row` | **A** | 2026-10-20 | Lote 02 |
 | `088_auth_grants_rooms` | **A** | 2026-10-20 | Lote 02 |
 
-**8 de 28 comprovadas.** As outras **20** ausentes do ledger de staging continuam **não
+**14 de 28 comprovadas.** As outras **14** ausentes do ledger de staging continuam **não
 classificadas**.
+
+> **Método para policies (do Lote 03):** fingerprint canônico
+> `md5(tabela|nome|permissive|roles|cmd|qual|with_check)`, comparando `pg_policies` com
+> `pg_policies`. A referência veio de PostgreSQL 17 local com as migrations reais aplicadas em
+> ordem. A normalização é idêntica nas duas pontas: sem CR, espaço colapsado, roles ordenadas, NULL
+> estável. O comparador foi validado com divergências artificiais antes do uso. Nove nomes de policy
+> (3 na 069, 3 na 071, 3 na 072) são **truncados a 63 bytes** pelo PostgreSQL. O nome truncado é o
+> estado real e continua único.
+
+> **ACHADO PENDENTE — `P4-084`: INVESTIGAÇÃO DE MIGRATION VERSIONADA NÃO REPRODUZÍVEL.** O arquivo
+> versionado `084_auth_login_attempts.sql` aparentemente **não executa**: um `\n` num comentário de
+> exemplo `curl` virou quebra de linha real, e a linha 84 começa com `"` fora do comentário (`psql`:
+> erro de sintaxe; o defeito existe igual no blob do Git). **Não corrigido e não editado.**
+> Bloqueante para a classificação da `084`. Ver
+> [`P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md`](P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md) §7.
 
 > **Método para funções (do Lote 02):** comparar o MD5 do corpo **sem `\r`**
 > (`md5(replace(prosrc, chr(13), ''))`). A 086 foi aplicada em staging a partir de um arquivo com
