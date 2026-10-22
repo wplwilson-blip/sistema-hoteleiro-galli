@@ -503,12 +503,13 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 | `077_rls_policies_hr_workflow_admission_scope` | **A** | 2026-10-22 | Lote 03 (policies **e** RLS de 8 tabelas) |
 | `078_rls_policies_hr_templates_children_system_scope` | **A** | 2026-10-22 | Lote 03 (policies **e** RLS de 12 tabelas) |
 | `082_purchase_quote_selected_by` | **A** | 2026-10-20 | Lote 02 |
+| `084_auth_login_attempts` | **C** | 2026-10-22 | [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md): estrutura, índices e segurança conformes (versão `username_attempted`); **3 `COMMENT` ausentes** |
 | `085_app_users_must_change_password` | **A** | 2026-10-20 | Lote 01 |
 | `086_audit_trail_author_from_row` | **A** | 2026-10-20 | Lote 02 |
 | `088_auth_grants_rooms` | **A** | 2026-10-20 | Lote 02 |
 
-**14 de 28 comprovadas.** As outras **14** ausentes do ledger de staging continuam **não
-classificadas**.
+**Acumulado em staging: 14 = A · 1 = C (`084`) · 13 ainda sem classificação.** C **não** entra no
+total de A.
 
 > **Método para policies (do Lote 03):** fingerprint canônico
 > `md5(tabela|nome|permissive|roles|cmd|qual|with_check)`, comparando `pg_policies` com
@@ -522,8 +523,15 @@ classificadas**.
 > versionado `084_auth_login_attempts.sql` aparentemente **não executa**: um `\n` num comentário de
 > exemplo `curl` virou quebra de linha real, e a linha 84 começa com `"` fora do comentário (`psql`:
 > erro de sintaxe; o defeito existe igual no blob do Git). **Não corrigido e não editado.**
-> Bloqueante para a classificação da `084`. Ver
-> [`P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md`](P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md) §7.
+> Ver [`P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md`](P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md) §7.
+>
+> **Atualização 2026-10-22 — staging investigado:** `084 = C`, porque estrutura, índices e segurança
+> estão conformes com a versão `username_attempted`, mas os 3 `COMMENT` estão ausentes. O arquivo
+> continua **não reproduzível**, que é problema separado. **`084` NÃO é candidata a `repair`**:
+> classificação C, arquivo quebrado, produção não investigada e estratégia não decidida. Uma
+> migration timestamp posterior **não resolve sozinha**, porque `db push` e rebuild executam a
+> `084` antes dela. Próximo passo: as mesmas consultas em **produção**. Ver
+> [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md).
 
 > **Método para funções (do Lote 02):** comparar o MD5 do corpo **sem `\r`**
 > (`md5(replace(prosrc, chr(13), ''))`). A 086 foi aplicada em staging a partir de um arquivo com
