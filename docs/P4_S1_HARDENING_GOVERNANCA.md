@@ -396,6 +396,12 @@ AGORA:   depois do repair, exatamente as migrations novas deliberadamente
 - 0 pendentes: as duas foram;
 - 3 ou mais: o `repair` das legadas ficou incompleto.
 
+> **Atualização 2026-10-23 — o critério passou a 3.** A legada `084_auth_login_attempts` também fica
+> **fora do `repair`** e será **aplicada de verdade** (é C nos dois ambientes; arquivo corrigido só no
+> comentário). Depois do `repair` devem restar **exatamente 3**, pelo nome: `084`, `20260918120033`
+> e `20261019184500`. As filas **não mudam** (30 / 56), porque a `084` já estava no backlog legado.
+> Ver `PLANO_RECONCILIACAO_MIGRATIONS.md` §5(e) e `P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`.
+
 ### 8.3 Documentos atualizados no versionamento (P4-S1B)
 
 O critério antigo, "exatamente UMA pendente", e as contagens 94 e 29/55 foram atualizados para

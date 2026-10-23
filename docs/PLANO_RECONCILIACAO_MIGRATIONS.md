@@ -131,6 +131,13 @@ As duas novas, que **nunca** entram em `repair`:
 2. `20261019184500_housekeeping_security_hardening.sql`: RLS declarado e grants das 3 tabelas da
    governança.
 
+> **Mais uma, legada, que também NÃO entra em `repair` (decisão de 2026-10-23):**
+> `084_auth_login_attempts.sql`. Ela é **C** nos dois ambientes (estrutura conforme, 3 `COMMENT`
+> ausentes) e está ausente dos dois ledgers. O arquivo foi corrigido **só no comentário quebrado**
+> (blob `b21b800d…` → `0b7a4f11…`) e fica **pendente para aplicação real**, que completa os
+> `COMMENT` e a registra no ledger. Ela **continua contada** no backlog legado (28 / 54). A fila
+> não muda. Ver [`P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`](P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md).
+
 > **Nota temporal.** Até 2026-10-19 havia **uma** migration nova, e as filas eram **29 e 55**. Antes
 > da correção de contagem de 2026-10-19 os documentos diziam 30 e 56, por contar o `074`. **Os
 > números 30 e 56 de agora estão certos por outro motivo:** 28 + 2 e 54 + 2.
@@ -306,7 +313,7 @@ repositório, e **nada disso está no ledger de migrations** (§7.2).
 | R1 | Rodar `db push` com o histórico atual tentaria aplicar **30 migrations em staging e 56 em produção** — 28/54 legadas que **não devem** reexecutar, mais as 2 novas | **Crítico** | Nunca rodar `db push` antes do `repair` das legadas. Sempre `--dry-run` primeiro |
 | R2 | Reexecutar migrations legadas **recria objetos e pode apagar dado** (`drop`/`create` de função, backfill repetido) | **Crítico** | `repair` declara **sem executar** — é essa a saída, e só para as legadas |
 | R3 | **`repair` numa migration nova** (índices ou hardening) marcaria como aplicada uma migration **nunca executada** — os índices continuariam faltando, ou os grants continuariam abertos, agora com o histórico afirmando o contrário | **Crítico** | §5(d). As 2 novas **nunca** entram em `repair`, em nenhum ambiente |
-| R4 | Tratar "fila vazia depois do `repair`" como meta | **Alto** | §5(e): depois do `repair` têm de sobrar **exatamente as 2 migrations timestamp** deliberadamente não reparadas, identificadas pelo nome |
+| R4 | Tratar "fila vazia depois do `repair`" como meta | **Alto** | §5(e): depois do `repair` têm de sobrar **exatamente as 3 migrations deliberadamente não reparadas** (`084` + as 2 timestamp), identificadas pelo nome |
 | R5 | `repair` declara aplicado algo que **não está** no schema | **Alto** | Matriz de efeitos antes (§5b). `repair` é declaração, não verificação |
 | R6 | Arquivo local diverge do que foi aplicado (`29954f9`) | **Médio** | Registrar a divergência; não "corrigir" o arquivo para casar |
 | R7 | Produção e staging divergirem mais durante a reconciliação | **Médio** | Congelar aplicação manual até terminar |
@@ -390,6 +397,10 @@ você descobre nela, não no fim de um lote de 28.
 > O argumento abaixo foi escrito para a de índices e vale igualmente para a de hardening: um
 > `repair` nela declararia RLS e grants corrigidos sem ter executado nada.
 >
+> **Desde 2026-10-23 vale também para a legada `084_auth_login_attempts`**, classificada C nos dois
+> ambientes. Um `repair` nela declararia aplicados os 3 `COMMENT` que **não existem**. Ela é
+> corrigida no próprio arquivo e **aplicada de verdade**.
+>
 > `repair` declara aplicada uma migration **sem executá-la**. Isso está certo para as legadas, cujo
 > efeito já está no banco. Para a corretiva estaria **exatamente errado**: os três índices
 > continuariam ausentes em produção, e o histórico passaria a afirmar que foram criados.
@@ -398,7 +409,7 @@ você descobre nela, não no fim de um lote de 28.
 > ambientes; depois de um `repair` indevido, o ledger mentiria e a próxima auditoria concluiria que
 > a Correção 1 foi entregue.
 
-### (e) `dry-run` depois do `repair`: **exatamente as 2 migrations novas**
+### (e) `dry-run` depois do `repair`: **exatamente as 3 migrations deliberadamente não reparadas**
 
 ```bash
 npx supabase db push --dry-run --linked
@@ -407,25 +418,31 @@ npx supabase db push --dry-run --linked
 `--dry-run` está no `--help`: *"Print the migrations that would be applied, but don't actually apply
 them."*
 
-**Critério:** depois do `repair` das legadas devem restar **exatamente 2** migrations pendentes, e
-elas devem ser **exatamente**:
+**Critério:** depois do `repair` das legadas **elegíveis** devem restar **exatamente 3** migrations
+pendentes, e elas devem ser **exatamente**:
 
-1. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
-2. `20261019184500_housekeeping_security_hardening.sql`
+1. `084_auth_login_attempts.sql` (legada, **C**, corrigida só no comentário, aplicação real)
+2. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
+3. `20261019184500_housekeeping_security_hardening.sql`
 
 | Resultado | Significado |
 | --- | --- |
-| **2 pendentes, e são exatamente estas duas** | **Correto.** Siga para (f) |
-| **1 pendente** (uma das duas sumiu) | 🔴 **PARE.** Uma nova foi marcada por engano — R3 |
-| **0 pendentes** | 🔴 **PARE.** As duas foram marcadas por engano — R3. Investigue antes de tudo |
-| **2 pendentes, mas não estas duas** | 🔴 **PARE.** Uma legada ficou fora do `repair` **e** uma nova foi marcada |
-| **3 ou mais** | 🔴 **PARE.** (c) ficou incompleto, ou surgiu migration inesperada. Volte, **sem** rodar `db push` sem `--dry-run` |
+| **3 pendentes, e são exatamente estas três** | **Correto.** Siga para (f) |
+| **2 pendentes ou menos** (alguma das três sumiu) | 🔴 **PARE.** Uma delas foi marcada por engano — R3. Investigue antes de tudo |
+| **3 pendentes, mas não estas três** | 🔴 **PARE.** Uma legada ficou fora do `repair` **e** uma das três foi marcada |
+| **4 ou mais** | 🔴 **PARE.** (c) ficou incompleto, ou surgiu migration inesperada. Volte, **sem** rodar `db push` sem `--dry-run` |
 
-**A fila não deve esvaziar neste ponto.** Esvaziar aqui significa que as novas foram declaradas sem
-execução. **Conferir pelo nome, não só pela contagem.**
+**A fila não deve esvaziar neste ponto.** Esvaziar aqui significa que migrations que exigem execução
+foram declaradas sem ela. **Conferir pelo nome, não só pela contagem.**
 
-> **Nota temporal.** Até 2026-10-19 o critério era "exatamente UMA pendente", a de índices. Mudou
-> com a criação da migration de hardening (`P4_S1_HARDENING_GOVERNANCA.md`).
+> **"3" é o mínimo de partida, não uma meta.** Se outras legadas resultarem B, C ou D na auditoria
+> de efeitos, elas também ficam fora do `repair`, e o critério passa a ser "exatamente as N
+> deliberadamente não reparadas, pelo nome". A lista **tem de estar fechada e escrita antes** do
+> `repair`.
+
+> **Nota temporal.** Até 2026-10-19 o critério era "exatamente UMA pendente", a de índices. Com a
+> migration de hardening passou a "exatamente 2". Em 2026-10-23, com a decisão de **aplicar** a
+> `084` em vez de repará-la, passou a **3**.
 
 ### (f) Preflight dos índices — **§12.3 E §12.4, as duas**
 
@@ -461,9 +478,23 @@ Rodar a §12.4 só depois descobriria o problema **com o índice redundante já 
 npx supabase db push --linked
 ```
 
-> **O `db push` aplica TODAS as pendentes, na ordem do timestamp.** Depois do `repair` correto, isso
-> significa **as duas novas na mesma execução**: primeiro a de índices, depois a de hardening. Não
-> existe "aplicar só a de índices" por `db push` enquanto as duas estiverem pendentes.
+> **O `db push` aplica TODAS as pendentes, na ordem da versão.** Depois do `repair` correto, isso
+> significa **as três na mesma execução**: primeiro a `084`, depois a de índices, depois a de
+> hardening. Não existe "aplicar só a de índices" por `db push` enquanto as três estiverem pendentes.
+>
+> **⚠️ Restrição de execução a resolver antes (registrada em 2026-10-23, não decidida):** a `084` é
+> **anterior** à última versão que estará no ledger (`094`, depois do `repair`). Pelo comportamento
+> conhecido da CLI do Supabase, o `db push` **recusa** migration local anterior à última remota e
+> exige `--include-all`. Essa flag está em "Nunca rodar" no §9, porque **antes** do `repair` ela
+> aplicaria as legadas. Antes de qualquer aplicação, confirmar o comportamento com `--help` e
+> `--dry-run`, e decidir explicitamente entre: (a) `--include-all` **somente** depois do `repair`
+> completo e de um `--dry-run` que mostre exatamente as três; ou (b) outra ordem de execução. **Não
+> decidido aqui.**
+
+- **084** (`084_auth_login_attempts`): nos dois ambientes a tabela já existe na versão
+  `username_attempted`. Todos os comandos dela são idempotentes (`if not exists`, `enable rls`,
+  `revoke`), e o efeito líquido é **criar os 3 `COMMENT` ausentes** e registrar a versão. Testado
+  localmente: `P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md` §6.
 
 - **Índices** (`20260918120033`): em staging é **no-op** quanto aos índices, que já existem. O
   efeito real é **registrar a versão no histórico**. Prova parsing, idempotência e o caminho do
@@ -641,9 +672,11 @@ preservação de data, porque não há data.
       cobrindo tabelas, colunas, constraints, índices, funções **e corpo**, triggers, policies,
       grants, enums e backfills. Sentinela única só **com justificativa escrita**.
 - [ ] Nenhuma versão legada declarada como aplicada sem **todos** os efeitos confirmados.
-- [ ] **`repair` executado SOMENTE em migrations legadas** — nunca em `20260918120033_...` (R3).
-- [ ] `db push --dry-run` depois do `repair`: **exatamente as 2 migrations novas**, conferidas pelo
-      nome (`20260918120033_hr_workflow_idempotency_indexes_parity` e
+- [ ] **`repair` executado SOMENTE em migrations legadas classificadas A** — nunca em
+      `084_auth_login_attempts`, `20260918120033_...` ou `20261019184500_...` (R3).
+- [ ] `db push --dry-run` depois do `repair`: **exatamente as 3 migrations deliberadamente não
+      reparadas**, conferidas pelo nome (`084_auth_login_attempts`,
+      `20260918120033_hr_workflow_idempotency_indexes_parity` e
       `20261019184500_housekeeping_security_hardening`) — §5(e).
       **Zero aqui é condição de parada**, não sucesso.
 - [ ] Preflight **§12.3 ANTES** da aplicação: nenhum dos três nomes com `existe = true` e
@@ -696,7 +729,8 @@ npx supabase migration repair --status applied <versao-legada> --linked
 
 # (e) e (i) CONFERENCIA SEM APLICAR
 npx supabase db push --dry-run --linked
-#   depois do repair  -> esperado: EXATAMENTE 2 pendentes, pelo nome:
+#   depois do repair  -> esperado: EXATAMENTE 3 pendentes, pelo nome:
+#                        084_auth_login_attempts
 #                        20260918120033_hr_workflow_idempotency_indexes_parity
 #                        20261019184500_housekeeping_security_hardening
 #   depois de aplicar -> esperado: 0 pendentes
@@ -720,7 +754,8 @@ npx supabase db push --include-all
 
 # R3: marcaria como aplicada uma migration NUNCA executada
 npx supabase migration repair --status applied 20260918120033_hr_workflow_idempotency_indexes_parity --linked
-#     e o mesmo vale para 20261019184500_housekeeping_security_hardening:
+#     e o mesmo vale para 20261019184500_housekeeping_security_hardening
+#     e para a legada 084_auth_login_attempts (C, aplicacao real):
 #     NUNCA em repair, em nenhum ambiente
 
 # 7.1: apaga a trilha de decisoes

@@ -80,8 +80,7 @@ revoke all on table public.auth_login_attempts from anon, authenticated;
 --
 --    Exemplo de coleta (bash, ajuste URL/credenciais):
 --      for i in $(seq 1 30); do
---        curl -s -o /dev/null -w "%{time_total}
-" -X POST "$BASE_URL/api/auth/login" --          -H "Content-Type: application/json" --          -d '{"username":"<usuario_real>","password":"<senha_correta>"}'
+--        curl -s -o /dev/null -w "%{time_total}\n" -X POST "$BASE_URL/api/auth/login" --          -H "Content-Type: application/json" --          -d '{"username":"<usuario_real>","password":"<senha_correta>"}'
 --      done | sort -n | awk '{a[NR]=$1} END {print "p95:", a[int(NR*0.95)]}'
 --
 --    Criterios de aceite:

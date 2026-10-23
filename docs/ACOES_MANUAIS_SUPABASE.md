@@ -238,10 +238,15 @@ As duas novas:
 **28 e 54 são o backlog LEGADO, não o total.** As duas migrations novas também estão fora do
 histórico — mas por nunca terem sido aplicadas em lugar nenhum.
 
-> 🔴 **O `repair` é SÓ para as legadas.** As novas **nunca** entram em `repair`. Para a de índices,
-> isso a marcaria como aplicada sem criar índice nenhum, e o histórico passaria a afirmar que a
-> Correção 1 foi entregue quando não foi. Para a de hardening, afirmaria grants revogados e RLS
-> declarado sem nada ter sido executado.
+> 🔴 **O `repair` é SÓ para as legadas classificadas A.** As novas **nunca** entram em `repair`. Para
+> a de índices, isso a marcaria como aplicada sem criar índice nenhum, e o histórico passaria a
+> afirmar que a Correção 1 foi entregue quando não foi. Para a de hardening, afirmaria grants
+> revogados e RLS declarado sem nada ter sido executado.
+>
+> **Desde 2026-10-23, a legada `084_auth_login_attempts` também NÃO entra em `repair`.** Ela é C nos
+> dois ambientes (3 `COMMENT` ausentes), foi corrigida só no comentário quebrado e será **aplicada
+> de verdade**. Continua contada no backlog legado (28 / 54). As legadas **candidatas** a `repair`
+> passam a ser **no máximo 27 / 53**, e só as que forem classificadas A.
 
 ---
 
@@ -310,12 +315,13 @@ decisão. Aqui fica só o necessário para executar com segurança: **depois de 
 2. **(b)** validar objeto por objeto **somente as legadas**;
 3. **(c)** `repair` **somente nas legadas comprovadas**;
 4. **(d)** **nunca** `repair` nesta migration;
-5. **(e)** `db push --dry-run` deve mostrar **exatamente 2 pendentes**, e devem ser **exatamente**
-   `20260918120033_hr_workflow_idempotency_indexes_parity` (esta) e
-   `20261019184500_housekeeping_security_hardening`. **0 ou 1 aqui é condição de parada**, não
-   sucesso: significaria que uma nova foi marcada sem execução. **3 ou mais também param.** O
-   `db push` da etapa (g) aplica **as duas** na mesma execução. *(Até 2026-10-19 o critério era
-   "exatamente UMA pendente".)*
+5. **(e)** `db push --dry-run` deve mostrar **exatamente 3 pendentes**, e devem ser **exatamente**
+   `084_auth_login_attempts`, `20260918120033_hr_workflow_idempotency_indexes_parity` (esta) e
+   `20261019184500_housekeeping_security_hardening`. **2 ou menos aqui é condição de parada**, não
+   sucesso: significaria que uma delas foi marcada sem execução. **4 ou mais também param.** O
+   `db push` da etapa (g) aplica **as três** na mesma execução. Antes, resolver a restrição da
+   `084` ser anterior à última versão do ledger (§5(g) do plano: `--include-all`). *(Até
+   2026-10-19 o critério era "exatamente UMA"; até 2026-10-23, "exatamente 2".)*
 6. **(f)** preflight dos índices — **§12.3 E §12.4, as duas**, antes de aplicar.
 
 **As duas consultas do preflight param o procedimento, por motivos diferentes:**

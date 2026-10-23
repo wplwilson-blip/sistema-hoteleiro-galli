@@ -175,12 +175,22 @@ e nenhuma classificação deste documento mudou. Produção continua **não medi
 | **Staging** | `001`–`065` | **28** (`066`–`094`) | 2 | **30** | Ledger medido. Contagem medida neste documento |
 | **Produção** | `001`–`039` | **54** (`040`–`094`) | 2 | **56** | Ledger **relatado**. Contagem medida neste documento |
 
-**Depois do `repair` das legadas devem restar exatamente 2 pendentes, e devem ser exatamente:**
+**Depois do `repair` das legadas elegíveis devem restar exatamente 3 pendentes, e devem ser
+exatamente:**
 
-1. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
-2. `20261019184500_housekeeping_security_hardening.sql`
+1. `084_auth_login_attempts.sql`: legada, **C** nos dois ambientes, corrigida só no comentário,
+   **aplicação real**
+2. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
+3. `20261019184500_housekeeping_security_hardening.sql`
 
-Uma terceira migration pendente, ou o sumiço de qualquer uma das duas: **PARAR.**
+Uma quarta migration pendente, ou o sumiço de qualquer uma das três: **PARAR.**
+
+O backlog legado **não muda** (28 / 54): a `084` continua nele, mas **não será reparada**. Por isso
+as legadas **candidatas** a `repair` são **no máximo 27 / 53**. O número só se confirma com a
+auditoria completa, porque outras B, C ou D também saem do `repair`. Em ambos os casos, a lista
+fechada de deliberadamente não reparadas tem de estar escrita **antes** do `repair`.
+
+> *Nota temporal:* até 2026-10-23 este critério era "exatamente 2" (só as timestamp).
 
 > **Correção factual dos documentos atuais.** O plano, `ACOES_MANUAIS_SUPABASE.md`, o roteiro de
 > preflight e o GO/NO-GO falam em **29 / 55 legadas** e **filas de 30 / 56**. **Os números estão
@@ -503,7 +513,7 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 | `077_rls_policies_hr_workflow_admission_scope` | **A** | 2026-10-22 | Lote 03 (policies **e** RLS de 8 tabelas) |
 | `078_rls_policies_hr_templates_children_system_scope` | **A** | 2026-10-22 | Lote 03 (policies **e** RLS de 12 tabelas) |
 | `082_purchase_quote_selected_by` | **A** | 2026-10-20 | Lote 02 |
-| `084_auth_login_attempts` | **C** | 2026-10-22 | [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md): estrutura, índices e segurança conformes (versão `username_attempted`); **3 `COMMENT` ausentes** |
+| `084_auth_login_attempts` | **C** | 2026-10-22 | [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md): estrutura, índices e segurança conformes (versão `username_attempted`); **3 `COMMENT` ausentes**. **Produção: também C** ([`P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`](P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md)). **Nunca entra em `repair`: aplicação real** |
 | `085_app_users_must_change_password` | **A** | 2026-10-20 | Lote 01 |
 | `086_audit_trail_author_from_row` | **A** | 2026-10-20 | Lote 02 |
 | `088_auth_grants_rooms` | **A** | 2026-10-20 | Lote 02 |
@@ -532,6 +542,13 @@ total de A.
 > migration timestamp posterior **não resolve sozinha**, porque `db push` e rebuild executam a
 > `084` antes dela. Próximo passo: as mesmas consultas em **produção**. Ver
 > [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md).
+>
+> **Atualização 2026-10-23 — produção investigada e estratégia decidida:** produção também é
+> `084 = C`, com o mesmo estado de staging, e a `084` está ausente do ledger de produção.
+> **Estratégia:** corrigir **só o comentário quebrado** no próprio arquivo (blob `b21b800d…` →
+> `0b7a4f11…`, SQL operacional idêntico) e deixar a `084` **pendente para aplicação real**. **Nunca
+> entra em `repair`.** Teste local aprovado. Critério pós-`repair`: **3 pendentes** (§5, §14.2). Ver
+> [`P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`](P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md).
 
 > **Método para funções (do Lote 02):** comparar o MD5 do corpo **sem `\r`**
 > (`md5(replace(prosrc, chr(13), ''))`). A 086 foi aplicada em staging a partir de um arquivo com
@@ -980,8 +997,34 @@ Blob: `fa7308befcfa85e35818b9726c573f50b1970e10`.
 - **Não altera a classificação de 091 nem de 092.** A auditoria delas continua sobre o que elas
   fizeram. O hardening é efeito novo, de outra migration.
 
-**Critério pós-`repair`:** exatamente estas **duas** pendentes. 1, 0 ou 3+ é parada. Desenho e
-testes: [`P4_S1_HARDENING_GOVERNANCA.md`](P4_S1_HARDENING_GOVERNANCA.md).
+Desenho e testes: [`P4_S1_HARDENING_GOVERNANCA.md`](P4_S1_HARDENING_GOVERNANCA.md).
+
+### 14.2 Legada `084` — fora do `repair`, aplicação real (decisão de 2026-10-23)
+
+```text
+084_auth_login_attempts.sql
+
+NÃO REPAIR
+PENDENTE PARA APLICAÇÃO REAL
+
+Staging:            C (estrutura, índices e segurança conformes; 3 COMMENT ausentes)
+Produção:           C (idem)
+Ledger:             AUSENTE nos dois
+Arquivo:            corrigido só no comentário quebrado (blob b21b800d… → 0b7a4f11…)
+Teste local:        APROVADO (cenário limpo, cenário igual aos bancos, reaplicação, dados preservados)
+Aplicada remotamente: NÃO
+```
+
+- A `084` **continua no backlog legado** (28 / 54), mas **não é candidata a `repair`**.
+- A aplicação real dela é **idempotente** sobre o estado dos bancos: o efeito líquido é criar os 3
+  `COMMENT` e registrar a versão.
+- **Restrição de execução** (§5(g) do plano): a `084` é anterior à última versão do ledger depois do
+  `repair`. O `db push` tende a exigir `--include-all`. A decisão está pendente.
+- Evidência: [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md)
+  e [`P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`](P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md).
+
+**Critério pós-`repair`:** exatamente estas **três** pendentes, pelo nome: `084`, `20260918120033`
+e `20261019184500`. Qualquer outro resultado é parada. *(Até 2026-10-23: "exatamente duas".)*
 
 ---
 
