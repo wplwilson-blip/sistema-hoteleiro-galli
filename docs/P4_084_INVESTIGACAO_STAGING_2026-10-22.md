@@ -67,7 +67,11 @@ PostgreSQL 17.11 descartável, com o arquivo do HEAD **sem nenhuma alteração**
 | --- | --- |
 | `psql` em transação única (equivale ao `db push`) | erro e rollback: **nada é criado** |
 | `psql` comando a comando, sem transação | **tabela, RLS e 3 índices são criados** e depois vem o erro |
-| Texto inteiro numa única chamada (como o SQL Editor) | o PostgreSQL analisa a string toda antes de executar: **nada é criado** |
+| Texto inteiro numa única chamada: envio integral **simulado com `psql -c`**, não validado no SQL Editor real | o PostgreSQL analisa a string toda antes de executar: **nada é criado** |
+
+> **Nota de 2026-10-23.** A linha acima dizia "como o SQL Editor". O teste foi uma **simulação do
+> envio integral com `psql -c`** (protocolo simples) em PostgreSQL 17.11 local. O comportamento do
+> SQL Editor real **não foi validado**.
 
 ---
 
@@ -197,7 +201,8 @@ O estado de staging é **compatível** com:
 
 - a estrutura e os índices são os da versão **atual** (`username_attempted`), e não os da antiga;
 - os `COMMENT` de **ambas** as versões estão ausentes;
-- `db push` e SQL Editor com o arquivo inteiro **não** teriam criado nada (§2).
+- `db push` e o envio integral do arquivo **não** teriam criado nada (§2). O envio integral foi
+  simulado com `psql -c`; o SQL Editor real não foi validado.
 
 ---
 

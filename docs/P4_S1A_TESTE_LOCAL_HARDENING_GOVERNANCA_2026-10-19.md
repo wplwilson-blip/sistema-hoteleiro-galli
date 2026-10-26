@@ -284,7 +284,7 @@ diferentes por tabela.
 
 | Aspecto | Teste local | Supabase |
 | --- | --- | --- |
-| Stack | Só PostgreSQL 17.11 | PostgreSQL 17.6 + PostgREST, Auth, Realtime, Storage, GraphQL |
+| Stack | Só PostgreSQL 17.11 | PostgreSQL ~~17.6~~ 17.x (17.6 é a versão indicada pelo arquivo local da CLI, `supabase/.temp/postgres-version`, sem medição atual do servidor nesta evidência — corrigido em 2026-10-23) + PostgREST, Auth, Realtime, Storage, GraphQL |
 | Dono das tabelas | `app_owner`: sem superusuário, **sem `BYPASSRLS`** | `postgres` (atributos não medidos na auditoria) |
 | Papéis | Criados à mão, com os atributos medidos em 2026-10-19 | Papéis da plataforma, com associações entre eles |
 | Privilégios padrão do schema | Não reproduzidos | Concedem a `anon`, `authenticated` e `service_role` em tabelas novas |

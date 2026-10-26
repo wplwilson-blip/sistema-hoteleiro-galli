@@ -175,22 +175,25 @@ e nenhuma classificação deste documento mudou. Produção continua **não medi
 | **Staging** | `001`–`065` | **28** (`066`–`094`) | 2 | **30** | Ledger medido. Contagem medida neste documento |
 | **Produção** | `001`–`039` | **54** (`040`–`094`) | 2 | **56** | Ledger **relatado**. Contagem medida neste documento |
 
-**Depois do `repair` das legadas elegíveis devem restar exatamente 3 pendentes, e devem ser
-exatamente:**
+**Três migrations são obrigatoriamente excluídas do `repair`:**
 
 1. `084_auth_login_attempts.sql`: legada, **C** nos dois ambientes, corrigida só no comentário,
    **aplicação real**
 2. `20260918120033_hr_workflow_idempotency_indexes_parity.sql`
 3. `20261019184500_housekeeping_security_hardening.sql`
 
-Uma quarta migration pendente, ou o sumiço de qualquer uma das três: **PARAR.**
+Isso significa **pelo menos três** pendentes depois do `repair`. **O total exato ainda não está
+definido.** Ele só existe depois da **classificação completa** das legadas e da **revisão das
+dependências** (§7), e então é fixado como **lista fechada, por nome, escrita antes do `repair`**.
+Faltar qualquer item dessa lista, ou sobrar migration fora dela: **PARAR.**
 
 O backlog legado **não muda** (28 / 54): a `084` continua nele, mas **não será reparada**. Por isso
-as legadas **candidatas** a `repair` são **no máximo 27 / 53**. O número só se confirma com a
-auditoria completa, porque outras B, C ou D também saem do `repair`. Em ambos os casos, a lista
-fechada de deliberadamente não reparadas tem de estar escrita **antes** do `repair`.
+as legadas **candidatas** a `repair` são **no máximo 27 / 53**. O número diminui para cada legada
+classificada B, C ou D.
 
-> *Nota temporal:* até 2026-10-23 este critério era "exatamente 2" (só as timestamp).
+> *Critérios superados, mantidos como histórico:* "exatamente 2" (só as timestamp) até 2026-10-23 e
+> "exatamente 3", substituído no próprio dia 2026-10-23 por "pelo menos três; total exato após a
+> classificação completa".
 
 > **Correção factual dos documentos atuais.** O plano, `ACOES_MANUAIS_SUPABASE.md`, o roteiro de
 > preflight e o GO/NO-GO falam em **29 / 55 legadas** e **filas de 30 / 56**. **Os números estão
@@ -503,6 +506,7 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 | Migration | Classificação | Data | Evidência |
 | --- | --- | --- | --- |
 | `066_rls_policies_non_sensitive_foundation` | **A** | 2026-10-22 | [`P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md`](P4_STAGING_EFEITOS_LOTE_03_RLS_2026-10-22.md) |
+| `067_fix_current_auth_user_id_dual_claim` | **A** | 2026-10-23 | [`P4_STAGING_067_2026-10-23.md`](P4_STAGING_067_2026-10-23.md): corpo, definição, atributos e comentário de `current_auth_user_id()` idênticos (md5 sem CR); só metadados, sem teste funcional do RLS |
 | `068_employees_unique_cpf` | **A** | 2026-10-20 | [`P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md`](P4_STAGING_EFEITOS_LOTE_01_2026-10-20.md) |
 | `069_rls_policies_hr_sensitive_core` | **A** | 2026-10-22 | Lote 03 |
 | `071_rls_policies_hr_employee_scope` | **A** | 2026-10-22 | Lote 03 |
@@ -518,8 +522,13 @@ Quartos/governança:        088 → 089 → 090 → 091 → 092 → 093 → 094 
 | `086_audit_trail_author_from_row` | **A** | 2026-10-20 | Lote 02 |
 | `088_auth_grants_rooms` | **A** | 2026-10-20 | Lote 02 |
 
-**Acumulado em staging: 14 = A · 1 = C (`084`) · 13 ainda sem classificação.** C **não** entra no
+**Acumulado em staging: 15 = A · 1 = C (`084`) · 12 ainda sem classificação.** C **não** entra no
 total de A.
+
+Sem classificação: `070`, `079`, `080`, `081`, `083`, `087`, `089`, `090`, `091`, `092`, `093`, `094`.
+
+> *Histórico:* até 2026-10-23 o acumulado era 14 A · 1 C · 13 sem classificação. A `067` foi
+> classificada A em 2026-10-23.
 
 > **Método para policies (do Lote 03):** fingerprint canônico
 > `md5(tabela|nome|permissive|roles|cmd|qual|with_check)`, comparando `pg_policies` com
@@ -547,7 +556,8 @@ total de A.
 > `084 = C`, com o mesmo estado de staging, e a `084` está ausente do ledger de produção.
 > **Estratégia:** corrigir **só o comentário quebrado** no próprio arquivo (blob `b21b800d…` →
 > `0b7a4f11…`, SQL operacional idêntico) e deixar a `084` **pendente para aplicação real**. **Nunca
-> entra em `repair`.** Teste local aprovado. Critério pós-`repair`: **3 pendentes** (§5, §14.2). Ver
+> entra em `repair`.** Teste local aprovado. Critério pós-`repair`: **pelo menos 3 pendentes**, com o
+> total exato fixado só depois da classificação completa (§5, §14.2). Ver
 > [`P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`](P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md).
 
 > **Método para funções (do Lote 02):** comparar o MD5 do corpo **sem `\r`**
@@ -1018,13 +1028,17 @@ Aplicada remotamente: NÃO
 - A `084` **continua no backlog legado** (28 / 54), mas **não é candidata a `repair`**.
 - A aplicação real dela é **idempotente** sobre o estado dos bancos: o efeito líquido é criar os 3
   `COMMENT` e registrar a versão.
-- **Restrição de execução** (§5(g) do plano): a `084` é anterior à última versão do ledger depois do
-  `repair`. O `db push` tende a exigir `--include-all`. A decisão está pendente.
+- **QUESTÃO ABERTA — execução** (§5(g) do plano): a `084` é anterior à última versão do ledger
+  depois do `repair` (`094`). O `db push` tende a exigir `--include-all`. **`--include-all` não está
+  autorizado, nenhuma alternativa foi escolhida e nenhum comando remoto, inclusive `--dry-run`, deve
+  ser executado para isso** até decisão própria.
 - Evidência: [`P4_084_INVESTIGACAO_STAGING_2026-10-22.md`](P4_084_INVESTIGACAO_STAGING_2026-10-22.md)
   e [`P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`](P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md).
 
-**Critério pós-`repair`:** exatamente estas **três** pendentes, pelo nome: `084`, `20260918120033`
-e `20261019184500`. Qualquer outro resultado é parada. *(Até 2026-10-23: "exatamente duas".)*
+**Critério pós-`repair`:** estas **três** estão **sempre** entre as pendentes, conferidas pelo nome:
+`084`, `20260918120033` e `20261019184500`. O conjunto total é a **lista fechada** definida depois da
+classificação completa (§5). *(Superados: "exatamente duas" até 2026-10-23 e "exatamente três",
+substituído no mesmo dia.)*
 
 ---
 

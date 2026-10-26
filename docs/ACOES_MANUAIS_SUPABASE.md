@@ -315,13 +315,16 @@ decisão. Aqui fica só o necessário para executar com segurança: **depois de 
 2. **(b)** validar objeto por objeto **somente as legadas**;
 3. **(c)** `repair` **somente nas legadas comprovadas**;
 4. **(d)** **nunca** `repair` nesta migration;
-5. **(e)** `db push --dry-run` deve mostrar **exatamente 3 pendentes**, e devem ser **exatamente**
-   `084_auth_login_attempts`, `20260918120033_hr_workflow_idempotency_indexes_parity` (esta) e
-   `20261019184500_housekeeping_security_hardening`. **2 ou menos aqui é condição de parada**, não
-   sucesso: significaria que uma delas foi marcada sem execução. **4 ou mais também param.** O
-   `db push` da etapa (g) aplica **as três** na mesma execução. Antes, resolver a restrição da
-   `084` ser anterior à última versão do ledger (§5(g) do plano: `--include-all`). *(Até
-   2026-10-19 o critério era "exatamente UMA"; até 2026-10-23, "exatamente 2".)*
+5. **(e)** `db push --dry-run` deve mostrar **exatamente a lista fechada de não reparadas**, pelo
+   nome. A lista contém **no mínimo** três obrigatórias: `084_auth_login_attempts`,
+   `20260918120033_hr_workflow_idempotency_indexes_parity` (esta) e
+   `20261019184500_housekeeping_security_hardening`. O **total exato** só é definido depois da
+   classificação completa das legadas e da revisão das dependências. **Faltar qualquer item da lista,
+   ou sobrar algo fora dela, é condição de parada.** O `db push` da etapa (g) aplica todas as da
+   lista na mesma execução. **Questão aberta:** a `084` é anterior à última versão do ledger (§5(g)
+   do plano). `--include-all` **não está autorizado** e nenhuma alternativa foi escolhida. *(Critérios
+   superados: "exatamente UMA" até 2026-10-19, "exatamente 2" até 2026-10-23 e "exatamente 3",
+   substituído no próprio dia 2026-10-23.)*
 6. **(f)** preflight dos índices — **§12.3 E §12.4, as duas**, antes de aplicar.
 
 **As duas consultas do preflight param o procedimento, por motivos diferentes:**

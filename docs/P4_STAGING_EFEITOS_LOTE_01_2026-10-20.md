@@ -256,7 +256,9 @@ isso a contagem de `true` **não** serve de prova nem de contraprova da 085. A p
 
 - **Comentário conferido por MD5.** O texto foi devolvido na consulta, mas a conformidade se apoia
   no hash, que é igual ao gerado pela migration aplicada localmente.
-- **O esperado veio de PostgreSQL 17.11 local.** Staging roda 17.6. A forma devolvida por
+- **O esperado veio de PostgreSQL 17.11 local.** ~~Staging roda 17.6.~~ *(Corrigido em 2026-10-23:
+  17.6 é a versão indicada pelo arquivo local da CLI, `supabase/.temp/postgres-version`, sem
+  medição atual do servidor nesta evidência.)* A forma devolvida por
   `pg_get_indexdef` e `pg_get_expr` coincidiu, inclusive no MD5, então não houve efeito de versão
   neste lote.
 - **Não verifica quem criou o objeto nem quando.** Mostra que o efeito existe e é idêntico, não

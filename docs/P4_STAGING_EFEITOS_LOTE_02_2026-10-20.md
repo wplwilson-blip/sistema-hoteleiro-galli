@@ -252,7 +252,9 @@ não eram necessários para classificar, porque os 13 efeitos originais foram co
   do catálogo idênticos, nenhuma revogação e nenhuma migration posterior tocando as linhas.
 - **Blocos B e D da 088 não rodados.** Linhas além das 13 e perfis ausentes não foram listados.
   Não afetam a classificação, porque os 13 efeitos foram provados diretamente.
-- **O esperado veio de PostgreSQL 17.11 local.** Staging roda 17.6. Os MD5 coincidiram, então não
+- **O esperado veio de PostgreSQL 17.11 local.** ~~Staging roda 17.6.~~ *(Corrigido em 2026-10-23:
+  17.6 é a versão indicada pelo arquivo local da CLI, `supabase/.temp/postgres-version`, sem
+  medição atual do servidor nesta evidência.)* Os MD5 coincidiram, então não
   houve efeito de versão.
 - **Não mostra quando nem por quem** os objetos foram criados. Só que existem e são idênticos.
 - **8 de 28.** As outras 20 ausentes **não** foram auditadas.

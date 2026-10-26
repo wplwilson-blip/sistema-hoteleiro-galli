@@ -139,7 +139,9 @@ afetar as rotas atuais. Essa é a única escolha aberta da migration.
 
 ### 2.3 MAINTAIN e versão do PostgreSQL
 
-`MAINTAIN` existe a partir do **PostgreSQL 17**. Staging roda 17.6, e a auditoria viu `MAINTAIN` no
+`MAINTAIN` existe a partir do **PostgreSQL 17**. ~~Staging roda 17.6~~ *(corrigido em 2026-10-23:
+17.6 é a versão indicada pelo arquivo local da CLI, `supabase/.temp/postgres-version`, sem medição
+atual do servidor nesta evidência)*, e a auditoria viu `MAINTAIN` no
 catálogo dos dois ambientes, ou seja, os dois estão em 17+.
 
 A migration usa `revoke all privileges` e **não nomeia** `MAINTAIN`:
@@ -398,8 +400,10 @@ AGORA:   depois do repair, exatamente as migrations novas deliberadamente
 
 > **Atualização 2026-10-23 — o critério passou a 3.** A legada `084_auth_login_attempts` também fica
 > **fora do `repair`** e será **aplicada de verdade** (é C nos dois ambientes; arquivo corrigido só no
-> comentário). Depois do `repair` devem restar **exatamente 3**, pelo nome: `084`, `20260918120033`
-> e `20261019184500`. As filas **não mudam** (30 / 56), porque a `084` já estava no backlog legado.
+> comentário). Depois do `repair` restam **pelo menos 3**: `084`, `20260918120033` e
+> `20261019184500`, sempre conferidas pelo nome. O total exato é a lista fechada definida depois da
+> classificação completa das legadas. As filas **não mudam** (30 / 56), porque a `084` já estava no
+> backlog legado.
 > Ver `PLANO_RECONCILIACAO_MIGRATIONS.md` §5(e) e `P4_084_INVESTIGACAO_PRODUCAO_2026-10-22.md`.
 
 ### 8.3 Documentos atualizados no versionamento (P4-S1B)

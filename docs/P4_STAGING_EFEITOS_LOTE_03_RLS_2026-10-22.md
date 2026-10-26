@@ -283,7 +283,9 @@ pulada **apenas** na montagem do banco local de referência.
 
 ## 8. Limitações
 
-- **Referência em PostgreSQL 17.11; staging roda 17.6.** O resultado 251/251 mostra que a forma de
+- **Referência em PostgreSQL 17.11; ~~staging roda 17.6~~.** *(Corrigido em 2026-10-23: 17.6 é a
+  versão indicada pelo arquivo local da CLI, `supabase/.temp/postgres-version`, sem medição atual do
+  servidor nesta evidência.)* O resultado 251/251 mostra que a forma de
   `pg_policies` coincidiu.
 - **A consulta de contexto de RLS das tabelas da 066/069/071/072 não foi registrada.** Não afeta a
   classificação, porque essas migrations não habilitam RLS.

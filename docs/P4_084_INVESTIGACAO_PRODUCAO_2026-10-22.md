@@ -135,7 +135,8 @@ DEIXAR A 084 PENDENTE PARA APLICAÇÃO REAL FUTURA
 
 - **Nenhum ledger a registra:** nem o de staging, nem o de produção. Editar o arquivo não reescreve
   nenhum histórico registrado;
-- o **arquivo atual não executa integralmente**: falha em transação única e no SQL Editor;
+- o **arquivo atual não executa integralmente**: falha em transação única e no envio integral do
+  texto, este **simulado com `psql -c`**, não validado no SQL Editor real (nota de 2026-10-23);
 - **uma migration posterior não resolve o problema de ordem**, porque `db push` e reconstrução
   executam a `084` antes dela;
 - os objetos principais da `084` usam `create … if not exists` e comandos idempotentes
@@ -211,7 +212,7 @@ O arquivo passou de 164 para 163 linhas.
 | --- | --- | --- | --- | --- | --- |
 | Cópia de trabalho (CRLF), transação única, como `db push` | **0** | sim / 5 / 3 | `364e7385…` | `true` / 0 / só o dono | `7a9a8d9b…`, `1ae27b40…`, `d47d0289…` ✅ |
 | Blob LF, transação única | **0** | idem | `364e7385…` | idem | idem ✅ |
-| Arquivo inteiro numa string, como o SQL Editor | **0** | idem | `364e7385…` | idem | idem ✅ |
+| Arquivo inteiro numa string: envio integral **simulado com `psql -c`**, não validado no SQL Editor real | **0** | idem | `364e7385…` | idem | idem ✅ |
 
 Índice de username: `539f5f52…`, igual ao de staging e produção. `anon` e `authenticated` sem
 nenhum privilégio. **O arquivo corrigido executa nos três modos**, inclusive nos dois que falhavam
@@ -248,7 +249,13 @@ inclusive comentários. **Idempotente.**
 
 ### 7.4 Limitações dos testes
 
-- PostgreSQL 17.11 local; staging e produção rodam 17.6.
+- ~~PostgreSQL 17.11 local; staging e produção rodam 17.6.~~ **Corrigido em 2026-10-23: a frase
+  riscada não tinha evidência.**
+  - Os testes locais rodaram em **PostgreSQL 17.11** (`PostgreSQL 17.11 on x86_64-windows,
+    compiled by msvc-19.44.35228, 64-bit`).
+  - **A versão do servidor de produção não foi medida.**
+  - O "17.6" de staging consta **apenas** no arquivo local da CLI (`supabase/.temp/postgres-version`
+    → `17.6.1.127`, §0 do plano). **Não equivale a uma medição atual do servidor.**
 - Os privilégios padrão do Supabase não existem no PostgreSQL puro. A ACL da `service_role` foi
   simulada com `grant all`.
 - **Não foi testado o `db push` real nem a ordem dele com o ledger** (§8.1).
@@ -258,6 +265,14 @@ inclusive comentários. **Idempotente.**
 ## 8. Impacto no P4
 
 ### 8.1 Critério pós-`repair`: **3 pendentes**
+
+> **⚠️ Critério superado (2026-10-23).** O texto desta seção é o registro de quando foi escrito. Ele
+> foi **substituído** por: três migrations são **obrigatoriamente excluídas** do `repair` (estas
+> três); isso significa **pelo menos três** pendentes; o **total exato** só é definido depois da
+> classificação completa das legadas e da revisão das dependências, como lista fechada por nome. A
+> execução da `084` é **questão aberta**: `--include-all` **não autorizado**, nenhuma alternativa
+> escolhida e nenhum comando remoto, inclusive `--dry-run`. Ver `PLANO_RECONCILIACAO_MIGRATIONS.md`
+> §5(e) e §5(g).
 
 Depois do `repair` das legadas **elegíveis**, devem restar **exatamente 3**, pelo nome:
 

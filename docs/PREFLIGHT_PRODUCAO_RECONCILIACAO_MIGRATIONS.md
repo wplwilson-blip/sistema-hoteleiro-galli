@@ -195,12 +195,14 @@ o objeto analisado não é o que foi revisado.
 > **Condição separada, fora deste preflight.** Conferir a identidade da migration não autoriza
 > `db push`. Em produção, `db push` continua dependendo do `repair` das **legadas elegíveis**
 > (no máximo 53 das 54, só as classificadas A), validadas pela matriz do §5(b) do plano. Sem isso, a
-> fila tentaria aplicar 56: 54 legadas mais as 2 novas (R1). **Três migrations nunca entram em
-> `repair`** (R3): a legada `084_auth_login_attempts` (C, aplicação real),
-> `20260918120033_hr_workflow_idempotency_indexes_parity` e
-> `20261019184500_housekeeping_security_hardening`. O `db push`, quando autorizado, aplica **as
-> três** na mesma execução. A restrição de a `084` ser anterior à última versão do ledger está no
-> §5(g) do plano. Ver §5 do
+> fila tentaria aplicar 56: 54 legadas mais as 2 novas (R1). **Três migrations são
+> obrigatoriamente excluídas do `repair`** (R3): a legada `084_auth_login_attempts` (C, aplicação
+> real), `20260918120033_hr_workflow_idempotency_indexes_parity` e
+> `20261019184500_housekeeping_security_hardening`. Isso significa **pelo menos três** pendentes. O
+> total exato só é definido depois da classificação completa das legadas. O `db push`, quando
+> autorizado, aplica todas as pendentes da lista fechada na mesma execução. A execução da `084`,
+> que é anterior à última versão do ledger, é **questão aberta** no §5(g) do plano: `--include-all`
+> não está autorizado. Ver §5 do
 > [`PLANO_RECONCILIACAO_MIGRATIONS.md`](PLANO_RECONCILIACAO_MIGRATIONS.md) e P4 em
 > [`GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md`](GO_NO_GO_RECONCILIACAO_INDICES_2026-10-16.md).
 
